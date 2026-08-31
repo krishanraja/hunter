@@ -294,6 +294,35 @@ def test_matcher_ambiguity_is_a_no_op():
     assert not pairs and amb and len(db_only) == 2
 
 
+def test_db_insert_normalizes_heterogeneous_keys(monkeypatch):
+    """PostgREST rejects bulk inserts with mismatched keys (PGRST102); the
+    2026-08-31 P4 gate run died on exactly this when reconcile mixed rows
+    with and without verdict fields. db_insert must send a uniform batch."""
+    import hunter.config as config_mod
+    from hunter.config import Config, db_insert
+    sent = {}
+
+    class FakeResp:
+        def raise_for_status(self):
+            pass
+
+    def fake_post(url, headers=None, params=None, json=None, timeout=None):
+        sent["json"] = json
+        return FakeResp()
+
+    monkeypatch.setattr(config_mod.requests, "post", fake_post)
+    cfg = Config(supabase_url="https://x.supabase.co", supabase_key="k", raw={})
+    db_insert(cfg, "hunter_seen_roles",
+              [{"job_id": "a:b", "company": "A"},
+               {"job_id": "c:d", "company": "C", "score": 7,
+                "krish_verdict": "go"}],
+              on_conflict="job_id", ignore_duplicates=True)
+    keysets = [sorted(r.keys()) for r in sent["json"]]
+    assert keysets[0] == keysets[1] == ["company", "job_id", "krish_verdict", "score"]
+    assert sent["json"][0]["score"] is None and sent["json"][0]["krish_verdict"] is None
+    assert sent["json"][1]["score"] == 7
+
+
 def test_unmatched_both_directions_surface():
     from hunter.run import match_rows
     srow = make_sheet_row(9, "The Trade Desk", "VP Strategy",

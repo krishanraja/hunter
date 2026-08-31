@@ -104,6 +104,11 @@ def db_insert(cfg: Config, table: str, rows: list[dict], *,
               on_conflict: str | None = None, ignore_duplicates: bool = False) -> None:
     if not rows:
         return
+    # PostgREST bulk inserts demand identical keys on every object (PGRST102).
+    # Fill gaps with explicit NULLs; keys absent from the whole batch stay
+    # absent, so column defaults still apply.
+    all_keys = sorted({k for row in rows for k in row})
+    rows = [{k: row.get(k) for k in all_keys} for row in rows]
     headers = dict(_rest_headers(cfg))
     prefer = ["return=minimal"]
     if ignore_duplicates:
