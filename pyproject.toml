@@ -1,0 +1,29 @@
+[project]
+name = "hunter"
+version = "0.1.0"
+description = "Krish's job search engine: source, gate, score, build packages, stage the sheet. Canon governs."
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "google-auth>=2.28",
+    "anthropic>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "responses>=0.25"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hunter = ["prompts/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: hits live services; opt in with HUNTER_LIVE=1",
+]
