@@ -223,3 +223,83 @@ def test_update_package_cells_refuses_header_rows():
                                cv_pdf_url="https://d", letter_pdf_url="https://d",
                                package_status=sheet_mod.O_BUILT_DIRECT,
                                built_date="2026-08-31")
+
+
+# ---------- the canon 9.13 reconciliation matcher ----------
+
+def test_norm_url_strips_tracking_and_case():
+    from hunter.run import norm_url
+    assert (norm_url("https://Job-Boards.Greenhouse.io/acme/jobs/5?utm_source=x&gh_src=y")
+            == norm_url("https://job-boards.greenhouse.io/acme/jobs/5"))
+
+
+def test_ats_key_extracts_greenhouse_lever_ashby():
+    from hunter.run import ats_key
+    assert ats_key("https://job-boards.greenhouse.io/cresta/jobs/5250874008") == (
+        "greenhouse", "cresta", "5250874008")
+    assert ats_key("https://jobs.ashbyhq.com/harvey/8ae3a90d-ebf8-4202-96d3-9f74c2737cd7")[0] == "ashby"
+    assert ats_key("https://example.com/random") is None
+
+
+def make_sheet_row(row_number, company, role, jd_url, verdict="New"):
+    from hunter.sheet import SheetRow, pad_row, hyperlink
+    cells = pad_row([verdict, company, role, hyperlink(jd_url, "JD")] + ["x"] * 24)
+    return SheetRow(row_number=row_number, cells=cells, verdict=verdict,
+                    company=company, role=role, jd_url=jd_url)
+
+
+def test_matcher_pass1_ats_key_wins():
+    from hunter.run import match_rows
+    srow = make_sheet_row(5, "Cresta", "Partner Success Director",
+                          "https://job-boards.greenhouse.io/cresta/jobs/5250874008")
+    dbrow = {"job_id": "cresta:partner-success-director-5c2300",
+             "company": "Cresta", "title": "Partner Success Director",
+             "url": "https://job-boards.greenhouse.io/cresta/jobs/5250874008?gh_src=abc"}
+    pairs, sheet_only, db_only, amb = match_rows([srow], [dbrow])
+    assert pairs and not sheet_only and not db_only and not amb
+
+
+def test_matcher_pass3_slug_job_id():
+    from hunter.run import match_rows
+    srow = make_sheet_row(6, "Higgsfield AI", "Head of Entertainment GTM",
+                          "https://higgsfield.example/careers/1")
+    dbrow = {"job_id": "higgsfield-ai:head-of-entertainment-gtm",
+             "company": "Higgsfield AI", "title": "Head of Entertainment GTM",
+             "url": "https://different.example/x"}
+    pairs, *_ = match_rows([srow], [dbrow])
+    assert pairs
+
+
+def test_matcher_fuzzy_title_requires_same_company():
+    from hunter.run import match_rows
+    srow = make_sheet_row(7, "Cohere", "Chief of Staff",
+                          "https://cohere.example/jobs/1")
+    dbrow = {"job_id": "cohere:chief-of-staff-to-the-ceo", "company": "Cohere",
+             "title": "Chief of Staff to the CEO",
+             "url": "https://other.example/jobs/2"}
+    pairs, *_ = match_rows([srow], [dbrow])
+    assert pairs, "same company + high title overlap must pair"
+
+
+def test_matcher_ambiguity_is_a_no_op():
+    from hunter.run import match_rows
+    srow = make_sheet_row(8, "Acme", "Head of GTM", "https://acme.example/j/1")
+    dbrows = [
+        {"job_id": "acme:head-of-gtm-na", "company": "Acme",
+         "title": "Head of GTM NA", "url": "https://a.example/1"},
+        {"job_id": "acme:head-of-gtm-emea", "company": "Acme",
+         "title": "Head of GTM EMEA", "url": "https://a.example/2"},
+    ]
+    pairs, sheet_only, db_only, amb = match_rows([srow], dbrows)
+    assert not pairs and amb and len(db_only) == 2
+
+
+def test_unmatched_both_directions_surface():
+    from hunter.run import match_rows
+    srow = make_sheet_row(9, "The Trade Desk", "VP Strategy",
+                          "https://ttd.example/j/9")
+    dbrow = {"job_id": "harvey:head-of-gtm-strategy", "company": "Harvey",
+             "title": "Head of GTM Strategy", "url": "https://h.example/1",
+             "package_status": "built"}
+    pairs, sheet_only, db_only, amb = match_rows([srow], [dbrow])
+    assert not pairs and sheet_only == [srow] and db_only == [dbrow]
