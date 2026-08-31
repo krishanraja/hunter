@@ -47,9 +47,10 @@ FAMILY_PATTERNS: list[tuple[str, str]] = [
 TAILOR_SCHEMA = {
     "type": "object",
     "properties": {
-        "competency_order": {"type": "array", "items": {"type": "string"},
-                             "minItems": 11, "maxItems": 11},
-        "letter_bullet_to_cut": {"type": "integer", "minimum": 1, "maximum": 4},
+        # exactly-eleven is enforced by validate(); structured outputs only
+        # supports minItems 0 or 1, so the schema stays permissive here
+        "competency_order": {"type": "array", "items": {"type": "string"}},
+        "letter_bullet_to_cut": {"type": "integer"},
         "block_key": {"type": "string"},
         "jd_mirror": {"type": "string"},
         "hiring_lead": {"type": "string"},
