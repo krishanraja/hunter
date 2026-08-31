@@ -36,6 +36,29 @@ def _para(segments, *, bullet=False, style="NORMAL_TEXT", start):
     return {"startIndex": start, "endIndex": pos, "paragraph": para}, pos
 
 
+TEST_LETTER_BLOCKS = {
+    key: {
+        "text": (
+            f"[[COMPANY]] is [[JD_MIRROR]] and the {key.replace('_', ' ')} mandate "
+            "is one I have run before: Captify APAC went from $0 to $12M ARR."
+        ),
+        "default_mirror": "building its commercial engine",
+        "approved_at": "2026-08-31",
+    }
+    for key in ["gm_market_builder", "commercial_strategy", "corp_dev_strategy",
+                "ai_transformation", "partnerships_alliances"]
+}
+TEST_CV_BLOCKS = {
+    key: {
+        "text": (
+            f"Synthetic {key.replace('_', ' ')} summary paragraph used by the "
+            "offline suite, sixteen years across four commercial builds."
+        ),
+        "approved_at": "2026-08-31",
+    }
+    for key in TEST_LETTER_BLOCKS
+}
+
 COMPETENCIES_11 = [
     "Commercial Architecture", "Zero-to-One GTM and Operating Model",
     "P&L Ownership", "Strategic Partnerships and Corporate Development",

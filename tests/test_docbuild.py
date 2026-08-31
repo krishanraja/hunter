@@ -8,7 +8,8 @@ from hunter.package.build import build_package, read_master_facts
 from hunter.package.tailor import TailorResult
 from hunter.package.assertions import verify
 
-from conftest import COMPETENCIES_11, make_synthetic_cv
+from conftest import (COMPETENCIES_11, TEST_CV_BLOCKS, TEST_LETTER_BLOCKS,
+                      make_synthetic_cv)
 from fake_docs import FakeDocBuild
 
 
@@ -19,17 +20,20 @@ def make_db(letter_fixture):
     })
 
 
+def build(db, tr, **kw):
+    kw.setdefault("letter_blocks", TEST_LETTER_BLOCKS)
+    kw.setdefault("cv_blocks", TEST_CV_BLOCKS)
+    return build_package(db, tr, **kw)
+
+
 def sample_tailor(facts):
     order = list(facts.cv_competencies)
     order = order[3:] + order[:3]
     return TailorResult(
         competency_order=order,
         letter_bullet_to_cut=3,
-        hook=(
-            "Acme AI is turning enterprise search into a commercial product and "
-            "needs someone who has done the zero-to-one twice. I built Captify "
-            "APAC from $0 to $12M ARR and ship AI into production weekly."
-        ),
+        block_key="commercial_strategy",
+        jd_mirror="turning enterprise search into a commercial product",
         hiring_lead="Hiring Team",
     )
 
@@ -38,7 +42,7 @@ def test_full_package_zero_bold_loss(letter_fixture):
     db = make_db(letter_fixture)
     facts = read_master_facts(db)
     tr = sample_tailor(facts)
-    result = build_package(db, tr, company="Acme AI", title="VP Strategy")
+    result = build(db, tr, company="Acme AI", title="VP Strategy")
     assert result.letter_report is not None and result.letter_report.ok, \
         result.letter_report.failures
     assert result.cv_report is not None and result.cv_report.ok, \
@@ -53,8 +57,8 @@ def test_every_letter_bullet_choice_survives(letter_fixture):
         facts = read_master_facts(db)
         tr = sample_tailor(facts)
         tr.letter_bullet_to_cut = cut
-        result = build_package(db, tr, company=f"Cut{cut} Co", title="Head of Strategy",
-                               export_pdfs=False)
+        result = build(db, tr, company=f"Cut{cut} Co", title="Head of Strategy",
+                       export_pdfs=False)
         assert result.letter_report.ok, (cut, result.letter_report.failures)
 
 
@@ -64,8 +68,8 @@ def test_verify_catches_induced_bold_loss(letter_fixture):
     db = make_db(letter_fixture)
     facts = read_master_facts(db)
     tr = sample_tailor(facts)
-    result = build_package(db, tr, company="LossCo", title="VP Strategy",
-                           export_pdfs=False)
+    result = build(db, tr, company="LossCo", title="VP Strategy",
+                   export_pdfs=False)
     assert result.letter_report.ok
     doc = db.get(result.letter_doc_id)
     target = next(r for p in db.paragraphs(doc) for r in p["runs"]
@@ -118,3 +122,4 @@ def test_master_facts_shape(letter_fixture):
         "{{DATE}}": 1, "{{HIRING_LEAD}}": 2, "{{COMPANY}}": 3,
         "{{ROLE}}": 2, "{{COMPANY_SPECIFIC_HOOK}}": 1,
     }
+    assert facts.cv_summary_p1.startswith("Sixteen years")

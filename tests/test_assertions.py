@@ -5,7 +5,7 @@ from hunter.package.assertions import verify
 from hunter.package.build import build_letter, read_master_facts
 from hunter.package.tailor import TailorResult
 
-from conftest import make_synthetic_cv
+from conftest import TEST_CV_BLOCKS, TEST_LETTER_BLOCKS, make_synthetic_cv
 from fake_docs import FakeDocBuild
 
 
@@ -18,10 +18,12 @@ def build_ok_letter(letter_fixture):
     tr = TailorResult(
         competency_order=list(facts.cv_competencies),
         letter_bullet_to_cut=2,
-        hook="Sierra is scaling agents into the enterprise. I took Captify APAC from $0 to $12M ARR.",
+        block_key="commercial_strategy",
+        jd_mirror="",
         hiring_lead="Hiring Team",
     )
-    doc_id, report = build_letter(db, facts, tr, company="Sierra", title="Head of GTM")
+    doc_id, report = build_letter(db, facts, tr, company="Sierra", title="Head of GTM",
+                                  letter_blocks=TEST_LETTER_BLOCKS)
     assert report.ok, report.failures
     cut = facts.letter_bullets[tr.letter_bullet_to_cut - 1]
     return db, facts, doc_id, cut

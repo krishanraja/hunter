@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from .. import config
 from ..docbuild import DocBuild
 from .assertions import VerifyReport, verify
-from .tailor import TailorResult
+from .tailor import TailorResult, assemble_hook
 
 COMPETENCY_DOT = "·"  # the middle dot; surrounding spacing is measured
 DELETE_BLOCK_ANCHOR = "DELETE THIS BLOCK"
@@ -30,6 +30,7 @@ class MasterFacts:
     cv_bullet_count: int
     cv_competencies: list[str]
     competency_sep: str        # the master's exact separator, spacing included
+    cv_summary_p1: str         # first summary paragraph, verified unstyled
     cv_headings_present: bool
     letter_bold: list[str]
     letter_bullets: list[str]  # full text of the 4 proof bullets, in order
@@ -99,6 +100,23 @@ def read_master_facts(db: DocBuild) -> MasterFacts:
     if not headings_ok:
         raise BuildError("CV master is missing an expected section heading, refusing to build")
 
+    # First paragraph of PROFESSIONAL SUMMARY: the block layer replaces it per
+    # role family. It must carry no bold runs, or the swap would lose them and
+    # the build refuses (Krish may bold something there later; refusing beats
+    # losing his formatting).
+    summary_idx = next((i for i, p in enumerate(cv_paras)
+                        if p["text"].strip() == "PROFESSIONAL SUMMARY"), None)
+    if summary_idx is None:
+        raise BuildError("CV master: PROFESSIONAL SUMMARY heading paragraph not found")
+    p1 = next((p for p in cv_paras[summary_idx + 1:] if p["text"].strip()), None)
+    if p1 is None:
+        raise BuildError("CV master: summary paragraph 1 not found")
+    p1_styled = [r for r in p1["runs"] if r["bold"] and r["text"].strip()]
+    if p1_styled:
+        raise BuildError(
+            "CV master summary paragraph 1 carries bold runs; the block swap would "
+            "lose them, refusing to build")
+
     letter_bullets = [p["text"].strip() for p in letter_paras if p["bullet"]]
     if len(letter_bullets) != 4:
         raise BuildError(
@@ -113,6 +131,7 @@ def read_master_facts(db: DocBuild) -> MasterFacts:
         cv_bullet_count=sum(1 for p in cv_paras if p["bullet"]),
         cv_competencies=competencies,
         competency_sep=sep,
+        cv_summary_p1=p1["text"].strip(),
         cv_headings_present=headings_ok,
         letter_bold=db.bold_runs(letter),
         letter_bullets=letter_bullets,
@@ -134,10 +153,11 @@ def slugify(text: str) -> str:
 
 
 def build_letter(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
-                 company: str, title: str,
+                 company: str, title: str, letter_blocks: dict,
                  today: datetime.date | None = None) -> tuple[str, VerifyReport]:
     today = today or datetime.date.today()
     date_text = today.strftime("%B %d, %Y").replace(" 0", " ")
+    hook = assemble_hook(letter_blocks, tr.block_key, company, tr.jd_mirror)
     doc_title = _unique_title(db, f"KrishRaja_CoverLetter_{company}",
                               config.LETTER_FOLDER_ID, slugify(title))
     doc_id = db.copy_master(config.LETTER_MASTER_ID, doc_title, config.LETTER_FOLDER_ID)
@@ -146,41 +166,49 @@ def build_letter(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
         "{{HIRING_LEAD}}": tr.hiring_lead,
         "{{COMPANY}}": company,
         "{{ROLE}}": title,
-        "{{COMPANY_SPECIFIC_HOOK}}": tr.hook,
+        "{{COMPANY_SPECIFIC_HOOK}}": hook,
     })
     db.clear_highlighting(doc_id)
     removed = db.delete_block(doc_id, DELETE_BLOCK_ANCHOR)
     cut_text = facts.letter_bullets[tr.letter_bullet_to_cut - 1]
     removed += db.delete_paragraph(doc_id, cut_text[:40])
     report = verify(db, doc_id, master_bold=facts.letter_bold, kind="letter",
-                    cut_bullet_text=cut_text, expect_bullets=3)
+                    cut_bullet_text=cut_text, expect_bullets=3,
+                    expect_present=[hook])
     return doc_id, report
 
 
 def build_cv(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
-             company: str, title: str) -> tuple[str, VerifyReport]:
+             company: str, title: str, cv_blocks: dict) -> tuple[str, VerifyReport]:
+    summary_text = cv_blocks[tr.block_key]["text"]
     doc_title = _unique_title(db, f"KrishRaja_CV_{company}",
                               config.CV_FOLDER_ID, slugify(title))
     doc_id = db.copy_master(config.CV_MASTER_ID, doc_title, config.CV_FOLDER_ID)
+    db.set_unstyled_paragraph(doc_id, facts.cv_summary_p1[:60], summary_text)
     anchor = facts.competency_sep.join(facts.cv_competencies[:2])
     db.set_unstyled_paragraph(doc_id, anchor,
                               facts.competency_sep.join(tr.competency_order))
     report = verify(db, doc_id, master_bold=facts.cv_bold, kind="cv",
-                    expect_bullets=facts.cv_bullet_count)
+                    expect_bullets=facts.cv_bullet_count,
+                    expect_present=[summary_text])
     return doc_id, report
 
 
 def build_package(db: DocBuild, tr: TailorResult, *, company: str, title: str,
+                  letter_blocks: dict, cv_blocks: dict,
                   facts: MasterFacts | None = None,
                   export_pdfs: bool = True) -> PackageResult:
     facts = facts or read_master_facts(db)
     result = PackageResult()
+    result.notes.extend(tr.flags)
 
-    letter_id, letter_report = build_letter(db, facts, tr, company=company, title=title)
+    letter_id, letter_report = build_letter(db, facts, tr, company=company,
+                                            title=title, letter_blocks=letter_blocks)
     result.letter_doc_id, result.letter_report = letter_id, letter_report
     result.letter_url = doc_url(letter_id)
 
-    cv_id, cv_report = build_cv(db, facts, tr, company=company, title=title)
+    cv_id, cv_report = build_cv(db, facts, tr, company=company, title=title,
+                                cv_blocks=cv_blocks)
     result.cv_doc_id, result.cv_report = cv_id, cv_report
     result.cv_url = doc_url(cv_id)
 

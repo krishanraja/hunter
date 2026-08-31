@@ -35,7 +35,8 @@ class VerifyReport:
 
 def verify(db, doc_id, *, master_bold: list[str], kind: str,
            cut_bullet_text: str | None = None,
-           expect_bullets: int | None = None) -> VerifyReport:
+           expect_bullets: int | None = None,
+           expect_present: list[str] | None = None) -> VerifyReport:
     """Return a VerifyReport. db is a DocBuild; doc_id the finished copy."""
     doc = db.get(doc_id)
     paras = db.paragraphs(doc)
@@ -89,6 +90,10 @@ def verify(db, doc_id, *, master_bold: list[str], kind: str,
         n_b = sum(1 for p in paras if p["bullet"])
         if n_b != expect_bullets:
             fails.append(f"A6 expected {expect_bullets} bullets, found {n_b}")
+
+    for expected_text in (expect_present or []):
+        if expected_text not in full:
+            fails.append(f"A8 approved block text missing: {expected_text[:60]!r}")
 
     if kind == "letter":
         if LETTER_LOCKED_LINE not in full:
