@@ -323,6 +323,31 @@ def test_db_insert_normalizes_heterogeneous_keys(monkeypatch):
     assert sent["json"][1]["score"] == 7
 
 
+def test_fetch_with_retry_survives_one_timeout(monkeypatch):
+    """A single ReadTimeout on one Greenhouse board aborted the first live P4
+    run mid-resolution; one transient failure must retry, two must raise."""
+    import requests
+    from hunter.run import fetch_with_retry
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    calls = {"n": 0}
+
+    def flaky_once(slug, pid):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise requests.exceptions.ReadTimeout("boards-api timed out")
+        return True, "jd text", "https://jd.example/x"
+
+    assert fetch_with_retry(flaky_once, "acme", "1") == (
+        True, "jd text", "https://jd.example/x")
+    assert calls["n"] == 2
+
+    def always_down(slug, pid):
+        raise requests.exceptions.ConnectionError("reset")
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        fetch_with_retry(always_down, "acme", "1")
+
+
 def test_unmatched_both_directions_surface():
     from hunter.run import match_rows
     srow = make_sheet_row(9, "The Trade Desk", "VP Strategy",

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime
 import re
+import time
 from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -299,6 +300,19 @@ def cmd_reconcile() -> int:
     return 0
 
 
+def fetch_with_retry(fetch, slug: str, pid: str, attempts: int = 2):
+    """One transient network failure (timeout, reset) never decides liveness
+    or aborts a run; the second consecutive one propagates to the caller."""
+    import requests as requests_mod
+    for i in range(attempts):
+        try:
+            return fetch(slug, pid)
+        except requests_mod.RequestException:
+            if i + 1 == attempts:
+                raise
+            time.sleep(2)
+
+
 def _resolve_for_build(row: dict) -> ResolvedRole:
     from .ats import ashby, greenhouse, lever
     url = row.get("url") or row.get("job_url") or ""
@@ -309,7 +323,7 @@ def _resolve_for_build(row: dict) -> ResolvedRole:
         fetch = {"greenhouse": greenhouse.fetch_posting,
                  "lever": lever.fetch_posting,
                  "ashby": ashby.fetch_posting}[ats]
-        live, jd, jd_url = fetch(slug, pid)
+        live, jd, jd_url = fetch_with_retry(fetch, slug, pid)
     return ResolvedRole(company=row.get("company") or "", title=row["title"],
                         url=url, jd_url=jd_url, jd_text=jd, live=live,
                         source=row.get("source") or "", location=row.get("location") or "",
@@ -461,14 +475,18 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
 
     never = cfg.require_json("hunter_never_apply")
     inserts, staged_rows = [], []
+    fetchers = {"greenhouse": greenhouse.fetch_posting,
+                "ashby": ashby.fetch_posting, "lever": lever.fetch_posting}
     for p in fresh:
-        if p.ats == "greenhouse":
-            live, jd, jd_url = greenhouse.fetch_posting(p.ats_slug, p.ats_posting_id)
-        elif p.ats == "ashby":
-            live, jd, jd_url = ashby.fetch_posting(p.ats_slug, p.ats_posting_id)
-        elif p.ats == "lever":
-            live, jd, jd_url = lever.fetch_posting(p.ats_slug, p.ats_posting_id)
-        else:
+        fetch = fetchers.get(p.ats or "")
+        if fetch:
+            try:
+                live, jd, jd_url = fetch_with_retry(fetch, p.ats_slug, p.ats_posting_id)
+            except Exception as e:
+                summary.append(f"resolve failed, recorded unresolved: "
+                               f"{p.company}/{p.title!r}: {e.__class__.__name__}")
+                fetch = None
+        if not fetch:
             counts["unresolved"] += 1
             inserts.append({"job_id": job_id(p.company, p.title), "title": p.title,
                             "company": p.company, "url": p.url, "job_url": p.url,
@@ -548,8 +566,19 @@ def cmd_run() -> int:
 
         built = 0
         for row in select_for_build(cfg):
-            if build_one(cfg, canon, sheet, row, summary):
-                built += 1
+            try:
+                if build_one(cfg, canon, sheet, row, summary):
+                    built += 1
+            except Exception as e:
+                # one package's failure never costs the rest of the batch
+                summary.append(f"BUILD FAILED {row['job_id']}: "
+                               f"{e.__class__.__name__}: {e}")
+                try:
+                    db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
+                             {"package_status": "blocked",
+                              "rejection_reason": f"build error: {e.__class__.__name__}"})
+                except Exception:
+                    pass
         summary.append(f"packages built this run: {built}")
     except Exception as e:
         summary.append(f"RUN ABORTED: {e.__class__.__name__}: {e}")
