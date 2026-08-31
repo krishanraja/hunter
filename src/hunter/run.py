@@ -122,15 +122,37 @@ class ReconcileLedger:
         return out
 
 
+HASH_SUFFIX = re.compile(r"-[0-9a-f]{6}$")
+
+
+def _norm_title(t: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", (t or "").lower()))
+
+
 def match_rows(sheet_rows: list[SheetRow], db_rows: list[dict]
                ) -> tuple[list[tuple[SheetRow, dict]], list[SheetRow], list[dict], list[str]]:
     remaining = list(db_rows)
     pairs: list[tuple[SheetRow, dict]] = []
     ambiguous: list[str] = []
+    ambiguous_db: list[dict] = []
     unmatched_sheet: list[SheetRow] = []
 
     def db_url(d):
         return d.get("url") or d.get("job_url")
+
+    def tie_break(cands: list[dict], role: str) -> list[dict]:
+        # Rows the incumbent recorded with a shared board URL collide on the
+        # URL passes; the title decides when it can do so unambiguously.
+        if len(cands) <= 1:
+            return cands
+        close = [d for d in cands if title_jaccard(role, d.get("title", "")) >= 0.6]
+        if len(close) == 1:
+            return close
+        pool = close or cands
+        exact = [d for d in pool if _norm_title(d.get("title", "")) == _norm_title(role)]
+        if len(exact) == 1:
+            return exact
+        return pool
 
     for srow in sheet_rows:
         candidates = []
@@ -142,21 +164,31 @@ def match_rows(sheet_rows: list[SheetRow], db_rows: list[dict]
             candidates = [d for d in remaining if norm_url(db_url(d)) == nu]
         if not candidates:
             jid = job_id(srow.company, srow.role)
-            candidates = [d for d in remaining if d.get("job_id") == jid]
+            candidates = [d for d in remaining
+                          if d.get("job_id") == jid
+                          or (d.get("job_id", "").startswith(jid + "-")
+                              and HASH_SUFFIX.search(d.get("job_id", "")))]
         if not candidates:
             cslug = slugify(srow.company)
             candidates = [d for d in remaining
                           if d.get("job_id", "").split(":")[0] == cslug
                           and title_jaccard(srow.role, d.get("title", "")) >= 0.6]
+        candidates = tie_break(candidates, srow.role)
         if len(candidates) == 1:
             pairs.append((srow, candidates[0]))
             remaining.remove(candidates[0])
         elif len(candidates) > 1:
             ambiguous.append(f"sheet row {srow.row_number} {srow.company!r}/"
                              f"{srow.role!r} matched {len(candidates)} DB rows")
+            ambiguous_db.extend(candidates)
         else:
             unmatched_sheet.append(srow)
-    return pairs, unmatched_sheet, remaining, ambiguous
+    # A DB row tangled in an ambiguity is NOT missing from the sheet; letting
+    # it through db_only re-appends it every run (the 2026-08-31 duplicate
+    # rows 111-131 incident). It stays withheld until a human untangles it.
+    amb_ids = {id(d) for d in ambiguous_db}
+    db_only = [d for d in remaining if id(d) not in amb_ids]
+    return pairs, unmatched_sheet, db_only, ambiguous
 
 
 def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
@@ -171,9 +203,24 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
     ledger.ambiguous.extend(ambiguous)
     ledger.matched = [(s.row_number, d["job_id"]) for s, d in pairs]
 
-    # direction 1: sheet-only rows insert into hunter_seen_roles
+    # direction 1: sheet-only rows insert into hunter_seen_roles.
+    # A sheet row that is itself a duplicate of another sheet row (same
+    # company, role and URL) must never mint a new DB job_id; it is
+    # reported for Krish to delete, and nothing else happens to it.
+    def sheet_ident(s: SheetRow):
+        return (s.company.strip().lower(), _norm_title(s.role),
+                norm_url(s.jd_url) if s.jd_url else "")
+
+    seen_idents = {sheet_ident(s): s.row_number for s, _ in pairs}
     inserts = []
     for srow in sheet_only:
+        dup_of = seen_idents.get(sheet_ident(srow))
+        if dup_of:
+            ledger.skipped.append(
+                f"sheet row {srow.row_number} duplicates row {dup_of} "
+                f"({srow.company} / {srow.role}); not inserted, safe to delete")
+            continue
+        seen_idents[sheet_ident(srow)] = srow.row_number
         verdict_kind = classify_verdict(srow.verdict)
         row = {
             "job_id": job_id(srow.company, srow.role), "company": srow.company,
@@ -417,6 +464,26 @@ def cmd_build(target_job_id: str) -> int:
     return 0 if ok else 1
 
 
+def linkedin_search_urls(cfg: Config, sheet: Sheet) -> list[str]:
+    """The nine sourcing searches live in the Role Targeting tab (brief:
+    read each run so Krish can edit them without a deploy); the
+    hunter_linkedin_search_urls config key is the fallback."""
+    urls: list[str] = []
+    try:
+        for row in sheet.read_tab_values("Role Targeting!A1:Z400"):
+            for cell in row:
+                if isinstance(cell, str) and "linkedin.com/jobs/search" in cell:
+                    urls.append(cell.strip())
+    except Exception:
+        pass
+    if not urls:
+        raw = cfg.optional("hunter_linkedin_search_urls")
+        if raw:
+            import json as json_mod
+            urls = json_mod.loads(raw)
+    return urls
+
+
 def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                      summary: list[str]) -> dict:
     from .ats import ashby, greenhouse, lever
@@ -448,15 +515,18 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                    f"(discovery-only coverage): {len(gaps)}")
 
     spend = SpendTracker(cap_usd=float(cfg.optional("hunter_apify_max_usd_per_run", "5.00")))
-    li_urls = cfg.optional("hunter_linkedin_search_urls")
-    if li_urls:
+    urls = linkedin_search_urls(cfg, sheet)
+    if urls:
         try:
-            import json as json_mod
             postings.extend(sweep_linkedin(
-                cfg, json_mod.loads(li_urls), spend=spend,
+                cfg, urls, spend=spend,
                 max_charge_usd=float(cfg.optional("hunter_apify_max_usd_per_call", "2.00"))))
+            summary.append(f"apify linkedin: {len(urls)} search urls swept")
         except Exception as e:
             summary.append(f"apify linkedin sweep failed: {e.__class__.__name__}: {e}")
+    else:
+        summary.append("apify linkedin sweep skipped: no search URLs in the "
+                       "Role Targeting tab or hunter_linkedin_search_urls")
     counts["spend_usd"] = round(spend.spent, 2)
 
     counts["discovered"] = len(postings)

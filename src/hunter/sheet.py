@@ -182,6 +182,11 @@ class Sheet:
                          {"valueRenderOption": "FORMULA"})
         return [pad_row(r) for r in data.get("values", [])]
 
+    def read_tab_values(self, rng: str) -> list[list]:
+        """Raw values from any tab of the workbook (read-only helper; the
+        validated write path stays Pipeline-only)."""
+        return self._get(f"/values/{rng}").get("values", [])
+
     def read_pipeline(self, canon_headers: list[str]) -> list[SheetRow]:
         grid = self.read_grid()
         if not grid:

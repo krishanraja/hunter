@@ -59,26 +59,27 @@ def job_id(company: str, title: str) -> str:
 # posting for them arrives with its own ATS URL; run reports name the gap.
 ATS_MAP: dict[str, tuple[str, str]] = {
     "glean": ("greenhouse", "gleanwork"),
-    "clay": ("ashby", "clay"),
+    "clay": ("ashby", "claylabs"),
     "hebbia": ("ashby", "hebbia-ai"),
-    "perplexity": ("ashby", "perplexity-ai"),
+    "perplexity": ("ashby", "perplexity"),
     "synthesia": ("ashby", "synthesia"),
     "writer": ("ashby", "writer"),
     "crusoe": ("ashby", "crusoe"),
     "sierra": ("ashby", "sierra"),
     "elevenlabs": ("ashby", "elevenlabs"),
     "harvey": ("ashby", "harvey"),
-    "captions": ("ashby", "captions"),
+    "captions": ("ashby", "mirage"),  # Captions rebranded; board lives at /mirage
     "decagon": ("ashby", "decagon"),
     "modal": ("ashby", "modal"),
     "agentio": ("ashby", "agentio"),
     "heygen": ("greenhouse", "heygen"),
     "reddit": ("greenhouse", "reddit"),
-    "gong": ("greenhouse", "gong"),
+    "gong": ("greenhouse", "gongio"),
     "cresta": ("greenhouse", "cresta"),
-    "runway": ("greenhouse", "runwayml"),
-    "tollbit": ("lever", "tollbit"),
-    "tvscientific": ("lever", "tvscientific"),
+    "runway": ("ashby", "runway"),
+    "tollbit": ("greenhouse", "tollbit"),
+    # tvScientific exposes no public ATS board (careers page carries no
+    # greenhouse/lever/ashby links, 2026-08-31); discovery-only coverage.
 }
 
 

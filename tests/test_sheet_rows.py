@@ -281,7 +281,10 @@ def test_matcher_fuzzy_title_requires_same_company():
     assert pairs, "same company + high title overlap must pair"
 
 
-def test_matcher_ambiguity_is_a_no_op():
+def test_matcher_ambiguity_is_a_no_op_and_withholds_db_rows():
+    """Ambiguous DB rows must NOT surface as db_only: reconcile appends
+    db_only to the sheet, so leaking them re-appends the same roles every
+    run (the 2026-08-31 duplicate rows incident)."""
     from hunter.run import match_rows
     srow = make_sheet_row(8, "Acme", "Head of GTM", "https://acme.example/j/1")
     dbrows = [
@@ -291,7 +294,36 @@ def test_matcher_ambiguity_is_a_no_op():
          "title": "Head of GTM EMEA", "url": "https://a.example/2"},
     ]
     pairs, sheet_only, db_only, amb = match_rows([srow], dbrows)
-    assert not pairs and amb and len(db_only) == 2
+    assert not pairs and amb and db_only == []
+
+
+def test_matcher_shared_board_url_tie_breaks_on_title():
+    """Incumbent-recorded rows can all carry the same careers-page URL; the
+    URL pass then collides and the title must decide. The losing sibling is
+    genuinely absent from the sheet and stays in db_only."""
+    from hunter.run import match_rows
+    board = "https://elevenlabs.example/careers"
+    srow = make_sheet_row(9, "ElevenLabs", "General Manager - UK", board)
+    dbrows = [
+        {"job_id": "elevenlabs:gm-uk", "company": "ElevenLabs",
+         "title": "General Manager - UK", "url": board},
+        {"job_id": "elevenlabs:gm-germany", "company": "ElevenLabs",
+         "title": "General Manager - Germany", "url": board},
+    ]
+    pairs, sheet_only, db_only, amb = match_rows([srow], dbrows)
+    assert len(pairs) == 1 and pairs[0][1]["job_id"] == "elevenlabs:gm-uk"
+    assert not amb and len(db_only) == 1
+
+
+def test_matcher_pairs_hash_suffixed_job_id():
+    from hunter.run import match_rows
+    srow = make_sheet_row(10, "Cresta", "Partner Success Director",
+                          "https://cresta.example/careers")
+    dbrow = {"job_id": "cresta:partner-success-director-5c2300",
+             "company": "Cresta", "title": "Partner Success Director",
+             "url": "https://elsewhere.example/x"}
+    pairs, *_ = match_rows([srow], [dbrow])
+    assert pairs
 
 
 def test_db_insert_normalizes_heterogeneous_keys(monkeypatch):
@@ -346,6 +378,35 @@ def test_fetch_with_retry_survives_one_timeout(monkeypatch):
 
     with pytest.raises(requests.exceptions.ConnectionError):
         fetch_with_retry(always_down, "acme", "1")
+
+
+def test_reconcile_duplicate_sheet_row_never_mints_a_db_row(monkeypatch):
+    """With duplicate rows on the sheet (same company/role/URL), the copy
+    must be reported for deletion, not inserted as a fresh job_id."""
+    import hunter.run as run_mod
+    from hunter.sheet import hyperlink
+
+    url = "https://job-boards.greenhouse.io/writer/jobs/777"
+    row = pad_row(["New", "Writer", "VP, Customer Success (EMEA)",
+                   hyperlink(url, "JD"), "x", "x", "x", "x", "9"] + ["x"] * 19)
+    grid = [list(HEADERS), [""] * N_COLS, list(row), list(row)]
+    s = FakeSheet(grid)
+    dbrow = {"job_id": "writer:vp-customer-success-emea-205914",
+             "company": "Writer", "title": "VP, Customer Success (EMEA)",
+             "url": url, "status": "staging", "score": 9}
+    inserted = []
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: [dbrow])
+    monkeypatch.setattr(run_mod, "db_insert",
+                        lambda cfg, table, rows, **kw: inserted.extend(rows))
+    monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
+
+    class FakeCanon:
+        sheet_headers = HEADERS
+
+    ledger = run_mod.reconcile(cfg=None, canon=FakeCanon(), sheet=s)
+    assert len(ledger.matched) == 1
+    assert inserted == []
+    assert any("duplicates row 3" in x for x in ledger.skipped)
 
 
 def test_unmatched_both_directions_surface():
