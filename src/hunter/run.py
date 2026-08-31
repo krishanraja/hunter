@@ -124,16 +124,22 @@ class ReconcileLedger:
 
 HASH_SUFFIX = re.compile(r"-[0-9a-f]{6}$")
 
+# 0.6 lets "Director of Sales, Enterprise" capture the "- New York" variant
+# (3/5 tokens); 0.65 keeps "Chief of Staff" pairing with "Chief of Staff to
+# the CEO" (2/3) while regional variants stay distinct.
+FUZZY_TITLE_MIN = 0.65
+
 
 def _norm_title(t: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", (t or "").lower()))
 
 
 def match_rows(sheet_rows: list[SheetRow], db_rows: list[dict]
-               ) -> tuple[list[tuple[SheetRow, dict]], list[SheetRow], list[dict], list[str]]:
+               ) -> tuple[list[tuple[SheetRow, dict]], list[SheetRow], list[dict],
+                          list[tuple[SheetRow, int]]]:
     remaining = list(db_rows)
     pairs: list[tuple[SheetRow, dict]] = []
-    ambiguous: list[str] = []
+    ambiguous: list[tuple[SheetRow, int]] = []
     ambiguous_db: list[dict] = []
     unmatched_sheet: list[SheetRow] = []
 
@@ -145,7 +151,8 @@ def match_rows(sheet_rows: list[SheetRow], db_rows: list[dict]
         # URL passes; the title decides when it can do so unambiguously.
         if len(cands) <= 1:
             return cands
-        close = [d for d in cands if title_jaccard(role, d.get("title", "")) >= 0.6]
+        close = [d for d in cands
+                 if title_jaccard(role, d.get("title", "")) >= FUZZY_TITLE_MIN]
         if len(close) == 1:
             return close
         pool = close or cands
@@ -154,35 +161,64 @@ def match_rows(sheet_rows: list[SheetRow], db_rows: list[dict]
             return exact
         return pool
 
-    for srow in sheet_rows:
-        candidates = []
+    def strict_candidates(srow):
         sk = ats_key(srow.jd_url)
         if sk:
-            candidates = [d for d in remaining if ats_key(db_url(d)) == sk]
-        if not candidates and srow.jd_url:
+            c = [d for d in remaining if ats_key(db_url(d)) == sk]
+            if c:
+                return c
+        if srow.jd_url:
             nu = norm_url(srow.jd_url)
-            candidates = [d for d in remaining if norm_url(db_url(d)) == nu]
-        if not candidates:
-            jid = job_id(srow.company, srow.role)
-            candidates = [d for d in remaining
-                          if d.get("job_id") == jid
-                          or (d.get("job_id", "").startswith(jid + "-")
-                              and HASH_SUFFIX.search(d.get("job_id", "")))]
-        if not candidates:
-            cslug = slugify(srow.company)
-            candidates = [d for d in remaining
-                          if d.get("job_id", "").split(":")[0] == cslug
-                          and title_jaccard(srow.role, d.get("title", "")) >= 0.6]
-        candidates = tie_break(candidates, srow.role)
-        if len(candidates) == 1:
-            pairs.append((srow, candidates[0]))
-            remaining.remove(candidates[0])
-        elif len(candidates) > 1:
-            ambiguous.append(f"sheet row {srow.row_number} {srow.company!r}/"
-                             f"{srow.role!r} matched {len(candidates)} DB rows")
-            ambiguous_db.extend(candidates)
-        else:
-            unmatched_sheet.append(srow)
+            # a shared careers-page URL is weak identity, so this pass also
+            # demands a plausible title; the job_id passes below still run
+            c = [d for d in remaining
+                 if norm_url(db_url(d)) == nu
+                 and (title_jaccard(srow.role, d.get("title", "")) >= FUZZY_TITLE_MIN
+                      or _norm_title(d.get("title", "")) == _norm_title(srow.role))]
+            if c:
+                return c
+        # exact job_id, or the incumbent's variant that differs by exactly
+        # one trailing 6-hex hash segment; never a longer slug
+        # (…-enterprise must not swallow …-enterprise-new-york-b94aed)
+        jid = job_id(srow.company, srow.role)
+        c = [d for d in remaining
+             if d.get("job_id") == jid
+             or HASH_SUFFIX.sub("", d.get("job_id", "")) == jid]
+        if c:
+            return c
+        cslug = slugify(srow.company)
+        return [d for d in remaining
+                if d.get("job_id", "").split(":")[0] == cslug
+                and _norm_title(d.get("title", "")) == _norm_title(srow.role)]
+
+    def fuzzy_candidates(srow):
+        cslug = slugify(srow.company)
+        return [d for d in remaining
+                if d.get("job_id", "").split(":")[0] == cslug
+                and title_jaccard(srow.role, d.get("title", "")) >= FUZZY_TITLE_MIN]
+
+    # Two phases: every row's strong-identity matches (URL, job_id, exact
+    # title) resolve before any fuzzy pairing. A fuzzy match must never
+    # steal a DB row whose true partner appears later on the sheet (the
+    # 2026-08-31 ElevenLabs chief-of-staff mis-sync: row 20's fuzzy match
+    # took the France row that belonged, by exact URL, to row 84).
+    deferred: list[SheetRow] = []
+    for phase in ("strict", "fuzzy"):
+        rows_this_phase = sheet_rows if phase == "strict" else deferred
+        for srow in rows_this_phase:
+            candidates = (strict_candidates(srow) if phase == "strict"
+                          else fuzzy_candidates(srow))
+            candidates = tie_break(candidates, srow.role)
+            if len(candidates) == 1:
+                pairs.append((srow, candidates[0]))
+                remaining.remove(candidates[0])
+            elif len(candidates) > 1:
+                ambiguous.append((srow, len(candidates)))
+                ambiguous_db.extend(candidates)
+            elif phase == "strict":
+                deferred.append(srow)
+            else:
+                unmatched_sheet.append(srow)
     # A DB row tangled in an ambiguity is NOT missing from the sheet; letting
     # it through db_only re-appends it every run (the 2026-08-31 duplicate
     # rows 111-131 incident). It stays withheld until a human untangles it.
@@ -198,20 +234,36 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
         "select": "job_id,company,title,url,job_url,score,status,krish_verdict,"
                   "rejection_reason,package_status,package_cv_url,package_letter_url,"
                   "presented_at,source,location,comp,why_it_fits",
+        "status": "neq.duplicate",
         "limit": "2000"})
     pairs, sheet_only, db_only, ambiguous = match_rows(sheet_rows, db_rows)
-    ledger.ambiguous.extend(ambiguous)
     ledger.matched = [(s.row_number, d["job_id"]) for s, d in pairs]
 
-    # direction 1: sheet-only rows insert into hunter_seen_roles.
-    # A sheet row that is itself a duplicate of another sheet row (same
-    # company, role and URL) must never mint a new DB job_id; it is
-    # reported for Krish to delete, and nothing else happens to it.
+    # A sheet row that duplicates another sheet row must never mint a new DB
+    # job_id or count as a fresh ambiguity; it is reported for Krish to
+    # delete, and nothing else happens to it. Identity is company + title,
+    # the same rule the sourcing dedupe and dedupe-db use: two postings
+    # sharing both are one application target even when their URLs differ.
     def sheet_ident(s: SheetRow):
-        return (s.company.strip().lower(), _norm_title(s.role),
-                norm_url(s.jd_url) if s.jd_url else "")
+        return (slugify(s.company), _norm_title(s.role))
 
     seen_idents = {sheet_ident(s): s.row_number for s, _ in pairs}
+    for srow, n_cands in ambiguous:
+        dup_of = seen_idents.get(sheet_ident(srow))
+        if dup_of and dup_of != srow.row_number:
+            ledger.skipped.append(
+                f"sheet row {srow.row_number} duplicates row {dup_of} "
+                f"({srow.company} / {srow.role}); no action, safe to delete")
+        else:
+            seen_idents.setdefault(sheet_ident(srow), srow.row_number)
+            ledger.ambiguous.append(
+                f"sheet row {srow.row_number} {srow.company!r}/{srow.role!r} "
+                f"matched {n_cands} DB rows")
+
+    # direction 1: sheet-only rows insert into hunter_seen_roles
+    # (the id guard includes duplicate-marked rows: their job_ids are taken)
+    db_ids = {r["job_id"] for r in db_get(
+        cfg, "hunter_seen_roles", {"select": "job_id", "limit": "5000"})}
     inserts = []
     for srow in sheet_only:
         dup_of = seen_idents.get(sheet_ident(srow))
@@ -221,6 +273,11 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
                 f"({srow.company} / {srow.role}); not inserted, safe to delete")
             continue
         seen_idents[sheet_ident(srow)] = srow.row_number
+        if job_id(srow.company, srow.role) in db_ids:
+            ledger.skipped.append(
+                f"sheet row {srow.row_number} ({srow.company} / {srow.role}): "
+                f"job_id already in the DB but paired elsewhere; no action")
+            continue
         verdict_kind = classify_verdict(srow.verdict)
         row = {
             "job_id": job_id(srow.company, srow.role), "company": srow.company,
@@ -464,6 +521,73 @@ def cmd_build(target_job_id: str) -> int:
     return 0 if ok else 1
 
 
+def seen_identity_keys(cfg: Config) -> set:
+    """Every identity under which a role is already known: job_id, ATS key,
+    normalized URL, and (company-slug, normalized title). Duplicate-marked
+    rows count too; a role once seen stays seen."""
+    keys: set = set()
+    rows = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,url,job_url,company,title", "limit": "5000"})
+    for r in rows:
+        keys.add(r["job_id"])
+        keys.add((slugify(r.get("company") or ""), _norm_title(r.get("title") or "")))
+        u = r.get("url") or r.get("job_url") or ""
+        if u.startswith("http"):
+            keys.add(norm_url(u))
+            ak = ats_key(u)
+            if ak:
+                keys.add(ak)
+    return keys
+
+
+def cmd_dedupe_db() -> int:
+    """Mark DB rows that duplicate another row's identity (same company +
+    normalized title) status=duplicate so reconcile and the router ignore
+    them. The keeper is chosen by standing: a verdict, then a package, then
+    presented_at, then the incumbent's hash-suffixed job_id. A row with a
+    verdict or a package is never marked; groups where standing ties are
+    reported and left alone."""
+    cfg = load()
+    rows = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,krish_verdict,package_status,"
+                  "presented_at,status",
+        "status": "neq.duplicate", "limit": "5000"})
+    groups: dict[tuple, list[dict]] = {}
+    for r in rows:
+        groups.setdefault(
+            (slugify(r.get("company") or ""), _norm_title(r.get("title") or "")),
+            []).append(r)
+    marked, held = 0, 0
+    for ident, group in sorted(groups.items()):
+        if len(group) < 2 or not ident[0] or not ident[1]:
+            continue
+
+        def rank(r):
+            return (bool(r.get("krish_verdict")),
+                    (r.get("package_status") or "none") != "none",
+                    bool(r.get("presented_at")),
+                    bool(HASH_SUFFIX.search(r.get("job_id") or "")))
+
+        ranked = sorted(group, key=rank, reverse=True)
+        keeper, losers = ranked[0], ranked[1:]
+        protected = [r for r in losers
+                     if r.get("krish_verdict")
+                     or (r.get("package_status") or "none") != "none"]
+        if protected:
+            held += 1
+            print(f"HELD {ident[0]}/{ident[1]}: more than one row has standing; "
+                  f"kept nothing, review {[r['job_id'] for r in group]}")
+            continue
+        for r in losers:
+            db_patch(cfg, "hunter_seen_roles", {"job_id": r["job_id"]},
+                     {"status": "duplicate",
+                      "rejection_reason": f"duplicate of {keeper['job_id']}"})
+            marked += 1
+            print(f"duplicate: {r['job_id']} -> keeper {keeper['job_id']}")
+    print(f"dedupe-db: {marked} rows marked duplicate, {held} groups held for review")
+    return 0
+
+
 def linkedin_search_urls(cfg: Config, sheet: Sheet) -> list[str]:
     """The nine sourcing searches live in the Role Targeting tab (brief:
     read each run so Krish can edit them without a deploy); the
@@ -533,14 +657,27 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     senior = [p for p in postings if p.title and SENIOR_TITLE.search(p.title)]
     counts["senior"] = len(senior)
 
-    ids = [job_id(p.company, p.title) for p in senior]
-    seen: set[str] = set()
-    for i in range(0, len(ids), 80):
-        chunk = ",".join(f'"{x}"' for x in ids[i:i + 80])
-        seen |= {r["job_id"] for r in db_get(
-            cfg, "hunter_seen_roles",
-            {"select": "job_id", "job_id": f"in.({chunk})"})}
-    fresh = [p for p, jid in zip(senior, ids) if jid not in seen]
+    # Dedupe BEFORE any paid or per-posting call, on identity rather than
+    # job_id alone: the incumbent's job_ids carry 6-hex hash suffixes, so a
+    # re-discovered posting would otherwise re-record under a bare job_id
+    # forever (the 2026-08-31 DB near-duplicates). A second posting with the
+    # same company and title is the same application target for Krish even
+    # when the ATS ids differ.
+    seen_keys = seen_identity_keys(cfg)
+    fresh = []
+    for p in senior:
+        keys = [job_id(p.company, p.title),
+                (slugify(p.company), _norm_title(p.title))]
+        if p.url:
+            keys.append(norm_url(p.url))
+            ak = ats_key(p.url)
+            if ak:
+                keys.append(ak)
+        if any(k in seen_keys for k in keys):
+            continue
+        for k in keys:
+            seen_keys.add(k)
+        fresh.append(p)
     counts["fresh"] = len(fresh)
 
     never = cfg.require_json("hunter_never_apply")
@@ -678,8 +815,10 @@ def main(argv: list[str]) -> int:
         return cmd_build(argv[2])
     if cmd == "recon":
         return cmd_recon()
+    if cmd == "dedupe-db":
+        return cmd_dedupe_db()
     print(f"unknown command {cmd!r}; commands: run, reconcile, migrate-sheet, "
-          f"build --job-id X, recon")
+          f"build --job-id X, recon, dedupe-db")
     return 2
 
 

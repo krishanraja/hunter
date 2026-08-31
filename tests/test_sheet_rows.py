@@ -326,6 +326,37 @@ def test_matcher_pairs_hash_suffixed_job_id():
     assert pairs
 
 
+def test_matcher_fuzzy_never_steals_a_later_rows_exact_match():
+    """Row order must not matter for strong identity: a fuzzy-only row
+    earlier on the sheet cannot take a DB row that a later sheet row
+    matches by exact URL (the ElevenLabs France/LATAM mis-sync)."""
+    from hunter.run import match_rows
+    latam = make_sheet_row(20, "ElevenLabs", "GTM Chief of Staff",
+                           "https://jobs.ashbyhq.com/elevenlabs/aec0af09-1111-2222-3333-444444444444")
+    france = make_sheet_row(84, "ElevenLabs", "Chief of Staff GTM - France",
+                            "https://jobs.ashbyhq.com/elevenlabs/e0fdb2f5-1111-2222-3333-444444444444")
+    db_france = {"job_id": "elevenlabs:chief-of-staff-gtm-france-422088",
+                 "company": "ElevenLabs", "title": "Chief of Staff GTM - France",
+                 "url": "https://jobs.ashbyhq.com/elevenlabs/e0fdb2f5-1111-2222-3333-444444444444"}
+    pairs, sheet_only, db_only, amb = match_rows([latam, france], [db_france])
+    assert len(pairs) == 1 and pairs[0][0].row_number == 84
+    assert sheet_only == [latam] and not amb
+
+
+def test_matcher_base_slug_never_swallows_longer_variant():
+    """decagon:director-of-sales-enterprise must not claim the DB row
+    decagon:director-of-sales-enterprise-new-york-b94aed (2026-08-31
+    mis-pair that starved the real New York sheet row of its match)."""
+    from hunter.run import match_rows
+    srow = make_sheet_row(11, "Decagon", "Director of Sales, Enterprise",
+                          "https://decagon.example/jobs/aaa")
+    dbrow = {"job_id": "decagon:director-of-sales-enterprise-new-york-b94aed",
+             "company": "Decagon", "title": "Director of Sales, Enterprise - New York",
+             "url": "https://decagon.example/jobs/bbb"}
+    pairs, sheet_only, db_only, amb = match_rows([srow], [dbrow])
+    assert not pairs and sheet_only == [srow] and db_only == [dbrow]
+
+
 def test_db_insert_normalizes_heterogeneous_keys(monkeypatch):
     """PostgREST rejects bulk inserts with mismatched keys (PGRST102); the
     2026-08-31 P4 gate run died on exactly this when reconcile mixed rows
@@ -407,6 +438,54 @@ def test_reconcile_duplicate_sheet_row_never_mints_a_db_row(monkeypatch):
     assert len(ledger.matched) == 1
     assert inserted == []
     assert any("duplicates row 3" in x for x in ledger.skipped)
+
+
+def test_dedupe_db_marks_newcomer_and_protects_standing(monkeypatch):
+    """A re-sourced role must fold into the incumbent's hash-suffixed row;
+    rows carrying a verdict or a package are never marked."""
+    import hunter.run as run_mod
+    rows = [
+        {"job_id": "writer:vp-customer-success-emea-205914", "company": "Writer",
+         "title": "VP, Customer Success (EMEA)", "krish_verdict": None,
+         "package_status": "none", "presented_at": "2026-08-20T00:00:00Z",
+         "status": "presented"},
+        {"job_id": "writer:vp-customer-success-emea", "company": "Writer",
+         "title": "VP, Customer Success (EMEA)", "krish_verdict": None,
+         "package_status": "none", "presented_at": None, "status": "scanned"},
+        {"job_id": "morpho:head-of-gtm", "company": "Morpho",
+         "title": "Head of GTM", "krish_verdict": "go",
+         "package_status": "built", "presented_at": "2026-08-01T00:00:00Z",
+         "status": "presented"},
+        {"job_id": "morpho:head-of-gtm-2", "company": "Morpho",
+         "title": "Head of GTM", "krish_verdict": "applied",
+         "package_status": "none", "presented_at": None, "status": "scanned"},
+    ]
+    patched = []
+    monkeypatch.setattr(run_mod, "load", lambda: None)
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: rows)
+    monkeypatch.setattr(run_mod, "db_patch",
+                        lambda cfg, table, match, values: patched.append((match, values)))
+    run_mod.cmd_dedupe_db()
+    assert patched == [({"job_id": "writer:vp-customer-success-emea"},
+                        {"status": "duplicate",
+                         "rejection_reason":
+                         "duplicate of writer:vp-customer-success-emea-205914"})]
+
+
+def test_sourcing_identity_dedupe_catches_hash_suffixed_rows(monkeypatch):
+    """seen_identity_keys must recognize a re-discovered posting by company
+    and title even when the stored job_id carries the incumbent's suffix."""
+    import hunter.run as run_mod
+    from hunter.sources import job_id, slugify
+    db = [{"job_id": "writer:vp-customer-success-emea-205914",
+           "company": "Writer", "title": "VP, Customer Success (EMEA)",
+           "url": "https://writer.example/careers", "job_url": None}]
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: db)
+    keys = run_mod.seen_identity_keys(None)
+    assert (slugify("Writer"), run_mod._norm_title("VP, Customer Success (EMEA)")) in keys
+    assert job_id("Writer", "VP, Customer Success (EMEA)") not in keys  # bare id differs
+    # the sourcing filter still drops it via the (company, title) key
+    assert ("writer", "vp customer success emea") in keys
 
 
 def test_unmatched_both_directions_surface():
