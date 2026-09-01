@@ -101,7 +101,8 @@ def db_get(cfg: Config, table: str, params: dict[str, str]) -> list[dict]:
 
 
 def db_insert(cfg: Config, table: str, rows: list[dict], *,
-              on_conflict: str | None = None, ignore_duplicates: bool = False) -> None:
+              on_conflict: str | None = None, ignore_duplicates: bool = False,
+              merge: bool = False) -> None:
     if not rows:
         return
     # PostgREST bulk inserts demand identical keys on every object (PGRST102).
@@ -111,7 +112,9 @@ def db_insert(cfg: Config, table: str, rows: list[dict], *,
     rows = [{k: row.get(k) for k in all_keys} for row in rows]
     headers = dict(_rest_headers(cfg))
     prefer = ["return=minimal"]
-    if ignore_duplicates:
+    if merge:
+        prefer.append("resolution=merge-duplicates")
+    elif ignore_duplicates:
         prefer.append("resolution=ignore-duplicates")
     headers["Prefer"] = ",".join(prefer)
     params = {"on_conflict": on_conflict} if on_conflict else {}

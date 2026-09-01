@@ -396,6 +396,31 @@ def cmd_migrate_sheet() -> int:
     return 0
 
 
+def cmd_bridges(ingest_dir: str | None = None) -> int:
+    """The bridge layer: optional export ingest, lazy enrichment, bridge
+    build, top-five report. Drafts only; nothing is ever sent to anyone."""
+    from .people import bridges as bridges_mod
+    from .people import enrich as enrich_mod
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    if ingest_dir:
+        from .people import ingest as ingest_mod
+        stats = ingest_mod.ingest(cfg, ingest_dir)
+        print(f"ingest: {stats}")
+    targets = {slugify(c) for c in canon.universe}
+    for r in bridges_mod.target_roles(cfg):
+        targets.add(slugify(r["company"]))
+    if cfg.optional("hunter_apify_enrichment_token"):
+        print(f"enrich: {enrich_mod.enrich(cfg, targets)}")
+    else:
+        print("enrich skipped: hunter_apify_enrichment_token absent")
+    print(f"bridges: {bridges_mod.build_bridges(cfg, sheet)}")
+    for i, b in enumerate(bridges_mod.top_bridges(cfg), start=1):
+        print(f"#{i} [{b['path_tier']}] score {b['bridge_score']} "
+              f"{b['job_id']}\n    {b['path_evidence']}\n    draft: {b['draft_ask']}")
+    return 0
+
+
 def cmd_reconcile() -> int:
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
@@ -817,8 +842,13 @@ def main(argv: list[str]) -> int:
         return cmd_recon()
     if cmd == "dedupe-db":
         return cmd_dedupe_db()
+    if cmd == "bridges":
+        ingest_dir = None
+        if len(argv) >= 3 and argv[1] == "--ingest":
+            ingest_dir = argv[2]
+        return cmd_bridges(ingest_dir)
     print(f"unknown command {cmd!r}; commands: run, reconcile, migrate-sheet, "
-          f"build --job-id X, recon, dedupe-db")
+          f"build --job-id X, recon, dedupe-db, bridges [--ingest DIR]")
     return 2
 
 

@@ -49,7 +49,8 @@ class SpendTracker:
 
 def run_actor(cfg, actor_id: str, input_obj: dict, *, max_charge_usd: float,
               spend: SpendTracker | None = None,
-              poll_seconds: int = 10, timeout_seconds: int = 900) -> list[dict]:
+              poll_seconds: int = 10, timeout_seconds: int = 900,
+              token_key: str = "hunter_apify_token") -> list[dict]:
     if actor_id in FORBIDDEN_ACTORS:
         raise ForbiddenActorError(
             f"actor {actor_id} is forbidden by the brief; the run must stop")
@@ -57,7 +58,7 @@ def run_actor(cfg, actor_id: str, input_obj: dict, *, max_charge_usd: float,
         raise RuntimeError(
             f"per-run Apify budget exhausted (cap ${spend.cap:.2f}); sourcing "
             f"soft-stopped, report it")
-    token = cfg.require("hunter_apify_token")
+    token = cfg.require(token_key)
     body = dict(input_obj)
     body["maxTotalChargeUsd"] = max_charge_usd
 
