@@ -30,6 +30,7 @@ from .canon import Canon, CanonError, load_canon
 from .config import Config, GoogleOAuth, GoogleServiceAccount, db_get, db_insert, db_patch, load
 from .docbuild import DocBuild
 from .gates import FLOOR, run_gates
+from .report import report_run
 from .router import classify_verdict, route_status, select_for_build
 from .score import BAR, score_role
 from .sheet import Sheet, SheetRow, make_row
@@ -782,6 +783,9 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
 def cmd_run() -> int:
     summary: list[str] = [f"hunter run {TODAY()}"]
     failed = False
+    started_at = datetime.datetime.now(datetime.timezone.utc)
+    counts: dict = {}
+    run_error: str | None = None
     try:
         cfg, canon = build_context()
         sheet = Sheet(GoogleServiceAccount(cfg).access_token)
@@ -790,6 +794,7 @@ def cmd_run() -> int:
         summary.extend(ledger.lines())
 
         counts = source_and_stage(cfg, canon, sheet, summary)
+        counts["reconciled"] = len(ledger.matched)
         summary.append(
             f"sourced: {counts['discovered']} discovered, {counts['senior']} senior, "
             f"{counts['fresh']} fresh, {counts['recorded']} recorded, "
@@ -817,10 +822,23 @@ def cmd_run() -> int:
                 except Exception:
                     pass
         summary.append(f"packages built this run: {built}")
+        counts["built"] = built
     except Exception as e:
         summary.append(f"RUN ABORTED: {e.__class__.__name__}: {e}")
+        run_error = f"{e.__class__.__name__}: {e}"
         failed = True
     finally:
+        try:
+            cfg2 = load()
+            # Control Center reads workflow_runs and silent_failures; without
+            # this the run is invisible there, and invisible work reads as
+            # work that never happened.
+            report_run(cfg2, started_at=started_at, ok=not failed, counts=counts,
+                       spend_usd=float(counts.get("spend_usd") or 0),
+                       summary_line=_status_line(counts, failed),
+                       error=run_error)
+        except Exception as e:
+            print(f"run reporting failed: {e}")
         try:
             cfg2 = load()
             send_summary(cfg2, "\n".join(summary))
@@ -828,6 +846,14 @@ def cmd_run() -> int:
             print(f"notify failed: {e}")
             print("\n".join(summary))
     return 1 if failed else 0
+
+
+def _status_line(counts: dict, failed: bool) -> str:
+    if failed:
+        return "run failed"
+    return (f"{counts.get('recorded', 0)} roles recorded, "
+            f"{counts.get('staged', 0)} staged, "
+            f"{counts.get('built', 0)} packages built")
 
 
 def main(argv: list[str]) -> int:
