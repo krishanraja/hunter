@@ -411,7 +411,12 @@ def cmd_bridges(ingest_dir: str | None = None) -> int:
     for r in bridges_mod.target_roles(cfg):
         targets.add(slugify(r["company"]))
     if cfg.optional("hunter_apify_enrichment_token"):
-        print(f"enrich: {enrich_mod.enrich(cfg, targets)}")
+        try:
+            print(f"enrich: {enrich_mod.enrich(cfg, targets)}")
+        except Exception as e:
+            # bridges still build from what is already known
+            print(f"enrich failed, continuing without fresh history: "
+                  f"{e.__class__.__name__}: {e}")
     else:
         print("enrich skipped: hunter_apify_enrichment_token absent")
     print(f"bridges: {bridges_mod.build_bridges(cfg, sheet)}")

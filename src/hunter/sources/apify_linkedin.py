@@ -16,6 +16,7 @@ from __future__ import annotations
 import time
 
 import requests
+from requests.exceptions import ConnectionError as TransportResetError
 
 from ..sources import RolePosting
 
@@ -62,8 +63,17 @@ def run_actor(cfg, actor_id: str, input_obj: dict, *, max_charge_usd: float,
     body = dict(input_obj)
     body["maxTotalChargeUsd"] = max_charge_usd
 
-    r = requests.post(f"{APIFY}/acts/{actor_id}/runs",
-                      params={"token": token}, json=body, timeout=60)
+    # The egress proxy occasionally resets the first connection to Apify.
+    # Retrying the start POST is safe: no run exists until it succeeds.
+    for attempt in range(3):
+        try:
+            r = requests.post(f"{APIFY}/acts/{actor_id}/runs",
+                              params={"token": token}, json=body, timeout=60)
+            break
+        except TransportResetError:
+            if attempt == 2:
+                raise
+            time.sleep(2 * (attempt + 1))
     r.raise_for_status()
     run = r.json()["data"]
     run_id = run["id"]
