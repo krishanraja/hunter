@@ -219,3 +219,84 @@ def test_an_unposted_band_is_unknown_not_a_zero():
                           comp="")
     assert score_role(silent).score >= score_role(posted).score - 1
     assert "not determinable" in score_role(silent).why_it_fits
+
+
+# ---------- hunter never learns from its own output ----------
+
+def test_a_verdict_hunter_wrote_is_never_a_taste_event():
+    """On 2026-09-02 the re-gate wrote 'Declined - requirements mismatch' into
+    column A, reconcile synced it as Krish's, and forty of hunter's own
+    decisions became taste evidence. Clustered by company that would have
+    proposed blocklisting Sierra, Decagon, Cloudflare and Synthesia, none of
+    which he rejected; Cloudflare is one he said go to."""
+    his = {"job_id": "deel:gm-white-label", "company": "Deel",
+           "title": "General Manager", "verdict_source": "sheet column A",
+           "krish_verdict": "No interest in payroll or working with finance team"}
+    hunters = {"job_id": "sierra:enterprise-sales-director", "company": "Sierra",
+               "title": "Enterprise Sales Director",
+               "verdict_source": learn.AUTO_SOURCE,
+               "krish_verdict": "Declined - requirements mismatch"}
+    assert learn.is_auto(hunters) and not learn.is_auto(his)
+
+    sent = []
+
+    def fake_insert(cfg, table, rows, **kw):
+        sent.extend(rows)
+
+    import hunter.learn as L
+    real, L.db_insert = L.db_insert, fake_insert
+    try:
+        L.record(None, [his, hunters])
+    finally:
+        L.db_insert = real
+    assert [e["job_id"] for e in sent] == ["deel:gm-white-label"]
+
+
+def test_krish_can_override_a_verdict_hunter_wrote():
+    """Reconcile never overwrites an existing verdict, which is right for his
+    own words but wrong for hunter's: after a re-gate codes a row, changing
+    column A is the only way he can disagree, and that correction has to
+    reach the DB."""
+    auto = {"verdict_source": learn.AUTO_SOURCE,
+            "krish_verdict": "Declined - requirements mismatch"}
+    his = {"verdict_source": "sheet column A", "krish_verdict": "Applied"}
+
+    def would_sync(db_row, sheet_text):
+        stored = (db_row.get("krish_verdict") or "").strip()
+        override = (learn.is_auto(db_row) and stored
+                    and sheet_text.strip() != stored)
+        return bool(not stored or override)
+
+    assert would_sync(auto, "Yes")
+    assert not would_sync(auto, "Declined - requirements mismatch")
+    assert not would_sync(his, "Yes")
+    assert would_sync({}, "Yes")
+
+
+def test_an_unresolvable_row_is_refused_not_guessed():
+    """Two of the nine archived rows on 2026-09-02 were ambiguous to the
+    matcher, so the DB stamp fell back to a job_id derived from the sheet's
+    own text, hit nothing, and reconcile filed hunter's verdict as Krish's.
+    A guess is worse than a refusal: it can stamp a rejection onto a role he
+    wants."""
+    from hunter.run import resolve_db_row
+    from hunter.sheet import SheetRow
+
+    srow = SheetRow(row_number=22, cells=[""] * 28, verdict="New",
+                    company="Anysphere (Cursor)",
+                    role="Regional Vice President, Business Development",
+                    jd_url=None)
+    twins = [{"job_id": "anysphere:rvp-business-development-7efce8",
+              "company": "Anysphere", "title": "Regional Vice President, Business Development"},
+             {"job_id": "anysphere-cursor:regional-vice-president-business-de",
+              "company": "Anysphere (Cursor)",
+              "title": "Regional Vice President, Business Development"}]
+    d, why = resolve_db_row(srow, twins, {})
+    assert d is None and "several DB rows match" in why
+
+    d, why = resolve_db_row(srow, twins[:1], {})
+    assert d and d["job_id"] == "anysphere:rvp-business-development-7efce8"
+
+    decided = [dict(twins[0], krish_verdict="go", verdict_source="sheet column A")]
+    d, why = resolve_db_row(srow, decided, {})
+    assert d is None, "a row carrying his verdict is never a stamp target"

@@ -29,6 +29,17 @@ from . import verdicts
 
 FILTER_KEY = "hunter_learned_filters"
 
+# What hunter writes into verdict_source when the coded verdict on the sheet
+# is its own re-gate decision rather than something Krish typed. The loop must
+# never learn from its own output: on 2026-09-02 forty auto verdicts had been
+# recorded as his, and clustering them would have proposed blocklisting
+# Sierra, Decagon, Cloudflare and Synthesia on no input from him at all.
+AUTO_SOURCE = "hunter regate"
+
+
+def is_auto(row: dict) -> bool:
+    return (row.get("verdict_source") or "").lower().startswith("hunter")
+
 # Ordered. The first pattern that matches names the primary code, and the
 # order encodes which half of a two-part sentence is the real objection:
 # "not interested in Salesforce as a business nor sales analytics as what I
@@ -110,7 +121,7 @@ def record(cfg: Config, rows: list[dict]) -> int:
     events = []
     for r in rows:
         text = (r.get("krish_verdict") or "").strip()
-        if not text:
+        if not text or is_auto(r):
             continue
         kind, code, _ = classify(text)
         if kind == "none":

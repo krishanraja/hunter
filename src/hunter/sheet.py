@@ -295,6 +295,29 @@ class Sheet:
                     f"read {got[1]!r}/{got[2]!r}; nothing deleted from Pipeline")
         return self.delete_rows([r.row_number for r in rows], expect_verdict=None)
 
+    def set_verdicts(self, mapping: dict[int, str]) -> int:
+        """Write column A on named rows and read it back.
+
+        Used when hunter records its own coded verdict (a re-gate drop, a
+        decline), so the archive carries WHY. The caller stamps the DB row
+        first with verdict_source, or reconcile reads this back as something
+        Krish typed and the learning loop treats hunter's own output as his
+        taste.
+        """
+        if not mapping:
+            return 0
+        data = [{"range": f"{TAB}!A{rn}", "values": [[text]]}
+                for rn, text in sorted(mapping.items())]
+        self._post("/values:batchUpdate",
+                   {"valueInputOption": "USER_ENTERED", "data": data})
+        for rn, text in sorted(mapping.items()):
+            back = self._get(f"/values/{TAB}!A{rn}").get("values", [[""]])
+            got = (back[0][0] if back and back[0] else "").strip()
+            if got != text.strip():
+                raise SheetError(f"column A read-back on row {rn} reads {got!r}, "
+                                 f"expected {text!r}")
+        return len(mapping)
+
     def delete_archive_rows(self, row_numbers: list[int], *,
                             archive_sheet_id: int, expect: list[str]) -> int:
         """Remove rows from the archive tab, checking first that each still

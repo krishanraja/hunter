@@ -394,7 +394,15 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
     # matched rows: field-level sync, one direction per field owner
     for srow, d in pairs:
         verdict_kind, reason_code, _inf = learn.classify(srow.verdict)
-        if verdict_kind != "none" and not d.get("krish_verdict"):
+        # A verdict hunter wrote itself is already on the row, so there is
+        # nothing to sync. But if Krish has since changed column A on one of
+        # those rows, that IS his verdict and must reach the DB: without this
+        # second clause reconcile would silently swallow every correction he
+        # makes to a re-gated row.
+        stored = (d.get("krish_verdict") or "").strip()
+        his_override = (learn.is_auto(d) and stored
+                        and srow.verdict.strip() != stored)
+        if verdict_kind != "none" and (not stored or his_override):
             patch = {"krish_verdict": srow.verdict, "verdict_at": NOW(),
                      "verdict_source": "sheet column A"}
             if reason_code:
@@ -444,6 +452,77 @@ def cmd_migrate_sheet() -> int:
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     print(sheet.migrate_formatting())
     return 0
+
+
+def resolve_db_row(srow, known: list[dict], paired: dict) -> tuple[dict | None, str]:
+    """The DB row a sheet row is, or a reason it cannot be settled.
+
+    match_rows deliberately leaves an ambiguous row unpaired, which is right
+    for reconcile but leaves nothing to stamp. Fall back to identity: the ATS
+    key first, then company tokens plus a close title. A candidate carrying
+    Krish's own verdict is never chosen, and a genuine tie is refused rather
+    than guessed, because stamping the wrong row writes a rejection onto a
+    role he may want.
+    """
+    d = paired.get(srow.row_number)
+    if d:
+        return d, ""
+    rk = ats_key(srow.jd_url)
+    toks = distinctive_tokens(srow.company, srow.role)
+    cands = []
+    for c in known:
+        if (c.get("krish_verdict") or "").strip() and not learn.is_auto(c):
+            continue
+        ck = ats_key(c.get("url") or c.get("job_url"))
+        if rk and ck and rk == ck:
+            return c, ""
+        if not (toks & distinctive_tokens(c.get("company") or "",
+                                          c.get("title") or "")):
+            continue
+        if title_jaccard(srow.role, c.get("title") or "") >= FUZZY_TITLE_MIN:
+            cands.append(c)
+    if len(cands) == 1:
+        return cands[0], ""
+    exact = [c for c in cands
+             if _norm_title(c.get("title") or "") == _norm_title(srow.role)]
+    if len(exact) == 1:
+        return exact[0], ""
+    if not cands:
+        return None, "no DB row matches it"
+    return None, ("several DB rows match it: "
+                  + ", ".join(c["job_id"] for c in cands[:4]))
+
+
+def stamp_auto_verdicts(cfg: Config, sheet: Sheet,
+                        rows: list[tuple]) -> int:
+    """Record hunter's own coded verdict on the DB row FIRST, then on the
+    sheet. rows: (sheet_row, db_job_id_or_None, reason_label, reason_text).
+
+    Order matters. If the sheet is written first, the next reconcile reads
+    column A, cannot tell the difference, and files hunter's own re-gate
+    decision as Krish's judgement. That happened to forty rows on 2026-09-02,
+    and the learning loop would then have proposed blocklisting companies he
+    never rejected. The DB stamp carries verdict_source so the loop can tell
+    hunter's output from his.
+    """
+    mapping = {}
+    for r, jid, code, reason in rows:
+        if not jid:
+            # Guessing a job_id from the sheet's own text is how two rows
+            # leaked on 2026-09-02: the guess matched nothing, the DB row
+            # kept no stamp, and reconcile filed hunter's verdict as Krish's.
+            raise SheetError(
+                f"row {r.row_number} ({r.company} / {r.role}) has no resolved "
+                f"DB row; refusing to stamp a guessed job_id")
+        text = f"{verdicts.DECLINE_PREFIX}{code}"
+        db_patch(cfg, "hunter_seen_roles",
+                 {"job_id": jid},
+                 {"krish_verdict": text, "verdict_at": NOW(),
+                  "verdict_source": learn.AUTO_SOURCE,
+                  "rejection_code": verdicts.LABEL_TO_CODE.get(code),
+                  "rejection_reason": reason[:500], "status": "dropped"})
+        mapping[r.row_number] = text
+    return sheet.set_verdicts(mapping)
 
 
 def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
@@ -603,11 +682,18 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
     if drop and archive:
         # write the reason into column A first so the archive carries WHY,
         # and so the learning loop sees a coded verdict like any other
-        for r, sc, code, reason in drop:
-            sheet._post("/values:batchUpdate", {
-                "valueInputOption": "USER_ENTERED",
-                "data": [{"range": f"Pipeline!A{r.row_number}",
-                          "values": [[f"{verdicts.DECLINE_PREFIX}{code}"]]}]})
+        stamped, unresolved = [], []
+        for r, _, code, reason in drop:
+            d, why = resolve_db_row(r, list(known), paired)
+            if d:
+                stamped.append((r, d["job_id"], code, reason))
+            else:
+                unresolved.append(f"row {r.row_number} {r.company}: {why}")
+        for line in unresolved:
+            print(f"  NOT ARCHIVED, {line}")
+        drop = [t for t in drop
+                if t[0].row_number in {r.row_number for r, _, _, _ in stamped}]
+        stamp_auto_verdicts(cfg, sheet, stamped)
         fresh = {r.row_number: r for r in sheet.read_pipeline(canon.sheet_headers)}
         movers = [fresh[r.row_number] for r, _, _, _ in drop if r.row_number in fresh]
         sheet.archive_rows(movers, archive_tab=config_mod.ARCHIVE_TAB,
@@ -675,6 +761,74 @@ def cmd_restore(job_ids: list[str], apply: bool = False) -> int:
                   "rejection_code": None})
         print(f"  {jid} -> Pipeline row {start + i}")
     print(f"restored {len(wanted)} row(s)")
+    return 0
+
+
+def cmd_decline(pairs_in: list[tuple[int, str]], apply: bool = False) -> int:
+    """Write hunter's coded verdict onto named Pipeline rows, so `archive`
+    can move them.
+
+    Used when Krish approves a re-gate's drop list without wanting the whole
+    re-gate re-run. Refuses the entire batch if any named row is not exactly
+    'New' or carries a standing verdict, because a row he has decided on is
+    not hunter's to code.
+    """
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    known = db_get(cfg, "hunter_seen_roles",
+                   {"select": "job_id,title,krish_verdict,url,job_url,company,"
+                              "verdict_source", "limit": "5000"})
+    all_rows = sheet.read_pipeline(canon.sheet_headers)
+    by_number = {r.row_number: r for r in all_rows}
+    matched, _, _, _ = match_rows(all_rows, list(known))
+    paired = {srow.row_number: d for srow, d in matched}
+    decided = [d for d in known
+               if (d.get("krish_verdict") or "").strip() and not learn.is_auto(d)]
+
+    problems, plan = [], []
+    for rn, label in pairs_in:
+        r = by_number.get(rn)
+        if r is None:
+            problems.append(f"row {rn} is not on Pipeline")
+            continue
+        if label not in verdicts.LABEL_TO_CODE:
+            problems.append(f"row {rn}: {label!r} is not a dropdown reason; "
+                            f"one of {sorted(verdicts.LABEL_TO_CODE)}")
+            continue
+        if (r.verdict or "").strip() != "New":
+            problems.append(f"row {rn} reads {r.verdict!r}, not New; not touching it")
+            continue
+        d, why = resolve_db_row(r, list(known), paired)
+        if not d:
+            problems.append(f"row {rn} ({r.company} / {r.role}): {why}")
+            continue
+        standing = next((c for c in decided
+                         if c["job_id"] == d.get("job_id")), None)
+        if standing:
+            problems.append(f"row {rn} carries your verdict "
+                            f"{standing['krish_verdict']!r}; not touching it")
+            continue
+        plan.append((r, d["job_id"], label))
+
+    for r, jid, label in plan:
+        print(f"  row {r.row_number:>3}  {r.company[:22]:24} {r.role[:40]:42} "
+              f"-> {verdicts.DECLINE_PREFIX}{label}")
+    if problems:
+        print("\nREFUSED, nothing written:")
+        for pr in problems:
+            print(f"  {pr}")
+        return 1
+    if not apply:
+        print(f"\ndry run. add --apply to write these {len(plan)} verdicts, "
+              f"then run: python -m hunter.run archive --apply")
+        return 0
+
+    n = stamp_auto_verdicts(cfg, sheet, [
+        (r, jid, label, f"re-gate drop approved by Krish 2026-09-02: {label}")
+        for r, jid, label in plan])
+    print(f"\nwrote {n} coded verdicts; they are hunter's own "
+          f"(verdict_source {learn.AUTO_SOURCE!r}), so the learning loop "
+          f"will not read them back as your taste")
     return 0
 
 
@@ -837,7 +991,11 @@ def learning_step(cfg: Config, *, apply: bool) -> dict:
                   "rejection_code,status,last_verified_at,presented_at,url,"
                   "job_url,location,why_it_fits",
         "limit": "5000"})
-    verdicted = [r for r in roles if (r.get("krish_verdict") or "").strip()]
+    # His verdicts only. A row carrying hunter's own coded verdict is its
+    # output, not his judgement, and reading it back would let the loop
+    # propose rules from its own gate decisions.
+    verdicted = [r for r in roles
+                 if (r.get("krish_verdict") or "").strip() and not learn.is_auto(r)]
     recorded = learn.record(cfg, verdicted) if apply else len(verdicted)
 
     if apply:
@@ -1456,6 +1614,20 @@ def main(argv: list[str]) -> int:
             print("usage: python -m hunter.run restore <job_id> [...] [--apply]")
             return 2
         return cmd_restore(ids, apply="--apply" in argv)
+    if cmd == "decline":
+        pairs_in = []
+        for a in argv[1:]:
+            if a.startswith("--"):
+                continue
+            if "=" not in a:
+                print(f"bad argument {a!r}; use <row>=<reason label>")
+                return 2
+            rn, label = a.split("=", 1)
+            pairs_in.append((int(rn), label.strip()))
+        if not pairs_in:
+            print("usage: python -m hunter.run decline <row>=<reason> ... [--apply]")
+            return 2
+        return cmd_decline(pairs_in, apply="--apply" in argv)
     if cmd == "archive":
         return cmd_archive(apply="--apply" in argv)
     if cmd == "set-dropdown":
