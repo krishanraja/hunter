@@ -527,6 +527,15 @@ def stamp_auto_verdicts(cfg: Config, sheet: Sheet,
     return sheet.set_verdicts(mapping)
 
 
+def full_title(paired: dict, srow) -> str:
+    """The posting's own title where the DB kept it, else the sheet's.
+
+    The sheet abbreviates ("GM, UK"); the DB has "General Manager - UK", and
+    the shorthand is what failed the seniority gate.
+    """
+    return (paired.get(srow.row_number) or {}).get("title") or srow.role
+
+
 def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
                archive: bool = True) -> int:
     """Re-judge rows hunter never gated, and give every one a real rationale.
@@ -607,11 +616,19 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
         # The sheet already knows the location and comp; without them G6 sees
         # an empty string and fails every row on geography, which would have
         # archived 70 legitimate roles.
+        # The archetype test reads the title, not the posting, so it runs
+        # before the fetch. Otherwise a role that is not one of his shapes
+        # survives simply because its URL is a LinkedIn link nobody can
+        # resolve, which is how seven of them stayed on the sheet.
+        if not decided_row and not archetype(full_title(paired, r)):
+            drop.append((r, 0, "function wrong",
+                         f"G11: title {r.role!r} is none of his archetypes"))
+            continue
         if not ats_key(r.jd_url):
             unresolved.append((r, "no ATS key on the URL, liveness unverifiable"))
             continue
         try:
-            full = (paired.get(r.row_number) or {}).get("title") or r.role
+            full = full_title(paired, r)
             role = _resolve_for_build({
                 "url": r.jd_url, "title": full, "company": r.company,
                 "source": "regate",
@@ -646,7 +663,11 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
                          result.rejection_reason or "canon 9.3 auto-reject"))
         elif not report.passed:
             reasons = "; ".join(f"{g.gate}: {g.reason}" for g in report.failures())
-            code = ("geo or language" if any(g.gate == "G6" for g in report.failures())
+            failed = {g.gate for g in report.failures()}
+            # Name the reason honestly. A role that is not one of his shapes is
+            # the wrong function, not a requirements mismatch.
+            code = ("geo or language" if "G6" in failed
+                    else "function wrong" if "G11" in failed
                     else "requirements mismatch")
             drop.append((r, result.score, code, reasons))
         elif result.score < canon.bar:

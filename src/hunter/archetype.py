@@ -29,9 +29,17 @@ FAMILIES: list[tuple[str, str]] = [
     ("chief_commercial_strategy",
      r"\bchief commercial\b|\bcco\b|\bchief strategy officer\b|\bcso\b|"
      r"\bhead of commercial\b|\bcommercial strategy\b|\brevenue strategy\b|"
-     r"\bhead of (?:gtm|go.to.market)\b|\bgtm strategy\b|"
+     # Canon 5's family is "chief commercial and strategy" and lists Founding
+     # CCO. A CRO is the commercial chief by another name, and a founding GTM
+     # lead is the same seat before it has a title. Quota-carry is still
+     # judged by canon 9.3 and G5, which is where that question belongs.
+     r"\bchief revenue officer\b|\bcro\b|\bfounding (?:gtm|commercial)\b|"
+     r"\bcommerciali[sz]ation\b|"
+     # "Head of Enterprise GTM" is one he approved, so the shape is
+     # "head of <segment> gtm", not the bare phrase.
+     r"\bhead of (?:[a-z]+ ){0,2}(?:gtm|go.to.market)\b|\bgtm strategy\b|"
      r"\bgo.to.market strategy\b|\bbusiness operations\b|"
-     r"\bhead of enterprise gtm\b|\bsales strategy (?:and|&) operations\b|"
+     r"\bsales strategy (?:and|&) operations\b|"
      r"\bgtm (?:operations|innovation)\b"),
     ("corp_dev_strategy",
      r"\bcorporate development\b|\bcorp dev\b|\bcorporate strategy\b|"
