@@ -30,12 +30,14 @@ from .canon import Canon, CanonError, load_canon
 from .config import Config, GoogleOAuth, GoogleServiceAccount, db_get, db_insert, db_patch, load
 from .docbuild import DocBuild
 from .gates import FLOOR, names_foreign_geo, run_gates
+from . import learn
 from .report import report_run
 from . import verdicts
 from .router import classify_verdict, route_status, select_for_build
 from .score import BAR, score_role
 from .sheet import Sheet, SheetError, SheetRow, make_row
-from .sources import ResolvedRole, job_id, slugify
+from .sources import (ResolvedRole, distinctive_tokens, identity_keys,
+                      job_id, slugify)
 from .notify import send_summary
 
 TODAY = lambda: datetime.date.today().isoformat()
@@ -233,15 +235,9 @@ def match_rows(sheet_rows: list[SheetRow], db_rows: list[dict]
 def record_verdict_event(cfg: Config, row: dict, verdict_text: str,
                         kind: str, reason_code: str | None) -> None:
     """Append-only, because the role row gets overwritten and the learning
-    loop needs the history. Unique on (job_id, verdict, code, text), so a
-    verdict re-read every run records once."""
+    loop needs the history."""
     try:
-        db_insert(cfg, "hunter_verdict_events", [{
-            "job_id": row.get("job_id"), "company": row.get("company"),
-            "title": row.get("title"), "verdict": kind,
-            "reason_code": reason_code, "reason_text": verdict_text[:500],
-        }], on_conflict="job_id,verdict,reason_code,reason_text",
-            ignore_duplicates=True)
+        learn.record(cfg, [dict(row, krish_verdict=verdict_text)])
     except Exception as e:
         print(f"verdict event not recorded for {row.get('job_id')}: "
               f"{e.__class__.__name__}")
@@ -397,7 +393,7 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
 
     # matched rows: field-level sync, one direction per field owner
     for srow, d in pairs:
-        verdict_kind, reason_code = verdicts.parse(srow.verdict)
+        verdict_kind, reason_code, _inf = learn.classify(srow.verdict)
         if verdict_kind != "none" and not d.get("krish_verdict"):
             patch = {"krish_verdict": srow.verdict, "verdict_at": NOW(),
                      "verdict_source": "sheet column A"}
@@ -703,6 +699,118 @@ def cmd_bridges(ingest_dir: str | None = None) -> int:
     return 0
 
 
+def learning_step(cfg: Config, *, apply: bool) -> dict:
+    """The loop itself. System codes are hunter's bugs and are fixed here;
+    taste codes only ever raise a proposal. Returns everything both the run
+    summary and the learn command need, so the two never drift."""
+    roles = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,krish_verdict,verdict_source,verdict_at,"
+                  "rejection_code,status,last_verified_at,presented_at,url,"
+                  "job_url,location,why_it_fits",
+        "limit": "5000"})
+    verdicted = [r for r in roles if (r.get("krish_verdict") or "").strip()]
+    recorded = learn.record(cfg, verdicted) if apply else len(verdicted)
+
+    if apply:
+        events = learn.load_events(cfg)
+    else:
+        events = []
+        for r in verdicted:
+            kind, code, _ = learn.classify(r["krish_verdict"])
+            events.append({"job_id": r["job_id"], "company": r.get("company"),
+                           "title": r.get("title"), "verdict": kind,
+                           "reason_code": code, "reason_text": r["krish_verdict"]})
+
+    findings = learn.system_findings(events, roles)
+    fixed = []
+    for f in findings:
+        twin = f.get("twin")
+        if not twin:
+            continue
+        if apply:
+            db_patch(cfg, "hunter_seen_roles", {"job_id": f["job_id"]},
+                     {"status": "duplicate", "rejection_code": f["code"],
+                      "rejection_reason": f"duplicate of {twin} ({f['quote']})"})
+        fixed.append(f["job_id"])
+
+    promoted = learn.promote_approved(cfg, apply=apply)
+    cands = learn.clusters(events)
+    filed = learn.file_proposals(cfg, cands, apply=apply, roles=roles)
+    return {"roles": roles, "verdicted": verdicted, "recorded": recorded,
+            "events": events, "findings": findings, "fixed": fixed,
+            "promoted": promoted, "clusters": cands, "filed": filed,
+            "opens": learn.open_applications(roles),
+            "live": learn.load_filters(cfg)}
+
+
+def learning_lines(out: dict) -> list[str]:
+    lines = [f"learning: {out['recorded']} verdict events, "
+             f"{len(out['findings'])} system miss(es), "
+             f"{len(out['fixed'])} row(s) marked duplicate, "
+             f"{len(out['filed'])} proposal(s) filed, "
+             f"{len(out['live'])} rule(s) live"]
+    for rid in out["promoted"]:
+        lines.append(f"  approved rule now live: {rid}")
+    for t in out["filed"]:
+        lines.append(f"  awaiting your approval: {t}")
+    return lines
+
+
+def cmd_learn(apply: bool = False, revoke: str | None = None) -> int:
+    """Read Krish's verdicts back as instructions.
+
+    System codes are hunter's bugs and are fixed here. Taste codes only ever
+    raise a proposal; nothing is suppressed until he approves it in Control
+    Center, and one --revoke reverses any rule that stops earning its place.
+    """
+    cfg = load()
+    if revoke:
+        ok = learn.revoke(cfg, revoke)
+        print(f"revoked {revoke}" if ok else f"no live rule {revoke!r}")
+        return 0 if ok else 1
+
+    out = learning_step(cfg, apply=apply)
+    print(f"{len(out['verdicted'])} verdicts on record; {out['recorded']} events "
+          f"{'written' if apply else 'would be written'}")
+
+    print("\nSYSTEM codes (hunter's misses, fixed without asking):")
+    if not out["findings"]:
+        print("  none")
+    for f in out["findings"]:
+        print(f"  {f['job_id']}\n    {f['code']} [{f['gate']}]: {f['evidence']}"
+              f"\n    fix: {f['fix']}\n    his words: {f['quote']!r}")
+    if out["findings"]:
+        print(f"  {len(out['fixed'])} row(s) "
+              f"{'marked' if apply else 'would be marked'} duplicate")
+
+    if out["opens"]:
+        print(f"\nopen applications at {len(out['opens'])} companies; a new role "
+              f"at one of them is staged with a note, never suppressed")
+
+    print("\nTASTE codes (his judgement, proposal only):")
+    if not out["clusters"]:
+        print("  nothing clusters yet")
+    for c in out["clusters"]:
+        print(f"  {c['code']} / {c['kind']} {c['value']!r} "
+              f"({len(c['job_ids'])} role(s), {c['evidence']})")
+    print(f"  {len(out['filed'])} proposal(s) "
+          f"{'filed' if apply else 'would be filed'} for approval")
+    for t in out["filed"]:
+        print(f"    {t}")
+
+    if out["promoted"]:
+        print(f"\napproved and now live: {', '.join(out['promoted'])}")
+
+    print(f"\nlive learned filters: {len(out['live'])}")
+    for r in out["live"]:
+        print(f"  {learn.rule_id(r)} -> drop on {r.get('scope')} "
+              f"(from {', '.join(r.get('job_ids') or [])})")
+    if not apply:
+        print("\ndry run. add --apply to write events, mark duplicates and "
+              "file proposals.")
+    return 0
+
+
 def cmd_reconcile() -> int:
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
@@ -837,7 +945,7 @@ def seen_identity_keys(cfg: Config) -> set:
         "select": "job_id,url,job_url,company,title", "limit": "5000"})
     for r in rows:
         keys.add(r["job_id"])
-        keys.add((slugify(r.get("company") or ""), _norm_title(r.get("title") or "")))
+        keys.update(identity_keys(r.get("company") or "", r.get("title") or ""))
         u = r.get("url") or r.get("job_url") or ""
         if u.startswith("http"):
             keys.add(norm_url(u))
@@ -861,8 +969,10 @@ def cmd_dedupe_db() -> int:
         "status": "neq.duplicate", "limit": "5000"})
     groups: dict[tuple, list[dict]] = {}
     for r in rows:
+        from .sources import company_key
         groups.setdefault(
-            (slugify(r.get("company") or ""), _norm_title(r.get("title") or "")),
+            (company_key(r.get("company") or "", r.get("title") or ""),
+             _norm_title(r.get("title") or "")),
             []).append(r)
     marked, held = 0, 0
     for ident, group in sorted(groups.items()):
@@ -915,10 +1025,24 @@ def linkedin_search_urls(cfg: Config, sheet: Sheet) -> list[str]:
     return urls
 
 
+def open_application_note(opens: dict, company: str) -> str:
+    """A second role at a company where an application is already open is
+    often exactly what Krish wants, so it is never suppressed. It is a line
+    in the rationale so he is not surprised by it, which is what "already
+    applied above" cost him three times."""
+    for tok in distinctive_tokens(company):
+        hit = opens.get(tok)
+        if hit:
+            return (f"NOTE: you already have an application open at "
+                    f"{hit['company']} ({hit['title']}).")
+    return ""
+
+
 def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                      summary: list[str]) -> dict:
     from .ats import ashby, greenhouse, lever
     from .gates import SENIOR_TITLE
+    from .package.rationale import write_rationale
     from .sources import ats_for
     from .sources.apify_linkedin import SpendTracker, sweep_linkedin
 
@@ -973,8 +1097,7 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     seen_keys = seen_identity_keys(cfg)
     fresh = []
     for p in senior:
-        keys = [job_id(p.company, p.title),
-                (slugify(p.company), _norm_title(p.title))]
+        keys = [job_id(p.company, p.title)] + identity_keys(p.company, p.title)
         if p.url:
             keys.append(norm_url(p.url))
             ak = ats_key(p.url)
@@ -988,6 +1111,13 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     counts["fresh"] = len(fresh)
 
     never = cfg.require_json("hunter_never_apply")
+    # Approved learned rules only. Nothing Krish has not signed off on can
+    # suppress a role, and every suppression names the rule that did it.
+    rules = learn.load_filters(cfg)
+    opens = learn.open_applications(db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,krish_verdict,verdict_at", "limit": "5000"}))
+    counts["suppressed"] = 0
+    suppressions: list[str] = []
     inserts, staged_rows = [], []
     fetchers = {"greenhouse": greenhouse.fetch_posting,
                 "ashby": ashby.fetch_posting, "lever": lever.fetch_posting}
@@ -1015,8 +1145,14 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                             comp=p.comp_text or "")
         report = run_gates(role, never_apply=never)
         result = score_role(role)
+        learned = learn.check(rules, company=role.company, title=role.title,
+                              location=role.location, jd=role.jd_text)
         status, reason = "scanned", None
-        if result.auto_rejected:
+        if learned:
+            status, reason = "dropped", learned[1]
+            counts["suppressed"] += 1
+            suppressions.append(f"{role.job_id}: {learned[1]}")
+        elif result.auto_rejected:
             status, reason = "dropped", result.rejection_reason
         elif not report.passed:
             status = "blocked"
@@ -1034,7 +1170,22 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                "last_verified_at": NOW() if live else None}
         inserts.append(row)
         if status == "staging":
-            staged_rows.append((role, result, jd[:300]))
+            # The same rationale generator the re-gate uses, so a row staged
+            # today reads exactly like a row re-judged last week. Krish asked
+            # for one standard; this is where it is applied.
+            why, rflags = write_rationale(
+                cfg, canon, company=role.company, title=role.title,
+                jd=role.jd_text, score=result.score,
+                score_reason=result.why_it_fits,
+                location=role.location, comp=role.comp)
+            note = open_application_note(opens, role.company)
+            if note:
+                why = f"{why} {note}"[:900]
+                rflags = rflags + ["open application at this company"]
+            row["why_it_fits"] = why
+            if rflags:
+                summary.append(f"rationale flags {role.job_id}: {', '.join(rflags)}")
+            staged_rows.append((role, result, jd[:300], why))
 
     if inserts:
         db_insert(cfg, "hunter_seen_roles", inserts, on_conflict="job_id",
@@ -1044,15 +1195,20 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     if staged_rows:
         new_rows = [make_row(company=role.company, role=role.title,
                              jd_url=role.jd_url, score=result.score,
-                             why_it_fits=result.why_it_fits,
+                             why_it_fits=why,
                              location=role.location, comp=role.comp,
                              source=role.source, jd_snippet=snippet)
-                    for role, result, snippet in staged_rows]
+                    for role, result, snippet, why in staged_rows]
         sheet.append_rows(new_rows)
-        for role, _, _ in staged_rows:
+        for role, _, _, _ in staged_rows:
             db_patch(cfg, "hunter_seen_roles", {"job_id": role.job_id},
                      {"presented_at": NOW()})
         counts["staged"] = len(staged_rows)
+
+    if rules:
+        summary.append(f"learned filters live: {len(rules)}; "
+                       f"{counts['suppressed']} role(s) suppressed this run")
+        summary.extend(f"  suppressed {line}" for line in suppressions[:10])
     return counts
 
 
@@ -1068,6 +1224,14 @@ def cmd_run() -> int:
 
         ledger = reconcile(cfg, canon, sheet)
         summary.extend(ledger.lines())
+
+        # Learn before sourcing: a rule Krish approved since the last run
+        # takes effect on this one, and his verdicts are on record before
+        # anything overwrites the rows they came from.
+        try:
+            summary.extend(learning_lines(learning_step(cfg, apply=True)))
+        except Exception as e:
+            summary.append(f"learning loop skipped: {e.__class__.__name__}: {e}")
 
         counts = source_and_stage(cfg, canon, sheet, summary)
         counts["reconciled"] = len(ledger.matched)
@@ -1153,6 +1317,9 @@ def main(argv: list[str]) -> int:
         frm = int(argv[argv.index("--from") + 1]) if "--from" in argv else 41
         lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else 0
         return cmd_regate(from_row=frm, apply="--apply" in argv, limit=lim)
+    if cmd == "learn":
+        rev = argv[argv.index("--revoke") + 1] if "--revoke" in argv else None
+        return cmd_learn(apply="--apply" in argv, revoke=rev)
     if cmd == "archive":
         return cmd_archive(apply="--apply" in argv)
     if cmd == "set-dropdown":
@@ -1166,7 +1333,8 @@ def main(argv: list[str]) -> int:
             ingest_dir = argv[2]
         return cmd_bridges(ingest_dir)
     print(f"unknown command {cmd!r}; commands: run, reconcile, migrate-sheet, "
-          f"build --job-id X, recon, dedupe-db, bridges [--ingest DIR], prune-sheet [--apply]")
+          f"build --job-id X, recon, dedupe-db, learn [--apply|--revoke ID], "
+          "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2
 
 

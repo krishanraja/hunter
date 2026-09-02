@@ -67,7 +67,12 @@ def parse(text: str) -> tuple[str, str | None]:
         return "none", None
     if low in ("yes", "y", "go", "build"):
         return "go", None
-    if low.startswith("applied") or low.startswith("already applied"):
+    # "Already applied to MongoDB above" is not an application to THIS role.
+    # He is telling hunter it showed him the same target twice, so it is a
+    # rejection carrying a system code, and the loop treats it as a miss.
+    if low.startswith("already applied"):
+        return "rejection", "already_applied"
+    if low.startswith("applied"):
         return "applied", None
     if low.startswith("awaiting"):
         return "none", None
