@@ -316,3 +316,72 @@ def test_g6_rejects_a_remote_india_posting_end_to_end():
     report = run_gates(role, never_apply=[])
     assert not report.passed
     assert any(g.gate == "G6" for g in report.failures())
+
+
+# ---------- canon 9.3 auto-rejects by seat and by function (2026-09-02) ----------
+
+@pytest.mark.parametrize("title", [
+    "Enterprise Sales Director - Majors, Healthcare",
+    "Enterprise Sales Director, Financial Services",
+    "Director of Sales, Enterprise",
+    "Strategic Account Director, Healthcare",
+    "Regional Vice President, Business Development",
+    "Global Head of Sales Enablement",
+])
+def test_quota_seats_auto_reject_however_the_jd_is_worded(title):
+    """Every enterprise sales posting says build and own, so the JD wording
+    test alone never fired and thirteen of these sat on the sheet at 8."""
+    from hunter.sources import ResolvedRole
+    from hunter.score import score_role
+    jd = ("You will build strong customer relationships, own your territory "
+          "end to end, and partner with leadership to grow the business. "
+          "We are looking for someone to architect the account strategy.")
+    role = ResolvedRole(company="Sierra", title=title, url="https://x/j",
+                        jd_url="https://x/j", jd_text=jd, live=True,
+                        source="ats", location="New York", comp="$305,000")
+    result = score_role(role)
+    assert result.auto_rejected, f"{title} should auto-reject"
+    assert result.score <= 2
+    assert "quota" in (result.rejection_reason or "")
+
+
+@pytest.mark.parametrize("title", [
+    "Director, Government Affairs & Public Policy",
+    "Head of Talent Acquisition",
+    "Head of Product Marketing",
+    "Head of Developer Experience",
+    "HR M&A Director",
+    "Head of Growth Marketing",
+])
+def test_functions_outside_every_archetype_auto_reject(title):
+    from hunter.sources import ResolvedRole
+    from hunter.score import score_role
+    jd = ("Build the function from scratch, own the operating model and the "
+          "P&L, and architect how we scale it. Zero to one mandate.")
+    role = ResolvedRole(company="Harvey", title=title, url="https://x/j",
+                        jd_url="https://x/j", jd_text=jd, live=True,
+                        source="ats", location="New York", comp="$300,000")
+    result = score_role(role)
+    assert result.auto_rejected, f"{title} should auto-reject"
+    assert "archetype" in (result.rejection_reason or "")
+
+
+@pytest.mark.parametrize("title", [
+    "Head of Commercial Sales",
+    "Chief Commercial Officer",
+    "VP Strategy",
+    "General Manager, North America",
+    "Head of GTM",
+    "VP of Partnerships, EMEA",
+])
+def test_the_roles_krish_actually_wants_still_survive(title):
+    """The guard against over-firing: these are his archetypes."""
+    from hunter.sources import ResolvedRole
+    from hunter.score import score_role
+    jd = ("Own the commercial operating model end to end, architect the GTM "
+          "motion from zero to one, and carry the P&L for the business unit.")
+    role = ResolvedRole(company="Cresta", title=title, url="https://x/j",
+                        jd_url="https://x/j", jd_text=jd, live=True,
+                        source="ats", location="New York", comp="$320,000")
+    result = score_role(role)
+    assert not result.auto_rejected, f"{title} must not be auto-rejected"

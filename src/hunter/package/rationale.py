@@ -34,6 +34,8 @@ RATIONALE_SCHEMA = {
         "archetype": {"type": "string"},
     },
     "required": ["mandate", "fit", "risk", "archetype"],
+    # the structured-output subset requires this explicitly on every object
+    "additionalProperties": False,
 }
 
 BANNED = ("\u2014", "leverage", "synergy", "passionate", "rockstar", "world-class")
@@ -128,12 +130,16 @@ def write_rationale(cfg: Config, canon, *, company: str, title: str, jd: str,
             jd=jd[:6000])
         resp = client.messages.create(
             model=cfg.optional("hunter_anthropic_model", "claude-opus-5"),
-            max_tokens=700,
+            max_tokens=1200,
             messages=[{"role": "user", "content": prompt}],
             output_config={"format": {"type": "json_schema",
                                       "schema": RATIONALE_SCHEMA}})
         if getattr(resp, "stop_reason", "") == "refusal":
             return deterministic(company, title, score, score_reason), ["model refused"]
+        if getattr(resp, "stop_reason", "") == "max_tokens":
+            # a truncated JSON body is not partially usable
+            return (deterministic(company, title, score, score_reason),
+                    ["rationale truncated at the token limit"])
         parts = json.loads(resp.content[0].text)
         fails = validate(parts, jd)
         if fails:

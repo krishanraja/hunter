@@ -28,6 +28,23 @@ ENGINE_SIGNALS = [
     r"moderni[sz]e", r"market entry", r"next stage of growth",
     r"own the operating model", r"build the (?:us|team|function)",
 ]
+# Titles that ARE the quota seat, however the JD is worded.
+QUOTA_SEAT_TITLE = re.compile(
+    r"\b(enterprise sales director|sales director|director,? of sales|"
+    r"director of sales|account (?:director|executive|manager)|"
+    r"strategic account|regional (?:vice president|vp|director)"
+    r"(?:,? (?:sales|business development))?|sales enablement|"
+    r"territory manager|sales manager)\b", re.I)
+
+# Functions with no canon section 5 archetype at all.
+OUT_OF_SCOPE_FUNCTION = re.compile(
+    r"\b(government affairs|public policy|talent acquisition|recruit\w*|"
+    r"people operations|human resources|\bhr\b|workplace|facilities|"
+    r"product marketing|developer experience|developer relations|"
+    r"solutions engineering|sales engineering|field marketing|"
+    r"growth marketing|controller|investor relations|general counsel|"
+    r"legal|procurement|compliance|payroll)\b", re.I)
+
 QUOTA_SIGNALS = [
     r"quota", r"ramp to", r"hit aggressive", r"close (?:\$|pipeline)",
     r"deliver against", r"existing motion", r"book of business",
@@ -72,12 +89,40 @@ def score_role(role: ResolvedRole, *, floor: int = FLOOR,
             rejection_reason=f"band bottom ${bottom:,} below the ${floor:,} floor "
                              f"with no approved equity override (canon 9.3)")
 
-    # canon 9.3 auto-reject 2: pure quota carrying with no build mandate
+    # canon 9.3 auto-reject 2: pure quota carrying with no build mandate.
+    #
+    # The JD wording test alone never fired. Every enterprise sales posting
+    # says "build relationships" and "own the territory", which reads as an
+    # engine signal, so `engine` was never 0 and thirteen Sierra Enterprise
+    # Sales Director rows sat at score 8 (2026-09-02 audit). The seat is the
+    # thing canon rejects, and the title names the seat: a quota seat needs a
+    # real build mandate to survive, not merely the absence of the word quota.
+    seat = QUOTA_SEAT_TITLE.search(role.title or "")
+    if seat:
+        # No escape hatch on the JD wording. The first version let the seat
+        # survive when the posting showed build language, and every sales JD
+        # shows build language, so all thirteen Sierra rows survived. The
+        # title names the seat, and canon 9.3 rejects the seat. Krish can
+        # still override any single role with a free-text verdict.
+        return ScoreResult(
+            score=1, auto_rejected=True,
+            rejection_reason=f"{seat.group(0)!r} is a quota-carrying seat "
+                             f"(canon 9.3 auto-reject)")
     if quota >= 2 and engine == 0:
         return ScoreResult(
             score=1, auto_rejected=True,
             rejection_reason="pure quota carrying with no architecture, build or "
                              "operating-model mandate (canon 9.3)")
+
+    # Outside every canon section 5 archetype. Krish is a commercial and GTM
+    # operator; policy, HR, recruiting, finance, product marketing and
+    # developer experience are somebody else's ladder, whatever the JD pays.
+    out = OUT_OF_SCOPE_FUNCTION.search(role.title or "")
+    if out:
+        return ScoreResult(
+            score=2, auto_rejected=True,
+            rejection_reason=f"{out.group(0)!r} sits outside the canon section 5 "
+                             f"archetypes; not a commercial or GTM mandate")
 
     from .gates import SENIOR_TITLE
     components = {
