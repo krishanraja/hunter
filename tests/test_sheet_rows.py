@@ -134,6 +134,9 @@ class FakeSheet(Sheet):
                 return {"values": self.grid[s - 1:e]}
         raise NotImplementedError(path)
 
+    def read_archive(self):
+        return []
+
     def _post(self, path, body):
         self.posts.append((path, body))
         if path == "/values:batchUpdate":
@@ -558,3 +561,64 @@ def test_row_krish_already_decided_is_kept_whatever_its_provenance(monkeypatch):
     when the incumbent produced the row."""
     ledger, _ = _reconcile_with(monkeypatch, [_row(krish_verdict="Applied")])
     assert len(ledger.db_to_sheet) == 1
+
+
+# ---------- the archive must not vanish from reconciliation ----------
+
+def test_archived_rows_are_never_re_appended_to_pipeline(monkeypatch):
+    """A row moved to the Applied tab is still on the sheet. If reconcile
+    only reads Pipeline it looks missing, and direction 2 appends it again
+    every single run: the exact loop that produced rows 111-131."""
+    import hunter.run as run_mod
+    from hunter.sheet import hyperlink
+
+    url = "https://job-boards.greenhouse.io/acme/jobs/9"
+    archived = make_sheet_row(4, "Acme AI", "VP Strategy", url, verdict="Applied")
+    archived.archived = True
+    s = FakeSheet([list(HEADERS), [""] * N_COLS])
+    monkeypatch.setattr(s, "read_archive", lambda: [archived])
+    dbrow = {"job_id": "acme-ai:vp-strategy", "company": "Acme AI",
+             "title": "VP Strategy", "url": url, "status": "presented",
+             "score": 9, "krish_verdict": "Applied", "package_status": "none",
+             "sweep_date": "2026-09-01", "why_it_fits": "real rationale",
+             "presented_at": None, "rejection_reason": None,
+             "package_cv_url": None, "package_letter_url": None, "job_url": None,
+             "location": "New York", "comp": "", "source": "ats"}
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: [dbrow])
+    monkeypatch.setattr(run_mod, "db_insert", lambda *a, **kw: None)
+    monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
+
+    class FakeCanon:
+        sheet_headers = HEADERS
+        bar = 8
+
+    ledger = run_mod.reconcile(cfg=None, canon=FakeCanon(), sheet=s)
+    assert ledger.db_to_sheet == [], "archived row was re-appended to Pipeline"
+    assert len(s.grid) == 2, "Pipeline grew"
+
+
+def test_archive_refuses_to_delete_when_the_copy_was_truncated(monkeypatch):
+    """The Applied tab carried a merged banner across A1:H2, and a merged
+    range accepts only its top-left cell: the first archived row landed as
+    column A alone. A row-count read-back called that a success and deleted
+    the Pipeline row. Content is now compared, so a truncated copy raises
+    and Pipeline keeps its row."""
+    s = FakeSheet([list(HEADERS), [""] * N_COLS])
+    row = make_sheet_row(3, "MongoDB", "Head of AI Platform, GM",
+                         "https://mdb.example/j", verdict="Applied")
+    deleted = []
+    monkeypatch.setattr(s, "delete_rows", lambda ns, **kw: deleted.extend(ns))
+    monkeypatch.setattr(s, "_post", lambda path, body: {})
+
+    def truncated_get(path, params=None):
+        if "/values/" in path and "Applied" in path:
+            # what a merged range gives back: column A only
+            return {"values": [["Verdict"], ["Applied"]]}
+        return {"sheets": [{"properties": {"sheetId": 99,
+                                           "gridProperties": {"columnCount": 40}}}]}
+
+    monkeypatch.setattr(s, "_get", truncated_get)
+    with pytest.raises(SheetError, match="read-back mismatch"):
+        s.archive_rows([row], archive_tab="Applied", archive_sheet_id=99,
+                       headers=HEADERS)
+    assert deleted == [], "Pipeline row was deleted despite a truncated copy"

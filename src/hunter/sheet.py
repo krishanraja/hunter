@@ -57,6 +57,7 @@ class SheetRow:
     role: str
     jd_url: str | None
     package_urls: dict[str, str | None] = field(default_factory=dict)
+    archived: bool = False   # lives on the Applied tab, decided, read only
 
 
 def hyperlink(url: str, label: str) -> str:
@@ -182,7 +183,8 @@ class Sheet:
                          {"valueRenderOption": "FORMULA"})
         return [pad_row(r) for r in data.get("values", [])]
 
-    def delete_rows(self, row_numbers: list[int], *, expect_verdict: str = "New") -> int:
+    def delete_rows(self, row_numbers: list[int], *,
+                    expect_verdict: str | None = "New") -> int:
         """Remove data rows, refusing any row Krish has written on.
 
         Deleting is the one destructive thing this module does, so it re-reads
@@ -198,10 +200,11 @@ class Sheet:
                              f"are the header and the intentional blank")
         grid = self._get("/values/Pipeline!A1:A2000").get("values", [])
         dirty = []
-        for n in targets:
-            cell = (grid[n - 1][0] if len(grid) >= n and grid[n - 1] else "").strip()
-            if cell != expect_verdict:
-                dirty.append((n, cell))
+        if expect_verdict is not None:
+            for n in targets:
+                cell = (grid[n - 1][0] if len(grid) >= n and grid[n - 1] else "").strip()
+                if cell != expect_verdict:
+                    dirty.append((n, cell))
         if dirty:
             raise SheetError(f"refusing to delete: column A is no longer "
                              f"{expect_verdict!r} on {dirty[:5]}; re-run the plan")
@@ -216,10 +219,104 @@ class Sheet:
                              f"{len(grid) - len(targets)} rows, found {len(after)}")
         return len(targets)
 
+    def set_verdict_dropdown(self, values: list[str]) -> int:
+        """Replace column A's validation list. showCustomUi stays on and the
+        rule stays non-strict, so Krish can still type something the list
+        does not cover; parse() treats that as a rejection in his own words."""
+        meta = self._get("", {"fields": "sheets(properties(sheetId,gridProperties(rowCount)))"})
+        rows = next(sh["properties"]["gridProperties"]["rowCount"]
+                    for sh in meta["sheets"]
+                    if sh["properties"]["sheetId"] == self.sheet_id)
+        self._post(":batchUpdate", {"requests": [{"setDataValidation": {
+            "range": {"sheetId": self.sheet_id, "startRowIndex": DATA_START_ROW - 1,
+                      "endRowIndex": rows, "startColumnIndex": 0, "endColumnIndex": 1},
+            "rule": {
+                "condition": {"type": "ONE_OF_LIST",
+                              "values": [{"userEnteredValue": v} for v in values]},
+                "inputMessage": "Pick one. Declined values carry the reason. "
+                                "Free text is still allowed.",
+                "strict": False, "showCustomUi": True},
+        }}]})
+        return rows
+
+    def archive_rows(self, rows: list["SheetRow"], *, archive_tab: str,
+                     archive_sheet_id: int, headers: list[str]) -> int:
+        """Copy decided rows to the archive tab, then delete them from
+        Pipeline. Copy first and verify the landing before deleting anything:
+        a half-done move that loses a row Krish decided on is unacceptable."""
+        if not rows:
+            return 0
+        # The archive tab ships 26 columns wide. Writing 29 into it silently
+        # drops the overflow (that is how the first archived row lost every
+        # column but A), so widen the grid before writing anything.
+        meta = self._get("", {"fields": "sheets(properties(sheetId,gridProperties(columnCount)))"})
+        cols = next((sh["properties"]["gridProperties"]["columnCount"]
+                     for sh in meta["sheets"]
+                     if sh["properties"]["sheetId"] == archive_sheet_id), 0)
+        reqs = []
+        if cols < N_COLS + 1:
+            reqs.append({"appendDimension": {
+                "sheetId": archive_sheet_id, "dimension": "COLUMNS",
+                "length": (N_COLS + 1) - cols}})
+        # The tab carried a merged banner across A1:H2 from its previous life.
+        # A merged range accepts only its top-left cell, so a 29-column write
+        # lands column A and silently drops the other 28. Unmerge first.
+        reqs.append({"unmergeCells": {"range": {
+            "sheetId": archive_sheet_id, "startRowIndex": 0,
+            "startColumnIndex": 0, "endColumnIndex": N_COLS + 1}}})
+        self._post(":batchUpdate", {"requests": reqs})
+        existing = self._get(f"/values/{archive_tab}!A1:AC2000",
+                             {"valueRenderOption": "FORMULA"}).get("values", [])
+        header_written = bool(existing) and existing[0][:1] == [headers[0]]
+        payload = []
+        if not header_written:
+            payload.append(headers + ["Archived On"])
+        stamp = __import__("datetime").date.today().isoformat()
+        for r in rows:
+            payload.append(list(r.cells) + [stamp])
+        start = (len(existing) if header_written else 0) + 1
+        end = start + len(payload) - 1
+        rng = f"{archive_tab}!A{start}:AC{end}"
+        self._post("/values:batchUpdate", {
+            "valueInputOption": "USER_ENTERED",
+            "data": [{"range": rng, "values": payload}]})
+        back = self._get(f"/values/{rng}", {"valueRenderOption": "FORMULA"}).get("values", [])
+        if len(back) != len(payload):
+            raise SheetError(f"archive read-back wrote {len(back)} of "
+                             f"{len(payload)} rows; nothing deleted from Pipeline")
+        # Count is not proof. Compare the identity columns cell by cell, or a
+        # truncated write looks like a clean one and Pipeline loses the row.
+        for want, got in zip(payload, back):
+            got = (list(got) + [""] * 3)[:3]
+            if [str(want[1]).strip(), str(want[2]).strip()] != [str(got[1]).strip(),
+                                                                str(got[2]).strip()]:
+                raise SheetError(
+                    f"archive read-back mismatch: wrote {want[1]!r}/{want[2]!r}, "
+                    f"read {got[1]!r}/{got[2]!r}; nothing deleted from Pipeline")
+        return self.delete_rows([r.row_number for r in rows], expect_verdict=None)
+
     def read_tab_values(self, rng: str) -> list[list]:
         """Raw values from any tab of the workbook (read-only helper; the
         validated write path stays Pipeline-only)."""
         return self._get(f"/values/{rng}").get("values", [])
+
+    def read_archive(self) -> list[SheetRow]:
+        """Archived rows are still part of "the sheet" for reconciliation.
+        Leaving them out makes every archived role look missing, and
+        direction 2 re-appends it to Pipeline on the next run."""
+        grid = self._get(f"/values/{config.ARCHIVE_TAB}!A1:AB2000",
+                         {"valueRenderOption": "FORMULA"}).get("values", [])
+        rows = []
+        for i, raw in enumerate(grid[1:], start=2):
+            cells = pad_row(raw)
+            if not cells[1].strip() and not cells[2].strip():
+                continue
+            parsed = parse_hyperlink(cells[3])
+            rows.append(SheetRow(row_number=i, cells=cells, verdict=cells[0],
+                                 company=cells[1], role=cells[2],
+                                 jd_url=parsed[0] if parsed else None,
+                                 archived=True))
+        return rows
 
     def read_pipeline(self, canon_headers: list[str]) -> list[SheetRow]:
         grid = self.read_grid()

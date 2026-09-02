@@ -31,9 +31,10 @@ from .config import Config, GoogleOAuth, GoogleServiceAccount, db_get, db_insert
 from .docbuild import DocBuild
 from .gates import FLOOR, names_foreign_geo, run_gates
 from .report import report_run
+from . import verdicts
 from .router import classify_verdict, route_status, select_for_build
 from .score import BAR, score_role
-from .sheet import Sheet, SheetRow, make_row
+from .sheet import Sheet, SheetError, SheetRow, make_row
 from .sources import ResolvedRole, job_id, slugify
 from .notify import send_summary
 
@@ -229,9 +230,37 @@ def match_rows(sheet_rows: list[SheetRow], db_rows: list[dict]
     return pairs, unmatched_sheet, db_only, ambiguous
 
 
+def record_verdict_event(cfg: Config, row: dict, verdict_text: str,
+                        kind: str, reason_code: str | None) -> None:
+    """Append-only, because the role row gets overwritten and the learning
+    loop needs the history. Unique on (job_id, verdict, code, text), so a
+    verdict re-read every run records once."""
+    try:
+        db_insert(cfg, "hunter_verdict_events", [{
+            "job_id": row.get("job_id"), "company": row.get("company"),
+            "title": row.get("title"), "verdict": kind,
+            "reason_code": reason_code, "reason_text": verdict_text[:500],
+        }], on_conflict="job_id,verdict,reason_code,reason_text",
+            ignore_duplicates=True)
+    except Exception as e:
+        print(f"verdict event not recorded for {row.get('job_id')}: "
+              f"{e.__class__.__name__}")
+
+
 def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
     ledger = ReconcileLedger()
-    sheet_rows = sheet.read_pipeline(canon.sheet_headers)
+    # "The sheet" is Pipeline PLUS the archive. Reading only Pipeline makes
+    # every archived role look missing and direction 2 re-appends it on the
+    # next run, which is how rows 111-131 happened.
+    live_rows = sheet.read_pipeline(canon.sheet_headers)
+    try:
+        archived_rows = sheet.read_archive()
+    except Exception as e:
+        raise SheetError(
+            f"could not read the {config_mod.ARCHIVE_TAB} tab "
+            f"({e.__class__.__name__}); refusing to reconcile half the sheet, "
+            f"because archived rows would be re-appended to Pipeline") from e
+    sheet_rows = live_rows + archived_rows
     db_rows = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,url,job_url,score,status,krish_verdict,"
                   "rejection_reason,package_status,package_cv_url,package_letter_url,"
@@ -368,17 +397,23 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
 
     # matched rows: field-level sync, one direction per field owner
     for srow, d in pairs:
-        verdict_kind = classify_verdict(srow.verdict)
+        verdict_kind, reason_code = verdicts.parse(srow.verdict)
         if verdict_kind != "none" and not d.get("krish_verdict"):
             patch = {"krish_verdict": srow.verdict, "verdict_at": NOW(),
                      "verdict_source": "sheet column A"}
+            if reason_code:
+                patch["rejection_code"] = reason_code
             if verdict_kind == "rejection":
                 patch["rejection_reason"] = srow.verdict
                 patch["status"] = "dropped"
                 patch["package_status"] = "blocked"
             db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]}, patch)
-            ledger.verdicts_synced.append(f"{d['job_id']}: {srow.verdict!r}")
-        if (d.get("package_status") == "built"
+            record_verdict_event(cfg, d, srow.verdict, verdict_kind, reason_code)
+            ledger.verdicts_synced.append(
+                f"{d['job_id']}: {srow.verdict!r}"
+                + (f" [{reason_code}]" if reason_code else ""))
+        if (not srow.archived
+                and d.get("package_status") == "built"
                 and srow.package_urls.get("cv") is None
                 and d.get("package_cv_url") and d.get("package_letter_url")):
             ledger.packages_synced.append(
@@ -412,6 +447,50 @@ def cmd_migrate_sheet() -> int:
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     print(sheet.migrate_formatting())
+    return 0
+
+
+def cmd_archive(apply: bool = False) -> int:
+    """Move decided rows off Pipeline onto the Applied tab.
+
+    Krish's ruling 2026-09-02: he only ever sets Applied or Declined, so
+    Pipeline should hold what still needs a decision and nothing else. Rows
+    still marked New or Yes stay: Yes is work in flight, not a decision made.
+    """
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    movers = []
+    for r in rows:
+        kind, code = verdicts.parse(r.verdict)
+        if kind in ("applied", "rejection"):
+            movers.append((r, kind, code))
+    print(f"{len(rows)} rows on Pipeline; {len(movers)} decided and ready to archive; "
+          f"{len(rows) - len(movers)} stay")
+    for r, kind, code in movers:
+        print(f"  row {r.row_number:>3}  {r.company[:20]:20} {r.role[:38]:38} "
+              f"{kind}{' [' + code + ']' if code else ''}")
+    if not apply:
+        print("\ndry run. add --apply to move these rows")
+        return 0
+    moved = sheet.archive_rows([r for r, _, _ in movers],
+                               archive_tab=config_mod.ARCHIVE_TAB,
+                               archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
+                               headers=canon.sheet_headers)
+    left = sheet.read_pipeline(canon.sheet_headers)
+    print(f"\narchived {moved} rows; Pipeline now has {len(left)} rows awaiting you")
+    return 0
+
+
+def cmd_set_dropdown() -> int:
+    """Publish the column A vocabulary that carries verdict plus reason."""
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    values = verdicts.dropdown_values()
+    rows = sheet.set_verdict_dropdown(values)
+    print(f"column A dropdown set to {len(values)} values over {rows} rows:")
+    for v in values:
+        print(f"  {v}")
     return 0
 
 
@@ -967,6 +1046,10 @@ def main(argv: list[str]) -> int:
         return cmd_recon()
     if cmd == "dedupe-db":
         return cmd_dedupe_db()
+    if cmd == "archive":
+        return cmd_archive(apply="--apply" in argv)
+    if cmd == "set-dropdown":
+        return cmd_set_dropdown()
     if cmd == "prune-sheet":
         return cmd_prune_sheet(apply="--apply" in argv,
                                include_ungated="--incumbent" in argv)

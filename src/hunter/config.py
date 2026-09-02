@@ -28,6 +28,10 @@ CV_MASTER_ID = "1ALITQk-d0Mms3InJpk6FMsebxaLnf__QPmUyPAa_NEE"
 LETTER_MASTER_ID = "1OD6FIxud8AOicqvC74Yoi7nbDI-aGAl6SCI0OIswyQ4"
 WORKBOOK_ID = "1AQ8OyprIyJmJ9K7ezjIxkW0uzjGT0TqzRjKtG-NXNOk"
 PIPELINE_SHEET_ID = 708873267
+# Krish's ruling 2026-09-02: decided rows leave Pipeline for the existing
+# (empty) Applied tab, so Pipeline holds only what still needs a decision.
+ARCHIVE_TAB = "Applied"
+ARCHIVE_SHEET_ID = 1707095501
 CV_FOLDER_ID = "1IMMUrAV7wCb-a_eei6c_fmX2BCDgYA8X"
 LETTER_FOLDER_ID = "1YotvbjjE8amkVnrLSAjSASd5-U28D1lJ"
 

@@ -7,24 +7,18 @@ quoted verbatim, never paraphrased.
 """
 from __future__ import annotations
 
+from . import verdicts
 from .config import Config, db_get
 from .sheet import O_BUILT_BRIDGE, O_BUILT_DIRECT
 
-GO_WORDS = {"go", "y", "yes"}
+GO_WORDS = {"go", "y", "yes", "build"}
 
 
 def classify_verdict(text: str) -> str:
-    """'go' | 'applied' | 'rejection' | 'none'."""
-    v = (text or "").strip().lower()
-    if not v or v == "new":
-        return "none"
-    if v in GO_WORDS:
-        return "go"
-    if v.startswith("applied") or v.startswith("already applied"):
-        return "applied"
-    if v.startswith("awaiting"):
-        return "none"
-    return "rejection"
+    """'go' | 'applied' | 'rejection' | 'none'. The vocabulary lives in
+    verdicts.py, which also carries the reason code; this keeps the older
+    call sites that only want the verdict."""
+    return verdicts.parse(text)[0]
 
 
 def select_for_build(cfg: Config) -> list[dict]:
