@@ -610,9 +610,14 @@ def test_archive_refuses_to_delete_when_the_copy_was_truncated(monkeypatch):
     monkeypatch.setattr(s, "delete_rows", lambda ns, **kw: deleted.extend(ns))
     monkeypatch.setattr(s, "_post", lambda path, body: {})
 
+    reads = {"n": 0}
+
     def truncated_get(path, params=None):
         if "/values/" in path and "Applied" in path:
-            # what a merged range gives back: column A only
+            reads["n"] += 1
+            if reads["n"] == 1:
+                return {"values": []}          # the archive starts empty
+            # the read-back: what a merged range gives back, column A only
             return {"values": [["Verdict"], ["Applied"]]}
         return {"sheets": [{"properties": {"sheetId": 99,
                                            "gridProperties": {"columnCount": 40}}}]}
