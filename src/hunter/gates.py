@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .archetype import archetype, families as archetype_families
 from .sources import ResolvedRole
 
 FLOOR = 200_000  # canon 6, decision 2026-08-24
@@ -171,6 +172,19 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
         results.append(GateResult(
             "G6", ok, "London, UK-remote, NYC or US-remote" if ok else
             f"location outside canon 9.4 geography: {role.location!r}"))
+
+    # G11: is this even one of his shapes? Canon section 5 names the families
+    # he is targeting, and until 2026-09-02 nothing asked the question before
+    # presenting a role. Every gate before this one asks "is this bad" and
+    # needs a new rule for every kind of bad; this one asks "is this his" and
+    # needs none. Measured on the 419 roles then on record: 419 in, 101 out,
+    # and 16 of the 17 he had said go to survive.
+    fam = archetype(role.title)
+    results.append(GateResult(
+        "G11", fam is not None,
+        f"canon 5 archetype: {fam}" if fam else
+        f"title {role.title!r} is none of his archetypes "
+        f"({', '.join(archetype_families())})"))
 
     domain_hit = DOMAIN_FAIL.search(hay)
     if domain_hit and not AI_TRANSFORMATION.search(hay):

@@ -27,8 +27,6 @@ from .config import Config, db_get, db_insert, db_patch
 from .sources import distinctive_tokens, norm_title, slugify
 from . import verdicts
 
-FILTER_KEY = "hunter_learned_filters"
-
 # What hunter writes into verdict_source when the coded verdict on the sheet
 # is its own re-gate decision rather than something Krish typed. The loop must
 # never learn from its own output: on 2026-09-02 forty auto verdicts had been
@@ -235,212 +233,26 @@ def open_applications(roles: list[dict]) -> dict[str, dict]:
     return out
 
 
-# ---------- taste codes: proposals, never silent rules ----------
-
-MIN_CLUSTER = 2
-
-
-def clusters(events: list[dict]) -> list[dict]:
-    """Candidate rules. An attribute Krish named in his own words counts on
-    the first occurrence, because that is him stating a rule rather than
-    hunter inferring one. An attribute inferred from role metadata needs
-    MIN_CLUSTER occurrences before it is worth his time."""
-    named: dict[tuple, dict] = {}
-    inferred: dict[tuple, dict] = {}
-    for e in events:
-        if e.get("verdict") != "rejection":
-            continue
-        code = e.get("reason_code")
-        if not code or verdicts.is_system_code(code):
-            continue
-        inf = infer(e.get("reason_text") or "")
-        for kind, value in inf.attributes:
-            acode = ATTRIBUTE_CODE.get(kind, code)
-            c = named.setdefault((acode, kind, value),
-                                 {"code": acode, "kind": kind, "value": value,
-                                  "evidence": "his words", "job_ids": [],
-                                  "quotes": []})
-            c["job_ids"].append(e.get("job_id"))
-            c["quotes"].append(e.get("reason_text"))
-        key = (code, "company", slugify(e.get("company") or ""))
-        if key[2]:
-            c = inferred.setdefault(key, {"code": code, "kind": "company",
-                                          "value": key[2],
-                                          "evidence": "repeat occurrence",
-                                          "job_ids": [], "quotes": []})
-            c["job_ids"].append(e.get("job_id"))
-            c["quotes"].append(e.get("reason_text"))
-    out = list(named.values())
-    out += [c for c in inferred.values() if len(set(c["job_ids"])) >= MIN_CLUSTER]
-    for c in out:
-        c["job_ids"] = sorted(set(j for j in c["job_ids"] if j))
-        c["quotes"] = sorted(set(q for q in c["quotes"] if q))
-    return sorted(out, key=lambda c: (-len(c["job_ids"]), c["code"], c["value"]))
-
-
-# Which code an attribute belongs to. He often names two things in one
-# sentence ("not interested in Salesforce as a business nor sales analytics
-# as what I do all day"); each half is filed under the code it actually is,
-# not under whichever matched first.
-ATTRIBUTE_CODE = {"business": "business_uninteresting", "domain": "domain_expertise",
-                  "function": "function_wrong", "geo": "geo_language",
-                  "language": "geo_language", "company": "business_uninteresting"}
-
-SCOPE = {"company": "company", "business": "company_or_jd", "domain": "jd_or_title",
-         "function": "jd_or_title", "geo": "location_or_jd", "language": "jd"}
-
-SCOPE_ENGLISH = {
-    "company": "company name",
-    "company_or_jd": "company name or job description",
-    "jd_or_title": "role title or job description",
-    "location_or_jd": "location or job description",
-    "jd": "job description",
-}
-
-
-def impact(rule: dict, roles: list[dict]) -> list[str]:
-    """Which already-recorded roles this rule would have dropped. He needs
-    this before approving: a rule that would have cost him a role he wants
-    is a rule to refuse."""
-    hit = []
-    for r in roles:
-        m = check([rule], company=r.get("company") or "", title=r.get("title") or "",
-                  location=r.get("location") or "", jd=r.get("why_it_fits") or "")
-        if m:
-            hit.append(f"{r.get('company')} / {r.get('title')}")
-    return hit
-
-
-def rule_from_cluster(c: dict) -> dict:
-    return {"code": c["code"], "kind": c["kind"], "value": c["value"],
-            "scope": SCOPE.get(c["kind"], "jd_or_title"),
-            "action": "drop", "job_ids": c["job_ids"],
-            "quotes": c["quotes"][:3]}
-
-
-def rule_id(rule: dict) -> str:
-    return f"{rule['code']}:{rule['kind']}:{rule['value']}"
-
-
-def file_proposals(cfg: Config, cands: list[dict], *, apply: bool,
-                   roles: list[dict] | None = None) -> list[str]:
-    """One workflow_proposals row per candidate rule, skipping any already
-    filed or already approved. Nothing is suppressed by filing one."""
-    existing = {p.get("title") for p in db_get(
-        cfg, "workflow_proposals",
-        {"select": "title,status", "agent_id": "eq.hunter", "limit": "500"})}
-    live = {rule_id(r) for r in load_filters(cfg)}
-    filed: list[str] = []
-    for c in cands:
-        rule = rule_from_cluster(c)
-        rid = rule_id(rule)
-        if rid in live:
-            continue
-        title = f"hunter: stop presenting roles matching {rid}"
-        if title in existing:
-            continue
-        quotes = "\n".join(f'  "{q}"' for q in rule["quotes"])
-        would_drop = impact(rule, roles or [])
-        preview = ("\n".join(f"  {h}" for h in would_drop[:12])
-                   or "  none of the roles on record")
-        desc = (
-            f"Krish declined {len(rule['job_ids'])} role(s) with reason "
-            f"{rule['code']}, naming {rule['kind']} {rule['value']!r}.\n\n"
-            f"His words:\n{quotes}\n\n"
-            f"Job ids: {', '.join(rule['job_ids'])}\n\n"
-            f"If approved, hunter drops a sourced role when {rule['value']!r} "
-            f"appears in its {SCOPE_ENGLISH.get(rule['scope'], rule['scope'])}, "
-            f"records the rule id {rid} against the row, and names the "
-            f"suppression in every run report.\n\n"
-            f"Applied to the {len(roles or [])} roles already on record it "
-            f"would have dropped {len(would_drop)}:\n{preview}\n\n"
-            f"Reverse it with: python -m hunter.run learn --revoke {rid}")
-        if apply:
-            db_insert(cfg, "workflow_proposals", [{
-                "agent_id": "hunter", "proposal_type": "quality_improve",
-                "title": title, "description": desc, "status": "proposed",
-                "priority": "medium", "quality_impact": "fewer unsuitable rows",
-                "proposed_changes": {"rule": rule},
-            }])
-        filed.append(title)
-    return filed
-
-
-# ---------- approved rules ----------
-
-def load_filters(cfg: Config) -> list[dict]:
-    raw = cfg.optional(FILTER_KEY)
-    if not raw:
-        return []
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return []
-    return data if isinstance(data, list) else []
-
-
-def save_filters(cfg: Config, rules: list[dict]) -> None:
-    db_insert(cfg, "system_config",
-              [{"key": FILTER_KEY, "value": json.dumps(rules, indent=2)}],
-              on_conflict="key", merge=True)
-
-
-def promote_approved(cfg: Config, *, apply: bool) -> list[str]:
-    """Approved proposals become live rules. Approval is Krish's act in
-    Control Center; hunter only carries the decision across."""
-    rows = db_get(cfg, "workflow_proposals",
-                  {"select": "id,title,status,proposed_changes,executed_at",
-                   "agent_id": "eq.hunter", "status": "eq.approved",
-                   "limit": "200"})
-    rules = load_filters(cfg)
-    live = {rule_id(r) for r in rules}
-    promoted: list[str] = []
-    for p in rows:
-        rule = (p.get("proposed_changes") or {}).get("rule")
-        if not rule or rule_id(rule) in live:
-            continue
-        rule = dict(rule)
-        rule["approved_proposal_id"] = p.get("id")
-        rules.append(rule)
-        live.add(rule_id(rule))
-        promoted.append(rule_id(rule))
-        if apply:
-            db_patch(cfg, "workflow_proposals", {"id": str(p["id"])},
-                     {"executed_at": "now()", "status": "completed"})
-    if promoted and apply:
-        save_filters(cfg, rules)
-    return promoted
-
-
-def revoke(cfg: Config, rid: str) -> bool:
-    rules = load_filters(cfg)
-    kept = [r for r in rules if rule_id(r) != rid]
-    if len(kept) == len(rules):
-        return False
-    save_filters(cfg, kept)
-    return True
-
-
-def check(rules: list[dict], *, company: str, title: str,
-          location: str = "", jd: str = "") -> tuple[dict, str] | None:
-    """The first approved rule this role trips, with the sentence to record.
-    Matching is substring on lowercased text, because the values are Krish's
-    own words and he writes them the way the postings do."""
-    for rule in rules:
-        value = (rule.get("value") or "").lower()
-        if not value:
-            continue
-        scope = rule.get("scope") or "jd_or_title"
-        hay = {
-            "company": slugify(company),
-            "company_or_jd": f"{company} {jd}".lower(),
-            "jd_or_title": f"{title} {jd}".lower(),
-            "location_or_jd": f"{location} {jd}".lower(),
-            "jd": jd.lower(),
-        }.get(scope, f"{title} {jd}".lower())
-        needle = slugify(value) if scope == "company" else value
-        if needle and needle in hay:
-            return rule, (f"learned filter {rule_id(rule)}: Krish declined "
-                          f"{len(rule.get('job_ids') or [])} role(s) naming "
-                          f"{rule.get('kind')} {value!r}")
-    return None
+# ---------- taste codes ----------
+#
+# There is deliberately nothing here.
+#
+# Until 2026-09-02 this module clustered his rejections into candidate
+# suppression rules and filed them for approval: no healthcare, not LATAM, no
+# growth marketing. Krish's objection was that this is an infinite task, and
+# he was right. The system had read his canon and his sheet and still could
+# not tell a Chief of Staff role from an Enterprise Sales Director without
+# being told, one exclusion at a time.
+#
+# The answer was inversion, not more rules. archetype.py asks whether a
+# posting is one of the shapes canon section 5 says he is targeting, and
+# anything that is not simply never reaches him. On the 419 roles then on
+# record that gate plus the geography gate plus dedupe cut 419 to 54, and
+# kept 16 of the 17 roles he had personally approved. None of the seven rules
+# this section would have asked him to approve were needed.
+#
+# What survives here is the half that finds hunter's own bugs (dead postings
+# it should have caught, duplicates it should have collapsed) and the event
+# log, which is evidence. A rejection the gates did not catch is evidence
+# about the archetype definition and goes to him as a canon question, never
+# as a new entry on a blocklist.

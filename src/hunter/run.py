@@ -29,6 +29,7 @@ from . import config as config_mod
 from .canon import Canon, CanonError, load_canon
 from .config import Config, GoogleOAuth, GoogleServiceAccount, db_get, db_insert, db_patch, load
 from .docbuild import DocBuild
+from .archetype import archetype
 from .gates import FLOOR, names_foreign_geo, run_gates
 from . import learn
 from .report import report_run
@@ -983,17 +984,22 @@ def cmd_bridges(ingest_dir: str | None = None) -> int:
 
 
 def learning_step(cfg: Config, *, apply: bool) -> dict:
-    """The loop itself. System codes are hunter's bugs and are fixed here;
-    taste codes only ever raise a proposal. Returns everything both the run
-    summary and the learn command need, so the two never drift."""
+    """Krish's verdicts, read back for the one thing they can honestly say:
+    where hunter got it wrong.
+
+    This used to also cluster his rejections into candidate suppression rules.
+    It no longer does. The archetype gate decides what he is shown, so a
+    rejection is either a bug of hunter's (a dead posting it should have
+    caught, a duplicate it should have collapsed) or a question about the
+    archetype definition, which is his to answer and not hunter's to infer.
+    """
     roles = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,krish_verdict,verdict_source,verdict_at,"
                   "rejection_code,status,last_verified_at,presented_at,url,"
                   "job_url,location,why_it_fits",
         "limit": "5000"})
     # His verdicts only. A row carrying hunter's own coded verdict is its
-    # output, not his judgement, and reading it back would let the loop
-    # propose rules from its own gate decisions.
+    # output, not his judgement.
     verdicted = [r for r in roles
                  if (r.get("krish_verdict") or "").strip() and not learn.is_auto(r)]
     recorded = learn.record(cfg, verdicted) if apply else len(verdicted)
@@ -1020,42 +1026,36 @@ def learning_step(cfg: Config, *, apply: bool) -> dict:
                       "rejection_reason": f"duplicate of {twin} ({f['quote']})"})
         fixed.append(f["job_id"])
 
-    promoted = learn.promote_approved(cfg, apply=apply)
-    cands = learn.clusters(events)
-    filed = learn.file_proposals(cfg, cands, apply=apply, roles=roles)
+    # A rejection no gate caught is a question about the archetypes, not a
+    # rule. Named for him, never acted on.
+    unexplained = [e for e in events
+                   if e.get("verdict") == "rejection"
+                   and not verdicts.is_system_code(e.get("reason_code"))
+                   and archetype(e.get("title") or "")]
     return {"roles": roles, "verdicted": verdicted, "recorded": recorded,
             "events": events, "findings": findings, "fixed": fixed,
-            "promoted": promoted, "clusters": cands, "filed": filed,
-            "opens": learn.open_applications(roles),
-            "live": learn.load_filters(cfg)}
+            "unexplained": unexplained,
+            "opens": learn.open_applications(roles)}
 
 
 def learning_lines(out: dict) -> list[str]:
     lines = [f"learning: {out['recorded']} verdict events, "
              f"{len(out['findings'])} system miss(es), "
-             f"{len(out['fixed'])} row(s) marked duplicate, "
-             f"{len(out['filed'])} proposal(s) filed, "
-             f"{len(out['live'])} rule(s) live"]
-    for rid in out["promoted"]:
-        lines.append(f"  approved rule now live: {rid}")
-    for t in out["filed"]:
-        lines.append(f"  awaiting your approval: {t}")
+             f"{len(out['fixed'])} row(s) marked duplicate"]
+    for e in out["unexplained"]:
+        lines.append(f"  you declined a role that matches your archetypes: "
+                     f"{e.get('company')} / {e.get('title')} ({e.get('reason_text')})")
     return lines
 
 
-def cmd_learn(apply: bool = False, revoke: str | None = None) -> int:
-    """Read Krish's verdicts back as instructions.
+def cmd_learn(apply: bool = False) -> int:
+    """Read Krish's verdicts back for what hunter got wrong.
 
-    System codes are hunter's bugs and are fixed here. Taste codes only ever
-    raise a proposal; nothing is suppressed until he approves it in Control
-    Center, and one --revoke reverses any rule that stops earning its place.
+    System codes are hunter's bugs and are fixed here. Nothing infers a
+    standing rule about his taste: the archetype gate does that job, and a
+    rejection it did not predict is reported for him to rule on.
     """
     cfg = load()
-    if revoke:
-        ok = learn.revoke(cfg, revoke)
-        print(f"revoked {revoke}" if ok else f"no live rule {revoke!r}")
-        return 0 if ok else 1
-
     out = learning_step(cfg, apply=apply)
     print(f"{len(out['verdicted'])} verdicts on record; {out['recorded']} events "
           f"{'written' if apply else 'would be written'}")
@@ -1074,27 +1074,15 @@ def cmd_learn(apply: bool = False, revoke: str | None = None) -> int:
         print(f"\nopen applications at {len(out['opens'])} companies; a new role "
               f"at one of them is staged with a note, never suppressed")
 
-    print("\nTASTE codes (his judgement, proposal only):")
-    if not out["clusters"]:
-        print("  nothing clusters yet")
-    for c in out["clusters"]:
-        print(f"  {c['code']} / {c['kind']} {c['value']!r} "
-              f"({len(c['job_ids'])} role(s), {c['evidence']})")
-    print(f"  {len(out['filed'])} proposal(s) "
-          f"{'filed' if apply else 'would be filed'} for approval")
-    for t in out["filed"]:
-        print(f"    {t}")
-
-    if out["promoted"]:
-        print(f"\napproved and now live: {', '.join(out['promoted'])}")
-
-    print(f"\nlive learned filters: {len(out['live'])}")
-    for r in out["live"]:
-        print(f"  {learn.rule_id(r)} -> drop on {r.get('scope')} "
-              f"(from {', '.join(r.get('job_ids') or [])})")
+    print("\nFOR YOU (a rejection the archetype gate did not predict):")
+    if not out["unexplained"]:
+        print("  none. Every role you declined was one the gate now blocks.")
+    for e in out["unexplained"]:
+        print(f"  {e.get('company')} / {e.get('title')}\n"
+              f"    matches {archetype(e.get('title') or '')}, "
+              f"you said: {e.get('reason_text')!r}")
     if not apply:
-        print("\ndry run. add --apply to write events, mark duplicates and "
-              "file proposals.")
+        print("\ndry run. add --apply to write events and mark duplicates.")
     return 0
 
 
@@ -1398,13 +1386,8 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     counts["fresh"] = len(fresh)
 
     never = cfg.require_json("hunter_never_apply")
-    # Approved learned rules only. Nothing Krish has not signed off on can
-    # suppress a role, and every suppression names the rule that did it.
-    rules = learn.load_filters(cfg)
     opens = learn.open_applications(db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,krish_verdict,verdict_at", "limit": "5000"}))
-    counts["suppressed"] = 0
-    suppressions: list[str] = []
     inserts, staged_rows = [], []
     fetchers = {"greenhouse": greenhouse.fetch_posting,
                 "ashby": ashby.fetch_posting, "lever": lever.fetch_posting}
@@ -1432,14 +1415,8 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                             comp=p.comp_text or "")
         report = run_gates(role, never_apply=never)
         result = score_role(role, universe=canon.universe)
-        learned = learn.check(rules, company=role.company, title=role.title,
-                              location=role.location, jd=role.jd_text)
         status, reason = "scanned", None
-        if learned:
-            status, reason = "dropped", learned[1]
-            counts["suppressed"] += 1
-            suppressions.append(f"{role.job_id}: {learned[1]}")
-        elif result.auto_rejected:
+        if result.auto_rejected:
             status, reason = "dropped", result.rejection_reason
         elif not report.passed:
             status = "blocked"
@@ -1492,10 +1469,6 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                      {"presented_at": NOW()})
         counts["staged"] = len(staged_rows)
 
-    if rules:
-        summary.append(f"learned filters live: {len(rules)}; "
-                       f"{counts['suppressed']} role(s) suppressed this run")
-        summary.extend(f"  suppressed {line}" for line in suppressions[:10])
     return counts
 
 
@@ -1606,8 +1579,7 @@ def main(argv: list[str]) -> int:
         return cmd_regate(from_row=frm, apply="--apply" in argv, limit=lim,
                           archive="--no-archive" not in argv)
     if cmd == "learn":
-        rev = argv[argv.index("--revoke") + 1] if "--revoke" in argv else None
-        return cmd_learn(apply="--apply" in argv, revoke=rev)
+        return cmd_learn(apply="--apply" in argv)
     if cmd == "restore":
         ids = [a for a in argv[1:] if not a.startswith("--")]
         if not ids:
@@ -1641,7 +1613,7 @@ def main(argv: list[str]) -> int:
             ingest_dir = argv[2]
         return cmd_bridges(ingest_dir)
     print(f"unknown command {cmd!r}; commands: run, reconcile, migrate-sheet, "
-          f"build --job-id X, recon, dedupe-db, learn [--apply|--revoke ID], "
+          f"build --job-id X, recon, dedupe-db, learn [--apply], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2
 

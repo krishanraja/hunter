@@ -51,35 +51,7 @@ def test_attributes_are_lifted_verbatim_never_invented():
     assert ("function", "sales analytics") in inf.attributes
 
 
-def test_an_attribute_is_filed_under_the_code_it_actually_is():
-    inf = learn.infer("I dont want to do growth marketing, I would consider if "
-                      "I was a domain expert but I have no expertise in healthcare")
-    assert ("function", "growth marketing") in inf.attributes
-    assert ("domain", "healthcare") in inf.attributes
-    events = [{"job_id": "abridge:head-of-growth-marketing", "company": "Abridge",
-               "title": "Head of Growth Marketing", "verdict": "rejection",
-               "reason_code": "function_wrong",
-               "reason_text": "I dont want to do growth marketing, I would "
-                              "consider if I was a domain expert but I have no "
-                              "expertise in healthcare"}]
-    by_id = {learn.rule_id(learn.rule_from_cluster(c)) for c in learn.clusters(events)}
-    assert "function_wrong:function:growth marketing" in by_id
-    assert "domain_expertise:domain:healthcare" in by_id
 
-
-def test_no_verdict_produces_no_rule():
-    assert learn.clusters([]) == []
-    assert learn.clusters([{"verdict": "applied", "reason_code": None,
-                            "reason_text": "Applied", "company": "MongoDB"}]) == []
-
-
-def test_a_code_without_a_named_attribute_needs_two_occurrences():
-    one = [{"job_id": "a:b", "company": "Airwallex", "title": "GM",
-            "verdict": "rejection", "reason_code": "domain_expertise",
-            "reason_text": "Not my domain expertise for a GM role"}]
-    assert learn.clusters(one) == []
-    two = one + [dict(one[0], job_id="a:c", title="GM North America")]
-    assert [c["value"] for c in learn.clusters(two)] == ["airwallex"]
 
 
 # ---------- the dedupe misses, named for the rows that produced them ----------
@@ -148,30 +120,6 @@ def test_a_shared_ai_token_never_merges_two_companies():
     assert not (distinctive_tokens("Scale AI") & distinctive_tokens("Character AI"))
 
 
-# ---------- approved rules only ----------
-
-def test_nothing_is_suppressed_without_an_approved_rule():
-    assert learn.check([], company="Deel", title="General Manager",
-                       jd="payroll for global teams") is None
-
-
-def test_an_approved_rule_suppresses_and_says_which_rule_did_it():
-    rule = {"code": "function_wrong", "kind": "function", "value": "growth marketing",
-            "scope": "jd_or_title", "action": "drop",
-            "job_ids": ["abridge:head-of-growth-marketing"]}
-    hit = learn.check([rule], company="Glean", title="VP, Growth Marketing", jd="")
-    assert hit and "growth marketing" in hit[1]
-    assert learn.rule_id(rule) in hit[1]
-    assert learn.check([rule], company="Glean", title="VP, Corporate Development",
-                       jd="") is None
-
-
-def test_the_impact_preview_names_what_a_rule_would_have_cost():
-    rule = {"code": "domain_expertise", "kind": "domain", "value": "healthcare",
-            "scope": "jd_or_title", "job_ids": ["abridge:head-of-growth-marketing"]}
-    roles = [{"company": "Sierra", "title": "Enterprise Sales Director, Healthcare"},
-             {"company": "Mutiny", "title": "Head of GTM"}]
-    assert learn.impact(rule, roles) == ["Sierra / Enterprise Sales Director, Healthcare"]
 
 
 # ---------- the roles the gates and the re-gate cost him ----------
