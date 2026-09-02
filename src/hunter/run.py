@@ -29,7 +29,7 @@ from . import config as config_mod
 from .canon import Canon, CanonError, load_canon
 from .config import Config, GoogleOAuth, GoogleServiceAccount, db_get, db_insert, db_patch, load
 from .docbuild import DocBuild
-from .gates import FLOOR, GEO_ALLOW, run_gates
+from .gates import FLOOR, names_foreign_geo, run_gates
 from .report import report_run
 from .router import classify_verdict, route_status, select_for_build
 from .score import BAR, score_role
@@ -125,14 +125,6 @@ class ReconcileLedger:
 
 HASH_SUFFIX = re.compile(r"-[0-9a-f]{6}$")
 
-# Countries canon 9.4 does not cover. Deliberately explicit rather than the
-# inverse of GEO_ALLOW: a US city like "San Francisco, CA" fails GEO_ALLOW on
-# the location string alone but usually passes G6 once the JD says remote, and
-# deleting those would throw away good roles.
-FOREIGN_LOCATION = re.compile(
-    r"\b(brazil|denmark|poland|saudi|mexico|italy|spain|germany|france|"
-    r"switzerland|netherlands|sweden|norway|india|singapore|japan|korea|"
-    r"china|australia|dubai|uae|ireland|dublin|apj|latam|dach)\b", re.I)
 
 # 0.6 lets "Director of Sales, Enterprise" capture the "- New York" variant
 # (3/5 tokens); 0.65 keeps "Chief of Staff" pairing with "Chief of Staff to
@@ -467,7 +459,7 @@ def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False) -> int:
         loc = (d.get("location") or "")
         decided = bool(d.get("krish_verdict")) or (d.get("package_status") or "none") != "none"
         judged = bool(d.get("sweep_date")) and bool(d.get("why_it_fits"))
-        if FOREIGN_LOCATION.search(loc) and not GEO_ALLOW.search(loc.lower()):
+        if names_foreign_geo(loc):
             plan[s.row_number] = f"outside canon geography: {loc[:34]}"
         elif not decided and not judged:
             ungated.append((s, d))

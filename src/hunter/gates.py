@@ -24,6 +24,35 @@ QUOTA_ONLY = re.compile(r"quota|close pipeline|deliver against|existing motion|"
                         r"book of business", re.I)
 GEO_ALLOW = re.compile(
     r"london|united kingdom|\buk\b|uk.remote|new york|\bnyc\b|remote", re.I)
+# A bare "remote" is not a location. "Remote India" and "Germany
+# (remote-first, in-country)" both satisfied GEO_ALLOW and passed G6 until
+# 2026-09-01: naming a country canon does not cover fails the gate unless the
+# posting also anchors itself in the UK, New York or the US.
+FOREIGN_GEO = re.compile(
+    r"\b(brazil|denmark|poland|saudi|mexico|italy|spain|germany|france|"
+    r"switzerland|netherlands|sweden|norway|finland|portugal|india|singapore|"
+    r"japan|korea|china|australia|new zealand|dubai|\buae\b|qatar|"
+    r"ireland|austria|belgium|czech|romania|turkey|israel|"
+    r"latam|\bapj\b|\bapac\b|\bdach\b)\b", re.I)
+GEO_ANCHOR = re.compile(
+    r"london|united kingdom|\buk\b|new york|\bnyc\b|united states|"
+    r"\bus\b|\bu\.s\.?\b|americas", re.I)
+
+
+def names_foreign_geo(hay: str) -> bool:
+    """Names a country canon 9.4 does not cover, with no UK, NYC or US anchor.
+    Unambiguous on a location string alone, so callers without the JD text
+    (the sheet pruner) can use it safely."""
+    return bool(FOREIGN_GEO.search(hay)) and not bool(GEO_ANCHOR.search(hay))
+
+
+def geography_ok(hay: str) -> bool:
+    """Canon 9.4 geography: London, UK-remote, NYC or US-remote. Needs the JD
+    text alongside the location, since a US city only reads as in-geography
+    once the posting says remote."""
+    if names_foreign_geo(hay):
+        return False
+    return bool(GEO_ALLOW.search(hay))
 US_RESIDENCE = re.compile(
     r"must (?:reside|be located|be based|live) in the (?:united states|u\.?s)|"
     r"u\.?s\.? residen[ct]", re.I)
@@ -133,7 +162,7 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
             "G6", False, "explicit US-residence requirement blocks the role"))
     else:
         geo_hay = f"{role.location} {role.jd_text[:400]}"
-        ok = bool(GEO_ALLOW.search(geo_hay))
+        ok = geography_ok(geo_hay)
         results.append(GateResult(
             "G6", ok, "London, UK-remote, NYC or US-remote" if ok else
             f"location outside canon 9.4 geography: {role.location!r}"))

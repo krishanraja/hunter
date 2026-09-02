@@ -282,3 +282,37 @@ def test_engine_builder_role_clears_bar():
     result = score_role(role)
     assert not result.auto_rejected
     assert result.score >= 8, result.components
+
+
+# ---------- G6 geography (2026-09-01: "Remote India" passed the gate) ----------
+
+@pytest.mark.parametrize("location,allowed", [
+    ("London, UK", True),
+    ("New York, NY", True),
+    ("Remote - United States", True),
+    ("US - Remote San Francisco, CA New York, NY", True),
+    ("UK or US-remote (offices in NYC, SF, London, Dublin, Warsaw)", True),
+    ("Remote India", False),                        # a bare "remote" is not a location
+    ("Germany (remote-first, in-country)", False),
+    ("Brazil (in-country)", False),
+    ("Singapore", False),
+    ("Dublin, Ireland", False),
+    ("Saudi Arabia (in-country)", False),
+])
+def test_geography_names_a_country_canon_does_not_cover(location, allowed):
+    from hunter.gates import geography_ok
+    assert geography_ok(location) is allowed
+
+
+def test_g6_rejects_a_remote_india_posting_end_to_end():
+    from hunter.sources import ResolvedRole
+    from hunter.gates import run_gates
+    role = ResolvedRole(
+        company="Cloudflare", title="Country Director, India",
+        url="https://x.example/j", jd_url="https://x.example/j",
+        jd_text="Lead Cloudflare's India business. Remote India. Build the "
+                "country team and own the P&L for the market.",
+        live=True, source="ats", location="Remote India", comp="$300,000 base")
+    report = run_gates(role, never_apply=[])
+    assert not report.passed
+    assert any(g.gate == "G6" for g in report.failures())
