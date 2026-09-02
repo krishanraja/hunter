@@ -22,7 +22,7 @@ import re
 
 from ..config import Config
 
-MAX_CHARS = 600
+MAX_CHARS = 800
 MIN_CHARS = 120
 
 RATIONALE_SCHEMA = {
@@ -67,14 +67,29 @@ Write three short pieces, as JSON:
 
 Rules: plain English, no em dashes, no marketing adjectives. Every number or
 figure you use must appear verbatim in the job description above. Do not
-invent funding, headcount, revenue or customer facts."""
+invent funding, headcount, revenue or customer facts.
+
+Length is a hard limit: mandate, fit and risk together must come to UNDER
+{max_chars} characters. Aim for about 350. Going over fails the whole field
+and it gets thrown away, so be short and specific."""
+
+
+def _digits(s: str) -> str:
+    return re.sub(r"[^0-9]", "", s)
 
 
 def digits_grounded(text: str, jd: str) -> bool:
-    """Every digit-bearing token must appear in the JD, the tailor.py rule."""
+    """Every digit-bearing token must be traceable to the JD.
+
+    Compared on digits alone, because a model writing $250,000 where the
+    posting says $250,000 was being rejected over comma and currency
+    formatting. Fabrication is still caught: 900 is not a substring of a JD
+    whose only figure is 500.
+    """
+    jd_digits = _digits(jd)
     for token in re.findall(r"\S*\d\S*", text):
-        clean = token.strip(".,;:()[]%").lstrip("$")
-        if clean and clean not in jd:
+        d = _digits(token)
+        if d and d not in jd_digits:
             return False
     return True
 
@@ -127,7 +142,7 @@ def write_rationale(cfg: Config, canon, *, company: str, title: str, jd: str,
             canon_profile=canon.section_text("5")[:2500],
             company=company, title=title, location=location or "not stated",
             comp=comp or "not disclosed", score=score, score_reason=score_reason,
-            jd=jd[:6000])
+            jd=jd[:6000], max_chars=MAX_CHARS)
         resp = client.messages.create(
             model=cfg.optional("hunter_anthropic_model", "claude-opus-5"),
             max_tokens=1200,
@@ -143,8 +158,27 @@ def write_rationale(cfg: Config, canon, *, company: str, title: str, jd: str,
         parts = json.loads(resp.content[0].text)
         fails = validate(parts, jd)
         if fails:
-            flags.append("rationale rejected: " + "; ".join(fails))
-            return deterministic(company, title, score, score_reason), flags
+            # one corrective retry naming the exact failure, then the honest
+            # fallback. Usually the model only needs to be told the limit.
+            retry = client.messages.create(
+                model=cfg.optional("hunter_anthropic_model", "claude-opus-5"),
+                max_tokens=1200,
+                messages=[{"role": "user", "content": prompt},
+                          {"role": "assistant", "content": json.dumps(parts)},
+                          {"role": "user", "content":
+                           "That failed validation: " + "; ".join(fails)
+                           + ". Rewrite it shorter and use only figures that "
+                             "appear in the job description."}],
+                output_config={"format": {"type": "json_schema",
+                                          "schema": RATIONALE_SCHEMA}})
+            if getattr(retry, "stop_reason", "") in ("refusal", "max_tokens"):
+                return deterministic(company, title, score, score_reason), fails
+            parts = json.loads(retry.content[0].text)
+            fails = validate(parts, jd)
+            if fails:
+                flags.append("rationale rejected twice: " + "; ".join(fails))
+                return deterministic(company, title, score, score_reason), flags
+            flags.append("rationale needed one retry")
         return assemble(parts), flags
     except Exception as e:
         return (deterministic(company, title, score, score_reason),
