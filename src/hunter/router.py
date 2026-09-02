@@ -21,18 +21,32 @@ def classify_verdict(text: str) -> str:
     return verdicts.parse(text)[0]
 
 
-def select_for_build(cfg: Config) -> list[dict]:
+def select_for_build(cfg: Config, sheet=None, headers=None) -> list[dict]:
+    """Rows to build packages for.
+
+    Authority is column A as it reads now, not a DB field. Krish's ruling
+    2026-09-02: he will set every verdict himself once he trusts the system,
+    and twelve rows still carry a 'go' the retired incumbent wrote weeks ago.
+    Building from those would produce packages he never asked for. When the
+    sheet is unavailable the function returns nothing rather than falling
+    back to the DB, because a wrong build is worse than a missed one.
+    """
+    if sheet is None or headers is None:
+        return []
     cap = int(cfg.optional("hunter_max_packages_per_run", "5"))
-    rows = db_get(cfg, "hunter_seen_roles", {
+    yes_rows = [r for r in sheet.read_pipeline(headers)
+                if classify_verdict(r.verdict or "") == "go"]
+    if not yes_rows:
+        return []
+    from .run import match_rows
+    known = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,url,job_url,score,comp,location,"
                   "warm_path_person,package_status,krish_verdict",
-        "krish_verdict": "not.is.null",
-        "package_status": "in.(none,queued)",
-        "order": "score.desc.nullslast",
-        "limit": str(cap * 3),
-    })
-    picked = [r for r in rows
-              if classify_verdict(r.get("krish_verdict") or "") == "go"]
+        "limit": "5000"})
+    pairs, _, _, _ = match_rows(yes_rows, list(known))
+    picked = [d for _, d in pairs
+              if (d.get("package_status") or "none") in ("none", "queued")]
+    picked.sort(key=lambda d: d.get("score") or 0, reverse=True)
     return picked[:cap]
 
 

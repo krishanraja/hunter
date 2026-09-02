@@ -15,7 +15,8 @@ Phases of a full run, in order:
      material change (a query, not a judgement call).
   6. Build packages for go-verdict roles (G1 re-verified first; capped per
      run), record to DB and sheet.
-  7. Telegram summary. A run that wrote zero rows is a FAILED run and says so.
+  7. Run summary, carried by the Routine's completion email. A run that
+     wrote zero rows is a FAILED run and says so.
 """
 from __future__ import annotations
 
@@ -1086,6 +1087,85 @@ def cmd_learn(apply: bool = False) -> int:
     return 0
 
 
+COMMANDS_TABLE = "hunter_commands"
+
+
+def cmd_drain() -> int:
+    """Run the oldest command Control Center queued, if any.
+
+    Fires hourly from a Routine and exits in seconds when the queue is empty,
+    which is most of the time. Krish's two buttons write here: `source` does a
+    full sourcing pass and stops before packages, `packages` builds for rows
+    reading Yes in column A that have no package yet.
+    """
+    cfg = load()
+    queued = db_get(cfg, COMMANDS_TABLE,
+                    {"select": "id,command,requested_at", "state": "eq.queued",
+                     "order": "requested_at.asc", "limit": "1"})
+    if not queued:
+        print("nothing queued")
+        return 0
+    job = queued[0]
+    cid, command = str(job["id"]), job["command"]
+    db_patch(cfg, COMMANDS_TABLE, {"id": cid},
+             {"state": "running", "started_at": NOW()})
+    print(f"running {command} (command {cid})")
+    try:
+        summary = run_command(cfg, command)
+        db_patch(cfg, COMMANDS_TABLE, {"id": cid},
+                 {"state": "done", "finished_at": NOW(),
+                  "result": summary[:2000]})
+        print(summary)
+        return 0
+    except Exception as e:
+        # A command that dies must not sit at 'running' forever, or the
+        # button reports work in flight that stopped hours ago.
+        db_patch(cfg, COMMANDS_TABLE, {"id": cid},
+                 {"state": "failed", "finished_at": NOW(),
+                  "error": f"{e.__class__.__name__}: {e}"[:1000]})
+        print(f"FAILED {command}: {e.__class__.__name__}: {e}")
+        return 1
+
+
+def run_command(cfg: Config, command: str) -> str:
+    """The work behind each button. Returns the line Control Center shows."""
+    canon = load_canon(cfg)
+    assert_canon_alignment(canon)
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    summary: list[str] = []
+
+    if command == "source":
+        ledger = reconcile(cfg, canon, sheet)
+        summary.extend(ledger.lines())
+        try:
+            summary.extend(learning_lines(learning_step(cfg, apply=True)))
+        except Exception as e:
+            summary.append(f"learning skipped: {e.__class__.__name__}")
+        counts = source_and_stage(cfg, canon, sheet, summary)
+        line = (f"{counts['discovered']} found, {counts['recorded']} recorded, "
+                f"{counts['staged']} staged, ${counts['spend_usd']:.2f} spent")
+    elif command == "packages":
+        rows = select_for_build(cfg, sheet, canon.sheet_headers)
+        built = 0
+        for row in rows:
+            try:
+                if build_one(cfg, canon, sheet, row, summary):
+                    built += 1
+            except Exception as e:
+                summary.append(f"BUILD FAILED {row['job_id']}: "
+                               f"{e.__class__.__name__}: {e}")
+        line = f"{built} of {len(rows)} package(s) built"
+    else:
+        raise ValueError(f"unknown command {command!r}")
+
+    summary.append(line)
+    try:
+        send_summary(cfg, "\n".join(summary))
+    except Exception:
+        pass
+    return line
+
+
 def cmd_reconcile() -> int:
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
@@ -1507,7 +1587,7 @@ def cmd_run() -> int:
             failed = True
 
         built = 0
-        for row in select_for_build(cfg):
+        for row in select_for_build(cfg, sheet, canon.sheet_headers):
             try:
                 if build_one(cfg, canon, sheet, row, summary):
                     built += 1
@@ -1578,6 +1658,8 @@ def main(argv: list[str]) -> int:
         lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else 0
         return cmd_regate(from_row=frm, apply="--apply" in argv, limit=lim,
                           archive="--no-archive" not in argv)
+    if cmd == "drain":
+        return cmd_drain()
     if cmd == "learn":
         return cmd_learn(apply="--apply" in argv)
     if cmd == "restore":
@@ -1613,7 +1695,7 @@ def main(argv: list[str]) -> int:
             ingest_dir = argv[2]
         return cmd_bridges(ingest_dir)
     print(f"unknown command {cmd!r}; commands: run, reconcile, migrate-sheet, "
-          f"build --job-id X, recon, dedupe-db, learn [--apply], "
+          f"build --job-id X, recon, dedupe-db, learn [--apply], drain, "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2
 

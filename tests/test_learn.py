@@ -248,3 +248,22 @@ def test_an_unresolvable_row_is_refused_not_guessed():
     decided = [dict(twins[0], krish_verdict="go", verdict_source="sheet column A")]
     d, why = resolve_db_row(srow, decided, {})
     assert d is None, "a row carrying his verdict is never a stamp target"
+
+
+# ---------- build authority ----------
+
+def test_only_a_yes_on_the_sheet_builds_a_package():
+    """Twelve rows still carry a 'go' the retired incumbent wrote in August.
+    Krish's ruling: he sets every verdict himself, so a DB field written weeks
+    ago must never produce a package he did not ask for."""
+    from hunter.router import select_for_build
+    assert select_for_build(None) == [], "no sheet means no build, never a DB fallback"
+
+
+def test_a_rejection_the_gate_predicts_is_not_reported_back_to_him():
+    """The loop reports only rejections the archetype gate did not see coming,
+    because those are the ones that say something about the archetypes. A
+    declined Enterprise Sales Director says nothing: the gate already blocks it."""
+    from hunter.archetype import archetype
+    assert archetype("Enterprise Sales Director, Healthcare") is None
+    assert archetype("General Manager, White Label") == "country_regional_gm"
