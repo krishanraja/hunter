@@ -75,8 +75,14 @@ def _hits(patterns: list[str], text: str) -> int:
     return sum(1 for p in patterns if re.search(p, text, re.I))
 
 
+# What each component is worth when it can be determined at all.
+WEIGHTS = {"engine_builder": 3, "title": 1, "comp_250k": 1, "geography": 1,
+           "stage": 1, "ai": 1, "mandate": 1, "strategic_scope": 1}
+
+
 def score_role(role: ResolvedRole, *, floor: int = FLOOR,
-               equity_override: bool = False) -> ScoreResult:
+               equity_override: bool = False,
+               universe: tuple | list = ()) -> ScoreResult:
     hay = f"{role.title}\n{role.jd_text}"
     engine = _hits(ENGINE_SIGNALS, hay)
     quota = _hits(QUOTA_SIGNALS, hay)
@@ -125,12 +131,23 @@ def score_role(role: ResolvedRole, *, floor: int = FLOOR,
                              f"archetypes; not a commercial or GTM mandate")
 
     from .gates import SENIOR_TITLE
-    components = {
+    # An unknown is not a zero. Most UK and EU postings publish no band, and
+    # G2 already treats that as "flag for review" rather than as evidence
+    # against the role; scoring it zero as well counted the same silence
+    # twice and held a point hostage on nearly every posting. Same for stage:
+    # a JD rarely says "Series C", but membership of the canon 9.1 universe
+    # settles the question, and absent both the component is unknown rather
+    # than failed. Unknown components leave both the numerator and the
+    # denominator, and the score is expressed out of ten.
+    in_universe = any((role.company or "").lower().strip() == str(c).lower().strip()
+                      for c in universe)
+    stage_stated = bool(STAGE_OK.search(f"{role.stage} {role.jd_text}"))
+    components: dict[str, int | None] = {
         "engine_builder": min(3, engine),
         "title": 1 if SENIOR_TITLE.search(role.title) else 0,
-        "comp_250k": 1 if (bottom or 0) >= 250_000 else 0,
+        "comp_250k": (1 if bottom >= 250_000 else 0) if bottom is not None else None,
         "geography": 1 if GEO_POINT.search(f"{role.location} {role.jd_text[:300]}") else 0,
-        "stage": 1 if STAGE_OK.search(f"{role.stage} {role.jd_text}") else 0,
+        "stage": 1 if (stage_stated or in_universe) else None,
         "ai": 1 if AI_SIGNALS.search(f"{role.company} {hay}") else 0,
         "mandate": 1 if MANDATE_KEYWORDS.search(hay) else 0,
         "strategic_scope": 1 if STRATEGIC_SCOPE.search(hay) else 0,
@@ -144,9 +161,16 @@ def score_role(role: ResolvedRole, *, floor: int = FLOOR,
         penalties -= 1
     components["penalties"] = penalties
 
-    total = max(1, min(10, sum(components.values())))
+    known = {k: v for k, v in components.items()
+             if k in WEIGHTS and v is not None}
+    available = sum(WEIGHTS[k] for k in known) or 1
+    earned = sum(known.values()) + penalties
+    total = max(1, min(10, round(earned / available * 10)))
+    unknown = sorted(k for k in WEIGHTS if components.get(k) is None)
     why = (f"Engine-Builder signals {engine}, mandate "
            f"{'present' if components['mandate'] else 'absent'}, "
-           f"band bottom {'$' + format(bottom, ',') if bottom else 'not posted'}.")
+           f"band bottom {'$' + format(bottom, ',') if bottom else 'not posted'}"
+           + (f"; not determinable from the posting: {', '.join(unknown)}"
+              if unknown else "") + ".")
     return ScoreResult(score=total, auto_rejected=False, rejection_reason=None,
                        components=components, why_it_fits=why)

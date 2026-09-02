@@ -295,6 +295,28 @@ class Sheet:
                     f"read {got[1]!r}/{got[2]!r}; nothing deleted from Pipeline")
         return self.delete_rows([r.row_number for r in rows], expect_verdict=None)
 
+    def delete_archive_rows(self, row_numbers: list[int], *,
+                            archive_sheet_id: int, expect: list[str]) -> int:
+        """Remove rows from the archive tab, checking first that each still
+        holds the company it did when it was chosen. Used only to undo a move
+        that should never have happened; descending, like every delete here."""
+        if not row_numbers:
+            return 0
+        grid = self._get(f"/values/{config.ARCHIVE_TAB}!A1:AC2000",
+                         {"valueRenderOption": "FORMULA"}).get("values", [])
+        for rn, want in zip(row_numbers, expect):
+            row = grid[rn - 1] if rn - 1 < len(grid) else []
+            got = str(row[1]).strip() if len(row) > 1 else ""
+            if got != want.strip():
+                raise SheetError(f"archive row {rn} reads company {got!r}, "
+                                 f"expected {want!r}; nothing deleted")
+        reqs = [{"deleteDimension": {"range": {
+            "sheetId": archive_sheet_id, "dimension": "ROWS",
+            "startIndex": rn - 1, "endIndex": rn}}}
+            for rn in sorted(row_numbers, reverse=True)]
+        self._post(":batchUpdate", {"requests": reqs})
+        return len(reqs)
+
     def read_tab_values(self, rng: str) -> list[list]:
         """Raw values from any tab of the workbook (read-only helper; the
         validated write path stays Pipeline-only)."""

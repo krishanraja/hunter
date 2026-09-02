@@ -13,9 +13,14 @@ from .sources import ResolvedRole
 
 FLOOR = 200_000  # canon 6, decision 2026-08-24
 
+# "SVP, Strategy" and "GM, UK" are how the postings Krish approves actually
+# write themselves, and neither matched: \bvp never fires inside SVP, and GM
+# was absent entirely, so G3 rejected the archetype A titles canon section 5
+# puts first. Both are pinned by tests named for the roles they cost.
 SENIOR_TITLE = re.compile(
-    r"\b(vp|vice president|chief|head of|director|founding|general manager|"
-    r"managing director|president|c[a-z]o)\b", re.I)
+    r"\b([se]?vp|vice president|chief|director|founding|general manager|"
+    r"managing director|country manager|president|gm|c[a-z]o)\b"
+    r"|\bhead\s*(?:of\b|,)", re.I)
 YEARS_RANGE = re.compile(r"(\d+)\s*(?:-|–|to)\s*(\d+)\s*\+?\s*years?", re.I)
 MANDATE = re.compile(
     r"architect|build|operating model|p&l|p and l|market entry|zero.to.one|"

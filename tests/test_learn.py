@@ -172,3 +172,50 @@ def test_the_impact_preview_names_what_a_rule_would_have_cost():
     roles = [{"company": "Sierra", "title": "Enterprise Sales Director, Healthcare"},
              {"company": "Mutiny", "title": "Head of GTM"}]
     assert learn.impact(rule, roles) == ["Sierra / Enterprise Sales Director, Healthcare"]
+
+
+# ---------- the roles the gates and the re-gate cost him ----------
+
+@pytest.mark.parametrize("title", [
+    "SVP, Strategy",                      # hearst:svp-strategy, his verdict: go
+    "GM, UK",                             # elevenlabs:gm-uk, his verdict: go
+    "General Manager - UK",
+    "GM, CTV & Video (London)",           # ogury:gm-ctv-video-london, his verdict: go
+    "Head, Strategy",
+    "EVP, Commercial",
+    "Country Manager, UK",
+])
+def test_titles_krish_approved_clear_the_seniority_gate(title):
+    """G3 rejected SVP and GM outright: \\bvp never fires inside SVP, and GM
+    was missing from the pattern. Canon section 5 puts the GM archetype
+    first, so the gate was refusing the family he most wants."""
+    from hunter.gates import SENIOR_TITLE
+    assert SENIOR_TITLE.search(title)
+
+
+@pytest.mark.parametrize("title", [
+    "Senior Manager, Sales", "Account Executive", "Program Manager",
+    "Growth Marketing Manager", "Heading Sales",
+])
+def test_the_seniority_gate_still_refuses_what_it_should(title):
+    from hunter.gates import SENIOR_TITLE
+    assert not SENIOR_TITLE.search(title)
+
+
+def test_an_unposted_band_is_unknown_not_a_zero():
+    """Most UK postings publish no band, and G2 already treats that as flag
+    for review. Scoring it zero as well counted the same silence twice and
+    held a point hostage on nearly every role Krish approved."""
+    from hunter.score import score_role
+    from hunter.sources import ResolvedRole
+    jd = ("Own the go to market operating model end to end. Build the "
+          "function from scratch, design the operating cadence and architect "
+          "the commercial strategy with the CRO. AI native company.") * 3
+    posted = ResolvedRole(company="Acme", title="Head of GTM", url="u", jd_url="u",
+                          jd_text=jd, live=True, source="t", location="London",
+                          comp="$300,000 - $360,000")
+    silent = ResolvedRole(company="Acme", title="Head of GTM", url="u", jd_url="u",
+                          jd_text=jd, live=True, source="t", location="London",
+                          comp="")
+    assert score_role(silent).score >= score_role(posted).score - 1
+    assert "not determinable" in score_role(silent).why_it_fits

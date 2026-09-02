@@ -446,7 +446,8 @@ def cmd_migrate_sheet() -> int:
     return 0
 
 
-def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0) -> int:
+def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
+               archive: bool = True) -> int:
     """Re-judge rows hunter never gated, and give every one a real rationale.
 
     Krish, 2026-09-02: "everything from row 41 and below needs to be
@@ -461,14 +462,67 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0) -> int:
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     never = cfg.require_json("hunter_never_apply")
-    rows = [r for r in sheet.read_pipeline(canon.sheet_headers)
-            if r.row_number >= from_row and (r.verdict or "").strip() == "New"]
+    # Column A is not the only place a verdict lives. Three roles Krish said
+    # go to still read "New" on the sheet because the column was reset after
+    # the incumbent synced them, and the first re-gate archived all three.
+    # The DB verdict is checked too, and a verdicted row is listed, not moved.
+    known = db_get(cfg, "hunter_seen_roles",
+                   {"select": "job_id,title,krish_verdict,url,job_url,company",
+                    "limit": "5000"})
+    # Pair rows to the DB the way reconcile does. Recomputing a job_id from
+    # column C does not work: the sheet says "Chief of Staff to Chief
+    # Strategy Officer" where the DB says cloudflare:cos-to-cso, and the
+    # first re-gate archived eight roles Krish had said go to because of it.
+    all_rows = sheet.read_pipeline(canon.sheet_headers)
+    pairs, _, _, _ = match_rows(all_rows, list(known))
+    paired = {srow.row_number: d for srow, d in pairs}
+    decided = [d for d in known if (d.get("krish_verdict") or "").strip()]
+
+    def standing_verdict(r) -> dict | None:
+        """Any decided DB row this sheet row could be. Deliberately generous:
+        the matcher leaves an ambiguous row unpaired, and an ambiguous row
+        that might carry his yes must be held, never archived."""
+        d = paired.get(r.row_number)
+        if d and (d.get("krish_verdict") or "").strip():
+            return d
+        rk = ats_key(r.jd_url)
+        toks = distinctive_tokens(r.company, r.role)
+        for cand in decided:
+            ck = ats_key(cand.get("url") or cand.get("job_url"))
+            if rk and ck and rk == ck:
+                return cand
+            if not (toks & distinctive_tokens(cand.get("company") or "",
+                                              cand.get("title") or "")):
+                continue
+            if title_jaccard(r.role, cand.get("title") or "") >= FUZZY_TITLE_MIN:
+                return cand
+        return None
+
+    rows, held = [], []
+    for r in all_rows:
+        if r.row_number < from_row or (r.verdict or "").strip() != "New":
+            continue
+        d = standing_verdict(r)
+        if d:
+            held.append((r, d))
+            continue
+        rows.append(r)
+    if held:
+        print(f"holding {len(held)} row(s) you have already decided on, "
+              f"whatever column A says. They are never archived or rescored, "
+              f"but they still get a rationale so column J reads the same "
+              f"everywhere:")
+        for r, d in held:
+            print(f"  row {r.row_number}: {r.company} / {r.role} "
+                  f"[{d.get('krish_verdict')}]")
+        print()
     if limit:
         rows = rows[:limit]
     print(f"re-gating {len(rows)} rows from row {from_row} down\n")
 
     keep, drop, unresolved = [], [], []
-    for r in rows:
+    for r in rows + [h[0] for h in held]:
+        decided_row = r in [h[0] for h in held]
         # The sheet already knows the location and comp; without them G6 sees
         # an empty string and fails every row on geography, which would have
         # archived 70 legitimate roles.
@@ -476,22 +530,36 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0) -> int:
             unresolved.append((r, "no ATS key on the URL, liveness unverifiable"))
             continue
         try:
+            full = (paired.get(r.row_number) or {}).get("title") or r.role
             role = _resolve_for_build({
-                "url": r.jd_url, "title": r.role, "company": r.company,
+                "url": r.jd_url, "title": full, "company": r.company,
                 "source": "regate",
                 "location": r.cells[12] if r.cells[12] != "Not stated" else "",
                 "comp": r.cells[13] if r.cells[13] != "Not disclosed" else ""})
         except Exception as e:
             unresolved.append((r, f"fetch failed: {e.__class__.__name__}"))
             continue
-        if not role.live:
+        if not role.live and not decided_row:
             drop.append((r, 0, "dead posting", "the ATS no longer lists it"))
             continue
         if not role.jd_text:
             unresolved.append((r, "live but no JD text returned"))
             continue
+        # Judge the posting's own title, not the sheet's shorthand. "GM, UK"
+        # in column C failed the seniority gate while the real title,
+        # "General Manager - UK", passes it.
         report = run_gates(role, never_apply=never)
-        result = score_role(role)
+        result = score_role(role, universe=canon.universe)
+        if decided_row:
+            # His verdict outranks the rubric. The row keeps the score it has
+            # and only gains the rationale it was missing.
+            existing = int(r.cells[8]) if str(r.cells[8]).strip().isdigit() else result.score
+            why, flags = write_rationale(
+                cfg, canon, company=r.company, title=full, jd=role.jd_text,
+                score=existing, score_reason=result.why_it_fits,
+                location=role.location, comp=role.comp)
+            keep.append((r, existing, why, flags + ["your verdict, held"]))
+            continue
         if result.auto_rejected:
             drop.append((r, result.score, "requirements mismatch",
                          result.rejection_reason or "canon 9.3 auto-reject"))
@@ -530,7 +598,9 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0) -> int:
         sheet.update_assessment(r.row_number, score=sc, why_it_fits=why)
         db_patch(cfg, "hunter_seen_roles", {"job_id": job_id(r.company, r.role)},
                  {"score": sc, "why_it_fits": why[:900]})
-    if drop:
+    if drop and not archive:
+        print(f"\n--no-archive: {len(drop)} row(s) left on Pipeline for your call")
+    if drop and archive:
         # write the reason into column A first so the archive carries WHY,
         # and so the learning loop sees a coded verdict like any other
         for r, sc, code, reason in drop:
@@ -544,8 +614,67 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0) -> int:
                            archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
                            headers=canon.sheet_headers)
     left = sheet.read_pipeline(canon.sheet_headers)
-    print(f"\nrewrote {len(keep)} rows, archived {len(drop)}; "
+    print(f"\nrewrote {len(keep)} rows, archived {len(drop) if archive else 0}; "
           f"Pipeline now has {len(left)} rows")
+    return 0
+
+
+def cmd_restore(job_ids: list[str], apply: bool = False) -> int:
+    """Put a row back on Pipeline that should never have left it.
+
+    The 2026-09-02 re-gate archived three roles Krish had said go to, because
+    it read column A (which said New) and not the DB (which said go). The
+    guard is fixed; this undoes the damage, and column A comes back reading
+    Yes because that is the verdict he gave.
+    """
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    arch = sheet.read_archive()
+    wanted = []
+    for jid in job_ids:
+        rows = db_get(cfg, "hunter_seen_roles",
+                      {"select": "job_id,company,title,krish_verdict",
+                       "job_id": f"eq.{jid}"})
+        if not rows:
+            print(f"no DB row for {jid}")
+            return 1
+        d = rows[0]
+        toks = distinctive_tokens(d.get("company") or "", d.get("title") or "")
+        hit = next((a for a in arch
+                    if toks & distinctive_tokens(a.company, a.role)
+                    and title_jaccard(a.role, d.get("title") or "") >= FUZZY_TITLE_MIN),
+                   None)
+        if not hit:
+            print(f"{jid} is not on the {config_mod.ARCHIVE_TAB} tab")
+            return 1
+        wanted.append((jid, d, hit))
+
+    for jid, d, hit in wanted:
+        print(f"restore {jid}: {config_mod.ARCHIVE_TAB} row {hit.row_number} "
+              f"{hit.company} / {hit.role} [{hit.verdict}] -> Pipeline as "
+              f"{verdicts.BUILD} (your verdict: {d.get('krish_verdict')})")
+    if not apply:
+        print("\ndry run. add --apply to move them back")
+        return 0
+
+    cells = [list(hit.cells) for _, _, hit in wanted]
+    for c in cells:
+        c[0] = "New"          # append validation demands it; corrected below
+    rng = sheet.append_rows(cells)
+    start = int(rng.split("!A")[1].split(":")[0])
+    sheet._post("/values:batchUpdate", {
+        "valueInputOption": "USER_ENTERED",
+        "data": [{"range": f"Pipeline!A{start + i}", "values": [[verdicts.BUILD]]}
+                 for i in range(len(cells))]})
+    sheet.delete_archive_rows([hit.row_number for _, _, hit in wanted],
+                              archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
+                              expect=[hit.company for _, _, hit in wanted])
+    for i, (jid, _, _) in enumerate(wanted):
+        db_patch(cfg, "hunter_seen_roles", {"job_id": jid},
+                 {"status": "staging", "rejection_reason": None,
+                  "rejection_code": None})
+        print(f"  {jid} -> Pipeline row {start + i}")
+    print(f"restored {len(wanted)} row(s)")
     return 0
 
 
@@ -1144,7 +1273,7 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                             source=p.source, location=p.location or "",
                             comp=p.comp_text or "")
         report = run_gates(role, never_apply=never)
-        result = score_role(role)
+        result = score_role(role, universe=canon.universe)
         learned = learn.check(rules, company=role.company, title=role.title,
                               location=role.location, jd=role.jd_text)
         status, reason = "scanned", None
@@ -1316,10 +1445,17 @@ def main(argv: list[str]) -> int:
     if cmd == "regate":
         frm = int(argv[argv.index("--from") + 1]) if "--from" in argv else 41
         lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else 0
-        return cmd_regate(from_row=frm, apply="--apply" in argv, limit=lim)
+        return cmd_regate(from_row=frm, apply="--apply" in argv, limit=lim,
+                          archive="--no-archive" not in argv)
     if cmd == "learn":
         rev = argv[argv.index("--revoke") + 1] if "--revoke" in argv else None
         return cmd_learn(apply="--apply" in argv, revoke=rev)
+    if cmd == "restore":
+        ids = [a for a in argv[1:] if not a.startswith("--")]
+        if not ids:
+            print("usage: python -m hunter.run restore <job_id> [...] [--apply]")
+            return 2
+        return cmd_restore(ids, apply="--apply" in argv)
     if cmd == "archive":
         return cmd_archive(apply="--apply" in argv)
     if cmd == "set-dropdown":

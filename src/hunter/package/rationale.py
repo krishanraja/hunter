@@ -127,6 +127,15 @@ def deterministic(company: str, title: str, score: int, score_reason: str) -> st
             f"the JD before spending a verdict on it.")
 
 
+def _text(resp) -> str:
+    """The model may emit a thinking block first, so content[0] is not
+    reliably the JSON. Take the first text block, or fail loudly."""
+    for block in resp.content:
+        if getattr(block, "type", "") == "text":
+            return block.text
+    raise ValueError("no text block in the model response")
+
+
 def write_rationale(cfg: Config, canon, *, company: str, title: str, jd: str,
                     score: int, score_reason: str, location: str = "",
                     comp: str = "") -> tuple[str, list[str]]:
@@ -155,7 +164,7 @@ def write_rationale(cfg: Config, canon, *, company: str, title: str, jd: str,
             # a truncated JSON body is not partially usable
             return (deterministic(company, title, score, score_reason),
                     ["rationale truncated at the token limit"])
-        parts = json.loads(resp.content[0].text)
+        parts = json.loads(_text(resp))
         fails = validate(parts, jd)
         if fails:
             # one corrective retry naming the exact failure, then the honest
@@ -173,7 +182,7 @@ def write_rationale(cfg: Config, canon, *, company: str, title: str, jd: str,
                                           "schema": RATIONALE_SCHEMA}})
             if getattr(retry, "stop_reason", "") in ("refusal", "max_tokens"):
                 return deterministic(company, title, score, score_reason), fails
-            parts = json.loads(retry.content[0].text)
+            parts = json.loads(_text(retry))
             fails = validate(parts, jd)
             if fails:
                 flags.append("rationale rejected twice: " + "; ".join(fails))
