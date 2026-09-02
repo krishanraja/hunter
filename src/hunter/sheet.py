@@ -300,6 +300,29 @@ class Sheet:
         validated write path stays Pipeline-only)."""
         return self._get(f"/values/{rng}").get("values", [])
 
+    def update_assessment(self, row_number: int, *, score: int, why_it_fits: str) -> None:
+        """Rewrite columns I and J only. Column A stays Krish's, and the
+        package columns stay the build path's; this writer exists so a
+        re-gate can correct a score and its rationale without touching
+        anything else on the row."""
+        if row_number < DATA_START_ROW:
+            raise SheetError(f"refusing to write row {row_number}: header rows")
+        if not 1 <= int(score) <= 10:
+            raise SheetError(f"score {score} out of canon range 1..10")
+        why = (why_it_fits or "").strip()
+        if not why:
+            raise SheetError("column J cannot be blank; use the deterministic fallback")
+        if "\u2014" in why:
+            raise SheetError("em dash in column J")
+        self._post("/values:batchUpdate", {
+            "valueInputOption": "USER_ENTERED",
+            "data": [{"range": f"{TAB}!I{row_number}:J{row_number}",
+                      "values": [[str(int(score)), why[:900]]]}]})
+        back = self._get(f"/values/{TAB}!I{row_number}:J{row_number}").get("values", [[]])
+        got = (back[0] + ["", ""])[:2] if back else ["", ""]
+        if got[0] != str(int(score)):
+            raise SheetError(f"read-back of row {row_number} column I gave {got[0]!r}")
+
     def read_archive(self) -> list[SheetRow]:
         """Archived rows are still part of "the sheet" for reconciliation.
         Leaving them out makes every archived role look missing, and

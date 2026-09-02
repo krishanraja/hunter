@@ -450,6 +450,109 @@ def cmd_migrate_sheet() -> int:
     return 0
 
 
+def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0) -> int:
+    """Re-judge rows hunter never gated, and give every one a real rationale.
+
+    Krish, 2026-09-02: "everything from row 41 and below needs to be
+    seriously scrutinized". Measured, of the 70 rows there 20 were
+    quota-carry sales seats (canon 9.3 auto-reject), 13 were non-GTM
+    functions, and 59 had no rationale worth the name. All of them carried
+    the retired incumbent's score, and no gate had ever seen them.
+
+    Rows Krish has already decided are never touched.
+    """
+    from .package.rationale import write_rationale
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    never = cfg.require_json("hunter_never_apply")
+    rows = [r for r in sheet.read_pipeline(canon.sheet_headers)
+            if r.row_number >= from_row and (r.verdict or "").strip() == "New"]
+    if limit:
+        rows = rows[:limit]
+    print(f"re-gating {len(rows)} rows from row {from_row} down\n")
+
+    keep, drop, unresolved = [], [], []
+    for r in rows:
+        # The sheet already knows the location and comp; without them G6 sees
+        # an empty string and fails every row on geography, which would have
+        # archived 70 legitimate roles.
+        if not ats_key(r.jd_url):
+            unresolved.append((r, "no ATS key on the URL, liveness unverifiable"))
+            continue
+        try:
+            role = _resolve_for_build({
+                "url": r.jd_url, "title": r.role, "company": r.company,
+                "source": "regate",
+                "location": r.cells[12] if r.cells[12] != "Not stated" else "",
+                "comp": r.cells[13] if r.cells[13] != "Not disclosed" else ""})
+        except Exception as e:
+            unresolved.append((r, f"fetch failed: {e.__class__.__name__}"))
+            continue
+        if not role.live:
+            drop.append((r, 0, "dead posting", "the ATS no longer lists it"))
+            continue
+        if not role.jd_text:
+            unresolved.append((r, "live but no JD text returned"))
+            continue
+        report = run_gates(role, never_apply=never)
+        result = score_role(role)
+        if result.auto_rejected:
+            drop.append((r, result.score, "requirements mismatch",
+                         result.rejection_reason or "canon 9.3 auto-reject"))
+        elif not report.passed:
+            reasons = "; ".join(f"{g.gate}: {g.reason}" for g in report.failures())
+            code = ("geo or language" if any(g.gate == "G6" for g in report.failures())
+                    else "requirements mismatch")
+            drop.append((r, result.score, code, reasons))
+        elif result.score < canon.bar:
+            drop.append((r, result.score, "requirements mismatch",
+                         f"scores {result.score}, below the canon {canon.bar} bar"))
+        else:
+            why, flags = write_rationale(
+                cfg, canon, company=r.company, title=r.role, jd=role.jd_text,
+                score=result.score, score_reason=result.why_it_fits,
+                location=role.location, comp=role.comp)
+            keep.append((r, result.score, why, flags))
+
+    print(f"KEEP {len(keep)}, DROP {len(drop)}, UNRESOLVED {len(unresolved)}\n")
+    for r, sc, why, flags in keep:
+        print(f"  keep row {r.row_number:>3} score {sc:>2} {r.company[:16]:16} "
+              f"{r.role[:34]:34} {'flags=' + str(flags) if flags else ''}")
+        print(f"       J: {why[:150]}")
+    for r, sc, code, reason in drop:
+        print(f"  DROP row {r.row_number:>3} score {sc:>2} {r.company[:16]:16} "
+              f"{r.role[:34]:34} [{code}] {reason[:60]}")
+    for r, err in unresolved:
+        print(f"  ?    row {r.row_number:>3} {r.company[:16]:16} {r.role[:34]:34} {err}")
+
+    if not apply:
+        print("\ndry run. add --apply to rewrite scores and rationales and "
+              "archive the drops")
+        return 0
+
+    for r, sc, why, _ in keep:
+        sheet.update_assessment(r.row_number, score=sc, why_it_fits=why)
+        db_patch(cfg, "hunter_seen_roles", {"job_id": job_id(r.company, r.role)},
+                 {"score": sc, "why_it_fits": why[:900]})
+    if drop:
+        # write the reason into column A first so the archive carries WHY,
+        # and so the learning loop sees a coded verdict like any other
+        for r, sc, code, reason in drop:
+            sheet._post("/values:batchUpdate", {
+                "valueInputOption": "USER_ENTERED",
+                "data": [{"range": f"Pipeline!A{r.row_number}",
+                          "values": [[f"{verdicts.DECLINE_PREFIX}{code}"]]}]})
+        fresh = {r.row_number: r for r in sheet.read_pipeline(canon.sheet_headers)}
+        movers = [fresh[r.row_number] for r, _, _, _ in drop if r.row_number in fresh]
+        sheet.archive_rows(movers, archive_tab=config_mod.ARCHIVE_TAB,
+                           archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
+                           headers=canon.sheet_headers)
+    left = sheet.read_pipeline(canon.sheet_headers)
+    print(f"\nrewrote {len(keep)} rows, archived {len(drop)}; "
+          f"Pipeline now has {len(left)} rows")
+    return 0
+
+
 def cmd_archive(apply: bool = False) -> int:
     """Move decided rows off Pipeline onto the Applied tab.
 
@@ -1046,6 +1149,10 @@ def main(argv: list[str]) -> int:
         return cmd_recon()
     if cmd == "dedupe-db":
         return cmd_dedupe_db()
+    if cmd == "regate":
+        frm = int(argv[argv.index("--from") + 1]) if "--from" in argv else 41
+        lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else 0
+        return cmd_regate(from_row=frm, apply="--apply" in argv, limit=lim)
     if cmd == "archive":
         return cmd_archive(apply="--apply" in argv)
     if cmd == "set-dropdown":
