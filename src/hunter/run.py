@@ -67,6 +67,10 @@ ATS_URL_PATTERNS = [
     ("greenhouse", re.compile(r"gh_jid=(\d+)()")),
     ("lever", re.compile(r"jobs\.lever\.co/([^/]+)/([0-9a-f-]{36})")),
     ("ashby", re.compile(r"jobs\.ashbyhq\.com/([^/]+)/([0-9a-f-]{36})")),
+    # Criteo and other Workday tenants: host carries the tenant, the path
+    # carries the site and the posting.
+    ("workday", re.compile(
+        r"([a-z0-9-]+)\.wd\d+\.myworkdayjobs\.com/[^/]*/?([A-Za-z0-9_-]+/job/\S+)")),
 ]
 
 
@@ -914,6 +918,116 @@ def cmd_disconnect(apply: bool = False) -> int:
     return 0
 
 
+def cmd_verify(apply: bool = False) -> int:
+    """Is every role on the sheet still live?
+
+    Three answers, never two. A row whose board hunter cannot find is
+    UNVERIFIABLE, which is not the same as live and must never be reported as
+    such: that conflation is how a role Krish said go to sat on the sheet
+    after the posting had gone.
+
+    Where the board is discovered, column D is rewritten with the real ATS
+    URL so the row is checkable from then on without discovery.
+    """
+    from .ats import discover as disc
+    from .ats import ashby, greenhouse, lever, workday
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    known = db_get(cfg, "hunter_seen_roles",
+                   {"select": "job_id,title,company,url,job_url,krish_verdict,"
+                              "verdict_source", "limit": "5000"})
+    pairs, _, _, _ = match_rows(rows, list(known))
+    paired = {srow.row_number: d for srow, d in pairs}
+    cache = disc.load_cache(cfg)
+    boards = {"greenhouse": greenhouse.board, "ashby": ashby.board,
+              "lever": lever.board}
+    fetchers = {"greenhouse": greenhouse.fetch_posting,
+                "lever": lever.fetch_posting, "ashby": ashby.fetch_posting,
+                "workday": workday.fetch_posting}
+
+    live, dead, unknown, relinked = [], [], [], {}
+    for r in rows:
+        title = full_title(paired, r)
+        key = ats_key(r.jd_url)
+        if key:
+            ats, slug, pid = key
+            try:
+                is_live, _, _ = fetch_with_retry(fetchers[ats], slug, pid)
+            except Exception as e:
+                unknown.append((r, f"{ats} fetch failed: {e.__class__.__name__}"))
+                continue
+            (live if is_live else dead).append((r, f"{ats}/{slug}"))
+            continue
+
+        found = disc.discover(cfg, r.company, cache)
+        if not found:
+            unknown.append((r, "no job board found on greenhouse, ashby or lever"))
+            continue
+        ats, slug = found
+        try:
+            postings = boards[ats](slug)
+        except Exception as e:
+            unknown.append((r, f"{ats}/{slug} board read failed: {e.__class__.__name__}"))
+            continue
+        nt = _norm_title(title)
+        hit = next((p for p in postings if _norm_title(p.title) == nt), None)
+        if hit is None:
+            close = [p for p in postings
+                     if title_jaccard(title, p.title) >= FUZZY_TITLE_MIN]
+            hit = close[0] if len(close) == 1 else None
+        if hit is None:
+            dead.append((r, f"not on the {ats}/{slug} board ({len(postings)} jobs)"))
+            continue
+        live.append((r, f"{ats}/{slug}, relinked"))
+        if hit.url:
+            relinked[r.row_number] = hit.url
+
+    print(f"LIVE {len(live)}, DEAD {len(dead)}, UNVERIFIABLE {len(unknown)}\n")
+    for r, why in live:
+        print(f"  live  row {r.row_number:>3} {r.company[:22]:24} "
+              f"{r.role[:36]:38} {why}")
+    for r, why in dead:
+        d = paired.get(r.row_number) or {}
+        his = (d.get("krish_verdict") or "").strip()
+        held = his and not learn.is_auto(d)
+        print(f"  DEAD  row {r.row_number:>3} {r.company[:22]:24} "
+              f"{r.role[:36]:38} {why}"
+              + (f"  [your verdict {his!r}, held]" if held else ""))
+    for r, why in unknown:
+        print(f"  ?     row {r.row_number:>3} {r.company[:22]:24} "
+              f"{r.role[:36]:38} {why}")
+
+    if not apply:
+        print("\ndry run. add --apply to relink the rows that were found and "
+              "archive the dead ones you have not verdicted.")
+        return 0
+
+    if relinked:
+        sheet.relink_jd_urls(relinked)
+        print(f"\nrelinked {len(relinked)} row(s) to their real ATS posting")
+    disc.save_cache(cfg, cache)
+
+    movers = []
+    for r, why in dead:
+        d = paired.get(r.row_number) or {}
+        if (d.get("krish_verdict") or "").strip() and not learn.is_auto(d):
+            continue  # his call, not hunter's
+        if d.get("job_id"):
+            movers.append((r, d["job_id"], "dead posting", why))
+    if movers:
+        stamp_auto_verdicts(cfg, sheet, movers)
+        fresh = {x.row_number: x for x in sheet.read_pipeline(canon.sheet_headers)}
+        sheet.archive_rows([fresh[r.row_number] for r, _, _, _ in movers
+                            if r.row_number in fresh],
+                           archive_tab=config_mod.ARCHIVE_TAB,
+                           archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
+                           headers=canon.sheet_headers)
+    left = sheet.read_pipeline(canon.sheet_headers)
+    print(f"archived {len(movers)} dead row(s); Pipeline now has {len(left)} rows")
+    return 0
+
+
 def cmd_archive(apply: bool = False) -> int:
     """Move decided rows off Pipeline onto the Applied tab.
 
@@ -1274,9 +1388,11 @@ def _resolve_for_build(row: dict) -> ResolvedRole:
     live, jd, jd_url = False, "", url
     if key:
         ats, slug, pid = key
+        from .ats import workday
         fetch = {"greenhouse": greenhouse.fetch_posting,
                  "lever": lever.fetch_posting,
-                 "ashby": ashby.fetch_posting}[ats]
+                 "ashby": ashby.fetch_posting,
+                 "workday": workday.fetch_posting}[ats]
         live, jd, jd_url = fetch_with_retry(fetch, slug, pid)
     return ResolvedRole(company=row.get("company") or "", title=row["title"],
                         url=url, jd_url=jd_url, jd_text=jd, live=live,
@@ -1762,6 +1878,8 @@ def main(argv: list[str]) -> int:
             print("usage: python -m hunter.run decline <row>=<reason> ... [--apply]")
             return 2
         return cmd_decline(pairs_in, apply="--apply" in argv)
+    if cmd == "verify":
+        return cmd_verify(apply="--apply" in argv)
     if cmd == "disconnect":
         return cmd_disconnect(apply="--apply" in argv)
     if cmd == "archive":
@@ -1777,7 +1895,7 @@ def main(argv: list[str]) -> int:
             ingest_dir = argv[2]
         return cmd_bridges(ingest_dir)
     print(f"unknown command {cmd!r}; commands: run, reconcile, migrate-sheet, "
-          f"build --job-id X, recon, dedupe-db, learn [--apply], drain, "
+          f"build --job-id X, recon, dedupe-db, learn [--apply], drain, verify, "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2
 

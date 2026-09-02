@@ -27,3 +27,28 @@ def search(tenant: str, site: str, host: str, *, search_text: str = "",
             posted_at=j.get("postedOn"),
             ats="workday", ats_slug=tenant, raw=j))
     return out
+
+
+def fetch_posting(tenant: str, path: str) -> tuple[bool, str, str]:
+    """(live, jd_text, jd_url) for one Workday posting.
+
+    Workday splits a posting URL into tenant (in the host) and site plus
+    external path. The CXS endpoint answers with the description; a 404 or an
+    empty body is a dead posting, same rule as every other client here.
+    """
+    import re
+    site, _, rest = path.partition("/job/")
+    host = f"{tenant}.wd3.myworkdayjobs.com"
+    url = f"https://{host}/en-US/{site}/job/{rest}"
+    api = f"https://{host}/wday/cxs/{tenant}/{site}/job/{rest}"
+    try:
+        r = requests.get(api, headers=UA, timeout=30)
+    except Exception:
+        return False, "", url
+    if r.status_code >= 400:
+        return False, "", url
+    info = (r.json() or {}).get("jobPostingInfo") or {}
+    if not info or info.get("jobPostingId") is None:
+        return False, "", url
+    text = re.sub(r"<[^>]+>", " ", info.get("jobDescription", ""))
+    return True, re.sub(r"\s+", " ", text).strip(), url

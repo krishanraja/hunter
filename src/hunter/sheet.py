@@ -340,6 +340,34 @@ class Sheet:
                                  f"expected four 'Not built'")
         return len(row_numbers)
 
+    def relink_jd_urls(self, mapping: dict[int, str]) -> int:
+        """Point column D at the real ATS posting, keeping the link text.
+
+        A row discovered through its company's board was carrying a LinkedIn
+        URL that nothing could verify. Rewriting D means the next check reads
+        the ATS directly instead of rediscovering the board every time.
+        """
+        if not mapping:
+            return 0
+        grid = self.read_grid()
+        data = []
+        for rn, url in sorted(mapping.items()):
+            row = grid[rn - 1] if rn - 1 < len(grid) else []
+            label = (row[2] if len(row) > 2 else "") or "Job posting"
+            label = str(label).replace('"', "'")
+            data.append({"range": f"{TAB}!D{rn}",
+                         "values": [[f'=HYPERLINK("{url}","{label}")']]})
+        self._post("/values:batchUpdate",
+                   {"valueInputOption": "USER_ENTERED", "data": data})
+        for rn, url in sorted(mapping.items()):
+            back = self._get(f"/values/{TAB}!D{rn}",
+                             {"valueRenderOption": "FORMULA"}).get("values", [[""]])
+            got = (back[0][0] if back and back[0] else "")
+            if url not in got:
+                raise SheetError(f"row {rn} column D read back as {got[:60]!r}, "
+                                 f"expected the posting URL")
+        return len(mapping)
+
     def delete_archive_rows(self, row_numbers: list[int], *,
                             archive_sheet_id: int, expect: list[str]) -> int:
         """Remove rows from the archive tab, checking first that each still
