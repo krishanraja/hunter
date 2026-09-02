@@ -318,6 +318,28 @@ class Sheet:
                                  f"expected {text!r}")
         return len(mapping)
 
+    def clear_package_links(self, row_numbers: list[int]) -> int:
+        """Set columns E to H back to "Not built" and read them back.
+
+        The four package columns are the only ones this touches; column A is
+        Krish's and columns I and J belong to the assessment.
+        """
+        if not row_numbers:
+            return 0
+        blank = [["Not built"] * 4]
+        data = [{"range": f"{TAB}!E{rn}:H{rn}", "values": blank}
+                for rn in sorted(row_numbers)]
+        self._post("/values:batchUpdate",
+                   {"valueInputOption": "USER_ENTERED", "data": data})
+        for rn in sorted(row_numbers):
+            back = self._get(f"/values/{TAB}!E{rn}:H{rn}",
+                             {"valueRenderOption": "FORMULA"}).get("values", [[]])
+            got = (back[0] if back else []) + [""] * 4
+            if got[:4] != ["Not built"] * 4:
+                raise SheetError(f"row {rn} E:H read back as {got[:4]}, "
+                                 f"expected four 'Not built'")
+        return len(row_numbers)
+
     def delete_archive_rows(self, row_numbers: list[int], *,
                             archive_sheet_id: int, expect: list[str]) -> int:
         """Remove rows from the archive tab, checking first that each still

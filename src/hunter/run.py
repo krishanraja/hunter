@@ -834,6 +834,65 @@ def cmd_decline(pairs_in: list[tuple[int, str]], apply: bool = False) -> int:
     return 0
 
 
+# Hunter took over from the incumbent on this date. Anything built before it
+# came off CV v11 and letter v1, both superseded by the masters in canon 9.9.
+HUNTER_TOOK_OVER = "2026-08-31"
+
+
+def cmd_disconnect(apply: bool = False) -> int:
+    """Unlink packages built on the superseded templates.
+
+    Krish asked for this and did not get it. Twelve packages were built
+    2026-08-11 by the retired incumbent from CV v11 and letter v1, all of them
+    on roles he said go to, and every one is marked package_status='built', so
+    select_for_build skips them permanently. Even after he marks a row Yes it
+    would never be rebuilt on the current format.
+
+    Disconnect means unlink. The Drive documents stay where they are: they are
+    not hunter's to bin.
+    """
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    rows = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,package_status,package_built_at,"
+                  "package_cv_url,package_letter_url",
+        "package_status": "neq.none", "limit": "1000"})
+    # Only a package that actually exists and predates the handover. A row
+    # sitting at 'blocked' with no build date is a different problem and is
+    # not this command's to touch.
+    stale = [r for r in rows
+             if r.get("package_status") == "built"
+             and str(r.get("package_built_at") or "")[:10] < HUNTER_TOOK_OVER]
+    print(f"{len(stale)} package(s) built before {HUNTER_TOOK_OVER} on the "
+          f"superseded templates:")
+    for r in stale:
+        print(f"  {str(r.get('package_built_at'))[:10]}  {r['company'][:22]:24} "
+              f"{str(r.get('title'))[:38]}")
+
+    live = sheet.read_pipeline(canon.sheet_headers)
+    linked = [r for r in live
+              if any((r.cells[i] or "").strip() not in ("", "Not built")
+                     for i in range(4, 8))]
+    print(f"\n{len(linked)} Pipeline row(s) still show package links:")
+    for r in linked:
+        print(f"  row {r.row_number}: {r.company} / {r.role}")
+
+    if not apply:
+        print("\ndry run. add --apply to unlink. The Drive files are not touched.")
+        return 0
+
+    for r in stale:
+        db_patch(cfg, "hunter_seen_roles", {"job_id": r["job_id"]},
+                 {"package_status": "none", "package_built_at": None,
+                  "package_cv_url": None, "package_letter_url": None,
+                  "package_folder_url": None, "package_outreach_url": None})
+    if linked:
+        sheet.clear_package_links([r.row_number for r in linked])
+    print(f"\nunlinked {len(stale)} package(s) and cleared {len(linked)} sheet "
+          f"row(s). They rebuild on the current format once you mark them Yes.")
+    return 0
+
+
 def cmd_archive(apply: bool = False) -> int:
     """Move decided rows off Pipeline onto the Applied tab.
 
@@ -1682,6 +1741,8 @@ def main(argv: list[str]) -> int:
             print("usage: python -m hunter.run decline <row>=<reason> ... [--apply]")
             return 2
         return cmd_decline(pairs_in, apply="--apply" in argv)
+    if cmd == "disconnect":
+        return cmd_disconnect(apply="--apply" in argv)
     if cmd == "archive":
         return cmd_archive(apply="--apply" in argv)
     if cmd == "set-dropdown":
