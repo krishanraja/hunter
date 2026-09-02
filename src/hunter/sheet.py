@@ -182,6 +182,40 @@ class Sheet:
                          {"valueRenderOption": "FORMULA"})
         return [pad_row(r) for r in data.get("values", [])]
 
+    def delete_rows(self, row_numbers: list[int], *, expect_verdict: str = "New") -> int:
+        """Remove data rows, refusing any row Krish has written on.
+
+        Deleting is the one destructive thing this module does, so it re-reads
+        column A immediately before the write and aborts the whole batch if any
+        target no longer reads exactly `expect_verdict`. Rows go in descending
+        order so earlier indices stay valid.
+        """
+        targets = sorted({int(n) for n in row_numbers}, reverse=True)
+        if not targets:
+            return 0
+        if min(targets) < 3:
+            raise SheetError(f"refusing to delete row {min(targets)}: rows 1 and 2 "
+                             f"are the header and the intentional blank")
+        grid = self._get("/values/Pipeline!A1:A2000").get("values", [])
+        dirty = []
+        for n in targets:
+            cell = (grid[n - 1][0] if len(grid) >= n and grid[n - 1] else "").strip()
+            if cell != expect_verdict:
+                dirty.append((n, cell))
+        if dirty:
+            raise SheetError(f"refusing to delete: column A is no longer "
+                             f"{expect_verdict!r} on {dirty[:5]}; re-run the plan")
+        self._post(":batchUpdate", {"requests": [
+            {"deleteDimension": {"range": {
+                "sheetId": self.sheet_id, "dimension": "ROWS",
+                "startIndex": n - 1, "endIndex": n}}}
+            for n in targets]})
+        after = self._get("/values/Pipeline!A1:A2000").get("values", [])
+        if len(after) != len(grid) - len(targets):
+            raise SheetError(f"read-back mismatch after delete: expected "
+                             f"{len(grid) - len(targets)} rows, found {len(after)}")
+        return len(targets)
+
     def read_tab_values(self, rng: str) -> list[list]:
         """Raw values from any tab of the workbook (read-only helper; the
         validated write path stays Pipeline-only)."""

@@ -497,3 +497,64 @@ def test_unmatched_both_directions_surface():
              "package_status": "built"}
     pairs, sheet_only, db_only, amb = match_rows([srow], [dbrow])
     assert not pairs and sheet_only == [srow] and db_only == [dbrow]
+
+
+# ---------- direction 2 standing (the 2026-09-01 incumbent-flood audit) ----------
+
+def _reconcile_with(monkeypatch, db_rows, sheet_grid=None):
+    import hunter.run as run_mod
+    grid = sheet_grid or [list(HEADERS), [""] * N_COLS]
+    s = FakeSheet(grid)
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: db_rows)
+    monkeypatch.setattr(run_mod, "db_insert", lambda *a, **kw: None)
+    monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
+
+    class FakeCanon:
+        sheet_headers = HEADERS
+        bar = 8
+
+    return run_mod.reconcile(cfg=None, canon=FakeCanon(), sheet=s), s
+
+
+def _row(**over):
+    d = {"job_id": "x:y", "company": "ElevenLabs", "title": "General Manager - Brazil",
+         "url": "https://jobs.ashbyhq.com/elevenlabs/aaa", "score": 8, "status": "staging",
+         "krish_verdict": None, "package_status": "none", "location": "Brazil (in-country)",
+         "comp": "", "why_it_fits": "", "sweep_date": None, "source": "ats_sweep_2026_08_31",
+         "presented_at": None, "rejection_reason": None, "package_cv_url": None,
+         "package_letter_url": None, "job_url": None}
+    d.update(over)
+    return d
+
+
+def test_incumbent_scored_row_never_reaches_the_sheet(monkeypatch):
+    """The retired incumbent scored ElevenLabs GM Brazil an 8 and left it at
+    status staging. Hunter's own scorer rates it 2 and G6 fails it on
+    geography, so a score hunter did not produce is not evidence."""
+    ledger, s = _reconcile_with(monkeypatch, [_row()])
+    assert ledger.db_to_sheet == []
+    assert any("retired incumbent" in x for x in ledger.skipped)
+    assert len(s.grid) == 2          # nothing appended
+
+
+def test_hunter_judged_row_at_the_bar_is_appended(monkeypatch):
+    ledger, s = _reconcile_with(monkeypatch, [_row(
+        job_id="cresta:vp-partnerships", company="Cresta", title="VP Partnerships",
+        location="New York", sweep_date="2026-09-01",
+        why_it_fits="Engine-Builder signals 4, mandate present")])
+    assert len(ledger.db_to_sheet) == 1
+
+
+def test_hunter_judged_row_below_the_bar_is_not_appended(monkeypatch):
+    ledger, _ = _reconcile_with(monkeypatch, [_row(
+        score=6, location="New York", sweep_date="2026-09-01",
+        why_it_fits="Engine-Builder signals 2")])
+    assert ledger.db_to_sheet == []
+    assert any("below the canon 8 bar" in x for x in ledger.skipped)
+
+
+def test_row_krish_already_decided_is_kept_whatever_its_provenance(monkeypatch):
+    """Real history survives: a verdict or a built package is evidence even
+    when the incumbent produced the row."""
+    ledger, _ = _reconcile_with(monkeypatch, [_row(krish_verdict="Applied")])
+    assert len(ledger.db_to_sheet) == 1

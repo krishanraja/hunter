@@ -29,7 +29,7 @@ from . import config as config_mod
 from .canon import Canon, CanonError, load_canon
 from .config import Config, GoogleOAuth, GoogleServiceAccount, db_get, db_insert, db_patch, load
 from .docbuild import DocBuild
-from .gates import FLOOR, run_gates
+from .gates import FLOOR, GEO_ALLOW, run_gates
 from .report import report_run
 from .router import classify_verdict, route_status, select_for_build
 from .score import BAR, score_role
@@ -124,6 +124,15 @@ class ReconcileLedger:
 
 
 HASH_SUFFIX = re.compile(r"-[0-9a-f]{6}$")
+
+# Countries canon 9.4 does not cover. Deliberately explicit rather than the
+# inverse of GEO_ALLOW: a US city like "San Francisco, CA" fails GEO_ALLOW on
+# the location string alone but usually passes G6 once the JD says remote, and
+# deleting those would throw away good roles.
+FOREIGN_LOCATION = re.compile(
+    r"\b(brazil|denmark|poland|saudi|mexico|italy|spain|germany|france|"
+    r"switzerland|netherlands|sweden|norway|india|singapore|japan|korea|"
+    r"china|australia|dubai|uae|ireland|dublin|apj|latam|dach)\b", re.I)
 
 # 0.6 lets "Director of Sales, Enterprise" capture the "- New York" variant
 # (3/5 tokens); 0.65 keeps "Chief of Staff" pairing with "Chief of Staff to
@@ -310,15 +319,32 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
         db_insert(cfg, "hunter_seen_roles", inserts, on_conflict="job_id",
                   ignore_duplicates=True)
 
-    # direction 2: DB rows the sheet lacks, but only ones with standing
+    # direction 2: DB rows the sheet lacks, but only ones with standing.
+    #
+    # This direction writes onto Krish's sheet, so the bar is evidence, not a
+    # status string. The retired incumbent left ~57 rows sitting at
+    # status='staging' carrying its own scores, and trusting those put 12 non
+    # UK, non US roles in front of him at score 8: ElevenLabs GM Brazil,
+    # Denmark, Poland, Saudi Arabia and the rest. Hunter's own scorer rates
+    # that Brazil role 2 and its G6 gate fails it outright on geography
+    # (2026-09-01 audit). A score this system did not produce is not evidence.
     to_append = []
     for d in db_only:
-        has_standing = (d.get("status") in ("staging", "presented")
-                        or (d.get("package_status") or "none") != "none"
-                        or d.get("krish_verdict"))
-        if not has_standing:
-            continue
         url = d.get("url") or d.get("job_url")
+        decided = bool(d.get("krish_verdict")) or (d.get("package_status") or "none") != "none"
+        # hunter always writes sweep_date and why_it_fits; the incumbent never did
+        hunter_judged = bool(d.get("sweep_date")) and bool(d.get("why_it_fits"))
+        if not decided:
+            if not hunter_judged:
+                ledger.skipped.append(
+                    f"{d['job_id']}: scored by the retired incumbent, never gated "
+                    f"by hunter; not put on the sheet")
+                continue
+            if int(d.get("score") or 0) < canon.bar:
+                ledger.skipped.append(
+                    f"{d['job_id']}: score {d.get('score')} is below the canon "
+                    f"{canon.bar} bar; not put on the sheet")
+                continue
         if not url or not str(url).startswith("http"):
             ledger.skipped.append(f"{d['job_id']}: no resolvable URL, cannot "
                                   f"build column D")
@@ -394,6 +420,82 @@ def cmd_migrate_sheet() -> int:
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     print(sheet.migrate_formatting())
+    return 0
+
+
+def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False) -> int:
+    """Remove rows this system should never have written.
+
+    Only rows where column A still reads exactly "New", so nothing Krish has
+    touched is ever at risk, and only two unambiguous classes by default:
+      1. duplicates of an earlier row (same company and title),
+      2. rows sitting outside canon 9.4 geography, which is how ElevenLabs GM
+         Brazil, Denmark, Poland and Saudi Arabia reached the sheet at score 8.
+
+    Rows the retired incumbent scored but hunter never gated are REPORTED, not
+    deleted: some are plausible New York and US-remote roles, and throwing away
+    possibly good work is worse than leaving it for a re-gate. --incumbent
+    removes them too, if that is what you want.
+    """
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    srows = sheet.read_pipeline(canon.sheet_headers)
+    db = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,url,job_url,score,status,krish_verdict,"
+                  "rejection_reason,package_status,package_cv_url,package_letter_url,"
+                  "presented_at,source,location,comp,why_it_fits,sweep_date",
+        "status": "neq.duplicate", "limit": "5000"})
+    pairs, sheet_only, _, _ = match_rows(srows, db)
+
+    def ident(s: SheetRow):
+        return (slugify(s.company), _norm_title(s.role))
+
+    untouched = lambda s: (s.verdict or "").strip() == "New"
+    plan: dict[int, str] = {}
+    first: dict[tuple, int] = {}
+    for s in srows:
+        k = ident(s)
+        if k in first:
+            if untouched(s):
+                plan[s.row_number] = f"duplicate of row {first[k]}"
+        else:
+            first[k] = s.row_number
+    ungated = []
+    for s, d in pairs:
+        if s.row_number in plan or not untouched(s):
+            continue
+        loc = (d.get("location") or "")
+        decided = bool(d.get("krish_verdict")) or (d.get("package_status") or "none") != "none"
+        judged = bool(d.get("sweep_date")) and bool(d.get("why_it_fits"))
+        if FOREIGN_LOCATION.search(loc) and not GEO_ALLOW.search(loc.lower()):
+            plan[s.row_number] = f"outside canon geography: {loc[:34]}"
+        elif not decided and not judged:
+            ungated.append((s, d))
+    if include_ungated:
+        for s, d in ungated:
+            plan[s.row_number] = (f"incumbent score {d.get('score')}, never gated by "
+                                  f"hunter ({(d.get('location') or 'no location')[:26]})")
+
+    kept = [s.row_number for s in srows if not untouched(s)]
+    print(f"{len(srows)} data rows; {len(plan)} to remove; "
+          f"{len(kept)} rows you have written on are untouchable")
+    for n in sorted(plan):
+        row = next(r for r in srows if r.row_number == n)
+        print(f"  row {n:>3}  {row.company[:18]:18} {row.role[:38]:38} {plan[n]}")
+    if ungated and not include_ungated:
+        print(f"\n{len(ungated)} more rows carry an incumbent score hunter never "
+              f"gated. Left in place; --incumbent removes them too:")
+        for s2, d2 in sorted(ungated, key=lambda x: x[0].row_number)[:8]:
+            print(f"  row {s2.row_number:>3}  {s2.company[:18]:18} {s2.role[:34]:34} "
+                  f"score {d2.get('score')}")
+        if len(ungated) > 8:
+            print(f"  ... {len(ungated) - 8} more")
+    if not apply:
+        print("\ndry run. add --apply to delete these rows")
+        return 0
+    removed = sheet.delete_rows(sorted(plan))
+    print(f"\ndeleted {removed} rows; sheet now has "
+          f"{len(sheet.read_pipeline(canon.sheet_headers))} data rows")
     return 0
 
 
@@ -873,13 +975,16 @@ def main(argv: list[str]) -> int:
         return cmd_recon()
     if cmd == "dedupe-db":
         return cmd_dedupe_db()
+    if cmd == "prune-sheet":
+        return cmd_prune_sheet(apply="--apply" in argv,
+                               include_ungated="--incumbent" in argv)
     if cmd == "bridges":
         ingest_dir = None
         if len(argv) >= 3 and argv[1] == "--ingest":
             ingest_dir = argv[2]
         return cmd_bridges(ingest_dir)
     print(f"unknown command {cmd!r}; commands: run, reconcile, migrate-sheet, "
-          f"build --job-id X, recon, dedupe-db, bridges [--ingest DIR]")
+          f"build --job-id X, recon, dedupe-db, bridges [--ingest DIR], prune-sheet [--apply]")
     return 2
 
 
