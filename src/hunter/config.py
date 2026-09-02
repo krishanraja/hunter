@@ -97,11 +97,37 @@ def load() -> Config:
 
 # ---------- PostgREST helpers, used repo-wide ----------
 
+# PostgREST caps a response at its server-side max-rows (1000 on Supabase),
+# whatever `limit` asks for. Every read here passed limit=5000 and quietly got
+# 1000, so reconcile's id guard saw 1000 of 1888 job_ids and re-inserted rows
+# it already had, seen_identity_keys deduped against a partial view, and the
+# learning loop read a truncated history. Nothing errored; the data was just
+# incomplete. Page until the server stops giving.
+PAGE = 1000
+
+
 def db_get(cfg: Config, table: str, params: dict[str, str]) -> list[dict]:
-    r = requests.get(f"{cfg.supabase_url}/rest/v1/{table}",
-                     headers=_rest_headers(cfg), params=params, timeout=60)
-    r.raise_for_status()
-    return r.json()
+    want = int(params.get("limit") or 0) or None
+    out: list[dict] = []
+    offset = 0
+    while True:
+        page_size = PAGE if want is None else min(PAGE, want - len(out))
+        if page_size <= 0:
+            break
+        headers = dict(_rest_headers(cfg))
+        headers["Range-Unit"] = "items"
+        headers["Range"] = f"{offset}-{offset + page_size - 1}"
+        r = requests.get(f"{cfg.supabase_url}/rest/v1/{table}",
+                         headers=headers,
+                         params={k: v for k, v in params.items() if k != "limit"},
+                         timeout=60)
+        r.raise_for_status()
+        page = r.json()
+        out.extend(page)
+        if len(page) < page_size:
+            break
+        offset += len(page)
+    return out
 
 
 def db_insert(cfg: Config, table: str, rows: list[dict], *,

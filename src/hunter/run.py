@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import datetime
 import re
+import requests
 import time
 from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -1072,6 +1073,38 @@ def cmd_set_dropdown() -> int:
     return 0
 
 
+def cmd_prune_orphans(apply: bool = False) -> int:
+    """Delete Pipeline rows that no DB row explains.
+
+    A staged row always has a hunter_seen_roles row behind it. One without is
+    debris from a run that half-failed, and it cannot be assessed, verified or
+    archived because there is nothing to assess: every other command here
+    refuses to touch it, correctly. Only rows still reading exactly "New" are
+    ever removed, so nothing Krish has written on is at risk.
+    """
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    live = sheet.read_pipeline(canon.sheet_headers)
+    known = db_get(cfg, "hunter_seen_roles",
+                   {"select": "job_id,title,company,url,job_url", "limit": "5000"})
+    _, unmatched, _, _ = match_rows(live, list(known))
+    orphans = [r for r in unmatched if (r.verdict or "").strip() == "New"]
+    held = [r for r in unmatched if (r.verdict or "").strip() != "New"]
+    print(f"{len(orphans)} orphan row(s) to delete:")
+    for r in orphans:
+        print(f"  row {r.row_number:>3} {r.company[:24]:26} {r.role[:44]}")
+    for r in held:
+        print(f"  HELD row {r.row_number}: {r.company} reads {r.verdict!r}, not New")
+    if not apply:
+        print("\ndry run. add --apply to delete them.")
+        return 0
+    if orphans:
+        sheet.delete_rows([r.row_number for r in orphans], expect_verdict="New")
+    left = sheet.read_pipeline(canon.sheet_headers)
+    print(f"\ndeleted {len(orphans)}; Pipeline now has {len(left)} rows")
+    return 0
+
+
 def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False) -> int:
     """Remove rows this system should never have written.
 
@@ -1493,8 +1526,14 @@ def seen_identity_keys(cfg: Config) -> set:
     rows count too; a role once seen stays seen."""
     keys: set = set()
     rows = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,url,job_url,company,title", "limit": "5000"})
+        "select": "job_id,url,job_url,company,title,status", "limit": "5000"})
     for r in rows:
+        # A row hunter could not resolve was never actually assessed. Counting
+        # it as seen means it can never be reconsidered once resolution
+        # improves, and 1451 LinkedIn postings were sitting in exactly that
+        # state when board discovery arrived.
+        if r.get("status") == "unresolved":
+            continue
         keys.add(r["job_id"])
         keys.update(identity_keys(r.get("company") or "", r.get("title") or ""))
         u = r.get("url") or r.get("job_url") or ""
@@ -1623,19 +1662,55 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     spend = SpendTracker(cap_usd=float(cfg.optional("hunter_apify_max_usd_per_run", "5.00")))
     urls = linkedin_search_urls(cfg, sheet)
     if urls:
-        try:
-            postings.extend(sweep_linkedin(
-                cfg, urls, spend=spend,
-                max_charge_usd=float(cfg.optional("hunter_apify_max_usd_per_call", "2.00"))))
-            summary.append(f"apify linkedin: {len(urls)} search urls swept")
-        except Exception as e:
-            summary.append(f"apify linkedin sweep failed: {e.__class__.__name__}: {e}")
+        # One connection reset used to kill the whole paid sourcing leg: the
+        # ATS fetches had fetch_with_retry and this did not, so a transient
+        # network blip cost the entire LinkedIn sweep for the run.
+        cap = float(cfg.optional("hunter_apify_max_usd_per_call", "2.00"))
+        for attempt in (1, 2):
+            try:
+                postings.extend(sweep_linkedin(cfg, urls, spend=spend,
+                                               max_charge_usd=cap))
+                summary.append(f"apify linkedin: {len(urls)} search urls swept")
+                break
+            except Exception as e:
+                transient = isinstance(e, (requests.ConnectionError, requests.Timeout))
+                if transient and attempt == 1:
+                    time.sleep(5)
+                    continue
+                summary.append(
+                    f"apify linkedin sweep failed: {e.__class__.__name__}: {e}")
+                break
     else:
         summary.append("apify linkedin sweep skipped: no search URLs in the "
                        "Role Targeting tab or hunter_linkedin_search_urls")
     counts["spend_usd"] = round(spend.spent, 2)
+    staged = stage_postings(cfg, canon, sheet, postings, summary)
+    staged["spend_usd"] = counts["spend_usd"]
+    return staged
 
+
+def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
+                   postings: list, summary: list[str]) -> dict:
+    """Dedupe, resolve, gate, score, write a rationale, stage.
+
+    Split out of source_and_stage so postings that arrive some other way go
+    through exactly this path. On 2026-09-02 a paid Apify run's 2924 results
+    had to be recovered after a timeout, and recovering them down a parallel
+    code path would have meant roles reaching the sheet without the gates.
+    """
+    from .ats import ashby, greenhouse, lever
+    from .ats import discover as disc
+    from .gates import SENIOR_TITLE
+    from .package.rationale import write_rationale
+
+    counts = {"discovered": 0, "senior": 0, "fresh": 0, "resolved": 0,
+              "recorded": 0, "staged": 0, "unresolved": 0, "spend_usd": 0.0,
+              "boards_found": 0}
     counts["discovered"] = len(postings)
+    cache = disc.load_cache(cfg)
+    boards = {"greenhouse": greenhouse.board, "ashby": ashby.board,
+              "lever": lever.board}
+    probe_budget = int(cfg.optional("hunter_max_board_discoveries_per_run", "60"))
     senior = [p for p in postings if p.title and SENIOR_TITLE.search(p.title)]
     counts["senior"] = len(senior)
 
@@ -1668,6 +1743,36 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     fetchers = {"greenhouse": greenhouse.fetch_posting,
                 "ashby": ashby.fetch_posting, "lever": lever.fetch_posting}
     for p in fresh:
+        # A LinkedIn posting carries no ATS link, so hunter could never read
+        # its JD and recorded it unresolved: 1451 of them on 2026-09-02, the
+        # entire paid sweep, none of which reached the sheet. Find the
+        # company's own board and the posting on it. Only for roles that
+        # match an archetype, and only within a probe budget, because
+        # probing every company found on LinkedIn is neither cheap nor useful.
+        if not p.ats and probe_budget > 0 and archetype(p.title):
+            found = disc.discover(cfg, p.company, cache)
+            if found is None:
+                probe_budget -= 1
+            else:
+                ats, slug = found
+                # Exact title only. A fuzzy match across two sources pairs
+                # a LinkedIn posting with a different job on the same board:
+                # on 2026-09-02 "Managing Director, Enterprise Accounts,
+                # Financial Services AI" was linked to "Managing Director
+                # Strategic Banking Accounts", so the sheet showed one title
+                # and the rationale was written from the other posting's JD.
+                # A missed match costs one role; a wrong one costs trust.
+                try:
+                    hit = next((b for b in boards[ats](slug)
+                                if _norm_title(b.title) == _norm_title(p.title)),
+                               None)
+                except Exception:
+                    hit = None
+                if hit is not None:
+                    counts["boards_found"] += 1
+                    p.ats, p.ats_slug = hit.ats, hit.ats_slug
+                    p.ats_posting_id, p.url = hit.ats_posting_id, hit.url or p.url
+
         fetch = fetchers.get(p.ats or "")
         if fetch:
             try:
@@ -1731,6 +1836,10 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
         db_insert(cfg, "hunter_seen_roles", inserts, on_conflict="job_id",
                   ignore_duplicates=True)
     counts["recorded"] = len(inserts)
+    disc.save_cache(cfg, cache)
+    if counts["boards_found"]:
+        summary.append(f"board discovery resolved {counts['boards_found']} "
+                       f"LinkedIn posting(s) to their real ATS")
 
     if staged_rows:
         new_rows = [make_row(company=role.company, role=role.title,
@@ -1886,6 +1995,8 @@ def main(argv: list[str]) -> int:
         return cmd_archive(apply="--apply" in argv)
     if cmd == "set-dropdown":
         return cmd_set_dropdown()
+    if cmd == "prune-orphans":
+        return cmd_prune_orphans(apply="--apply" in argv)
     if cmd == "prune-sheet":
         return cmd_prune_sheet(apply="--apply" in argv,
                                include_ungated="--incumbent" in argv)

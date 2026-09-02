@@ -86,23 +86,34 @@ def pad_row(row: list) -> list[str]:
     return (cells + [""] * N_COLS)[:N_COLS]
 
 
+def plain_text(text: str) -> str:
+    """Text with the dashes Krish does not use.
+
+    The no-em-dash rule covers everything hunter writes, and a JD excerpt it
+    copies onto the sheet is something hunter wrote there. A posting using an
+    em dash used to fail the row guard and abort the whole append, losing
+    every staged role in the batch.
+    """
+    return (text or "").replace("\u2014", " - ").replace("\u2013", " - ")
+
+
 def make_row(*, company: str, role: str, jd_url: str, score: int,
              why_it_fits: str = "", sector: str = "", stage: str = "",
              location: str = "", comp: str = "", source: str = "",
              jd_verified: bool = True, jd_snippet: str = "") -> list[str]:
     cells = [DEFAULTS.get(i, "") for i in range(N_COLS)]
-    cells[1] = company
-    cells[2] = role
+    cells[1] = plain_text(company)
+    cells[2] = plain_text(role)
     cells[3] = hyperlink(jd_url, "JD")
     cells[8] = str(score)
     if why_it_fits.strip():
-        cells[9] = why_it_fits.strip()
+        cells[9] = plain_text(why_it_fits).strip()
     for idx, value in ((10, sector), (11, stage), (12, location), (13, comp), (15, source)):
         if value.strip():
             cells[idx] = value.strip()
     cells[25] = "TRUE" if jd_verified else "FALSE"
     if jd_snippet.strip():
-        cells[26] = jd_snippet.strip()[:500]
+        cells[26] = plain_text(jd_snippet).strip()[:500]
     return cells
 
 
@@ -404,7 +415,7 @@ class Sheet:
             raise SheetError(f"refusing to write row {row_number}: header rows")
         if not 1 <= int(score) <= 10:
             raise SheetError(f"score {score} out of canon range 1..10")
-        why = (why_it_fits or "").strip()
+        why = plain_text(why_it_fits).strip()
         if not why:
             raise SheetError("column J cannot be blank; use the deterministic fallback")
         if "\u2014" in why:

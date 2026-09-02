@@ -50,7 +50,7 @@ class SpendTracker:
 
 def run_actor(cfg, actor_id: str, input_obj: dict, *, max_charge_usd: float,
               spend: SpendTracker | None = None,
-              poll_seconds: int = 10, timeout_seconds: int = 900,
+              poll_seconds: int = 10, timeout_seconds: int = 1800,
               token_key: str = "hunter_apify_token") -> list[dict]:
     if actor_id in FORBIDDEN_ACTORS:
         raise ForbiddenActorError(
@@ -91,10 +91,39 @@ def run_actor(cfg, actor_id: str, input_obj: dict, *, max_charge_usd: float,
         charged = (run.get("usage") or {}).get("TOTAL_USD") or run.get(
             "usageTotalUsd") or max_charge_usd
         spend.add(float(charged))
-    if status != "SUCCEEDED":
-        raise RuntimeError(f"actor run {run_id} ended {status}")
 
-    dataset_id = run["defaultDatasetId"]
+    # A run still going when the clock runs out has already filled its
+    # dataset, and the charge lands whether hunter reads it or not. On
+    # 2026-09-02 a nine-URL sweep was still RUNNING at the deadline with 2790
+    # items collected, and hunter threw all of them away and reported zero
+    # roles: it paid $2.67 for nothing. Take what the dataset holds, stop the
+    # run so it charges no further, and say what happened.
+    if status in ("READY", "RUNNING"):
+        try:
+            requests.post(f"{APIFY}/actor-runs/{run_id}/abort",
+                          params={"token": token}, timeout=30)
+        except Exception:
+            pass
+        print(f"apify run {run_id} still {status} at the {timeout_seconds}s "
+              f"deadline; aborting it and using what the dataset already holds")
+    elif status != "SUCCEEDED":
+        # A genuinely failed run may still have partial results worth having.
+        # Only an empty dataset is a real failure.
+        partial = _dataset_items(run.get("defaultDatasetId"), token)
+        if not partial:
+            raise RuntimeError(f"actor run {run_id} ended {status} with no results")
+        print(f"apify run {run_id} ended {status} but left {len(partial)} "
+              f"items; using them")
+        return partial
+
+    return _dataset_items(run.get("defaultDatasetId"), token)
+
+
+def _dataset_items(dataset_id: str | None, token: str) -> list[dict]:
+    """Every item in an Apify dataset, paged. Never raises on an absent
+    dataset: no dataset means no results, not a crash."""
+    if not dataset_id:
+        return []
     items: list[dict] = []
     offset = 0
     while True:
