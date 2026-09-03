@@ -41,6 +41,18 @@ def test_canon_section_5_excludes_defence_by_label_or_description():
     assert anduril["markets"] == ["AI"]
     assert excluded(anduril), "a defence company labelled AI must still be excluded"
     assert not excluded({"markets": ["AI", "Enterprise"], "description": "an AI CRM"})
+    # Morta Security, verbatim from the live index: a cyber company whose
+    # founders came from the NSA. The employer name is not the business.
+    morta = {"name": "Morta Security", "markets": [], "description":
+             "Traditional layered network defense is broken and Morta is poised "
+             "to turn the tables on advanced attackers. Led by executives and "
+             "engineers from the National Security Agency, Morta's technology "
+             "uniquely combats advanced malware. Morta mixes start-up innovation "
+             "with military-grade technology to solve the world's toughest "
+             "network security challenges."}
+    assert not excluded(morta), "a founder's former employer is not a market"
+    assert excluded({"name": "Anduril", "markets": ["AI"], "description":
+                     "building national security capabilities for America"})
 
 
 def test_a_board_job_becomes_a_posting_the_ordinary_path_can_resolve():

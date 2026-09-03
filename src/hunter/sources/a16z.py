@@ -51,12 +51,14 @@ EXCLUDED_MARKETS = {"defense", "defence"}
 # Phrases that name the business, not the bare word: "defense-in-depth" is
 # email security and "network defenses" is a cyber product, and a bare
 # "military" caught a founder's bio. Anduril, ZeroMark, Chariot Defense,
-# Galadyne and Swan all say what they are in one of these forms.
+# Galadyne and Swan all say what they are in one of these forms. "National
+# Security Agency" is where Morta's founders used to work, not what Morta
+# sells, so the employer name is carved out.
 DEFENCE = re.compile(
     r"\bdefen[cs]e[\s-]+(?:technology|tech|contractor|industry|sector|company|"
     r"startup|prime|and industrial|customers?|market)\b|"
     r"\b(?:military|warfighter|missile|munition|firearms?|weapons?|"
-    r"national security)\b[\s\w,'\u2019]{0,40}?\b(?:capabilit|customer|operator|"
+    r"national security(?! agency))\b[\s\w,'\u2019]{0,40}?\b(?:capabilit|customer|operator|"
     r"hardware|logistic|architecture|system|platform|product|market|technolog)|"
     r"\bsystems? (?:america|the (?:us|dod|pentagon)) (?:and its partners )?needs?\b",
     re.I)
