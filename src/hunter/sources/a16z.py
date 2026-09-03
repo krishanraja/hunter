@@ -43,9 +43,23 @@ FAMILY_QUERIES = [
     "head of commercial", "revenue strategy",
 ]
 
-# Canon section 5 excludes defence outright. Every other exclusion there is
-# judged on the posting by G7, which reads the JD rather than a label.
+# Canon section 5 excludes defence outright. The index does not label it
+# reliably (Anduril's market is "AI"; its description says "defense
+# technology company"), so both the market labels and the description are
+# read. Every other exclusion there is judged on the posting by G7.
 EXCLUDED_MARKETS = {"defense", "defence"}
+# Phrases that name the business, not the bare word: "defense-in-depth" is
+# email security and "network defenses" is a cyber product, and a bare
+# "military" caught a founder's bio. Anduril, ZeroMark, Chariot Defense,
+# Galadyne and Swan all say what they are in one of these forms.
+DEFENCE = re.compile(
+    r"\bdefen[cs]e[\s-]+(?:technology|tech|contractor|industry|sector|company|"
+    r"startup|prime|and industrial|customers?|market)\b|"
+    r"\b(?:military|warfighter|missile|munition|firearms?|weapons?|"
+    r"national security)\b[\s\w,'\u2019]{0,40}?\b(?:capabilit|customer|operator|"
+    r"hardware|logistic|architecture|system|platform|product|market|technolog)|"
+    r"\bsystems? (?:america|the (?:us|dod|pentagon)) (?:and its partners )?needs?\b",
+    re.I)
 
 _OBJ = re.compile(r'\{\\"id\\":\\"consider:')
 
@@ -106,12 +120,21 @@ def parse_companies(index_html: str) -> list[dict]:
             "stage": _field(obj, "stage"),
             "band": _field(obj, "employeeBand"),
             "job_count": int(jc.group(1)) if jc else None,
+            "description": _field(obj, "description") or "",
         })
     return out
 
 
+# A company that puts the word in its own name has settled the question.
+DEFENCE_NAME = re.compile(r"\bdefen[cs]e\b", re.I)
+
+
 def excluded(company: dict) -> bool:
-    return any(m.lower() in EXCLUDED_MARKETS for m in company.get("markets") or [])
+    if any(m.lower() in EXCLUDED_MARKETS for m in company.get("markets") or []):
+        return True
+    if DEFENCE_NAME.search(company.get("name") or ""):
+        return True
+    return bool(DEFENCE.search(company.get("description") or ""))
 
 
 def fetch_companies(timeout: int = 30) -> list[dict]:

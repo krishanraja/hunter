@@ -33,9 +33,14 @@ def test_the_companies_index_yields_the_portfolio_with_stage_and_markets():
     assert anduril["job_count"] and anduril["job_count"] > 1000
 
 
-def test_canon_section_5_excludes_defence_by_label():
+def test_canon_section_5_excludes_defence_by_label_or_description():
+    """The index calls Anduril's market "AI". Its description says what it is."""
     assert excluded({"markets": ["Defense"]})
-    assert not excluded({"markets": ["AI", "Enterprise"]})
+    cos = parse_companies((FX / "a16z_companies_index.html").read_text())
+    anduril = next(c for c in cos if c["slug"] == "anduril-industries")
+    assert anduril["markets"] == ["AI"]
+    assert excluded(anduril), "a defence company labelled AI must still be excluded"
+    assert not excluded({"markets": ["AI", "Enterprise"], "description": "an AI CRM"})
 
 
 def test_a_board_job_becomes_a_posting_the_ordinary_path_can_resolve():
