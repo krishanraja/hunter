@@ -1317,6 +1317,69 @@ def cmd_learn(apply: bool = False) -> int:
 COMMANDS_TABLE = "hunter_commands"
 
 
+def newsletter_step(cfg: Config, *, apply: bool, limit: int = 0) -> dict:
+    """Read every newsletter post not yet processed. One model call per new
+    post, none for a post already on record, so the hourly drain can afford
+    to check the feed every time it wakes."""
+    from .sources import newsletter as nl
+    posts = nl.fetch_feed()
+    fresh = nl.new_posts(cfg, posts)
+    if limit:
+        fresh = fresh[-limit:]
+    out = {"in_feed": len(posts), "new": len(fresh), "contacts": 0,
+           "hiring": 0, "advice": 0, "dropped": [], "posts": [], "errors": []}
+    model = cfg.optional("hunter_anthropic_model", "claude-opus-5")
+    for post in fresh:
+        signals, flags = nl.extract(cfg, post)
+        if signals is None:
+            out["errors"].append(f"{post['title'][:60]}: {'; '.join(flags)}")
+            if apply:
+                nl.record_post(cfg, post, None, flags, model)
+            continue
+        contacts = nl.contacts_from(signals, post)
+        out["contacts"] += len(contacts)
+        out["hiring"] += len(signals.get("hiring") or [])
+        out["advice"] += len(signals.get("reach_out_advice") or [])
+        out["dropped"].extend(flags)
+        out["posts"].append({"title": post["title"], "link": post["link"],
+                             "moves": [(c["full_name"], c["current_company"])
+                                       for c in contacts],
+                             "hiring": [h.get("company") for h in signals.get("hiring") or []],
+                             "advice": signals.get("reach_out_advice") or []})
+        if apply:
+            if contacts:
+                db_insert(cfg, "network_contacts", contacts,
+                          on_conflict="contact_key", merge=True)
+            nl.record_post(cfg, post, signals, flags, model)
+    return out
+
+
+def newsletter_lines(out: dict) -> list[str]:
+    lines = [f"a16z newsletter: {out['new']} new post(s) of {out['in_feed']} in the "
+             f"feed; {out['contacts']} people moved, {out['hiring']} companies hiring"]
+    for p in out["posts"]:
+        moves = ", ".join(f"{n} -> {c}" for n, c in p["moves"][:6])
+        lines.append(f"  {p['title'][:70]}")
+        if moves:
+            lines.append(f"    moved: {moves}")
+        for a in p["advice"][:3]:
+            lines.append(f"    reach out: {a.get('who')}: {a.get('how')}")
+    for e in out["errors"]:
+        lines.append(f"  not processed, will retry: {e}")
+    return lines
+
+
+def cmd_newsletter(apply: bool = False, limit: int = 0) -> int:
+    cfg = load()
+    out = newsletter_step(cfg, apply=apply, limit=limit)
+    print("\n".join(newsletter_lines(out)))
+    for d in out["dropped"][:12]:
+        print(f"  dropped (URL not in post): {d}")
+    if not apply:
+        print("\ndry run. add --apply to record the posts and the people.")
+    return 0
+
+
 def cmd_drain() -> int:
     """Run the oldest command Control Center queued, if any.
 
@@ -1326,6 +1389,15 @@ def cmd_drain() -> int:
     reading Yes in column A that have no package yet.
     """
     cfg = load()
+    # The newsletter first, every wake. Krish's ask was "every time a new post
+    # is made"; posting is daily and this runs hourly, so a post is read
+    # within the hour. A feed with nothing new costs one GET and no model call.
+    try:
+        out = newsletter_step(cfg, apply=True)
+        if out["new"]:
+            print("\n".join(newsletter_lines(out)))
+    except Exception as e:
+        print(f"newsletter check skipped: {e.__class__.__name__}: {e}")
     queued = db_get(cfg, COMMANDS_TABLE,
                     {"select": "id,command,requested_at", "state": "eq.queued",
                      "order": "requested_at.asc", "limit": "1"})
@@ -1369,6 +1441,7 @@ def run_command(cfg: Config, command: str) -> str:
         except Exception as e:
             summary.append(f"learning skipped: {e.__class__.__name__}")
         counts = source_and_stage(cfg, canon, sheet, summary)
+        summary.extend(newsletter_movers_lines(cfg, sheet, canon.sheet_headers))
         line = (f"{counts['discovered']} found, {counts['recorded']} recorded, "
                 f"{counts['staged']} staged, ${counts['spend_usd']:.2f} spent")
     elif command == "packages":
@@ -1615,6 +1688,41 @@ def linkedin_search_urls(cfg: Config, sheet: Sheet) -> list[str]:
     return urls
 
 
+def newsletter_movers_lines(cfg: Config, sheet: Sheet, headers: list[str]) -> list[str]:
+    """People the a16z newsletter says joined a company on Krish's sheet in
+    the last seven days. The signal is worth having even before a tracked
+    role exists, so it goes in the run summary as well as onto a bridge."""
+    try:
+        rows = db_get(cfg, "network_contacts", {
+            "select": "full_name,current_company,current_title,strength_evidence",
+            "source": "eq.a16z newsletter", "order": "updated_at.desc", "limit": "200"})
+        live = sheet.read_pipeline(headers)
+        on_sheet = {}
+        for r in live:
+            for tok in distinctive_tokens(r.company, r.role):
+                on_sheet[tok] = r.company
+        lines = []
+        for c in rows:
+            ev = c.get("strength_evidence") or {}
+            days = _days_since_any(ev.get("newsletter_date") or "")
+            if days is None or days > 7:
+                continue
+            toks = distinctive_tokens(c.get("current_company") or "")
+            hit = next((on_sheet[t] for t in toks if t in on_sheet), None)
+            if hit:
+                lines.append(f"  {c['full_name']} joined {hit}"
+                             + (f" as {c['current_title']}" if c.get("current_title") else "")
+                             + f" ({ev.get('newsletter_post', '')})")
+        return (["people moving into companies you track this week:"] + lines) if lines else []
+    except Exception:
+        return []
+
+
+def _days_since_any(published: str):
+    from .people.bridges import _days_since
+    return _days_since(published)
+
+
 def open_application_note(opens: dict, company: str) -> str:
     """A second role at a company where an application is already open is
     often exactly what Krish wants, so it is never suppressed. It is a line
@@ -1658,6 +1766,65 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
             summary.append(f"board {company}/{slug} failed: {e.__class__.__name__}")
     summary.append(f"ATS boards swept: {len(swept)}; unmapped companies "
                    f"(discovery-only coverage): {len(gaps)}")
+
+    # The a16z portfolio, as Krish asked on 2026-09-03. The board is a strong
+    # company list and a strong ATS finder and a poor job list (25 relevance
+    # sorted postings per query, no paging), so it works in two ways here:
+    # its family-query postings go through the ordinary gates, and every ATS
+    # board it reveals is remembered and swept in full from then on.
+    try:
+        from .ats import discover as disc
+        from .sources import a16z
+        cos = a16z.fetch_companies()
+        kept = [c for c in cos if not a16z.excluded(c)]
+        if kept:
+            db_insert(cfg, "hunter_a16z_companies", [{
+                "slug": c["slug"], "name": c["name"], "domain": c.get("domain"),
+                "markets": c.get("markets") or [], "stage": c.get("stage"),
+                "band": c.get("band"), "job_count": c.get("job_count"),
+                "last_seen": NOW()} for c in kept],
+                on_conflict="slug", merge=True)
+        board_posts, failed = a16z.family_sweep()
+        cache = disc.load_cache(cfg)
+        learned = 0
+        for bp in board_posts:
+            key = ats_key(bp.url)
+            if key:
+                bp.ats, bp.ats_slug, bp.ats_posting_id = key
+                ck = slugify(bp.company)
+                if ck and not cache.get(ck):
+                    cache[ck] = {"ats": key[0], "slug": key[1]}
+                    learned += 1
+        disc.save_cache(cfg, cache)
+        postings.extend(board_posts)
+        summary.append(f"a16z board: {len(cos)} portfolio companies ({len(cos) - len(kept)} "
+                       f"excluded by canon 5), {len(board_posts)} family postings, "
+                       f"{learned} new ATS boards learned"
+                       + (f"; {len(failed)} queries failed" if failed else ""))
+    except Exception as e:
+        summary.append(f"a16z board skipped: {e.__class__.__name__}: {e}")
+
+    # Boards learned from the a16z board or from LinkedIn discovery, swept in
+    # full like the canon universe. This is where the exhaustive listing
+    # comes from.
+    try:
+        from .ats import discover as disc
+        cache = disc.load_cache(cfg)
+        universe_slugs = {slugify(c) for c in canon.universe}
+        fns = {"greenhouse": greenhouse.board, "ashby": ashby.board, "lever": lever.board}
+        extra = 0
+        for ck, hit in cache.items():
+            if not hit or ck in universe_slugs or hit["ats"] not in fns:
+                continue
+            try:
+                board = fns[hit["ats"]](hit["slug"])
+                postings.extend(board)
+                extra += 1
+            except Exception:
+                continue
+        summary.append(f"learned boards swept in full: {extra}")
+    except Exception as e:
+        summary.append(f"learned board sweep skipped: {e.__class__.__name__}")
 
     spend = SpendTracker(cap_usd=float(cfg.optional("hunter_apify_max_usd_per_run", "5.00")))
     urls = linkedin_search_urls(cfg, sheet)
@@ -1879,6 +2046,7 @@ def cmd_run() -> int:
             summary.append(f"learning loop skipped: {e.__class__.__name__}: {e}")
 
         counts = source_and_stage(cfg, canon, sheet, summary)
+        summary.extend(newsletter_movers_lines(cfg, sheet, canon.sheet_headers))
         counts["reconciled"] = len(ledger.matched)
         summary.append(
             f"sourced: {counts['discovered']} discovered, {counts['senior']} senior, "
@@ -1965,6 +2133,9 @@ def main(argv: list[str]) -> int:
                           archive="--no-archive" not in argv)
     if cmd == "drain":
         return cmd_drain()
+    if cmd == "newsletter":
+        lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else 0
+        return cmd_newsletter(apply="--apply" in argv, limit=lim)
     if cmd == "learn":
         return cmd_learn(apply="--apply" in argv)
     if cmd == "restore":
@@ -2007,6 +2178,7 @@ def main(argv: list[str]) -> int:
         return cmd_bridges(ingest_dir)
     print(f"unknown command {cmd!r}; commands: run, reconcile, migrate-sheet, "
           f"build --job-id X, recon, dedupe-db, learn [--apply], drain, verify, "
+          "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2
 

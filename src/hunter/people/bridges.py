@@ -22,8 +22,12 @@ from ..sheet import Sheet
 from ..sources import slugify
 from .strength import EVIDENCE_KEYS  # noqa: F401  (re-export for the guard test)
 
-TIER_BASE = {"current_employee": 40, "ex_employee": 25,
+# newsletter_move sits between ex_employee and current_employee on purpose:
+# a person named in the a16z newsletter as having just joined the company is
+# timelier than an ex-employee and colder than anyone Krish actually knows.
+TIER_BASE = {"current_employee": 40, "newsletter_move": 30, "ex_employee": 25,
              "headhunter": 20, "peer_transition": 10}
+NEWSLETTER_WINDOW_DAYS = 120
 PRIORITY_BONUS = {"A": 15, "B": 8, "C": 3}
 
 # A role falls inside a firm's coverage when they share a search family;
@@ -54,6 +58,10 @@ DRAFTS = {
         "Several of the roles I am tracking sit inside {firm}'s coverage, "
         "including {role} at {company}. Worth 15 minutes on whether they are "
         "yours and how my profile lands?"),
+    "newsletter_move": (
+        "Saw in the a16z jobs newsletter that you have just joined {company}. "
+        "I am going after the {role} role there and would value 15 minutes on "
+        "what you are seeing from the inside before I apply."),
     "peer_transition": (
         "TEMPLATE, find the person first: [[NAME]] made the same move I am "
         "making, into {company}'s world. Ask: would you take 15 minutes to "
@@ -104,6 +112,19 @@ def _employment_companies(history) -> set[str]:
         if name:
             out.add(slugify(str(name)))
     return out
+
+
+def _days_since(published: str) -> int | None:
+    """Days since an RFC 822 or ISO date, or None if it cannot be read."""
+    from email.utils import parsedate_to_datetime
+    try:
+        d = parsedate_to_datetime(published).date()
+    except Exception:
+        try:
+            d = datetime.date.fromisoformat(published[:10])
+        except Exception:
+            return None
+    return (datetime.date.today() - d).days
 
 
 def _recency_bonus(evidence: dict) -> float:
@@ -174,6 +195,27 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
                                                  role=role["title"]), now))
                 if score > warm_patches.get(role["job_id"], (0, None, ""))[0]:
                     warm_patches[role["job_id"]] = (score, c, "ex_employee")
+
+        # People the a16z newsletter says have just joined this company.
+        for c in by_company.get(cslug, []):
+            ev = c.get("strength_evidence") or {}
+            if not ev.get("newsletter_post"):
+                continue
+            days = _days_since(ev.get("newsletter_date") or "")
+            if days is None or days > NEWSLETTER_WINDOW_DAYS:
+                continue
+            found_in_network = True
+            score = TIER_BASE["newsletter_move"] + max(0.0, 10.0 - days / 12.0)
+            upserts.append(_candidate(
+                role, c["contact_key"], "newsletter_move",
+                f"Named in the a16z jobs newsletter {days} day(s) ago as joining "
+                f"{role['company']}: {ev.get('quote', '')[:180]} "
+                f"({ev.get('newsletter_post')})",
+                "just joined, named publicly", score,
+                DRAFTS["newsletter_move"].format(company=role["company"],
+                                                 role=role["title"]), now))
+            if score > warm_patches.get(role["job_id"], (0, None, ""))[0]:
+                warm_patches[role["job_id"]] = (score, c, "newsletter_move")
 
         for firm, hits in hh_role_hits.items():
             if role in hits:
