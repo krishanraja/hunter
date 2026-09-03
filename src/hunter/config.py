@@ -162,6 +162,18 @@ def db_patch(cfg: Config, table: str, match: dict[str, str], values: dict) -> No
     r.raise_for_status()
 
 
+def db_delete(cfg: Config, table: str, params: dict[str, str]) -> None:
+    """PostgREST delete by filter. params are raw filters (eq., in.(...))
+    and must be non-empty: an unfiltered delete is never what anyone meant."""
+    if not params:
+        raise ValueError("refusing to delete without a filter")
+    headers = dict(_rest_headers(cfg))
+    headers["Prefer"] = "return=minimal"
+    r = requests.delete(f"{cfg.supabase_url}/rest/v1/{table}",
+                        headers=headers, params=params, timeout=60)
+    r.raise_for_status()
+
+
 # ---------- Google credential planes ----------
 
 class GoogleOAuth:

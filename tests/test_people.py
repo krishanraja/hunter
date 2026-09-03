@@ -277,3 +277,48 @@ def test_drafts_are_templates_with_no_em_dash_and_no_send():
 def test_norm_name():
     assert norm_name("  Ada  NGUYEN ") == "ada nguyen"
     assert norm_name(None) == ""
+
+
+def test_bridges_target_only_roles_krish_has_actually_been_shown(monkeypatch):
+    """A row at status staging that never reached the sheet is not a target.
+    The incumbent left fifteen such rows (ElevenLabs GM Brazil among them)
+    and bridges were being built into roles Krish had never seen."""
+    from hunter.people import bridges as bridges_mod
+    calls = []
+
+    def fake_db_get(cfg, table, params):
+        calls.append(params)
+        return []
+
+    monkeypatch.setattr(bridges_mod, "db_get", fake_db_get)
+    assert bridges_mod.target_roles(None) == []
+    staged = next(p for p in calls if p.get("status") == "in.(staging,presented)")
+    assert staged["presented_at"] == "not.is.null"
+    gos = next(p for p in calls if p.get("krish_verdict") == "not.is.null")
+    assert "presented_at" not in gos, "a go verdict is a target whether or not it was staged by hunter"
+
+
+def test_a_bridge_into_a_role_that_is_no_longer_a_target_is_retired(monkeypatch):
+    """Databricks' Accenture lead died and was archived, and its bridge kept
+    telling the Bridges tab the role was open. Only hunter's own proposed
+    rows go; a row Krish acted on is his history."""
+    from hunter.people import bridges as bridges_mod
+    roles = [{"job_id": "cresta:vp-partnerships"}]
+    proposed = [{"bridge_id": "b-live", "job_id": "cresta:vp-partnerships"},
+                {"bridge_id": "b-stale", "job_id": "databricks:sr-dir-global-accenture-lead"}]
+    deletes = []
+    monkeypatch.setattr(bridges_mod, "db_get", lambda cfg, table, params: proposed)
+    monkeypatch.setattr(bridges_mod, "db_delete",
+                        lambda cfg, table, params: deletes.append((table, params)))
+    assert bridges_mod.retire_stale(None, roles) == 1
+    [(table, params)] = deletes
+    assert table == "bridge_candidates"
+    assert params["bridge_id"] == "in.(b-stale)"
+    assert params["state"] == "eq.proposed", "never touches a row Krish acted on"
+
+
+def test_db_delete_refuses_to_run_unfiltered():
+    import pytest
+    from hunter.config import db_delete
+    with pytest.raises(ValueError):
+        db_delete(None, "bridge_candidates", {})

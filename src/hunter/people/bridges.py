@@ -16,7 +16,7 @@ from __future__ import annotations
 import datetime
 import re
 
-from ..config import Config, db_get, db_insert, db_patch
+from ..config import Config, db_delete, db_get, db_insert, db_patch
 from ..router import GO_WORDS
 from ..sheet import Sheet
 from ..sources import slugify
@@ -70,9 +70,17 @@ DRAFTS = {
 
 
 def target_roles(cfg: Config, limit: int = 60) -> list[dict]:
+    """Roles worth a warm path: on Krish's sheet now, or ones he said go to.
+
+    presented_at is the test of "on his sheet". The retired incumbent left
+    fifteen rows at status staging that it never wrote to the sheet, among
+    them ElevenLabs GM seats in Brazil, Mexico and Saudi Arabia, and bridges
+    were being built into roles he had never been shown.
+    """
     rows = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,score,status,krish_verdict,warm_path_person",
         "status": "in.(staging,presented)",
+        "presented_at": "not.is.null",
         "order": "score.desc.nullslast",
         "limit": str(limit)})
     gos = db_get(cfg, "hunter_seen_roles", {
@@ -137,8 +145,29 @@ def _recency_bonus(evidence: dict) -> float:
     return 5.0 if months <= 6 else 0.0
 
 
+def retire_stale(cfg: Config, roles: list[dict]) -> int:
+    """Drop proposed bridges into roles that are no longer targets.
+
+    The upsert only ever adds, so a bridge into a posting that has since
+    died or been archived stayed on the Bridges tab saying the role was
+    open. Only hunter's own untouched proposals go; anything Krish marked
+    reached out, snoozed or not a path is his history and stays.
+    """
+    live = {r["job_id"] for r in roles}
+    proposed = db_get(cfg, "bridge_candidates", {
+        "select": "bridge_id,job_id", "state": "eq.proposed", "limit": "5000"})
+    stale = [p["bridge_id"] for p in proposed
+             if p.get("bridge_id") and p.get("job_id") not in live]
+    for i in range(0, len(stale), 100):
+        db_delete(cfg, "bridge_candidates", {
+            "bridge_id": "in.(" + ",".join(stale[i:i + 100]) + ")",
+            "state": "eq.proposed"})
+    return len(stale)
+
+
 def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
     roles = target_roles(cfg)
+    retired = retire_stale(cfg, roles)
     contacts = db_get(cfg, "network_contacts", {
         "select": "contact_key,full_name,current_company,current_title,"
                   "strength_score,strength_evidence,employment_history",
@@ -254,7 +283,7 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
             "warm_path_tier": tier,
             "warm_path_evidence": f"strength {c['strength_score']}, "
                                   f"bridge score {round(score, 1)}"})
-    return {"roles": len(roles), "bridges": len(upserts),
+    return {"roles": len(roles), "bridges": len(upserts), "retired": retired,
             "warm_paths_set": len(warm_patches),
             "headhunter_firms_surfaced": len(hh_role_hits)}
 
