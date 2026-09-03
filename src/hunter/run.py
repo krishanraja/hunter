@@ -265,9 +265,12 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
             f"because archived rows would be re-appended to Pipeline") from e
     sheet_rows = live_rows + archived_rows
     db_rows = db_get(cfg, "hunter_seen_roles", {
+        # sweep_date is what tells a hunter-judged row from an incumbent one
+        # below; it was missing from this select, so no hunter row was ever
+        # appended by reconcile (Clay Head of GTM Strategy, 2026-09-03).
         "select": "job_id,company,title,url,job_url,score,status,krish_verdict,"
                   "rejection_reason,package_status,package_cv_url,package_letter_url,"
-                  "presented_at,source,location,comp,why_it_fits",
+                  "presented_at,source,location,comp,why_it_fits,sweep_date",
         "status": "neq.duplicate",
         "limit": "2000"})
     pairs, sheet_only, db_only, ambiguous = match_rows(sheet_rows, db_rows)

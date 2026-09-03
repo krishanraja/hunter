@@ -630,3 +630,29 @@ def test_archive_refuses_to_delete_when_the_copy_was_truncated(monkeypatch):
         s.archive_rows([row], archive_tab="Applied", archive_sheet_id=99,
                        headers=HEADERS)
     assert deleted == [], "Pipeline row was deleted despite a truncated copy"
+
+
+def test_reconcile_selects_the_columns_it_judges_rows_by(monkeypatch):
+    """hunter_judged reads sweep_date and why_it_fits. The select omitted
+    sweep_date, so every hunter row looked incumbent-scored and none was ever
+    appended by reconcile. The fake rows in the tests above carried the
+    field regardless, which is why they never caught it."""
+    import hunter.run as run_mod
+    selects = []
+
+    def fake_db_get(cfg, table, params):
+        selects.append(params.get("select", ""))
+        return []
+
+    monkeypatch.setattr(run_mod, "db_get", fake_db_get)
+    monkeypatch.setattr(run_mod, "db_insert", lambda *a, **kw: None)
+    monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
+
+    class FakeCanon:
+        sheet_headers = HEADERS
+        bar = 8
+
+    run_mod.reconcile(cfg=None, canon=FakeCanon(), sheet=FakeSheet([list(HEADERS), [""] * N_COLS]))
+    wide = next(s for s in selects if "why_it_fits" in s)
+    for col in ("sweep_date", "why_it_fits", "score", "status", "krish_verdict", "presented_at"):
+        assert col in wide.split(","), col
