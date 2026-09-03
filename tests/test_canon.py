@@ -102,3 +102,16 @@ def test_missing_canon_row_fails(cfg, monkeypatch):
     monkeypatch.setattr(canon_mod, "db_get", lambda cfg, table, params: [])
     with pytest.raises(CanonError, match="missing"):
         load_canon(cfg)
+
+
+def test_g11_in_canon_loads_and_g10_missing_still_fails(cfg, monkeypatch):
+    """Canon 9.4 gained G11 on 2026-09-03. A body from either side of that
+    edit loads; a body missing one of the original ten does not."""
+    body = synthetic_body()
+    with_g11 = body.replace("G10 POSITIONING.",
+                            "G11 ARCHETYPE. Title matches a section 5 family.\nG10 POSITIONING.")
+    patch_body(monkeypatch, with_g11)
+    assert "G11" in load_canon(cfg).gates
+    patch_body(monkeypatch, body.replace("G10 POSITIONING.", "G12 POSITIONING."))
+    with pytest.raises(CanonError):
+        load_canon(cfg)

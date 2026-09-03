@@ -364,11 +364,6 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
                     f"{d['job_id']}: scored by the retired incumbent, never gated "
                     f"by hunter; not put on the sheet")
                 continue
-            if int(d.get("score") or 0) < canon.bar:
-                ledger.skipped.append(
-                    f"{d['job_id']}: score {d.get('score')} is below the canon "
-                    f"{canon.bar} bar; not put on the sheet")
-                continue
         if not url or not str(url).startswith("http"):
             ledger.skipped.append(f"{d['job_id']}: no resolvable URL, cannot "
                                   f"build column D")
@@ -675,10 +670,9 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
                     else "function wrong" if "G11" in failed
                     else "requirements mismatch")
             drop.append((r, result.score, code, reasons))
-        elif result.score < canon.bar:
-            drop.append((r, result.score, "requirements mismatch",
-                         f"scores {result.score}, below the canon {canon.bar} bar"))
         else:
+            # Krish's ruling 2026-09-03: the shape gate filters, the score
+            # orders. A role that passes every gate stays whatever it scores.
             why, flags = write_rationale(
                 cfg, canon, company=r.company, title=r.role, jd=role.jd_text,
                 score=result.score, score_reason=result.why_it_fits,
@@ -1969,10 +1963,11 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         elif not report.passed:
             status = "blocked"
             reason = "; ".join(f"{g.gate}: {g.reason}" for g in report.failures())
-        elif result.score >= canon.bar:
-            status = "staging"
         else:
-            status, reason = "dropped", f"score {result.score} below bar {canon.bar}"
+            # The score no longer blocks (canon 9.2 as amended 2026-09-03):
+            # 16 of the 17 roles Krish said yes to scored below the old bar.
+            # G11 decides what is his shape; the score orders the sheet.
+            status = "staging"
         row = {"job_id": role.job_id, "title": role.title, "company": role.company,
                "url": role.url, "job_url": role.jd_url, "score": result.score,
                "status": status, "auto_rejected": result.auto_rejected,
@@ -2009,6 +2004,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                        f"LinkedIn posting(s) to their real ATS")
 
     if staged_rows:
+        # highest score first, so the sheet reads as a ranked shortlist
+        staged_rows.sort(key=lambda t: -(t[1].score or 0))
         new_rows = [make_row(company=role.company, role=role.title,
                              jd_url=role.jd_url, score=result.score,
                              why_it_fits=why,

@@ -548,12 +548,15 @@ def test_hunter_judged_row_at_the_bar_is_appended(monkeypatch):
     assert len(ledger.db_to_sheet) == 1
 
 
-def test_hunter_judged_row_below_the_bar_is_not_appended(monkeypatch):
+def test_hunter_judged_row_below_the_old_bar_is_appended(monkeypatch):
+    """Krish's ruling 2026-09-03: the shape gate filters, the score orders.
+    A row hunter gated and scored 6 reaches the sheet; the 8 was blocking
+    16 of the 17 roles he had said yes to."""
     ledger, _ = _reconcile_with(monkeypatch, [_row(
         score=6, location="New York", sweep_date="2026-09-01",
         why_it_fits="Engine-Builder signals 2")])
-    assert ledger.db_to_sheet == []
-    assert any("below the canon 8 bar" in x for x in ledger.skipped)
+    assert len(ledger.db_to_sheet) == 1
+    assert not any("below the canon" in x for x in ledger.skipped)
 
 
 def test_row_krish_already_decided_is_kept_whatever_its_provenance(monkeypatch):

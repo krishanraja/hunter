@@ -152,9 +152,14 @@ def load_canon(cfg: Config) -> Canon:
         raise CanonError(f"canon is missing required sections: {missing}; run aborted")
 
     gates = _parse_gates(sections["9.4"][1])
-    expected_gates = [f"G{i}" for i in range(1, 11)]
-    if sorted(gates, key=lambda g: int(g[1:])) != expected_gates:
-        raise CanonError(f"canon 9.4 must define G1..G10, found {sorted(gates)}")
+    # G1 to G10 are the 2026-08-24 set and must all be present. G11, the
+    # archetype gate, was added to canon on Krish's approval 2026-09-03;
+    # a canon body from either side of that edit loads.
+    required = {f"G{i}" for i in range(1, 11)}
+    allowed = required | {"G11"}
+    if not required <= set(gates) or not set(gates) <= allowed:
+        raise CanonError(f"canon 9.4 must define G1..G10 (G11 optional), "
+                         f"found {sorted(gates, key=lambda g: int(g[1:]))}")
 
     # The 9.9 registry must agree with the verified constants. On mismatch,
     # abort and tell Krish which side moved. hunter never picks a winner.
