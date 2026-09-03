@@ -367,6 +367,15 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
                     f"{d['job_id']}: scored by the retired incumbent, never gated "
                     f"by hunter; not put on the sheet")
                 continue
+            if d.get("status") not in ("staging", "presented"):
+                # blocked failed a gate, dropped was rejected, unresolved has
+                # no JD. None of them is a shortlist row. This check was
+                # missing and, once sweep_date reached the select, 38 gate
+                # failures landed on the sheet in one reconcile (2026-09-03).
+                ledger.skipped.append(
+                    f"{d['job_id']}: status {d.get('status')}, not a staged "
+                    f"role; not put on the sheet")
+                continue
         if not url or not str(url).startswith("http"):
             ledger.skipped.append(f"{d['job_id']}: no resolvable URL, cannot "
                                   f"build column D")

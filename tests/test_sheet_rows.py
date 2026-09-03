@@ -656,3 +656,19 @@ def test_reconcile_selects_the_columns_it_judges_rows_by(monkeypatch):
     wide = next(s for s in selects if "why_it_fits" in s)
     for col in ("sweep_date", "why_it_fits", "score", "status", "krish_verdict", "presented_at"):
         assert col in wide.split(","), col
+
+
+def test_hunter_gate_failures_never_reach_the_sheet_through_reconcile(monkeypatch):
+    """A row hunter judged and BLOCKED on a gate, or dropped, or could not
+    resolve, is not a shortlist row. 38 of them were appended in one
+    reconcile on 2026-09-03 (Crusoe Director of Facilities Operations,
+    Gong Head of Compensation) once the sweep_date column was read."""
+    for status in ("blocked", "dropped", "unresolved", "dead", "near-miss"):
+        ledger, s = _reconcile_with(monkeypatch, [_row(
+            job_id=f"crusoe:director-facilities-{status}", company="Crusoe",
+            title="Director, Facilities Operations", status=status, score=5,
+            location="San Francisco", sweep_date="2026-08-31",
+            why_it_fits="Engine-Builder signals 1")])
+        assert ledger.db_to_sheet == [], status
+        assert len(s.grid) == 2, status
+        assert any("not a staged role" in x for x in ledger.skipped), status
