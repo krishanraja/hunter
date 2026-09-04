@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone https://github.com/krishanraja/hunter)",
+      "Bash(git clone https://github.com/krishanraja/hunter.git)",
+      "Bash(git pull:*)",
+      "Bash(pip install -e hunter)",
+      "Bash(pip install -e .)",
+      "Bash(python -m pip install -e hunter)",
+      "Bash(python -m pip install -e .)",
+      "Bash(python -m hunter.run:*)",
+      "Bash(python -m pytest:*)"
+    ]
+  }
+}
