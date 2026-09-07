@@ -123,3 +123,24 @@ def test_master_facts_shape(letter_fixture):
         "{{ROLE}}": 2, "{{COMPANY_SPECIFIC_HOOK}}": 1,
     }
     assert facts.cv_summary_p1.startswith("Sixteen years")
+
+
+
+def test_a_third_copy_for_the_same_company_gets_the_date_not_an_error():
+    """Two Cohere roles plus a copy left behind by a blocked pass: the third
+    build lands on a dated name instead of refusing."""
+    import datetime
+    from hunter.package.build import _unique_title
+
+    class Db:
+        def __init__(self, taken):
+            self.taken = set(taken)
+
+        def find_by_name(self, name, parent):
+            return [name] if name in self.taken else []
+
+    base = "KrishRaja_CV_Cohere"
+    assert _unique_title(Db([]), base, "f", "chief-of-staff") == base
+    assert _unique_title(Db([base]), base, "f", "head-of-corp-dev") == base + "_head-of-corp-dev"
+    assert _unique_title(Db([base, base + "_head-of-corp-dev"]), base, "f", "head-of-corp-dev",
+                         today=datetime.date(2026, 9, 7)) == base + "_head-of-corp-dev_20260907"

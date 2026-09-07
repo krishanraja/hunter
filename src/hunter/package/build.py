@@ -139,13 +139,27 @@ def read_master_facts(db: DocBuild) -> MasterFacts:
     )
 
 
-def _unique_title(db: DocBuild, base: str, parent_id: str, role_slug: str) -> str:
+def _unique_title(db: DocBuild, base: str, parent_id: str, role_slug: str,
+                  today: datetime.date | None = None) -> str:
+    """The per-role copy name, never a version number.
+
+    Company first; then the role slug when the company already has a copy
+    (two Cohere roles); then the build date when a failed earlier pass left
+    the role-slug copy behind (Cohere Head of Corporate Development,
+    2026-09-07: the documents were built, the package gate then blocked, and
+    the next build had nowhere to land). Drive files are never deleted here.
+    """
     if not db.find_by_name(base, parent_id):
         return base
     with_slug = f"{base}_{role_slug}"
     if not db.find_by_name(with_slug, parent_id):
         return with_slug
-    raise BuildError(f"title collision even with role slug: {with_slug!r}; needs human review")
+    stamp = (today or datetime.date.today()).strftime("%Y%m%d")
+    dated = f"{with_slug}_{stamp}"
+    if not db.find_by_name(dated, parent_id):
+        return dated
+    raise BuildError(f"title collision even with the role slug and today's date: "
+                     f"{dated!r}; needs human review")
 
 
 def slugify(text: str) -> str:
