@@ -457,15 +457,36 @@ def warm_path_cells(cfg: Config, job_ids: list[str]) -> dict[str, tuple[str, str
         if c["job_id"] not in best:
             best[c["job_id"]] = c
     people = _person_lookup(cfg, [c["contact_key"] for c in best.values()])
+    # a person the DB already names (an earlier run, or the incumbent) is a
+    # better answer than None found when no bridge row exists
+    named: dict[str, dict] = {}
+    missing = [j for j in job_ids if j not in best]
+    for i in range(0, len(missing), 100):
+        chunk = missing[i:i + 100]
+        for r in db_get(cfg, "hunter_seen_roles", {
+                "select": "job_id,warm_path_person,warm_path_tier,warm_path_evidence",
+                "job_id": "in.(" + ",".join(f'"{j}"' for j in chunk) + ")",
+                "warm_path_person": "not.is.null", "limit": "500"}):
+            person = (r.get("warm_path_person") or "").strip()
+            if person and not re.match(r"^\s*(none|n/a|nobody|unknown)\b", person, re.I):
+                named[r["job_id"]] = r
     for jid in job_ids:
         c = best.get(jid)
+        if not c and jid in named:
+            r = named[jid]
+            out[jid] = (plain_text(r["warm_path_person"]),
+                        plain_text(f"{r.get('warm_path_tier') or 'known'}: "
+                                   f"{r.get('warm_path_evidence') or 'named on the role record'}")[:500])
+            continue
         if not c:
             out[jid] = (WARM_NONE, EVIDENCE_NONE)
             continue
         key = c["contact_key"]
         if key.startswith("headhunter:"):
-            label = f"Headhunter: {key.split(':', 1)[1].replace('-', ' ').title()}"
-            warm = label
+            firm = key.split(":", 1)[1].replace("-", " ").title()
+            m = re.search(r"HEADHUNTER PATH: (.+?) at (.+?) \(", c.get("path_evidence") or "")
+            warm = (f"{m.group(1)} at {m.group(2)} (headhunter)" if m
+                    else f"{firm} (headhunter)")
         else:
             p = people.get(key) or {}
             name = p.get("name") or key

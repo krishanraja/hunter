@@ -154,6 +154,14 @@ def _norm_title(t: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", (t or "").lower()))
 
 
+def _squash(company: str) -> str:
+    """Letters and digits only. "The Trade Desk", "thetradedesk" and
+    "the-trade-desk" are one company; "Higgsfield AI" and "higgsfieldai" too.
+    The incumbent minted both spellings, and reconcile re-appended the twin
+    to the sheet every run."""
+    return re.sub(r"[^a-z0-9]", "", (company or "").lower())
+
+
 def match_rows(sheet_rows: list[SheetRow], db_rows: list[dict]
                ) -> tuple[list[tuple[SheetRow, dict]], list[SheetRow], list[dict],
                           list[tuple[SheetRow, int]]]:
@@ -207,14 +215,18 @@ def match_rows(sheet_rows: list[SheetRow], db_rows: list[dict]
         if c:
             return c
         cslug = slugify(srow.company)
+        sq = _squash(srow.company)
         return [d for d in remaining
-                if d.get("job_id", "").split(":")[0] == cslug
+                if (d.get("job_id", "").split(":")[0] == cslug
+                    or _squash(d.get("company") or "") == sq)
                 and _norm_title(d.get("title", "")) == _norm_title(srow.role)]
 
     def fuzzy_candidates(srow):
         cslug = slugify(srow.company)
+        sq = _squash(srow.company)
         return [d for d in remaining
-                if d.get("job_id", "").split(":")[0] == cslug
+                if (d.get("job_id", "").split(":")[0] == cslug
+                    or _squash(d.get("company") or "") == sq)
                 and title_jaccard(srow.role, d.get("title", "")) >= FUZZY_TITLE_MIN]
 
     # Two phases: every row's strong-identity matches (URL, job_id, exact
@@ -364,8 +376,16 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet,
     # Denmark, Poland, Saudi Arabia and the rest. Hunter's own scorer rates
     # that Brazil role 2 and its G6 gate fails it outright on geography
     # (2026-09-01 audit). A score this system did not produce is not evidence.
+    # A DB row that is the same posting as a sheet row under a second
+    # spelling of the company is not missing from the sheet.
+    sheet_idents = {(_squash(s.company), _norm_title(s.role)) for s in sheet_rows}
     to_append = []
     for d in db_only:
+        if (_squash(d.get("company") or ""), _norm_title(d.get("title") or "")) in sheet_idents:
+            ledger.skipped.append(
+                f"{d['job_id']}: same posting as a sheet row under another spelling "
+                f"of the company; not appended")
+            continue
         url = d.get("url") or d.get("job_url")
         decided = bool(d.get("krish_verdict")) or (d.get("package_status") or "none") != "none"
         # hunter always writes sweep_date and why_it_fits; the incumbent never did
@@ -1834,10 +1854,8 @@ def cmd_dedupe_db() -> int:
         "status": "neq.duplicate", "limit": "5000"})
     groups: dict[tuple, list[dict]] = {}
     for r in rows:
-        from .sources import company_key
         groups.setdefault(
-            (company_key(r.get("company") or "", r.get("title") or ""),
-             _norm_title(r.get("title") or "")),
+            (_squash(r.get("company") or ""), _norm_title(r.get("title") or "")),
             []).append(r)
     marked, held = 0, 0
     for ident, group in sorted(groups.items()):

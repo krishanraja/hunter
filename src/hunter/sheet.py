@@ -758,6 +758,25 @@ class Sheet:
         last -= removed
         before = sorted((c[COLS["Verdict"]], c[COLS["Business"]], c[COLS["Role"]])
                         for n, c in rows if n in set(populated))
+        # Score cells the incumbent wrote are text, and Sheets sorts text
+        # after numbers, so the 10s sank below the 6s. Make the column a
+        # number column and rewrite every score as a number first.
+        self._post(":batchUpdate", {"requests": [{"repeatCell": {
+            "range": {"sheetId": self.sheet_id,
+                      "startRowIndex": DATA_START_ROW - 1, "endRowIndex": last,
+                      "startColumnIndex": COLS["Score"], "endColumnIndex": COLS["Score"] + 1},
+            "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}},
+            "fields": "userEnteredFormat.numberFormat"}}]})
+        fixed = []
+        for n, c in rows:
+            if DATA_START_ROW <= n <= last + removed and n not in set(blanks):
+                try:
+                    fixed.append((cell_range("Score", n - sum(1 for b in blanks if b < n)),
+                                  [[int(str(c[COLS["Score"]]).strip())]]))
+                except (ValueError, TypeError):
+                    pass
+        if fixed:
+            self._write(fixed)
         self._post(":batchUpdate", {"requests": [{"sortRange": {
             "range": {"sheetId": self.sheet_id,
                       "startRowIndex": DATA_START_ROW - 1, "endRowIndex": last,

@@ -349,7 +349,7 @@ def test_sort_by_score_orders_desc_removes_gaps_and_keeps_column_a_with_its_row(
     s = FakeSheet(grid)
     out = s.sort_by_score()
     assert out == {"rows": 3, "blank_rows_removed": 1, "verified": True}
-    order = [(r[C["Verdict"]], r[C["Business"]], r[C["Score"]]) for r in s.grid[2:]]
+    order = [(r[C["Verdict"]], r[C["Business"]], str(r[C["Score"]])) for r in s.grid[2:]]
     assert order == [("Declined - stage wrong", "High", "10"), ("New", "Mid", "8"),
                      ("Yes", "Low", "6")]
 
