@@ -385,3 +385,38 @@ def test_the_roles_krish_actually_wants_still_survive(title):
                         source="ats", location="New York", comp="$320,000")
     result = score_role(role)
     assert not result.auto_rejected, f"{title} must not be auto-rejected"
+
+
+
+# ---------- G12 and the honest G1 ----------
+
+def _role(**over):
+    from hunter.sources import ResolvedRole
+    base = dict(company="flex", title="Chief of Staff", url="https://flex.example/j",
+                jd_url="https://flex.example/j", jd_text="Build the operating model. " * 20,
+                live=True, source="t", location="New York", comp="")
+    base.update(over)
+    return ResolvedRole(**base)
+
+
+def test_g12_names_the_date_and_code():
+    from hunter.gates import run_gates
+    declines = {"flex": {"company": "flex", "code": "business_uninteresting",
+                         "date": "2026-09-07", "job_id": "flex:x", "quote": ""}}
+    report = run_gates(_role(), never_apply=[], company_declines=declines)
+    g12 = next(g for g in report.results if g.gate == "G12")
+    assert not g12.passed
+    assert g12.reason == "company declined by Krish on 2026-09-07 (business_uninteresting)"
+    clean = run_gates(_role(company="Legora"), never_apply=[], company_declines=declines)
+    assert next(g for g in clean.results if g.gate == "G12").passed
+
+
+def test_g1_passes_an_unverified_role_with_an_honest_reason():
+    """A URL with no ATS key cannot be checked. That is unknown, not dead:
+    ten of Krish's 26 Yes rows were refused as dead for exactly this."""
+    from hunter.gates import run_gates
+    report = run_gates(_role(live=False, liveness="unverified"), never_apply=[])
+    g1 = next(g for g in report.results if g.gate == "G1")
+    assert g1.passed and "unverified" in g1.reason
+    dead = run_gates(_role(live=False), never_apply=[])
+    assert not next(g for g in dead.results if g.gate == "G1").passed

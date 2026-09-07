@@ -10,6 +10,21 @@ from hunter.canon import CanonError, load_canon
 from hunter.config import Config
 
 
+HEADER_SENTENCE = ("A Verdict, B Business, C Role, D JD Snippet, E Job Link, F CV Doc, "
+                   "G Cover Letter Doc, H CV PDF, I CL PDF, J Score, K Why It Fits, "
+                   "L Sector, M Stage, N Location, O Comp, P Warm Path, Q Path Evidence, "
+                   "R Package Status, S Source, T Application Status, U Applied Date, "
+                   "V Next Action, W Application Format, X Attachment Style, "
+                   "Y Additional Questions, Z Form Complexity, AA Autonomy Score, "
+                   "AB Form Audit Date, AC JD URL Verified, AD Materials Built")
+LEGACY_SENTENCE = ("A Verdict, B Business, C Role, D Job Link, E CV Doc, F Cover Letter Doc, "
+                   "G CV PDF, H CL PDF, I Score, J Why It Fits, K Sector, L Stage, M Location, "
+                   "N Comp, O Package Status, P Source, Q Application Status, R Applied Date, "
+                   "S Next Action, T Application Format, U Attachment Style, V Additional Questions, "
+                   "W Form Complexity, X Autonomy Score, Y Form Audit Date, Z JD URL Verified, "
+                   "AA JD Snippet, AB Materials Built")
+
+
 def synthetic_body(cv_id=config.CV_MASTER_ID, letter_id=config.LETTER_MASTER_ID,
                    workbook_id=config.WORKBOOK_ID, drop_section=None):
     parts = {
@@ -47,12 +62,7 @@ def synthetic_body(cv_id=config.CV_MASTER_ID, letter_id=config.LETTER_MASTER_ID,
             "00 START HERE, Profile, Pipeline, Application Info Bank, Headhunters.\n"
             "Pipeline tab: sheetId 708873267.\n"
             "Header, exact, in order:\n"
-            "A Verdict, B Business, C Role, D Job Link, E CV Doc, F Cover Letter Doc, "
-            "G CV PDF, H CL PDF, I Score, J Why It Fits, K Sector, L Stage, M Location, "
-            "N Comp, O Package Status, P Source, Q Application Status, R Applied Date, "
-            "S Next Action, T Application Format, U Attachment Style, V Additional Questions, "
-            "W Form Complexity, X Autonomy Score, Y Form Audit Date, Z JD URL Verified, "
-            "AA JD Snippet, AB Materials Built.\n\n"
+            + HEADER_SENTENCE + ".\n\n"
             "LINK COLUMNS ARE HYPERLINK FORMULAS, NOT URLS.\n"
         ),
     }
@@ -78,12 +88,27 @@ def test_parses_both_heading_styles_and_all_guards_pass(cfg, monkeypatch):
     assert c.bar == 8
     assert sorted(c.gates) == [f"G{i}" for i in range(1, 11)] or len(c.gates) == 10
     assert "TollBit" in c.universe and "Glean" in c.universe
-    assert len(c.sheet_headers) == 28
+    assert len(c.sheet_headers) == 30
     assert c.sheet_headers[0] == "Verdict"
-    assert c.sheet_headers[3] == "Job Link"
-    assert c.sheet_headers[27] == "Materials Built"
+    assert c.sheet_headers[3] == "JD Snippet"
+    assert c.sheet_headers[15] == "Warm Path"
+    assert c.sheet_headers[29] == "Materials Built"
     # The numbered list item inside section 4 must not have opened a section.
     assert "1" not in c.sections or "Header row" not in c.sections.get("1", ("", ""))[0]
+
+
+def test_the_old_28_column_body_is_refused(cfg, monkeypatch):
+    """After the 2026-09-07 column move a canon body still listing 28 names
+    means canon and the sheet disagree, and hunter must not run on either."""
+    patch_body(monkeypatch, synthetic_body().replace(HEADER_SENTENCE, LEGACY_SENTENCE))
+    with pytest.raises(CanonError, match="expected 30"):
+        load_canon(cfg)
+
+
+def test_a_mislettered_header_list_is_refused(cfg, monkeypatch):
+    patch_body(monkeypatch, synthetic_body().replace("D JD Snippet", "E JD Snippet"))
+    with pytest.raises(CanonError, match="letters and the order"):
+        load_canon(cfg)
 
 
 def test_missing_required_section_fails(cfg, monkeypatch):
@@ -112,6 +137,10 @@ def test_g11_in_canon_loads_and_g10_missing_still_fails(cfg, monkeypatch):
                             "G11 ARCHETYPE. Title matches a section 5 family.\nG10 POSITIONING.")
     patch_body(monkeypatch, with_g11)
     assert "G11" in load_canon(cfg).gates
-    patch_body(monkeypatch, body.replace("G10 POSITIONING.", "G12 POSITIONING."))
+    with_g12 = with_g11.replace("G10 POSITIONING.",
+                                "G12 COMPANY. A company Krish declined is never staged again.\nG10 POSITIONING.")
+    patch_body(monkeypatch, with_g12)
+    assert "G12" in load_canon(cfg).gates
+    patch_body(monkeypatch, body.replace("G10 POSITIONING.", "G13 POSITIONING."))
     with pytest.raises(CanonError):
         load_canon(cfg)

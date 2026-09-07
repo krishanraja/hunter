@@ -2,7 +2,8 @@
 figure the job description does not contain."""
 import pytest
 
-from hunter.package.rationale import (MAX_CHARS, assemble, deterministic,
+from hunter.package.rationale import (MAX_CHARS, SNIPPET_MAX, assemble,
+                                      deterministic, deterministic_snippet,
                                       digits_grounded, validate)
 
 JD = ("Higgsfield AI is hiring a Head of Entertainment GTM. We are at $500M ARR "
@@ -16,9 +17,30 @@ def good_parts(**over):
                 "motion from zero and carried the P&L for it.",
          "risk": "The remit leans partnerships, so the commercial scope needs "
                  "checking before he commits.",
-         "archetype": "partnerships_alliances"}
+         "archetype": "partnerships_alliances",
+         "snippet": "Higgsfield AI sells generative video tools to studios. "
+                    "The role builds the entertainment partnerships motion."}
     p.update(over)
     return p
+
+
+def test_an_empty_or_bloated_snippet_is_rejected():
+    assert any("snippet is empty" in f for f in validate(good_parts(snippet=" "), JD))
+    fails = validate(good_parts(snippet="x" * (SNIPPET_MAX + 1)), JD)
+    assert any("snippet too long" in f for f in fails)
+
+
+def test_a_snippet_figure_absent_from_the_jd_is_rejected():
+    fails = validate(good_parts(snippet="A $900M ARR business."), JD)
+    assert any("snippet" in f and "figure" in f for f in fails)
+
+
+def test_deterministic_snippet_is_bounded_and_honest():
+    long_jd = "Acme builds agents for banks. " * 40
+    out = deterministic_snippet("Acme", "Head of GTM", long_jd)
+    assert len(out) <= SNIPPET_MAX and "\u2014" not in out
+    assert deterministic_snippet("Acme", "Head of GTM", "short") == \
+        "Head of GTM at Acme. JD not captured."
 
 
 def test_a_grounded_rationale_passes():

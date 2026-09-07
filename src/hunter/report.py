@@ -55,7 +55,9 @@ def report_run(cfg: Config, *, started_at: datetime.datetime, ok: bool,
             "error_message": (error or "")[:500] or None,
             "metadata": {k: counts.get(k) for k in
                          ("discovered", "senior", "fresh", "recorded", "staged",
-                          "unresolved", "built", "bridges", "reconciled")
+                          "unresolved", "built", "bridges", "reconciled", "dead",
+                          "unverified", "archived", "warm_paths", "cold_targets",
+                          "g12_blocked")
                          if counts.get(k) is not None},
         }])
     except Exception as e:

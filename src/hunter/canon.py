@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from . import config
 from .config import Config, db_get
+from .sheet import HEADERS as CODE_HEADERS, col_letter
 
 CANON_SLUG = "krish-canon"
 
@@ -42,7 +43,7 @@ class Canon:
     bar: int                              # presentation bar from 9.2
     gates: dict[str, str]                 # "G1".."G10" -> rule text
     universe: list[str]                   # named companies from 9.1
-    sheet_headers: list[str]              # 28 exact headers from 9.13
+    sheet_headers: list[str]              # the exact headers from 9.13, in order
     version: int
     body: str
 
@@ -119,13 +120,17 @@ def _parse_sheet_headers(body_913: str) -> list[str]:
         raise CanonError("canon 9.13 header list not found")
     blob = " ".join(m.group(1).split("\n")).strip().rstrip(".")
     headers: list[str] = []
-    for token in blob.split(", "):
+    for i, token in enumerate(blob.split(", ")):
         parts = token.strip().split(" ", 1)
         if len(parts) != 2 or not re.fullmatch(r"[A-Z]{1,2}", parts[0]):
             raise CanonError(f"canon 9.13 header token not parseable: {token!r}")
+        if parts[0] != col_letter(i):
+            raise CanonError(f"canon 9.13 header {token!r} sits at position "
+                             f"{col_letter(i)}; the letters and the order disagree")
         headers.append(parts[1].strip())
-    if len(headers) != 28:
-        raise CanonError(f"canon 9.13 lists {len(headers)} headers, expected 28")
+    if len(headers) != len(CODE_HEADERS):
+        raise CanonError(f"canon 9.13 lists {len(headers)} headers, expected "
+                         f"{len(CODE_HEADERS)}; run migrate-columns or fix canon")
     return headers
 
 
@@ -153,12 +158,13 @@ def load_canon(cfg: Config) -> Canon:
 
     gates = _parse_gates(sections["9.4"][1])
     # G1 to G10 are the 2026-08-24 set and must all be present. G11, the
-    # archetype gate, was added to canon on Krish's approval 2026-09-03;
-    # a canon body from either side of that edit loads.
+    # archetype gate, was added to canon on Krish's approval 2026-09-03, and
+    # G12, the company-decline gate, on 2026-09-07; a canon body from either
+    # side of those edits loads.
     required = {f"G{i}" for i in range(1, 11)}
-    allowed = required | {"G11"}
+    allowed = required | {"G11", "G12"}
     if not required <= set(gates) or not set(gates) <= allowed:
-        raise CanonError(f"canon 9.4 must define G1..G10 (G11 optional), "
+        raise CanonError(f"canon 9.4 must define G1..G10 (G11, G12 optional), "
                          f"found {sorted(gates, key=lambda g: int(g[1:]))}")
 
     # The 9.9 registry must agree with the verified constants. On mismatch,

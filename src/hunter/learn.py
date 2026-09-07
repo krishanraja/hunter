@@ -27,6 +27,14 @@ from .config import Config, db_get, db_insert, db_patch
 from .sources import distinctive_tokens, norm_title, slugify
 from . import verdicts
 
+# The two codes that are statements about the company, not the role. "Not
+# interested in Salesforce as a business" is a verdict on Salesforce, so a
+# second Salesforce posting must not be staged. The code Krish chose is
+# applied as written (G12); nothing is inferred beyond it, and
+# hunter_company_allow reverses it with one config edit.
+COMPANY_CODES = {"business_uninteresting", "domain_expertise"}
+ALLOW_KEY = "hunter_company_allow"
+
 # What hunter writes into verdict_source when the coded verdict on the sheet
 # is its own re-gate decision rather than something Krish typed. The loop must
 # never learn from its own output: on 2026-09-02 forty auto verdicts had been
@@ -231,6 +239,73 @@ def open_applications(roles: list[dict]) -> dict[str, dict]:
                         "company": r.get("company"),
                         "at": str(r.get("verdict_at") or "")[:10]}
     return out
+
+
+# ---------- company-level codes: applied as written, never widened ----------
+
+def load_company_allow(cfg: Config) -> list[str]:
+    """Companies Krish has un-declined. Invalid JSON is reported by the
+    caller as a flag, never a crash: an allow list must not take a run down."""
+    raw = cfg.optional(ALLOW_KEY, "[]") if cfg is not None else "[]"
+    try:
+        out = json.loads(raw or "[]")
+    except json.JSONDecodeError:
+        return []
+    return [str(x) for x in out] if isinstance(out, list) else []
+
+
+def company_declines(events: list[dict], allow: list[str] = ()) -> dict[str, dict]:
+    """Company tokens -> the verdict that declined the company.
+
+    Only Krish's own rejections with a company-level code count; a verdict
+    hunter wrote (source starts with hunter) is its output, not his taste.
+    Keyed by distinctive company tokens, the same identity rule as
+    open_applications, so "flex" and "Flex Inc" are one company. An entry on
+    the allow list removes every token it shares.
+    """
+    allow_tokens: set[str] = set()
+    for a in allow or ():
+        allow_tokens |= distinctive_tokens(a)
+    out: dict[str, dict] = {}
+    for e in sorted(events, key=lambda x: str(x.get("recorded_at") or "")):
+        if e.get("verdict") != "rejection":
+            continue
+        if e.get("reason_code") not in COMPANY_CODES:
+            continue
+        if (e.get("source") or "").lower().startswith("hunter"):
+            continue
+        toks = distinctive_tokens(e.get("company") or "")
+        if not toks or toks & allow_tokens:
+            continue
+        entry = {"company": e.get("company"), "code": e.get("reason_code"),
+                 "date": str(e.get("recorded_at") or "")[:10] or "unknown date",
+                 "job_id": e.get("job_id"),
+                 "quote": (e.get("reason_text") or "")[:120]}
+        for tok in toks:
+            out.setdefault(tok, entry)
+    return out
+
+
+def declined_company(declines: dict[str, dict] | None, company: str) -> dict | None:
+    if not declines:
+        return None
+    for tok in distinctive_tokens(company or ""):
+        hit = declines.get(tok)
+        if hit:
+            return hit
+    return None
+
+
+def decline_lines(declines: dict[str, dict]) -> list[str]:
+    """One line per declined company, for the learning report."""
+    seen, lines = set(), []
+    for entry in declines.values():
+        key = (entry["company"], entry["code"])
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(f"{entry['company']}: {entry['code']} since {entry['date']}")
+    return sorted(lines, key=str.lower)
 
 
 # ---------- taste codes ----------

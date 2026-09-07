@@ -1,18 +1,17 @@
 """Sheet layer: row construction, the validation matrix, HYPERLINK round
-trips, structural read-back comparison, and grid parsing against a fake
-transport. Canon 9.13 is the contract under test."""
+trips, structural read-back comparison, grid parsing against a fake
+transport, and the column migration. Canon 9.13 is the contract under test."""
+import re
+
 import pytest
 
 import hunter.sheet as sheet_mod
-from hunter.sheet import (N_COLS, Sheet, SheetError, hyperlink, make_row,
-                          pad_row, parse_hyperlink, rows_equal, validate_row)
+from hunter.sheet import (COLS, HEADERS, LEGACY_HEADERS, LAST_COL, N_COLS, Sheet,
+                          SheetError, col_index, col_letter, hyperlink, letter,
+                          make_row, pad_row, parse_hyperlink, rows_equal,
+                          validate_row)
 
-HEADERS = ["Verdict", "Business", "Role", "Job Link", "CV Doc", "Cover Letter Doc",
-           "CV PDF", "CL PDF", "Score", "Why It Fits", "Sector", "Stage",
-           "Location", "Comp", "Package Status", "Source", "Application Status",
-           "Applied Date", "Next Action", "Application Format", "Attachment Style",
-           "Additional Questions", "Form Complexity", "Autonomy Score",
-           "Form Audit Date", "JD URL Verified", "JD Snippet", "Materials Built"]
+C = COLS
 
 
 def good_row(**over):
@@ -20,7 +19,7 @@ def good_row(**over):
                    jd_url="https://job-boards.greenhouse.io/acme/jobs/123",
                    score=9, source="ats_sweep", jd_snippet="Build the engine.")
     for col, val in over.items():
-        row[int(col)] = val
+        row[C[col] if col in C else int(col)] = val
     return row
 
 
@@ -46,8 +45,11 @@ def test_make_row_is_valid_and_fully_filled():
     row = good_row()
     assert len(row) == N_COLS
     assert validate_row(row) == []
-    assert row[0] == "New" and row[14] == "Not started" and row[16] == "Not applied"
-    assert row[27] == "n/a"
+    assert row[C["Verdict"]] == "New" and row[C["Package Status"]] == "Not started"
+    assert row[C["Application Status"]] == "Not applied"
+    assert row[C["Materials Built"]] == "n/a"
+    assert row[C["Warm Path"]] == "None found" and row[C["Path Evidence"]] == "n/a"
+    assert row[C["JD Snippet"]] == "Build the engine."
 
 
 def test_validate_catches_wrong_width():
@@ -55,42 +57,42 @@ def test_validate_catches_wrong_width():
 
 
 def test_validate_catches_blank_cell():
-    fails = validate_row(good_row(**{"9": " "}))
+    fails = validate_row(good_row(**{"Why It Fits": " "}))
     assert any("blank" in f for f in fails)
 
 
 def test_validate_catches_bare_url_in_d():
-    fails = validate_row(good_row(**{"3": "https://example.com/job"}))
+    fails = validate_row(good_row(**{"Job Link": "https://example.com/job"}))
     assert any("HYPERLINK" in f for f in fails)
 
 
 def test_validate_catches_score_out_of_range():
-    assert validate_row(good_row(**{"8": "0"}))
-    assert validate_row(good_row(**{"8": "11"}))
-    assert validate_row(good_row(**{"8": "nine"}))
+    assert validate_row(good_row(**{"Score": "0"}))
+    assert validate_row(good_row(**{"Score": "11"}))
+    assert validate_row(good_row(**{"Score": "nine"}))
 
 
 def test_validate_catches_bad_date():
-    fails = validate_row(good_row(**{"27": "31/08/2026"}))
+    fails = validate_row(good_row(**{"Materials Built": "31/08/2026"}))
     assert any("YYYY-MM-DD" in f for f in fails)
 
 
 def test_validate_accepts_real_date():
-    assert validate_row(good_row(**{"27": "2026-08-31"})) == []
+    assert validate_row(good_row(**{"Materials Built": "2026-08-31"})) == []
 
 
 def test_validate_catches_lowercase_true():
-    fails = validate_row(good_row(**{"25": "true"}))
+    fails = validate_row(good_row(**{"JD URL Verified": "true"}))
     assert any("TRUE or FALSE" in f for f in fails)
 
 
 def test_validate_catches_non_new_verdict_on_append():
-    fails = validate_row(good_row(**{"0": "Applied"}))
+    fails = validate_row(good_row(**{"Verdict": "Applied"}))
     assert any("literal New" in f for f in fails)
 
 
 def test_validate_catches_em_dash():
-    fails = validate_row(good_row(**{"9": "Great fit \u2014 really"}))
+    fails = validate_row(good_row(**{"Why It Fits": "Great fit \u2014 really"}))
     assert any("em dash" in f for f in fails)
 
 
@@ -103,7 +105,7 @@ def test_pad_row_restores_boolean_casing():
 def test_rows_equal_structural_on_hyperlinks():
     a = good_row()
     b = list(a)
-    b[3] = a[3].replace('","', '" , "')  # Sheets may normalize separators
+    b[C["Job Link"]] = a[C["Job Link"]].replace('","', '" , "')  # Sheets may normalize separators
     assert rows_equal(a, b) is False or True  # separator variant parses either way
     assert rows_equal(a, list(a))
 
@@ -111,27 +113,71 @@ def test_rows_equal_structural_on_hyperlinks():
 def test_rows_equal_detects_changed_url():
     a = good_row()
     b = list(a)
-    b[3] = hyperlink("https://other.example/x", "JD")
+    b[C["Job Link"]] = hyperlink("https://other.example/x", "JD")
     assert not rows_equal(a, b)
 
 
 # ---------- grid parsing with a fake transport ----------
 
+RANGE_RE = re.compile(r"^(?P<tab>[^!]+)!(?P<c0>[A-Z]+)(?P<r0>\d+)(?::(?P<c1>[A-Z]+)(?P<r1>\d*))?$")
+
+
+def parse_range(rng):
+    m = RANGE_RE.match(rng)
+    if not m:
+        raise NotImplementedError(rng)
+    c0, r0 = col_index(m.group("c0")), int(m.group("r0"))
+    c1 = col_index(m.group("c1")) if m.group("c1") else c0
+    r1 = int(m.group("r1")) if m.group("r1") else None
+    return m.group("tab"), c0, r0, c1, r1
+
+
 class FakeSheet(Sheet):
-    def __init__(self, grid):
+    """An in-memory Pipeline grid behind the real Sheet methods. Serves any
+    rectangle, applies every values write, and implements the structural
+    requests the migration and the sort need."""
+
+    def __init__(self, grid, tab="Pipeline"):
         super().__init__(token="offline", workbook_id="wb", sheet_id=1)
         self.grid = grid
+        self.tab = tab
         self.posts = []
+        self.meta = {"properties": {"sheetId": 1, "title": tab,
+                                    "gridProperties": {"rowCount": 200,
+                                                       "columnCount": 40}},
+                     "conditionalFormats": [{"ranges": [{"sheetId": 1}],
+                                             "booleanRule": {"condition": {"type": "TEXT_EQ"}}}],
+                     "bandedRanges": [{"bandedRangeId": 7, "range": {"sheetId": 1}}]}
+
+    def _row(self, i, need=0):
+        """The i-th row, existing and at least `need` cells wide."""
+        width = len(self.grid[0]) if self.grid else N_COLS
+        while len(self.grid) <= i:
+            self.grid.append([""] * width)
+        row = self.grid[i]
+        if len(row) < need:
+            row.extend([""] * (need - len(row)))
+        return row
 
     def _get(self, path, params=None):
+        if path == "":
+            if params and params.get("ranges"):
+                return {"sheets": [{"properties": {"sheetId": 1},
+                                    "data": [{"rowData": [{"values": [
+                                        {"dataValidation": {"condition": {"type": "ONE_OF_LIST"}}}]}]}]}]}
+            return {"sheets": [self.meta]}
         if path.startswith("/values/"):
-            rng = path.split("/values/")[1]
-            if rng.startswith("Pipeline!A1:AB"):
-                return {"values": self.grid}
-            m = __import__("re").match(r"Pipeline!A(\d+):AB(\d+)", rng)
-            if m:
-                s, e = int(m.group(1)), int(m.group(2))
-                return {"values": self.grid[s - 1:e]}
+            tab, c0, r0, c1, r1 = parse_range(path.split("/values/", 1)[1])
+            if tab != self.tab:
+                return {"values": []}
+            end = r1 or len(self.grid)
+            out = []
+            for i in range(r0 - 1, min(end, len(self.grid))):
+                row = self.grid[i] + [""] * (c1 + 1 - len(self.grid[i]))
+                out.append(list(row[c0:c1 + 1]))
+            while out and not any(str(x).strip() for x in out[-1]):
+                out.pop()
+            return {"values": out}
         raise NotImplementedError(path)
 
     def read_archive(self):
@@ -141,21 +187,61 @@ class FakeSheet(Sheet):
         self.posts.append((path, body))
         if path == "/values:batchUpdate":
             for block in body["data"]:
-                m = __import__("re").match(r"Pipeline!A(\d+):AB(\d+)", block["range"])
-                if not m:
-                    continue  # narrow package-cell ranges are recorded, not applied
-                start = int(m.group(1))
-                while len(self.grid) < start - 1 + len(block["values"]):
-                    self.grid.append([""] * N_COLS)
-                for i, row in enumerate(block["values"]):
-                    self.grid[start - 1 + i] = pad_row(row)
+                tab, c0, r0, c1, r1 = parse_range(block["range"])
+                if tab != self.tab:
+                    continue
+                for i, vals in enumerate(block["values"]):
+                    row = self._row(r0 - 1 + i, c0 + len(vals))
+                    for j, v in enumerate(vals):
+                        row[c0 + j] = v if not isinstance(v, bool) else ("TRUE" if v else "FALSE")
+        elif path == ":batchUpdate":
+            for req in body["requests"]:
+                if "moveDimension" in req:
+                    src = req["moveDimension"]["source"]
+                    dst = req["moveDimension"]["destinationIndex"]
+                    for i in range(len(self.grid)):
+                        row = self._row(i, src["endIndex"])
+                        cells = row[src["startIndex"]:src["endIndex"]]
+                        del row[src["startIndex"]:src["endIndex"]]
+                        at = dst if dst <= src["startIndex"] else dst - len(cells)
+                        row[at:at] = cells
+                elif "insertDimension" in req:
+                    rng = req["insertDimension"]["range"]
+                    n = rng["endIndex"] - rng["startIndex"]
+                    for i in range(len(self.grid)):
+                        row = self._row(i, rng["startIndex"])
+                        row[rng["startIndex"]:rng["startIndex"]] = [""] * n
+                elif "deleteDimension" in req:
+                    rng = req["deleteDimension"]["range"]
+                    del self.grid[rng["startIndex"]:rng["endIndex"]]
+                elif "sortRange" in req:
+                    sr = req["sortRange"]
+                    r0, r1 = sr["range"]["startRowIndex"], sr["range"]["endRowIndex"]
+                    col = sr["sortSpecs"][0]["dimensionIndex"]
+                    block = self.grid[r0:r1]
+
+                    def key(row):
+                        try:
+                            return -int(row[col])
+                        except (ValueError, TypeError, IndexError):
+                            return 1
+                    self.grid[r0:r1] = sorted(block, key=key)
         return {}
+
+
+def data_row(verdict, company, role, url, score="9", **over):
+    row = make_row(company=company, role=role, jd_url=url, score=int(score),
+                   source="x", jd_snippet="x")
+    row[C["Verdict"]] = verdict
+    for name, val in over.items():
+        row[C[name]] = val
+    return row
 
 
 def base_grid():
     grid = [list(HEADERS), [""] * N_COLS]
-    grid.append(pad_row(["Applied", "MongoDB", "Head of AI Platform",
-                         '=HYPERLINK("https://mdb.example/j","JD")'] + ["x"] * 24))
+    grid.append(data_row("Applied", "MongoDB", "Head of AI Platform",
+                         "https://mdb.example/j"))
     return grid
 
 
@@ -170,7 +256,7 @@ def test_read_pipeline_parses_rows_and_urls():
 
 def test_read_pipeline_rejects_header_drift():
     grid = base_grid()
-    grid[0][14] = "Status"  # the 9.11 defect resurfacing
+    grid[0][C["Package Status"]] = "Status"  # the 9.11 defect resurfacing
     s = FakeSheet(grid)
     with pytest.raises(SheetError, match="canon 9.13"):
         s.read_pipeline(HEADERS)
@@ -187,27 +273,172 @@ def test_read_pipeline_rejects_populated_row_2():
 def test_append_lands_after_last_populated_row():
     s = FakeSheet(base_grid())
     rng = s.append_rows([good_row()])
-    assert rng == "Pipeline!A4:AB4"
+    assert rng == f"Pipeline!A4:{LAST_COL}4"
     assert s.grid[3][1] == "Acme AI"
 
 
 def test_append_rejects_invalid_row_before_any_write():
     s = FakeSheet(base_grid())
-    bad = good_row(**{"8": "0"})
+    bad = good_row(**{"Score": "0"})
     with pytest.raises(SheetError, match="validation"):
         s.append_rows([bad])
     assert not s.posts
 
 
-def test_update_package_cells_touches_only_e_h_o_ab():
+def test_update_package_cells_touches_only_links_status_and_built():
     s = FakeSheet(base_grid())
     s.update_package_cells(3, cv_url="https://d/cv", letter_url="https://d/cl",
                            cv_pdf_url="https://d/cvp", letter_pdf_url="https://d/clp",
-                           package_status=sheet_mod.O_BUILT_DIRECT,
+                           package_status=sheet_mod.PKG_BUILT_DIRECT,
                            built_date="2026-08-31")
     path, body = s.posts[-1]
     ranges = [b["range"] for b in body["data"]]
-    assert ranges == ["Pipeline!E3:H3", "Pipeline!O3", "Pipeline!AB3"]
+    assert ranges == ["Pipeline!F3:I3", "Pipeline!R3", "Pipeline!AD3"]
+    assert s.grid[2][C["Verdict"]] == "Applied"
+    assert parse_hyperlink(s.grid[2][C["CV Doc"]]) == ("https://d/cv", "CV")
+    assert s.grid[2][C["Materials Built"]] == "2026-08-31"
+
+
+def test_column_map_matches_the_requested_layout():
+    """Krish, 2026-09-07: JD Snippet right after Role, warm path after Comp."""
+    assert len(HEADERS) == 30 and len(LEGACY_HEADERS) == 28
+    assert C["JD Snippet"] == 3 and C["Job Link"] == 4
+    assert C["Comp"] == 14 and C["Warm Path"] == 15 and C["Path Evidence"] == 16
+    assert letter("Package Status") == "R" and letter("Materials Built") == "AD"
+    assert LAST_COL == "AD"
+    for i in range(60):
+        assert col_index(col_letter(i)) == i
+    assert {col_letter(i) for i in sheet_mod.DATE_COLS} == {"U", "AB", "AD"}
+    idx = sheet_mod.migration_indexes()
+    assert (idx["move_from"], idx["move_to"], idx["insert_at"]) == (26, 3, 15)
+
+
+def test_update_package_status_accepts_only_the_vocabulary():
+    s = FakeSheet(base_grid())
+    s.update_package_status(3, sheet_mod.PKG_DEAD)
+    assert s.grid[2][C["Package Status"]] == sheet_mod.PKG_DEAD
+    with pytest.raises(SheetError, match="canon 9.13"):
+        s.update_package_status(3, "Something else")
+
+
+def test_update_warm_paths_writes_p_q_and_reads_back():
+    s = FakeSheet(base_grid())
+    warm = hyperlink("https://www.linkedin.com/in/ada", "Ada Nguyen, VP GTM at MongoDB")
+    s.update_warm_paths({3: (warm, "current_employee: works there now. Ask: 15 minutes")})
+    assert parse_hyperlink(s.grid[2][C["Warm Path"]])[0] == "https://www.linkedin.com/in/ada"
+    assert s.grid[2][C["Path Evidence"]].startswith("current_employee")
+    # blanks become the canon defaults, never an empty cell
+    s.update_warm_paths({3: ("", "")})
+    assert s.grid[2][C["Warm Path"]] == "None found" and s.grid[2][C["Path Evidence"]] == "n/a"
+
+
+def test_update_warm_paths_plains_an_em_dash_and_refuses_a_bad_formula():
+    s = FakeSheet(base_grid())
+    s.update_warm_paths({3: ("Ada", "works there \u2014 now")})
+    assert s.grid[2][C["Path Evidence"]] == "works there  -  now"
+    with pytest.raises(SheetError, match="HYPERLINK"):
+        s.update_warm_paths({3: ("=SUM(1)", "x")})
+
+
+def test_sort_by_score_orders_desc_removes_gaps_and_keeps_column_a_with_its_row():
+    grid = [list(HEADERS), [""] * N_COLS,
+            data_row("Yes", "Low", "Chief of Staff", "https://a.example/1", score="6"),
+            [""] * N_COLS,
+            data_row("Declined - stage wrong", "High", "Head of GTM", "https://a.example/2", score="10"),
+            data_row("New", "Mid", "VP Strategy", "https://a.example/3", score="8")]
+    s = FakeSheet(grid)
+    out = s.sort_by_score()
+    assert out == {"rows": 3, "blank_rows_removed": 1, "verified": True}
+    order = [(r[C["Verdict"]], r[C["Business"]], r[C["Score"]]) for r in s.grid[2:]]
+    assert order == [("Declined - stage wrong", "High", "10"), ("New", "Mid", "8"),
+                     ("Yes", "Low", "6")]
+
+
+# ---------- the column migration ----------
+
+def legacy_row(verdict, company, role, url, snippet="What the business does.",
+               built="n/a"):
+    cells = [""] * len(LEGACY_HEADERS)
+    for name, val in (("Verdict", verdict), ("Business", company), ("Role", role),
+                      ("Job Link", hyperlink(url, "JD")), ("Score", "9"),
+                      ("JD Snippet", snippet), ("Materials Built", built),
+                      ("Package Status", "Not started")):
+        cells[LEGACY_HEADERS.index(name)] = val
+    for i, c in enumerate(cells):
+        if not c:
+            cells[i] = "x"
+    return cells
+
+
+def legacy_grid(trailing=()):
+    return [list(LEGACY_HEADERS) + list(trailing), [""] * (28 + len(trailing)),
+            legacy_row("Yes", "Legora", "Director of Corporate Development",
+                       "https://jobs.ashbyhq.com/legora/a6", built="2026-09-03") + ["2026-09-02"] * len(trailing),
+            legacy_row("Declined - stage wrong", "Flex", "Chief of Staff",
+                       "https://flex.example/j/2") + ["2026-09-02"] * len(trailing)]
+
+
+def test_migrate_columns_dry_run_plans_move_then_insert():
+    s = FakeSheet(legacy_grid())
+    report = s.migrate_columns(tab="Pipeline", sheet_id=1)
+    assert report["state"] == "legacy" and report["data_rows"] == 2
+    assert report["plan"][0].startswith("move column AA")
+    assert "insert 2 columns at P" in report["plan"][1]
+    assert not report["applied"] and not s.posts
+
+
+def test_migrate_columns_apply_on_legacy_grid():
+    s = FakeSheet(legacy_grid())
+    report = s.migrate_columns(tab="Pipeline", sheet_id=1, apply=True)
+    assert report["applied"] and report["verified"]
+    assert s.grid[0] == HEADERS
+    row = s.grid[2]
+    assert row[C["Verdict"]] == "Yes" and row[C["Business"]] == "Legora"
+    assert row[C["JD Snippet"]] == "What the business does."
+    assert parse_hyperlink(row[C["Job Link"]])[0] == "https://jobs.ashbyhq.com/legora/a6"
+    assert row[C["Warm Path"]] == "None found" and row[C["Path Evidence"]] == "n/a"
+    assert row[C["Package Status"]] == "Not started"
+    assert row[C["Materials Built"]] == "2026-09-03"
+    assert s.read_pipeline(HEADERS)[0].jd_url == "https://jobs.ashbyhq.com/legora/a6"
+
+
+def test_migrate_columns_is_idempotent():
+    s = FakeSheet(legacy_grid())
+    s.migrate_columns(tab="Pipeline", sheet_id=1, apply=True)
+    n = len(s.posts)
+    again = s.migrate_columns(tab="Pipeline", sheet_id=1, apply=True)
+    assert again["noop"] and again["state"] == "done" and len(s.posts) == n
+
+
+def test_migrate_columns_resumes_from_the_moved_state():
+    s = FakeSheet(legacy_grid())
+    s._post(":batchUpdate", {"requests": [{"moveDimension": {
+        "source": {"sheetId": 1, "dimension": "COLUMNS", "startIndex": 26, "endIndex": 27},
+        "destinationIndex": 3}}]})
+    moved = list(LEGACY_HEADERS)
+    moved.insert(3, moved.pop(26))
+    s.grid[0] = moved
+    report = s.migrate_columns(tab="Pipeline", sheet_id=1)
+    assert report["state"] == "moved" and report["plan"][0].startswith("insert 2")
+    s.migrate_columns(tab="Pipeline", sheet_id=1, apply=True)
+    assert s.grid[0] == HEADERS and s.grid[2][C["JD Snippet"]] == "What the business does."
+
+
+def test_migrate_columns_applied_tab_keeps_archived_on_last():
+    s = FakeSheet(legacy_grid(trailing=("Archived On",)), tab="Applied")
+    report = s.migrate_columns(tab="Applied", sheet_id=1, trailing=("Archived On",), apply=True)
+    assert report["applied"]
+    assert s.grid[0] == HEADERS + ["Archived On"]
+    assert s.grid[2][30] == "2026-09-02" and s.grid[2][C["Materials Built"]] == "2026-09-03"
+
+
+def test_migrate_columns_refuses_an_unknown_header():
+    grid = legacy_grid()
+    grid[0][5] = "Letter"
+    s = FakeSheet(grid)
+    with pytest.raises(SheetError, match="neither"):
+        s.migrate_columns(tab="Pipeline", sheet_id=1, apply=True)
+    assert not s.posts
 
 
 def test_update_package_cells_rejects_new_o_vocabulary():
@@ -224,7 +455,7 @@ def test_update_package_cells_refuses_header_rows():
     with pytest.raises(SheetError, match="header"):
         s.update_package_cells(2, cv_url="https://d", letter_url="https://d",
                                cv_pdf_url="https://d", letter_pdf_url="https://d",
-                               package_status=sheet_mod.O_BUILT_DIRECT,
+                               package_status=sheet_mod.PKG_BUILT_DIRECT,
                                built_date="2026-08-31")
 
 
@@ -246,7 +477,7 @@ def test_ats_key_extracts_greenhouse_lever_ashby():
 
 def make_sheet_row(row_number, company, role, jd_url, verdict="New"):
     from hunter.sheet import SheetRow, pad_row, hyperlink
-    cells = pad_row([verdict, company, role, hyperlink(jd_url, "JD")] + ["x"] * 24)
+    cells = data_row(verdict, company, role, jd_url)
     return SheetRow(row_number=row_number, cells=cells, verdict=verdict,
                     company=company, role=role, jd_url=jd_url)
 
@@ -421,8 +652,7 @@ def test_reconcile_duplicate_sheet_row_never_mints_a_db_row(monkeypatch):
     from hunter.sheet import hyperlink
 
     url = "https://job-boards.greenhouse.io/writer/jobs/777"
-    row = pad_row(["New", "Writer", "VP, Customer Success (EMEA)",
-                   hyperlink(url, "JD"), "x", "x", "x", "x", "9"] + ["x"] * 19)
+    row = data_row("New", "Writer", "VP, Customer Success (EMEA)", url)
     grid = [list(HEADERS), [""] * N_COLS, list(row), list(row)]
     s = FakeSheet(grid)
     dbrow = {"job_id": "writer:vp-customer-success-emea-205914",

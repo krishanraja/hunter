@@ -230,7 +230,7 @@ def test_an_unresolvable_row_is_refused_not_guessed():
     from hunter.run import resolve_db_row
     from hunter.sheet import SheetRow
 
-    srow = SheetRow(row_number=22, cells=[""] * 28, verdict="New",
+    srow = SheetRow(row_number=22, cells=[""] * 30, verdict="New",
                     company="Anysphere (Cursor)",
                     role="Regional Vice President, Business Development",
                     jd_url=None)
@@ -267,3 +267,49 @@ def test_a_rejection_the_gate_predicts_is_not_reported_back_to_him():
     from hunter.archetype import archetype
     assert archetype("Enterprise Sales Director, Healthcare") is None
     assert archetype("General Manager, White Label") == "country_regional_gm"
+
+
+
+# ---------- company-level declines, applied as written ----------
+
+def test_company_level_codes_propagate_to_the_company():
+    """Krish declined five flex roles as business uninteresting and four
+    healthcare roles as domain expertise on 2026-09-07. Those are verdicts
+    on the companies; a sixth flex posting must never be staged. A seniority
+    verdict is about the role and says nothing about the company."""
+    events = [
+        {"job_id": "flex:chief-of-staff", "company": "flex", "verdict": "rejection",
+         "reason_code": "business_uninteresting", "source": "sheet column A",
+         "recorded_at": "2026-09-07T10:00:00Z", "reason_text": "Declined - business uninteresting"},
+        {"job_id": "oscar:vp-marketplace", "company": "oscar", "verdict": "rejection",
+         "reason_code": "domain_expertise", "source": "sheet column A",
+         "recorded_at": "2026-09-07T10:00:00Z", "reason_text": "Declined - domain expertise"},
+        {"job_id": "ripple:director-ecosystem", "company": "ripple", "verdict": "rejection",
+         "reason_code": "seniority_below", "source": "sheet column A",
+         "recorded_at": "2026-09-07T10:00:00Z", "reason_text": "Declined - seniority below"},
+        {"job_id": "sierra:enterprise-sales-director", "company": "Sierra",
+         "verdict": "rejection", "reason_code": "business_uninteresting",
+         "source": learn.AUTO_SOURCE, "recorded_at": "2026-09-02T10:00:00Z",
+         "reason_text": "Declined - business uninteresting"},
+    ]
+    declines = learn.company_declines(events)
+    assert learn.declined_company(declines, "Flex Inc")["code"] == "business_uninteresting"
+    assert learn.declined_company(declines, "Oscar Health")["date"] == "2026-09-07"
+    assert learn.declined_company(declines, "Ripple") is None
+    assert learn.declined_company(declines, "Sierra") is None, "hunter's own verdict is not his"
+    assert learn.declined_company(learn.company_declines(events, allow=["flex"]), "flex") is None
+    assert "flex: business_uninteresting since 2026-09-07" in learn.decline_lines(declines)
+
+
+def test_a_none_placeholder_is_not_a_warm_path():
+    """The incumbent wrote sentences into warm_path_person: 'None identified
+    with a current connection', 'None. No connections at Mutiny'. Package
+    Status read every one of them as a bridge to work first."""
+    from hunter.router import is_warm_path, route_status
+    from hunter.sheet import PKG_BUILT_BRIDGE, PKG_BUILT_DIRECT
+    assert not is_warm_path({"warm_path_person": "None identified with a current connection"})
+    assert not is_warm_path({"warm_path_person": "None. No connections at Mutiny"})
+    assert not is_warm_path({"warm_path_person": ""})
+    assert is_warm_path({"warm_path_person": "Ashley Kramer", "warm_path_tier": "current_employee"})
+    assert route_status({"warm_path_person": "None. No connections"}) == PKG_BUILT_DIRECT
+    assert route_status({"warm_path_person": "Ashley Kramer"}) == PKG_BUILT_BRIDGE

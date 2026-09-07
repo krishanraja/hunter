@@ -14,19 +14,28 @@ himself. Nothing here sends anything.
 from __future__ import annotations
 
 import datetime
+import json
 import re
 
 from ..config import Config, db_delete, db_get, db_insert, db_patch
 from ..router import GO_WORDS
-from ..sheet import Sheet
-from ..sources import slugify
+from ..sheet import EVIDENCE_NONE, WARM_NONE, Sheet, hyperlink, plain_text
+from ..sources import distinctive_tokens, slugify
+from . import li_slug
 from .strength import EVIDENCE_KEYS  # noqa: F401  (re-export for the guard test)
 
 # newsletter_move sits between ex_employee and current_employee on purpose:
 # a person named in the a16z newsletter as having just joined the company is
 # timelier than an ex-employee and colder than anyone Krish actually knows.
 TIER_BASE = {"current_employee": 40, "newsletter_move": 30, "ex_employee": 25,
-             "headhunter": 20, "peer_transition": 10}
+             "headhunter": 20, "cold_target": 15, "peer_transition": 10}
+
+# Control Center's graph (contacts + contact_intelligence) scores relationship
+# by tier, not by message counts. Mapped onto the same 0..100 strength scale
+# network_contacts uses, so one min_strength cut applies to both.
+CC_TIER_STRENGTH = {"1_reciprocated": 70, "2_core_network": 50,
+                    "3_known_network": 30, "4_owned_network": 15, "5_cold_lead": 5}
+COLD_KEY = "hunter_cold_targets_max_per_run"
 NEWSLETTER_WINDOW_DAYS = 120
 PRIORITY_BONUS = {"A": 15, "B": 8, "C": 3}
 
@@ -66,6 +75,10 @@ DRAFTS = {
         "TEMPLATE, find the person first: [[NAME]] made the same move I am "
         "making, into {company}'s world. Ask: would you take 15 minutes to "
         "tell me what you wish you had known before you moved?"),
+    "cold_target": (
+        "I am going after the {role} role at {company} and you are the person "
+        "it reports into or sits beside. Rather than go in through the form, "
+        "could I have 15 minutes to hear what the role has to solve first?"),
 }
 
 
@@ -165,6 +178,43 @@ def retire_stale(cfg: Config, roles: list[dict]) -> int:
     return len(stale)
 
 
+def load_cc_graph(cfg: Config, known_keys: set[str]) -> list[dict]:
+    """Control Center's people graph (contacts joined to contact_intelligence)
+    in network_contacts shape, minus anyone network_contacts already holds.
+    Only people with a company are useful here, and a row without a name is
+    not a person."""
+    try:
+        rows = db_get(cfg, "contacts", {
+            "select": "id,full_name,company,title,linkedin_url,heat_score,"
+                      "contact_intelligence(network_tier,warmth)",
+            "company": "not.is.null", "limit": "20000"})
+    except Exception:
+        return []
+    out = []
+    for r in rows:
+        if not (r.get("full_name") or "").strip() or not (r.get("company") or "").strip():
+            continue
+        slug = li_slug(r.get("linkedin_url"))
+        key = slug or f"contact:{r.get('id')}"
+        if key in known_keys:
+            continue
+        intel = r.get("contact_intelligence") or {}
+        if isinstance(intel, list):
+            intel = intel[0] if intel else {}
+        tier = (intel or {}).get("network_tier") or ""
+        strength = CC_TIER_STRENGTH.get(tier)
+        if strength is None:
+            heat = r.get("heat_score")
+            strength = int(heat) if isinstance(heat, (int, float)) else 20
+        out.append({"contact_key": key, "full_name": r["full_name"],
+                    "current_company": r["company"], "current_title": r.get("title") or "",
+                    "strength_score": strength,
+                    "strength_evidence": {"cc_tier": tier} if tier else {},
+                    "employment_history": [], "linkedin_url": r.get("linkedin_url"),
+                    "graph": "contacts"})
+    return out
+
+
 def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
     roles = target_roles(cfg)
     retired = retire_stale(cfg, roles)
@@ -172,10 +222,15 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
         "select": "contact_key,full_name,current_company,current_title,"
                   "strength_score,strength_evidence,employment_history",
         "order": "strength_score.desc", "limit": "5000"})
+    contacts = list(contacts) + load_cc_graph(
+        cfg, {c.get("contact_key") for c in contacts})
     by_company: dict[str, list[dict]] = {}
+    company_tokens: dict[str, set[str]] = {}
     for c in contacts:
         if c.get("current_company"):
-            by_company.setdefault(slugify(c["current_company"]), []).append(c)
+            key = slugify(c["current_company"])
+            by_company.setdefault(key, []).append(c)
+            company_tokens[key] = distinctive_tokens(c["current_company"])
 
     headhunters = load_headhunters(sheet)
     hh_role_hits: dict[str, list[dict]] = {}
@@ -192,7 +247,15 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
         cslug = slugify(role["company"])
         found_in_network = False
 
-        for c in by_company.get(cslug, [])[:3]:
+        # exact slug first, then any company sharing a distinctive token
+        # ("Google" for "Google (YouTube Partnerships)"), strongest first
+        rtoks = distinctive_tokens(role["company"])
+        pool = list(by_company.get(cslug, []))
+        for key, toks in company_tokens.items():
+            if key != cslug and rtoks and toks & rtoks:
+                pool.extend(by_company.get(key, []))
+        pool.sort(key=lambda c: -(c.get("strength_score") or 0))
+        for c in pool[:3]:
             if c["strength_score"] < min_strength:
                 continue
             found_in_network = True
@@ -302,3 +365,200 @@ def top_bridges(cfg: Config, n: int = 5) -> list[dict]:
         "state": "eq.proposed",
         "order": "bridge_score.desc",
         "limit": str(n)})
+
+
+def clear_junk_warm_paths(cfg: Config) -> int:
+    """Null the placeholder sentences the retired incumbent wrote into
+    warm_path_person ("None identified with...", "None. No connections").
+    A placeholder read as a person put "bridge first" on rows with nobody
+    to bridge through."""
+    rows = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,warm_path_person",
+        "warm_path_person": "ilike.none*", "limit": "5000"})
+    for r in rows:
+        db_patch(cfg, "hunter_seen_roles", {"job_id": r["job_id"]},
+                 {"warm_path_person": None, "warm_path_tier": None,
+                  "warm_path_evidence": None})
+    return len(rows)
+
+
+def _person_lookup(cfg: Config, keys: list[str]) -> dict[str, dict]:
+    """contact_key -> {name, title, company, linkedin_url} across both graphs."""
+    out: dict[str, dict] = {}
+    keys = [k for k in keys if k and not k.startswith(("peer:", "headhunter:"))]
+    if not keys:
+        return out
+    plain = [k for k in keys if not k.startswith("contact:")]
+    for i in range(0, len(plain), 100):
+        chunk = plain[i:i + 100]
+        rows = db_get(cfg, "network_contacts", {
+            "select": "contact_key,full_name,current_title,current_company,linkedin_url",
+            "contact_key": "in.(" + ",".join(f'"{k}"' for k in chunk) + ")",
+            "limit": "500"})
+        for r in rows:
+            out[r["contact_key"]] = {
+                "name": r.get("full_name") or "", "title": r.get("current_title") or "",
+                "company": r.get("current_company") or "",
+                "linkedin_url": r.get("linkedin_url") or
+                (f"https://www.linkedin.com/in/{r['contact_key']}"
+                 if li_slug(f"https://www.linkedin.com/in/{r['contact_key']}") else "")}
+    missing = [k for k in keys if k not in out]
+    ids = [k.split(":", 1)[1] for k in missing if k.startswith("contact:")]
+    slugs = [k for k in missing if not k.startswith("contact:")]
+    try:
+        if ids:
+            rows = db_get(cfg, "contacts", {
+                "select": "id,full_name,title,company,linkedin_url",
+                "id": "in.(" + ",".join(ids) + ")", "limit": "500"})
+            for r in rows:
+                out[f"contact:{r['id']}"] = {
+                    "name": r.get("full_name") or "", "title": r.get("title") or "",
+                    "company": r.get("company") or "",
+                    "linkedin_url": r.get("linkedin_url") or ""}
+        for slug in slugs:
+            rows = db_get(cfg, "contacts", {
+                "select": "id,full_name,title,company,linkedin_url",
+                "linkedin_url_norm": f"ilike.*/in/{slug}*", "limit": "1"})
+            if rows:
+                r = rows[0]
+                out[slug] = {"name": r.get("full_name") or "",
+                             "title": r.get("title") or "",
+                             "company": r.get("company") or "",
+                             "linkedin_url": r.get("linkedin_url") or
+                             f"https://www.linkedin.com/in/{slug}"}
+    except Exception:
+        pass
+    return out
+
+
+def warm_path_cells(cfg: Config, job_ids: list[str]) -> dict[str, tuple[str, str]]:
+    """job_id -> (Warm Path cell, Path Evidence cell) for the sheet.
+
+    The best proposed bridge per role that names a person. Warm Path is a
+    HYPERLINK to the person's LinkedIn profile labelled name, title at
+    company; evidence carries the tier, the evidence line and the draft
+    ask. A role with nobody gets the canon defaults, never a blank.
+    """
+    out: dict[str, tuple[str, str]] = {}
+    if not job_ids:
+        return out
+    cands: list[dict] = []
+    for i in range(0, len(job_ids), 100):
+        chunk = job_ids[i:i + 100]
+        cands.extend(db_get(cfg, "bridge_candidates", {
+            "select": "job_id,contact_key,path_tier,path_evidence,bridge_score,draft_ask,state",
+            "job_id": "in.(" + ",".join(f'"{j}"' for j in chunk) + ")",
+            "state": "in.(proposed,reached_out)",
+            "order": "bridge_score.desc", "limit": "2000"}))
+    best: dict[str, dict] = {}
+    for c in cands:
+        if (c.get("contact_key") or "").startswith("peer:"):
+            continue
+        if c["job_id"] not in best:
+            best[c["job_id"]] = c
+    people = _person_lookup(cfg, [c["contact_key"] for c in best.values()])
+    for jid in job_ids:
+        c = best.get(jid)
+        if not c:
+            out[jid] = (WARM_NONE, EVIDENCE_NONE)
+            continue
+        key = c["contact_key"]
+        if key.startswith("headhunter:"):
+            label = f"Headhunter: {key.split(':', 1)[1].replace('-', ' ').title()}"
+            warm = label
+        else:
+            p = people.get(key) or {}
+            name = p.get("name") or key
+            bits = [name]
+            if p.get("title"):
+                bits.append(p["title"])
+            label = ", ".join(bits) + (f" at {p['company']}" if p.get("company") else "")
+            url = p.get("linkedin_url") or ""
+            warm = hyperlink(url, label) if url.startswith("http") else label
+        evidence = (f"{c['path_tier']}: {plain_text(c.get('path_evidence') or '')}. "
+                    f"Ask: {plain_text(c.get('draft_ask') or '')}")
+        out[jid] = (warm, evidence[:500])
+    return out
+
+
+COLD_PROMPT = """Krish Raja is applying for the role "{title}" at {company}{loc}.
+Find the one person at {company} most likely to own or sit beside this hire:
+for a company under about 200 people the CEO or a co-founder; otherwise the
+executive this role reports into (CRO, COO, Chief of Staff to the CEO, Head of
+Talent) or the leader of the function named in the title. Use web search.
+
+Answer with ONE JSON object and nothing else:
+{{"name": "...", "title": "...", "linkedin_url": "https://www.linkedin.com/in/...",
+  "source_url": "the page that shows this person in that role", "why": "one sentence"}}
+If you cannot find a named person with a source, answer {{"name": null}}.
+Never invent a LinkedIn URL: leave it null unless a page showed it."""
+
+
+def cold_targets(cfg: Config, roles: list[dict], cap: int | None = None) -> dict:
+    """A named person at each Yes company with no in-network path.
+
+    One Claude call with web search per role, capped per run. The person
+    lands in network_contacts (source hunter cold target) and a cold_target
+    bridge, so the Warm Path cell can link to them. Nothing is sent.
+    """
+    if cap is None:
+        cap = int(cfg.optional(COLD_KEY, "30")) if cfg is not None else 30
+    stats = {"eligible": 0, "searched": 0, "found": 0, "skipped": []}
+    if not roles or cap <= 0:
+        return stats
+    jids = [r["job_id"] for r in roles]
+    have: dict[str, set[str]] = {}
+    for i in range(0, len(jids), 100):
+        chunk = jids[i:i + 100]
+        for c in db_get(cfg, "bridge_candidates", {
+                "select": "job_id,contact_key,path_tier",
+                "job_id": "in.(" + ",".join(f'"{j}"' for j in chunk) + ")",
+                "limit": "2000"}):
+            if not (c.get("contact_key") or "").startswith("peer:"):
+                have.setdefault(c["job_id"], set()).add(c["path_tier"])
+    todo = [r for r in roles if not have.get(r["job_id"])]
+    stats["eligible"] = len(todo)
+    if not todo:
+        return stats
+    import anthropic
+    client = anthropic.Anthropic(api_key=cfg.require("hunter_anthropic_api_key"))
+    model = cfg.optional("hunter_anthropic_model", "claude-opus-5")
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    for r in todo[:cap]:
+        stats["searched"] += 1
+        loc = f" ({r['location']})" if r.get("location") else ""
+        try:
+            resp = client.messages.create(
+                model=model, max_tokens=4000,
+                tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 4}],
+                messages=[{"role": "user", "content": COLD_PROMPT.format(
+                    title=r["title"], company=r["company"], loc=loc)}])
+            text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+            m = re.search(r"\{.*\}", text, re.S)
+            data = json.loads(m.group(0)) if m else {}
+        except Exception as e:
+            stats["skipped"].append(f"{r['job_id']}: {e.__class__.__name__}")
+            continue
+        name = (data.get("name") or "").strip() if isinstance(data, dict) else ""
+        if not name:
+            stats["skipped"].append(f"{r['job_id']}: nobody found with a source")
+            continue
+        url = (data.get("linkedin_url") or "").strip()
+        slug = li_slug(url) if url else None
+        key = slug or f"cold:{slugify(name)}"
+        evidence = (f"COLD TARGET, found by web search: {name}, {data.get('title') or 'title unknown'} "
+                    f"at {r['company']}. {data.get('why') or ''} "
+                    f"Source: {data.get('source_url') or 'not given'}")
+        db_insert(cfg, "network_contacts", [{
+            "contact_key": key, "linkedin_url": url or None, "full_name": name,
+            "current_company": r["company"], "current_title": data.get("title") or None,
+            "strength_score": 0, "strength_evidence": {"cold_target": True},
+            "source": "hunter cold target", "updated_at": now}],
+            on_conflict="contact_key", merge=True)
+        db_insert(cfg, "bridge_candidates", [_candidate(
+            r, key, "cold_target", plain_text(evidence)[:900], "outside network, named",
+            TIER_BASE["cold_target"],
+            DRAFTS["cold_target"].format(company=r["company"], role=r["title"]), now)],
+            on_conflict="job_id,contact_key,path_tier", merge=True)
+        stats["found"] += 1
+    return stats

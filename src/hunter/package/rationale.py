@@ -24,6 +24,7 @@ from ..config import Config
 
 MAX_CHARS = 800
 MIN_CHARS = 120
+SNIPPET_MAX = 240
 
 RATIONALE_SCHEMA = {
     "type": "object",
@@ -32,8 +33,9 @@ RATIONALE_SCHEMA = {
         "fit": {"type": "string"},
         "risk": {"type": "string"},
         "archetype": {"type": "string"},
+        "snippet": {"type": "string"},
     },
-    "required": ["mandate", "fit", "risk", "archetype"],
+    "required": ["mandate", "fit", "risk", "archetype", "snippet"],
     # the structured-output subset requires this explicitly on every object
     "additionalProperties": False,
 }
@@ -55,7 +57,7 @@ Score this system gave it: {score} out of 10, because: {score_reason}
 JOB DESCRIPTION (verbatim, the only source of fact about the role):
 {jd}
 
-Write three short pieces, as JSON:
+Write four short pieces, as JSON:
 - mandate: what the job actually is, one sentence, in the posting's own terms.
 - fit: why it fits Krish specifically. Name the archetype and the evidence.
   Be concrete about what he has done that maps to this mandate. One or two
@@ -64,6 +66,9 @@ Write three short pieces, as JSON:
   sentence. If there is no real risk, say what would need to be true.
 - archetype: one of gm_market_builder, commercial_strategy, corp_dev_strategy,
   ai_transformation, partnerships_alliances.
+- snippet: two short sentences for the sheet's JD Snippet column, under
+  {snippet_chars} characters: first what the business does and sells, then what
+  this role is for. Written so Krish understands the business in one glance.
 
 Rules: plain English, no em dashes, no marketing adjectives. Every number or
 figure you use must appear verbatim in the job description above. Do not
@@ -109,6 +114,17 @@ def validate(parts: dict, jd: str) -> list[str]:
     for key in ("mandate", "fit", "risk"):
         if not parts.get(key, "").strip():
             fails.append(f"{key} is empty")
+    snippet = (parts.get("snippet") or "").strip()
+    if not snippet:
+        fails.append("snippet is empty")
+    elif len(snippet) > SNIPPET_MAX:
+        fails.append(f"snippet too long at {len(snippet)} chars")
+    else:
+        for bad in BANNED:
+            if bad.lower() in snippet.lower():
+                fails.append(f"banned language in snippet: {bad!r}")
+        if not digits_grounded(snippet, jd):
+            fails.append("a figure in the snippet does not appear in the JD")
     return fails
 
 
@@ -127,6 +143,16 @@ def deterministic(company: str, title: str, score: int, score_reason: str) -> st
             f"the JD before spending a verdict on it.")
 
 
+def deterministic_snippet(company: str, title: str, jd: str) -> str:
+    """The JD's own opening, or an honest stub. Never a guess about the
+    business."""
+    text = " ".join((jd or "").split()).replace("\u2014", " - ").replace("\u2013", " - ")
+    if len(text) >= 200:
+        cut = text[:SNIPPET_MAX]
+        return cut[:cut.rfind(" ")] if " " in cut else cut
+    return f"{title} at {company}. JD not captured."
+
+
 def _text(resp) -> str:
     """The model may emit a thinking block first, so content[0] is not
     reliably the JSON. Take the first text block, or fail loudly."""
@@ -139,11 +165,25 @@ def _text(resp) -> str:
 def write_rationale(cfg: Config, canon, *, company: str, title: str, jd: str,
                     score: int, score_reason: str, location: str = "",
                     comp: str = "") -> tuple[str, list[str]]:
-    """(column J text, flags). Never raises: a role always gets a rationale,
-    even if it is the honest fallback."""
+    """(Why It Fits text, flags). Never raises: a role always gets a
+    rationale, even if it is the honest fallback."""
+    text, _snippet, flags = write_rationale_and_snippet(
+        cfg, canon, company=company, title=title, jd=jd, score=score,
+        score_reason=score_reason, location=location, comp=comp)
+    return text, flags
+
+
+def write_rationale_and_snippet(cfg: Config, canon, *, company: str, title: str,
+                                jd: str, score: int, score_reason: str,
+                                location: str = "", comp: str = ""
+                                ) -> tuple[str, str, list[str]]:
+    """(Why It Fits text, JD Snippet text, flags). One model call writes
+    both, so the snippet Krish reads in column D and the rationale in column
+    K come from the same reading of the same JD."""
     flags: list[str] = []
+    fallback_snippet = deterministic_snippet(company, title, jd)
     if len(jd or "") < 200:
-        return deterministic(company, title, score, score_reason), ["thin JD"]
+        return deterministic(company, title, score, score_reason), fallback_snippet, ["thin JD"]
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=cfg.require("hunter_anthropic_api_key"))
@@ -151,7 +191,7 @@ def write_rationale(cfg: Config, canon, *, company: str, title: str, jd: str,
             canon_profile=canon.section_text("5")[:2500],
             company=company, title=title, location=location or "not stated",
             comp=comp or "not disclosed", score=score, score_reason=score_reason,
-            jd=jd[:6000], max_chars=MAX_CHARS)
+            jd=jd[:6000], max_chars=MAX_CHARS, snippet_chars=SNIPPET_MAX)
         resp = client.messages.create(
             model=cfg.optional("hunter_anthropic_model", "claude-opus-5"),
             max_tokens=1200,
@@ -159,11 +199,12 @@ def write_rationale(cfg: Config, canon, *, company: str, title: str, jd: str,
             output_config={"format": {"type": "json_schema",
                                       "schema": RATIONALE_SCHEMA}})
         if getattr(resp, "stop_reason", "") == "refusal":
-            return deterministic(company, title, score, score_reason), ["model refused"]
+            return (deterministic(company, title, score, score_reason),
+                    fallback_snippet, ["model refused"])
         if getattr(resp, "stop_reason", "") == "max_tokens":
             # a truncated JSON body is not partially usable
             return (deterministic(company, title, score, score_reason),
-                    ["rationale truncated at the token limit"])
+                    fallback_snippet, ["rationale truncated at the token limit"])
         parts = json.loads(_text(resp))
         fails = validate(parts, jd)
         if fails:
@@ -181,14 +222,17 @@ def write_rationale(cfg: Config, canon, *, company: str, title: str, jd: str,
                 output_config={"format": {"type": "json_schema",
                                           "schema": RATIONALE_SCHEMA}})
             if getattr(retry, "stop_reason", "") in ("refusal", "max_tokens"):
-                return deterministic(company, title, score, score_reason), fails
+                return (deterministic(company, title, score, score_reason),
+                        fallback_snippet, fails)
             parts = json.loads(_text(retry))
             fails = validate(parts, jd)
             if fails:
                 flags.append("rationale rejected twice: " + "; ".join(fails))
-                return deterministic(company, title, score, score_reason), flags
+                return (deterministic(company, title, score, score_reason),
+                        fallback_snippet, flags)
             flags.append("rationale needed one retry")
-        return assemble(parts), flags
+        snippet = " ".join(parts["snippet"].split()).replace("\u2014", " - ")
+        return assemble(parts), snippet, flags
     except Exception as e:
-        return (deterministic(company, title, score, score_reason),
+        return (deterministic(company, title, score, score_reason), fallback_snippet,
                 [f"rationale generation failed: {e.__class__.__name__}"])

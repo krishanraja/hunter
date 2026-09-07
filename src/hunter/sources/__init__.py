@@ -37,6 +37,10 @@ class ResolvedRole:
     location: str = ""
     comp: str = ""
     stage: str = ""
+    # "checked": live is a verified answer from the ATS. "unverified": the
+    # URL has no ATS key and no board was found, so nothing could answer;
+    # live stays False, and G1 says so honestly instead of calling it dead.
+    liveness: str = "checked"
 
     @property
     def job_id(self) -> str:

@@ -1,4 +1,4 @@
-"""Orchestrator. python -m hunter.run {run,reconcile,migrate-sheet,build,recon}
+"""Orchestrator. python -m hunter.run {process,run,reconcile,migrate-columns,build,recon,drain}
 
 Phases of a full run, in order:
   1. Load config and canon; every hard-fail guard fires before any paid call,
@@ -36,8 +36,9 @@ from .gates import FLOOR, names_foreign_geo, run_gates
 from . import learn
 from .report import report_run
 from . import verdicts
-from .router import classify_verdict, route_status, select_for_build
+from .router import classify_verdict, is_warm_path, route_status, select_for_build
 from .score import BAR, score_role
+from . import sheet as sheet_mod
 from .sheet import Sheet, SheetError, SheetRow, make_row
 from .sources import (ResolvedRole, distinctive_tokens, identity_keys,
                       job_id, slugify)
@@ -49,6 +50,11 @@ NOW = lambda: datetime.datetime.utcnow().isoformat() + "Z"
 
 def assert_canon_alignment(canon: Canon) -> None:
     """Canon supersedes code. If canon moved, stop and say which side to fix."""
+    if list(canon.sheet_headers) != list(sheet_mod.HEADERS):
+        diffs = [(sheet_mod.col_letter(i), a, b) for i, (a, b) in
+                 enumerate(zip(canon.sheet_headers, sheet_mod.HEADERS)) if a != b]
+        raise CanonError(f"canon 9.13 headers disagree with sheet.HEADERS at "
+                         f"{diffs[:3]}; one side moved, update the losing side")
     if canon.bar != BAR:
         raise CanonError(f"canon 9.2 bar is {canon.bar} but score.py encodes {BAR}; "
                          f"update score.BAR and rerun")
@@ -115,6 +121,7 @@ class ReconcileLedger:
     packages_synced: list[str] = field(default_factory=list)
     ambiguous: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+    company_blocked: list[str] = field(default_factory=list)
 
     def lines(self) -> list[str]:
         out = [f"reconciled: {len(self.matched)} matched, "
@@ -127,6 +134,7 @@ class ReconcileLedger:
                              ("verdicts", self.verdicts_synced),
                              ("packages", self.packages_synced),
                              ("AMBIGUOUS, no action", self.ambiguous),
+                             ("G12", self.company_blocked),
                              ("skipped", self.skipped)):
             for item in items:
                 out.append(f"  {label}: {item}")
@@ -250,7 +258,8 @@ def record_verdict_event(cfg: Config, row: dict, verdict_text: str,
               f"{e.__class__.__name__}")
 
 
-def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
+def reconcile(cfg: Config, canon: Canon, sheet: Sheet,
+              company_declines: dict | None = None) -> ReconcileLedger:
     ledger = ReconcileLedger()
     # "The sheet" is Pipeline PLUS the archive. Reading only Pipeline makes
     # every archived role look missing and direction 2 re-appends it on the
@@ -319,15 +328,15 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
         row = {
             "job_id": job_id(srow.company, srow.role), "company": srow.company,
             "title": srow.role, "url": srow.jd_url or "", "job_url": srow.jd_url or "",
-            "source": (srow.cells[15] or "sheet reconcile"),
+            "source": (srow.cell("Source") or "sheet reconcile"),
             "status": "dropped" if verdict_kind == "rejection" else "staging",
-            "why_it_fits": srow.cells[9] if srow.cells[9] != "Not assessed" else "",
-            "location": srow.cells[12] if srow.cells[12] != "Not stated" else "",
-            "comp": srow.cells[13] if srow.cells[13] != "Not disclosed" else "",
+            "why_it_fits": srow.cell("Why It Fits") if srow.cell("Why It Fits") != "Not assessed" else "",
+            "location": srow.cell("Location") if srow.cell("Location") != "Not stated" else "",
+            "comp": srow.cell("Comp") if srow.cell("Comp") != "Not disclosed" else "",
             "sweep_date": TODAY(), "presented_at": NOW(),
         }
         try:
-            row["score"] = int(srow.cells[8])
+            row["score"] = int(srow.cell("Score"))
         except (ValueError, TypeError):
             pass
         if verdict_kind == "rejection":
@@ -362,6 +371,12 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet) -> ReconcileLedger:
         # hunter always writes sweep_date and why_it_fits; the incumbent never did
         hunter_judged = bool(d.get("sweep_date")) and bool(d.get("why_it_fits"))
         if not decided:
+            hit = learn.declined_company(company_declines, d.get("company") or "")
+            if hit:
+                ledger.company_blocked.append(
+                    f"{d['job_id']}: company declined by Krish on {hit['date']} "
+                    f"({hit['code']}); not put on the sheet")
+                continue
             if not hunter_judged:
                 ledger.skipped.append(
                     f"{d['job_id']}: scored by the retired incumbent, never gated "
@@ -644,8 +659,8 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
             role = _resolve_for_build({
                 "url": r.jd_url, "title": full, "company": r.company,
                 "source": "regate",
-                "location": r.cells[12] if r.cells[12] != "Not stated" else "",
-                "comp": r.cells[13] if r.cells[13] != "Not disclosed" else ""})
+                "location": r.cell("Location") if r.cell("Location") != "Not stated" else "",
+                "comp": r.cell("Comp") if r.cell("Comp") != "Not disclosed" else ""})
         except Exception as e:
             unresolved.append((r, f"fetch failed: {e.__class__.__name__}"))
             continue
@@ -663,7 +678,7 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
         if decided_row:
             # His verdict outranks the rubric. The row keeps the score it has
             # and only gains the rationale it was missing.
-            existing = int(r.cells[8]) if str(r.cells[8]).strip().isdigit() else result.score
+            existing = int(r.cell("Score")) if str(r.cell("Score")).strip().isdigit() else result.score
             why, flags = write_rationale(
                 cfg, canon, company=r.company, title=full, jd=role.jd_text,
                 score=existing, score_reason=result.why_it_fits,
@@ -903,8 +918,8 @@ def cmd_disconnect(apply: bool = False) -> int:
 
     live = sheet.read_pipeline(canon.sheet_headers)
     linked = [r for r in live
-              if any((r.cells[i] or "").strip() not in ("", "Not built")
-                     for i in range(4, 8))]
+              if any((r.cell(n) or "").strip() not in ("", "Not built")
+                     for n in ("CV Doc", "Cover Letter Doc", "CV PDF", "CL PDF"))]
     print(f"\n{len(linked)} Pipeline row(s) still show package links:")
     for r in linked:
         print(f"  row {r.row_number}: {r.company} / {r.role}")
@@ -967,26 +982,14 @@ def cmd_verify(apply: bool = False) -> int:
             (live if is_live else dead).append((r, f"{ats}/{slug}"))
             continue
 
-        found = disc.discover(cfg, r.company, cache)
-        if not found:
-            unknown.append((r, "no job board found on greenhouse, ashby or lever"))
+        state, hit, why = discover_posting(cfg, r.company, title, cache)
+        if state == "unknown":
+            unknown.append((r, why))
             continue
-        ats, slug = found
-        try:
-            postings = boards[ats](slug)
-        except Exception as e:
-            unknown.append((r, f"{ats}/{slug} board read failed: {e.__class__.__name__}"))
+        if state == "absent":
+            dead.append((r, why))
             continue
-        nt = _norm_title(title)
-        hit = next((p for p in postings if _norm_title(p.title) == nt), None)
-        if hit is None:
-            close = [p for p in postings
-                     if title_jaccard(title, p.title) >= FUZZY_TITLE_MIN]
-            hit = close[0] if len(close) == 1 else None
-        if hit is None:
-            dead.append((r, f"not on the {ats}/{slug} board ({len(postings)} jobs)"))
-            continue
-        live.append((r, f"{ats}/{slug}, relinked"))
+        live.append((r, f"{why}, relinked"))
         if hit.url:
             relinked[r.row_number] = hit.url
 
@@ -1266,10 +1269,13 @@ def learning_step(cfg: Config, *, apply: bool) -> dict:
                    if e.get("verdict") == "rejection"
                    and not verdicts.is_system_code(e.get("reason_code"))
                    and archetype(e.get("title") or "")]
+    allow = learn.load_company_allow(cfg)
     return {"roles": roles, "verdicted": verdicted, "recorded": recorded,
             "events": events, "findings": findings, "fixed": fixed,
             "unexplained": unexplained,
-            "opens": learn.open_applications(roles)}
+            "opens": learn.open_applications(roles),
+            "allow": allow,
+            "company_declines": learn.company_declines(events, allow)}
 
 
 def learning_lines(out: dict) -> list[str]:
@@ -1280,6 +1286,40 @@ def learning_lines(out: dict) -> list[str]:
         lines.append(f"  you declined a role that matches your archetypes: "
                      f"{e.get('company')} / {e.get('title')} ({e.get('reason_text')})")
     return lines
+
+
+def learning_report_lines(out: dict, *, g12_hits: list[str] = ()) -> list[str]:
+    """The LEARNING REPORT block of a run summary: which companies are
+    closed by Krish's own verdicts, what that blocked this run, and the
+    rejections the archetype gate did not predict (his to rule on)."""
+    declines = out.get("company_declines") or {}
+    lines = ["LEARNING REPORT"]
+    dl = learn.decline_lines(declines)
+    lines.append(f"  company-level declines on record: {len(dl)}"
+                 + (" (" + "; ".join(dl[:12]) + (", ..." if len(dl) > 12 else "") + ")"
+                    if dl else ""))
+    allow = out.get("allow") or []
+    lines.append(f"  allow list ({learn.ALLOW_KEY}): "
+                 + (", ".join(allow) if allow else "empty"))
+    hits = list(g12_hits or [])
+    lines.append(f"  G12 applied this run: {len(hits)} posting(s)")
+    for h in hits[:20]:
+        lines.append(f"    {h}")
+    for e in out.get("unexplained") or []:
+        lines.append(f"  you declined a role that matches your archetypes: "
+                     f"{e.get('company')} / {e.get('title')} ({e.get('reason_text')})")
+    return lines
+
+
+def stored_company_declines(cfg: Config) -> tuple[dict, list[str]]:
+    """Company declines from the events already on record, for the phases
+    that run before this run's learning step. A read failure degrades to no
+    declines and a summary line, never a dead run."""
+    try:
+        allow = learn.load_company_allow(cfg)
+        return learn.company_declines(learn.load_events(cfg), allow), []
+    except Exception as e:
+        return {}, [f"company declines not loaded: {e.__class__.__name__}: {e}"]
 
 
 def cmd_learn(apply: bool = False) -> int:
@@ -1386,7 +1426,7 @@ def cmd_newsletter(apply: bool = False, limit: int = 0) -> int:
     return 0
 
 
-def cmd_drain() -> int:
+def cmd_drain(command_id: str | None = None) -> int:
     """Run the oldest command Control Center queued, if any.
 
     Fires hourly from a Routine and exits in seconds when the queue is empty,
@@ -1404,11 +1444,15 @@ def cmd_drain() -> int:
             print("\n".join(newsletter_lines(out)))
     except Exception as e:
         print(f"newsletter check skipped: {e.__class__.__name__}: {e}")
-    queued = db_get(cfg, COMMANDS_TABLE,
-                    {"select": "id,command,requested_at", "state": "eq.queued",
-                     "order": "requested_at.asc", "limit": "1"})
+    params = {"select": "id,command,requested_at", "state": "eq.queued",
+              "order": "requested_at.asc", "limit": "1"}
+    if command_id:
+        # dispatched for one button press: claim that row and nothing else,
+        # and exit quietly if the hourly drain already took it
+        params["id"] = f"eq.{command_id}"
+    queued = db_get(cfg, COMMANDS_TABLE, params)
     if not queued:
-        print("nothing queued")
+        print("nothing queued" if not command_id else f"command {command_id} is not queued")
         return 0
     job = queued[0]
     cid, command = str(job["id"]), job["command"]
@@ -1417,6 +1461,9 @@ def cmd_drain() -> int:
     print(f"running {command} (command {cid})")
     try:
         summary = run_command(cfg, command)
+        run_url = actions_run_url()
+        if run_url:
+            summary = f"{summary} ({run_url})"
         db_patch(cfg, COMMANDS_TABLE, {"id": cid},
                  {"state": "done", "finished_at": NOW(),
                   "result": summary[:2000]})
@@ -1432,6 +1479,17 @@ def cmd_drain() -> int:
         return 1
 
 
+def actions_run_url() -> str:
+    """The GitHub Actions run this process is, when it is one."""
+    import os
+    server, repo, run_id = (os.environ.get("GITHUB_SERVER_URL"),
+                            os.environ.get("GITHUB_REPOSITORY"),
+                            os.environ.get("GITHUB_RUN_ID"))
+    if server and repo and run_id:
+        return f"{server}/{repo}/actions/runs/{run_id}"
+    return ""
+
+
 def run_command(cfg: Config, command: str) -> str:
     """The work behind each button. Returns the line Control Center shows."""
     canon = load_canon(cfg)
@@ -1440,16 +1498,27 @@ def run_command(cfg: Config, command: str) -> str:
     summary: list[str] = []
 
     if command == "source":
-        ledger = reconcile(cfg, canon, sheet)
+        declines, notes = stored_company_declines(cfg)
+        summary.extend(notes)
+        ledger = reconcile(cfg, canon, sheet, company_declines=declines)
         summary.extend(ledger.lines())
         try:
-            summary.extend(learning_lines(learning_step(cfg, apply=True)))
+            out = learning_step(cfg, apply=True)
+            declines = out["company_declines"]
+            summary.extend(learning_lines(out))
         except Exception as e:
             summary.append(f"learning skipped: {e.__class__.__name__}")
-        counts = source_and_stage(cfg, canon, sheet, summary)
+        counts = source_and_stage(cfg, canon, sheet, summary, company_declines=declines)
         summary.extend(newsletter_movers_lines(cfg, sheet, canon.sheet_headers))
+        try:
+            sheet.sort_by_score()
+        except Exception as e:
+            summary.append(f"sort skipped: {e.__class__.__name__}: {e}")
         line = (f"{counts['discovered']} found, {counts['recorded']} recorded, "
                 f"{counts['staged']} staged, ${counts['spend_usd']:.2f} spent")
+    elif command == "process":
+        counts = process_step(cfg, canon, sheet, summary)
+        line = _process_line(counts)
     elif command == "packages":
         rows = select_for_build(cfg, sheet, canon.sheet_headers)
         built = 0
@@ -1493,6 +1562,115 @@ def fetch_with_retry(fetch, slug: str, pid: str, attempts: int = 2):
             time.sleep(2)
 
 
+def discover_posting(cfg: Config, company: str, title: str, cache: dict
+                     ) -> tuple[str, object | None, str]:
+    """Find a posting on its company's board without an ATS key.
+
+    ("found", posting, "ats/slug"): the board lists it, exact title first,
+    then a single close title. ("absent", None, why): the board exists and
+    does not list it, which is verifiably dead. ("unknown", None, why): no
+    board found or the board read failed, which is not an answer.
+    """
+    from .ats import discover as disc
+    from .ats import ashby, greenhouse, lever
+    boards = {"greenhouse": greenhouse.board, "ashby": ashby.board,
+              "lever": lever.board}
+    found = disc.discover(cfg, company, cache)
+    if not found:
+        return "unknown", None, "no job board found on greenhouse, ashby or lever"
+    ats, slug = found
+    try:
+        postings = boards[ats](slug)
+    except Exception as e:
+        return "unknown", None, f"{ats}/{slug} board read failed: {e.__class__.__name__}"
+    nt = _norm_title(title)
+    hit = next((p for p in postings if _norm_title(p.title) == nt), None)
+    if hit is None:
+        close = [p for p in postings
+                 if title_jaccard(title, p.title) >= FUZZY_TITLE_MIN]
+        hit = close[0] if len(close) == 1 else None
+    if hit is None:
+        return "absent", None, f"not on the {ats}/{slug} board ({len(postings)} jobs)"
+    return "found", hit, f"{ats}/{slug}"
+
+
+PLAIN_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+
+
+def fetch_jd_plain(url: str) -> tuple[bool | None, str]:
+    """One plain GET on a posting page. (False, "") on 404 or 410, which is
+    dead; (None, text) otherwise, where None means liveness is unknown and
+    text is the page with tags stripped (a LinkedIn auth wall yields little
+    and stays unknown)."""
+    import html as html_mod
+    try:
+        r = requests.get(url, headers={"User-Agent": PLAIN_UA}, timeout=20,
+                         allow_redirects=True)
+    except requests.RequestException:
+        return None, ""
+    if r.status_code in (404, 410):
+        return False, ""
+    if r.status_code != 200:
+        return None, ""
+    text = re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", r.text)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = html_mod.unescape(text)
+    return None, " ".join(text.split())
+
+
+def resolve_for_build(cfg: Config, row: dict, cache: dict, *,
+                      sheet_snippet: str = "", sheet_why: str = ""
+                      ) -> tuple[ResolvedRole, str | None, list[str]]:
+    """(role, relink_url, flags). ATS key: the direct check. Otherwise the
+    company's board, then the page itself; unknown liveness is recorded as
+    unverified, never as dead. Krish's Yes is the build authority."""
+    url = row.get("url") or row.get("job_url") or ""
+    title = row["title"]
+    company = row.get("company") or ""
+    flags: list[str] = []
+    if ats_key(url):
+        return _resolve_for_build(row), None, flags
+    state, hit, why = discover_posting(cfg, company, title, cache)
+    if state == "found" and hit is not None and hit.url and ats_key(hit.url):
+        role = _resolve_for_build(dict(row, url=hit.url, job_url=hit.url))
+        flags.append(f"board discovery: {why}")
+        return role, hit.url, flags
+    if state == "absent":
+        flags.append(why)
+        return ResolvedRole(company=company, title=title, url=url, jd_url=url,
+                            jd_text="", live=False, source=row.get("source") or "",
+                            location=row.get("location") or "",
+                            comp=row.get("comp") or ""), None, flags
+    live, text = fetch_jd_plain(url) if url.startswith("http") else (None, "")
+    if live is False:
+        flags.append("page returned 404 or 410")
+        return ResolvedRole(company=company, title=title, url=url, jd_url=url,
+                            jd_text="", live=False, source=row.get("source") or "",
+                            location=row.get("location") or "",
+                            comp=row.get("comp") or ""), None, flags
+    jd = text if len(text) >= 200 else ""
+    if not jd:
+        jd = f"{title} at {company}. {sheet_snippet} {sheet_why}".strip()
+        flags.append("thin JD: built from the sheet's own snippet and rationale")
+    flags.append(f"liveness unverified: {why}")
+    return ResolvedRole(company=company, title=title, url=url, jd_url=url,
+                        jd_text=jd, live=False, source=row.get("source") or "",
+                        location=row.get("location") or "",
+                        comp=row.get("comp") or "", liveness="unverified"), None, flags
+
+
+def package_status_for(role: ResolvedRole, row: dict) -> str:
+    if getattr(role, "liveness", "checked") == "unverified":
+        return sheet_mod.PKG_BUILT_UNVERIFIED
+    return route_status(row)
+
+
+def _sheet_row_for(sheet: Sheet, canon: Canon, row: dict) -> SheetRow | None:
+    pairs, _, _, _ = match_rows(sheet.read_pipeline(canon.sheet_headers), [row])
+    return pairs[0][0] if pairs else None
+
+
 def _resolve_for_build(row: dict) -> ResolvedRole:
     from .ats import ashby, greenhouse, lever
     url = row.get("url") or row.get("job_url") or ""
@@ -1517,19 +1695,38 @@ def _doc_text(db: DocBuild, doc_id: str) -> str:
 
 
 def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
-              summary: list[str]) -> bool:
+              summary: list[str], *, cache: dict | None = None,
+              company_declines: dict | None = None) -> bool:
     from .package.build import build_package, read_master_facts
     from .package.tailor import load_blocks, tailor
 
-    role = _resolve_for_build(row)
-    if not role.live:
+    if cache is None:
+        from .ats import discover as disc
+        cache = disc.load_cache(cfg)
+    srow = _sheet_row_for(sheet, canon, row)
+    role, relink, rflags = resolve_for_build(
+        cfg, row, cache,
+        sheet_snippet=(srow.cell("JD Snippet") if srow else ""),
+        sheet_why=(srow.cell("Why It Fits") if srow else ""))
+    if getattr(role, "liveness", "checked") == "checked" and not role.live:
+        # Verifiably gone. The row stays on Pipeline with column A untouched
+        # (canon: hunter never archives a role Krish approved); Package
+        # Status says why nothing was built.
         db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
                  {"status": "dead", "package_status": "blocked",
                   "rejection_reason": "G1: posting dead at build time"})
-        summary.append(f"BLOCKED {row['job_id']}: died between approval and build")
+        if srow:
+            sheet.update_package_status(srow.row_number, sheet_mod.PKG_DEAD)
+        summary.append(f"DEAD {row['job_id']}: posting verifiably gone "
+                       f"({'; '.join(rflags) or 'ATS check'}); Package Status says so, "
+                       f"row stays for your call")
         return False
+    if relink and srow:
+        sheet.relink_jd_urls({srow.row_number: relink})
+        db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
+                 {"url": relink, "job_url": relink})
     never = cfg.require_json("hunter_never_apply")
-    report = run_gates(role, never_apply=never)
+    report = run_gates(role, never_apply=never, company_declines=company_declines)
     if not report.passed:
         reasons = "; ".join(f"{g.gate}: {g.reason}" for g in report.failures())
         db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
@@ -1567,17 +1764,16 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]}, {
         "package_status": "built", "package_built_at": NOW(),
         "package_cv_url": result.cv_url, "package_letter_url": result.letter_url,
+        "status": "staging" if row.get("status") in ("dead", "blocked") else row.get("status"),
     })
-    status = route_status(row)
-    sheet_rows = sheet.read_pipeline(canon.sheet_headers)
-    pairs, _, _, _ = match_rows(sheet_rows, [row])
-    if pairs:
+    status = package_status_for(role, row)
+    if srow:
         sheet.update_package_cells(
-            pairs[0][0].row_number, cv_url=result.cv_url,
+            srow.row_number, cv_url=result.cv_url,
             letter_url=result.letter_url, cv_pdf_url=result.cv_pdf_url,
             letter_pdf_url=result.letter_pdf_url, package_status=status,
             built_date=TODAY())
-    flags = "; ".join(tr.flags + result.notes) or "clean"
+    flags = "; ".join(tr.flags + result.notes + rflags) or "clean"
     summary.append(f"BUILT {row['job_id']} block={tr.block_key} "
                    f"words={result.letter_report.body_word_count} flags={flags}")
     summary.append(f"  CV {result.cv_url}")
@@ -1743,7 +1939,7 @@ def open_application_note(opens: dict, company: str) -> str:
 
 
 def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
-                     summary: list[str]) -> dict:
+                     summary: list[str], company_declines: dict | None = None) -> dict:
     from .ats import ashby, greenhouse, lever
     from .gates import SENIOR_TITLE
     from .package.rationale import write_rationale
@@ -1857,13 +2053,15 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
         summary.append("apify linkedin sweep skipped: no search URLs in the "
                        "Role Targeting tab or hunter_linkedin_search_urls")
     counts["spend_usd"] = round(spend.spent, 2)
-    staged = stage_postings(cfg, canon, sheet, postings, summary)
+    staged = stage_postings(cfg, canon, sheet, postings, summary,
+                            company_declines=company_declines)
     staged["spend_usd"] = counts["spend_usd"]
     return staged
 
 
 def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
-                   postings: list, summary: list[str]) -> dict:
+                   postings: list, summary: list[str],
+                   company_declines: dict | None = None) -> dict:
     """Dedupe, resolve, gate, score, write a rationale, stage.
 
     Split out of source_and_stage so postings that arrive some other way go
@@ -1874,11 +2072,11 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     from .ats import ashby, greenhouse, lever
     from .ats import discover as disc
     from .gates import SENIOR_TITLE
-    from .package.rationale import write_rationale
+    from .package.rationale import write_rationale_and_snippet
 
     counts = {"discovered": 0, "senior": 0, "fresh": 0, "resolved": 0,
               "recorded": 0, "staged": 0, "unresolved": 0, "spend_usd": 0.0,
-              "boards_found": 0}
+              "boards_found": 0, "g12_blocked": []}
     counts["discovered"] = len(postings)
     cache = disc.load_cache(cfg)
     boards = {"greenhouse": greenhouse.board, "ashby": ashby.board,
@@ -1916,6 +2114,19 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     fetchers = {"greenhouse": greenhouse.fetch_posting,
                 "ashby": ashby.fetch_posting, "lever": lever.fetch_posting}
     for p in fresh:
+        # G12 before any fetch or paid probe: a company Krish declined is
+        # recorded as blocked with the dated reason and never staged.
+        hit = learn.declined_company(company_declines, p.company)
+        if hit:
+            reason = f"G12: company declined by Krish on {hit['date']} ({hit['code']})"
+            inserts.append({"job_id": job_id(p.company, p.title), "title": p.title,
+                            "company": p.company, "url": p.url, "job_url": p.url,
+                            "status": "blocked", "rejection_reason": reason,
+                            "source": p.source, "sweep_date": TODAY(),
+                            "why_it_fits": "", "location": p.location or "",
+                            "comp": p.comp_text or ""})
+            counts["g12_blocked"].append(f"{p.company} / {p.title}: {reason}")
+            continue
         # A LinkedIn posting carries no ATS link, so hunter could never read
         # its JD and recorded it unresolved: 1451 of them on 2026-09-02, the
         # entire paid sweep, none of which reached the sheet. Find the
@@ -1967,7 +2178,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                             jd_url=jd_url, jd_text=jd, live=live,
                             source=p.source, location=p.location or "",
                             comp=p.comp_text or "")
-        report = run_gates(role, never_apply=never)
+        report = run_gates(role, never_apply=never, company_declines=company_declines)
         result = score_role(role, universe=canon.universe)
         status, reason = "scanned", None
         if result.auto_rejected:
@@ -1992,7 +2203,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             # The same rationale generator the re-gate uses, so a row staged
             # today reads exactly like a row re-judged last week. Krish asked
             # for one standard; this is where it is applied.
-            why, rflags = write_rationale(
+            why, snippet, rflags = write_rationale_and_snippet(
                 cfg, canon, company=role.company, title=role.title,
                 jd=role.jd_text, score=result.score,
                 score_reason=result.why_it_fits,
@@ -2004,7 +2215,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             row["why_it_fits"] = why
             if rflags:
                 summary.append(f"rationale flags {role.job_id}: {', '.join(rflags)}")
-            staged_rows.append((role, result, jd[:300], why))
+            staged_rows.append((role, result, snippet, why))
 
     if inserts:
         db_insert(cfg, "hunter_seen_roles", inserts, on_conflict="job_id",
@@ -2014,6 +2225,9 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     if counts["boards_found"]:
         summary.append(f"board discovery resolved {counts['boards_found']} "
                        f"LinkedIn posting(s) to their real ATS")
+    if counts["g12_blocked"]:
+        summary.append(f"G12 blocked {len(counts['g12_blocked'])} posting(s) at "
+                       f"companies Krish has declined")
 
     if staged_rows:
         # highest score first, so the sheet reads as a ranked shortlist
@@ -2033,6 +2247,233 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     return counts
 
 
+def write_warm_paths(cfg: Config, sheet: Sheet, canon: Canon,
+                     rows: list[dict]) -> int:
+    """Warm Path and Path Evidence for the given DB rows, matched to their
+    sheet rows the way reconcile matches them."""
+    from .people import bridges as bridges_mod
+    if not rows:
+        return 0
+    cells = bridges_mod.warm_path_cells(cfg, [r["job_id"] for r in rows])
+    live = sheet.read_pipeline(canon.sheet_headers)
+    pairs, _, _, _ = match_rows(live, list(rows))
+    mapping = {}
+    for srow, d in pairs:
+        warm, evidence = cells.get(d["job_id"], (sheet_mod.WARM_NONE, sheet_mod.EVIDENCE_NONE))
+        mapping[srow.row_number] = (warm, evidence)
+    return sheet.update_warm_paths(mapping)
+
+
+def yes_db_rows(cfg: Config, sheet: Sheet, canon: Canon) -> list[dict]:
+    """The DB rows behind every Yes on Pipeline, whatever their package
+    state. The warm path pass covers all of them, built or not."""
+    yes_rows = [r for r in sheet.read_pipeline(canon.sheet_headers)
+                if classify_verdict(r.verdict or "") == "go"]
+    if not yes_rows:
+        return []
+    known = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,url,job_url,score,status,krish_verdict,"
+                  "warm_path_person,warm_path_tier,package_status",
+        "limit": "5000"})
+    pairs, _, _, _ = match_rows(yes_rows, list(known))
+    return [d for _, d in pairs]
+
+
+def archive_decided(sheet: Sheet, canon: Canon) -> tuple[int, list[str]]:
+    """Move every Applied and Declined row to the Applied tab. Yes and New
+    stay: Yes is work in flight, New is a decision not yet made."""
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    movers, lines = [], []
+    for r in rows:
+        kind, code = verdicts.parse(r.verdict)
+        if kind in ("applied", "rejection"):
+            movers.append(r)
+            lines.append(f"{r.company} / {r.role} [{r.verdict}]")
+    if not movers:
+        return 0, lines
+    moved = sheet.archive_rows(movers, archive_tab=config_mod.ARCHIVE_TAB,
+                               archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
+                               headers=canon.sheet_headers)
+    return moved, lines
+
+
+def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
+                 max_packages: int = 0, retry_dead: bool = False) -> dict:
+    """Everything that follows from Krish's column A, in order: reconcile,
+    learn, build every Yes, find the person for every Yes, archive the
+    decided, sort. Each phase reports; a phase that fails does not stop the
+    later ones, because a tidy sheet is worth having even when a build is
+    not."""
+    from .people import bridges as bridges_mod
+    from .people import enrich as enrich_mod
+    from .ats import discover as disc
+
+    counts: dict = {"built": 0, "dead": 0, "unverified": 0, "blocked": 0,
+                    "warm_paths": 0, "cold_targets": 0, "archived": 0,
+                    "sorted": 0, "g12_blocked": 0}
+    declines, notes = stored_company_declines(cfg)
+    summary.extend(notes)
+
+    ledger = reconcile(cfg, canon, sheet, company_declines=declines)
+    summary.extend(ledger.lines())
+    counts["reconciled"] = len(ledger.matched)
+    counts["g12_blocked"] = len(ledger.company_blocked)
+
+    out = {}
+    try:
+        out = learning_step(cfg, apply=True)
+        declines = out["company_declines"]
+        summary.extend(learning_lines(out))
+    except Exception as e:
+        summary.append(f"learning loop skipped: {e.__class__.__name__}: {e}")
+
+    # packages for every Yes without one
+    cache = disc.load_cache(cfg)
+    try:
+        todo = select_for_build(cfg, sheet, canon.sheet_headers,
+                                cap=max_packages, retry_dead=retry_dead)
+    except Exception as e:
+        todo = []
+        summary.append(f"package selection failed: {e.__class__.__name__}: {e}")
+    summary.append(f"packages to build: {len(todo)}")
+    for row in todo:
+        try:
+            before = len(summary)
+            if build_one(cfg, canon, sheet, row, summary, cache=cache,
+                         company_declines=declines):
+                counts["built"] += 1
+                if any("liveness unverified" in line for line in summary[before:]):
+                    counts["unverified"] += 1
+            elif any(line.startswith(f"DEAD {row['job_id']}") for line in summary[before:]):
+                counts["dead"] += 1
+            else:
+                counts["blocked"] += 1
+        except Exception as e:
+            counts["blocked"] += 1
+            summary.append(f"BUILD FAILED {row['job_id']}: {e.__class__.__name__}: {e}")
+            try:
+                db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
+                         {"package_status": "blocked",
+                          "rejection_reason": f"build error: {e.__class__.__name__}"})
+            except Exception:
+                pass
+    try:
+        disc.save_cache(cfg, cache)
+    except Exception:
+        pass
+
+    # the person for every Yes
+    try:
+        yes_rows = yes_db_rows(cfg, sheet, canon)
+        targets = {slugify(r.get("company") or "") for r in yes_rows}
+        if cfg.optional("hunter_apify_enrichment_token"):
+            try:
+                summary.append(f"enrich: {enrich_mod.enrich(cfg, targets)}")
+            except Exception as e:
+                summary.append(f"enrich failed, continuing: {e.__class__.__name__}: {e}")
+        summary.append(f"warm paths: {bridges_mod.build_bridges(cfg, sheet)}")
+        cleared = bridges_mod.clear_junk_warm_paths(cfg)
+        if cleared:
+            summary.append(f"cleared {cleared} placeholder warm path(s)")
+        try:
+            cold = bridges_mod.cold_targets(cfg, yes_rows)
+            counts["cold_targets"] = cold.get("found", 0)
+            summary.append(f"cold targets: {cold}")
+        except Exception as e:
+            summary.append(f"cold targets skipped: {e.__class__.__name__}: {e}")
+        counts["warm_paths"] = write_warm_paths(cfg, sheet, canon, yes_rows)
+        summary.append(f"warm path cells written: {counts['warm_paths']}")
+    except Exception as e:
+        summary.append(f"warm path pass failed: {e.__class__.__name__}: {e}")
+
+    # decided rows leave, the rest sort
+    try:
+        moved, lines = archive_decided(sheet, canon)
+        counts["archived"] = moved
+        summary.append(f"archived {moved} decided row(s) to {config_mod.ARCHIVE_TAB}")
+        for line in lines[:40]:
+            summary.append(f"  {line}")
+    except Exception as e:
+        summary.append(f"archive failed: {e.__class__.__name__}: {e}")
+    try:
+        srt = sheet.sort_by_score()
+        counts["sorted"] = srt["rows"]
+        summary.append(f"Pipeline sorted: {srt['rows']} rows, "
+                       f"{srt['blank_rows_removed']} blank row(s) removed")
+    except Exception as e:
+        summary.append(f"sort failed: {e.__class__.__name__}: {e}")
+
+    if out:
+        summary.extend(learning_report_lines(out, g12_hits=ledger.company_blocked))
+    return counts
+
+
+def _process_line(counts: dict) -> str:
+    return (f"{counts.get('built', 0)} built ({counts.get('unverified', 0)} unverified), "
+            f"{counts.get('dead', 0)} dead, {counts.get('blocked', 0)} blocked, "
+            f"{counts.get('warm_paths', 0)} warm paths, "
+            f"{counts.get('archived', 0)} archived")
+
+
+def cmd_process(max_packages: int = 0, retry_dead: bool = False) -> int:
+    summary: list[str] = [f"hunter process {TODAY()}"]
+    failed = False
+    started_at = datetime.datetime.now(datetime.timezone.utc)
+    counts: dict = {}
+    run_error: str | None = None
+    try:
+        cfg, canon = build_context()
+        sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        counts = process_step(cfg, canon, sheet, summary,
+                              max_packages=max_packages, retry_dead=retry_dead)
+        counts["recorded"] = counts.get("reconciled", 0)
+        summary.append(_process_line(counts))
+    except Exception as e:
+        summary.append(f"PROCESS ABORTED: {e.__class__.__name__}: {e}")
+        run_error = f"{e.__class__.__name__}: {e}"
+        failed = True
+    finally:
+        try:
+            cfg2 = load()
+            report_run(cfg2, started_at=started_at, ok=not failed, counts=counts,
+                       spend_usd=0.0, summary_line=_process_line(counts) if not failed
+                       else "process failed", error=run_error)
+        except Exception as e:
+            print(f"run reporting failed: {e}")
+        try:
+            cfg2 = load()
+            send_summary(cfg2, "\n".join(summary))
+        except Exception as e:
+            print(f"notify failed: {e}")
+            print("\n".join(summary))
+    return 1 if failed else 0
+
+
+def cmd_migrate_columns(apply: bool = False) -> int:
+    """Pipeline first, then the Applied tab, both to the 30-column layout."""
+    cfg = load()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    r1 = sheet.migrate_columns(tab=sheet_mod.TAB, sheet_id=config_mod.PIPELINE_SHEET_ID,
+                               apply=apply)
+    print(r1)
+    if apply and not (r1.get("verified") or r1.get("noop")):
+        print("Pipeline migration did not verify; the Applied tab is untouched")
+        return 1
+    r2 = sheet.migrate_columns(tab=config_mod.ARCHIVE_TAB,
+                               sheet_id=config_mod.ARCHIVE_SHEET_ID,
+                               trailing=sheet_mod.ARCHIVE_TRAILING, apply=apply)
+    print(r2)
+    if not apply:
+        print("\ndry run. add --apply to move the columns on both tabs")
+        return 0
+    canon = load_canon(cfg)
+    live = sheet.read_pipeline(canon.sheet_headers)
+    arch = sheet.read_archive()
+    print(f"\nverified: Pipeline reads {len(live)} rows on the new layout, "
+          f"{config_mod.ARCHIVE_TAB} reads {len(arch)}")
+    return 0
+
+
 def cmd_run() -> int:
     summary: list[str] = [f"hunter run {TODAY()}"]
     failed = False
@@ -2043,20 +2484,22 @@ def cmd_run() -> int:
         cfg, canon = build_context()
         sheet = Sheet(GoogleServiceAccount(cfg).access_token)
 
-        ledger = reconcile(cfg, canon, sheet)
-        summary.extend(ledger.lines())
+        # Krish's verdicts first: reconcile, learn, build every Yes, find
+        # the person, archive the decided, sort. Then source into a tidy
+        # sheet, with this run's company declines already in force.
+        pcounts = process_step(cfg, canon, sheet, summary)
+        declines, _ = stored_company_declines(cfg)
 
-        # Learn before sourcing: a rule Krish approved since the last run
-        # takes effect on this one, and his verdicts are on record before
-        # anything overwrites the rows they came from.
-        try:
-            summary.extend(learning_lines(learning_step(cfg, apply=True)))
-        except Exception as e:
-            summary.append(f"learning loop skipped: {e.__class__.__name__}: {e}")
-
-        counts = source_and_stage(cfg, canon, sheet, summary)
+        counts = source_and_stage(cfg, canon, sheet, summary, company_declines=declines)
         summary.extend(newsletter_movers_lines(cfg, sheet, canon.sheet_headers))
-        counts["reconciled"] = len(ledger.matched)
+        for k in ("reconciled", "dead", "unverified", "archived", "warm_paths",
+                  "cold_targets", "g12_blocked"):
+            counts[k] = pcounts.get(k, 0)
+        try:
+            srt = sheet.sort_by_score()
+            summary.append(f"Pipeline sorted after staging: {srt['rows']} rows")
+        except Exception as e:
+            summary.append(f"sort after staging failed: {e.__class__.__name__}: {e}")
         summary.append(
             f"sourced: {counts['discovered']} discovered, {counts['senior']} senior, "
             f"{counts['fresh']} fresh, {counts['recorded']} recorded, "
@@ -2068,23 +2511,8 @@ def cmd_run() -> int:
                            "failed even with a good summary")
             failed = True
 
-        built = 0
-        for row in select_for_build(cfg, sheet, canon.sheet_headers):
-            try:
-                if build_one(cfg, canon, sheet, row, summary):
-                    built += 1
-            except Exception as e:
-                # one package's failure never costs the rest of the batch
-                summary.append(f"BUILD FAILED {row['job_id']}: "
-                               f"{e.__class__.__name__}: {e}")
-                try:
-                    db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
-                             {"package_status": "blocked",
-                              "rejection_reason": f"build error: {e.__class__.__name__}"})
-                except Exception:
-                    pass
-        summary.append(f"packages built this run: {built}")
-        counts["built"] = built
+        summary.append(f"packages built this run: {pcounts.get('built', 0)}")
+        counts["built"] = pcounts.get("built", 0)
     except Exception as e:
         summary.append(f"RUN ABORTED: {e.__class__.__name__}: {e}")
         run_error = f"{e.__class__.__name__}: {e}"
@@ -2122,6 +2550,11 @@ def main(argv: list[str]) -> int:
     cmd = argv[0] if argv else "recon"
     if cmd == "run":
         return cmd_run()
+    if cmd == "process":
+        mx = int(argv[argv.index("--max") + 1]) if "--max" in argv else 0
+        return cmd_process(max_packages=mx, retry_dead="--retry-dead" in argv)
+    if cmd == "migrate-columns":
+        return cmd_migrate_columns(apply="--apply" in argv)
     if cmd == "reconcile":
         return cmd_reconcile()
     if cmd == "migrate-sheet":
@@ -2141,7 +2574,8 @@ def main(argv: list[str]) -> int:
         return cmd_regate(from_row=frm, apply="--apply" in argv, limit=lim,
                           archive="--no-archive" not in argv)
     if cmd == "drain":
-        return cmd_drain()
+        cid = argv[argv.index("--id") + 1] if "--id" in argv else None
+        return cmd_drain(cid)
     if cmd == "newsletter":
         lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else 0
         return cmd_newsletter(apply="--apply" in argv, limit=lim)
@@ -2185,8 +2619,9 @@ def main(argv: list[str]) -> int:
         if len(argv) >= 3 and argv[1] == "--ingest":
             ingest_dir = argv[2]
         return cmd_bridges(ingest_dir)
-    print(f"unknown command {cmd!r}; commands: run, reconcile, migrate-sheet, "
-          f"build --job-id X, recon, dedupe-db, learn [--apply], drain, verify, "
+    print(f"unknown command {cmd!r}; commands: process [--max N] [--retry-dead], "
+          f"run, reconcile, migrate-columns [--apply], migrate-sheet, "
+          f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2

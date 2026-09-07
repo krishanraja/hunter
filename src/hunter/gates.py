@@ -1,8 +1,9 @@
-"""The ten verification gates, canon 9.4 verbatim in intent. G1 to G7 run at
-sourcing time; G8 to G10 run again at package time against the built document
-texts. The hunter_never_apply blocklist fires before any gate. run.py asserts
-at startup that canon still states the constants encoded here (floor, bar);
-if canon moves, the run aborts and says which side to update.
+"""The verification gates, canon 9.4 verbatim in intent. G1 to G7, G11 and
+G12 run at sourcing time; G8 to G10 run again at package time against the
+built document texts. The hunter_never_apply blocklist fires before any
+gate. run.py asserts at startup that canon still states the constants
+encoded here (floor, bar); if canon moves, the run aborts and says which
+side to update.
 """
 from __future__ import annotations
 
@@ -113,7 +114,8 @@ def parse_comp_bottom(text: str | None) -> int | None:
 
 def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
               equity_override: bool = False,
-              package_texts: tuple[str, str] | None = None) -> GateReport:
+              package_texts: tuple[str, str] | None = None,
+              company_declines: dict | None = None) -> GateReport:
     results: list[GateResult] = []
     hay = f"{role.title}\n{role.jd_text}"
 
@@ -124,10 +126,18 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
         f"company is on the hunter_never_apply list: {blocked}" if blocked
         else "not on the never_apply list"))
 
-    results.append(GateResult(
-        "G1", role.live,
-        "posting live on the board" if role.live else
-        "posting is dead per the direct ATS check"))
+    if getattr(role, "liveness", "checked") == "unverified":
+        # No ATS key and no board found: nothing could answer. Krish's Yes
+        # is the authority for a build here, and Package Status records
+        # that liveness was never verified.
+        results.append(GateResult(
+            "G1", True, "liveness unverified: no ATS key on the URL; built on "
+                        "Krish's approval, Package Status records it"))
+    else:
+        results.append(GateResult(
+            "G1", role.live,
+            "posting live on the board" if role.live else
+            "posting is dead per the direct ATS check"))
 
     bottom = parse_comp_bottom(role.comp)
     if bottom is None:
@@ -185,6 +195,16 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
         f"canon 5 archetype: {fam}" if fam else
         f"title {role.title!r} is none of his archetypes "
         f"({', '.join(archetype_families())})"))
+
+    # G12: a company Krish declined as business uninteresting or domain
+    # expertise is a verdict on the company. Applied as written, dated, and
+    # reversible through hunter_company_allow.
+    from .learn import declined_company
+    hit = declined_company(company_declines, role.company)
+    results.append(GateResult(
+        "G12", hit is None,
+        f"company declined by Krish on {hit['date']} ({hit['code']})" if hit
+        else "no company-level decline on record"))
 
     domain_hit = DOMAIN_FAIL.search(hay)
     if domain_hit and not AI_TRANSFORMATION.search(hay):

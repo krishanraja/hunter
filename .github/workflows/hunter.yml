@@ -1,0 +1,63 @@
+name: hunter
+
+# The runtime. Mon and Thu 08:27 UTC is the full run (process, then source).
+# The hourly drain is the fallback for the Control Center buttons; a button
+# press normally arrives as a repository_dispatch and runs within a minute.
+# One job at a time: two hunters on the same sheet is how rows get duplicated.
+
+on:
+  schedule:
+    - cron: "27 8 * * 1,4"
+    - cron: "13 * * * *"
+  repository_dispatch:
+    types: [hunter-process, hunter-source, hunter-packages]
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "hunter command"
+        type: choice
+        default: process
+        options: [process, run, source, packages, drain, reconcile, recon, migrate-columns]
+      extra:
+        description: "extra arguments, for example --max 2 or --apply"
+        type: string
+        default: ""
+
+concurrency:
+  group: hunter
+  cancel-in-progress: false
+
+jobs:
+  hunter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: Pick the command
+        id: cmd
+        env:
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          ACTION: ${{ github.event.action }}
+          COMMAND_ID: ${{ github.event.client_payload.command_id }}
+          INPUT_COMMAND: ${{ inputs.command }}
+          INPUT_EXTRA: ${{ inputs.extra }}
+        run: |
+          if [ "$EVENT" = "schedule" ]; then
+            if [ "$SCHEDULE" = "27 8 * * 1,4" ]; then ARGS="run"; else ARGS="drain"; fi
+          elif [ "$EVENT" = "repository_dispatch" ]; then
+            if [ -n "$COMMAND_ID" ]; then ARGS="drain --id $COMMAND_ID"; else ARGS="${ACTION#hunter-}"; fi
+          else
+            ARGS="$INPUT_COMMAND $INPUT_EXTRA"
+          fi
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+          echo "running: python -m hunter.run $ARGS"
+      - name: Run hunter
+        run: python -m hunter.run ${{ steps.cmd.outputs.args }}
