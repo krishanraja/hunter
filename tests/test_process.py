@@ -343,3 +343,46 @@ def test_the_package_stage_check_also_lets_a_yes_outrank_soft_gates():
     src = inspect.getsource(run_mod.build_one)
     assert "hard_fails = [g for g in pkg_report.failures() if g.gate not in BUILD_SOFT_GATES]" in src
     assert {"G0", "G1", "G8", "G9", "G10"}.isdisjoint(run_mod.BUILD_SOFT_GATES)
+
+
+def test_a_linkedin_posting_with_its_description_is_gated_and_staged(monkeypatch):
+    """The sweep returns descriptionText on every item. 1,190 postings were
+    recorded unresolved on 2026-09-07 because nothing read it."""
+    from hunter.sources import RolePosting
+    inserted, appended = [], []
+    monkeypatch.setattr(run_mod, "seen_identity_keys", lambda cfg: set())
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: [])
+    monkeypatch.setattr(run_mod, "db_insert", lambda cfg, table, rows, **kw: inserted.extend(rows))
+    monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
+    import hunter.ats.discover as disc
+    monkeypatch.setattr(disc, "load_cache", lambda cfg: {})
+    monkeypatch.setattr(disc, "save_cache", lambda cfg, cache: None)
+    monkeypatch.setattr(disc, "discover", lambda cfg, company, cache: None)
+    import hunter.package.rationale as rationale_mod
+    monkeypatch.setattr(rationale_mod, "write_rationale_and_snippet",
+                        lambda *a, **k: ("Own the GTM operating model. FIT: builds engines. RISK: none.",
+                                         "Viam builds robotics software. The role runs the CEO office.", []))
+    jd = ("Viam is hiring a Chief of Staff in New York. You will build the operating "
+          "model with the CEO, architect the planning cadence and own P&L reviews. "
+          "AI native company. ") * 6
+    p = RolePosting(company="Viam", title="Chief of Staff",
+                    url="https://www.linkedin.com/jobs/view/chief-of-staff-at-viam-1",
+                    source="apify_linkedin", location="New York, NY",
+                    raw={"descriptionText": jd})
+    s = FakeSheet([list(HEADERS), [""] * N_COLS])
+    counts = run_mod.stage_postings(Cfg({"hunter_never_apply": "[]"}), FakeCanon(), s, [p], [])
+    assert counts["from_description"] == 1 and counts["unresolved"] == 0
+    assert counts["staged"] == 1
+    assert inserted[0]["status"] == "staging"
+    row = s.grid[2]
+    assert row[C["Business"]] == "Viam" and row[C["JD URL Verified"]] == "FALSE"
+    assert row[C["JD Snippet"]].startswith("Viam builds robotics")
+
+
+def test_the_sweep_reads_the_salary_field_the_actor_actually_returns(monkeypatch):
+    import hunter.sources.apify_linkedin as al
+    monkeypatch.setattr(al, "run_actor", lambda *a, **k: [
+        {"companyName": "Viam", "title": "Chief of Staff", "link": "https://l/1",
+         "salary": "$250,000 - $300,000", "descriptionText": "x"}])
+    out = al.sweep_linkedin(None, ["u"], spend=al.SpendTracker(cap_usd=1), max_charge_usd=1)
+    assert out[0].comp_text == "$250,000 - $300,000"

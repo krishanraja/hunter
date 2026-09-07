@@ -2098,6 +2098,15 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     return staged
 
 
+def posting_text(p) -> str:
+    """The description a sweep already fetched, when it is one worth
+    reading. The Apify LinkedIn actor returns descriptionText on every item."""
+    raw = getattr(p, "raw", None) or {}
+    text = raw.get("descriptionText") or raw.get("description") or ""
+    text = " ".join(str(text).split())
+    return text if len(text) >= 200 else ""
+
+
 def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                    postings: list, summary: list[str],
                    company_declines: dict | None = None) -> dict:
@@ -2115,7 +2124,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
 
     counts = {"discovered": 0, "senior": 0, "fresh": 0, "resolved": 0,
               "recorded": 0, "staged": 0, "unresolved": 0, "spend_usd": 0.0,
-              "boards_found": 0, "g12_blocked": []}
+              "boards_found": 0, "g12_blocked": [], "from_description": 0}
     counts["discovered"] = len(postings)
     cache = disc.load_cache(cfg)
     boards = {"greenhouse": greenhouse.board, "ashby": ashby.board,
@@ -2197,6 +2206,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                     p.ats_posting_id, p.url = hit.ats_posting_id, hit.url or p.url
 
         fetch = fetchers.get(p.ats or "")
+        liveness = "checked"
         if fetch:
             try:
                 live, jd, jd_url = fetch_with_retry(fetch, p.ats_slug, p.ats_posting_id)
@@ -2204,6 +2214,17 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                 summary.append(f"resolve failed, recorded unresolved: "
                                f"{p.company}/{p.title!r}: {e.__class__.__name__}")
                 fetch = None
+        if not fetch and posting_text(p):
+            # The LinkedIn sweep already carries the full description. Until
+            # 2026-09-07 hunter threw it away and recorded the posting as
+            # unresolved: 1,190 of them in one morning, 220 matching an
+            # archetype, most in New York. The description is enough to gate
+            # and score; liveness stays unverified, the sheet says so in
+            # JD URL Verified, and the build step checks again.
+            live, jd, jd_url = False, posting_text(p), p.url
+            liveness = "unverified"
+            counts["from_description"] += 1
+            fetch = True
         if not fetch:
             counts["unresolved"] += 1
             inserts.append({"job_id": job_id(p.company, p.title), "title": p.title,
@@ -2216,7 +2237,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         role = ResolvedRole(company=p.company, title=p.title, url=jd_url,
                             jd_url=jd_url, jd_text=jd, live=live,
                             source=p.source, location=p.location or "",
-                            comp=p.comp_text or "")
+                            comp=p.comp_text or "", liveness=liveness)
         report = run_gates(role, never_apply=never, company_declines=company_declines)
         result = score_role(role, universe=canon.universe)
         status, reason = "scanned", None
@@ -2267,6 +2288,9 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     if counts["g12_blocked"]:
         summary.append(f"G12 blocked {len(counts['g12_blocked'])} posting(s) at "
                        f"companies Krish has declined")
+    if counts["from_description"]:
+        summary.append(f"{counts['from_description']} posting(s) gated from the "
+                       f"description the sweep carried, liveness unverified")
 
     if staged_rows:
         # highest score first, so the sheet reads as a ranked shortlist
@@ -2275,7 +2299,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                              jd_url=role.jd_url, score=result.score,
                              why_it_fits=why,
                              location=role.location, comp=role.comp,
-                             source=role.source, jd_snippet=snippet)
+                             source=role.source, jd_snippet=snippet,
+                             jd_verified=(role.liveness != "unverified"))
                     for role, result, snippet, why in staged_rows]
         sheet.append_rows(new_rows)
         for role, _, _, _ in staged_rows:
@@ -2543,6 +2568,7 @@ def cmd_run() -> int:
             f"sourced: {counts['discovered']} discovered, {counts['senior']} senior, "
             f"{counts['fresh']} fresh, {counts['recorded']} recorded, "
             f"{counts['staged']} staged to the sheet, "
+            f"{counts.get('from_description', 0)} gated from the sweep's own description, "
             f"{counts['unresolved']} unresolved (never reach the sheet), "
             f"apify spend ${counts['spend_usd']:.2f}")
         if counts["recorded"] == 0 and not ledger.sheet_to_db:

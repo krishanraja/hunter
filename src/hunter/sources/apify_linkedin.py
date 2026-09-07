@@ -151,7 +151,9 @@ def sweep_linkedin(cfg, search_urls: list[str], *, spend: SpendTracker,
             url=j.get("jobUrl") or j.get("link") or "",
             source="apify_linkedin",
             location=j.get("location"),
-            comp_text=j.get("salaryInfo") if isinstance(j.get("salaryInfo"), str)
-            else None,
+            # the actor names the field salary, not salaryInfo; the old key
+            # never matched, so every LinkedIn role reached G2 with no band
+            comp_text=next((j[k] for k in ("salary", "salaryInfo")
+                            if isinstance(j.get(k), str) and j[k].strip()), None),
             posted_at=j.get("postedAt"), raw=j))
     return out
