@@ -1714,6 +1714,13 @@ def _doc_text(db: DocBuild, doc_id: str) -> str:
     return "".join(p["text"] for p in db.paragraphs(db.get(doc_id)))
 
 
+# At build time on a row Krish marked Yes, these gates are advice he has
+# already weighed (the sheet shows the location, the band and the company).
+# G0 (never apply), G1 (dead) and the package gates G8 to G10 still stop a
+# build. Canon 9.4, amended 2026-09-07.
+BUILD_SOFT_GATES = {"G2", "G3", "G4", "G5", "G6", "G7", "G11", "G12"}
+
+
 def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
               summary: list[str], *, cache: dict | None = None,
               company_declines: dict | None = None) -> bool:
@@ -1748,11 +1755,18 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     never = cfg.require_json("hunter_never_apply")
     report = run_gates(role, never_apply=never, company_declines=company_declines)
     if not report.passed:
+        failed = {g.gate for g in report.failures()}
         reasons = "; ".join(f"{g.gate}: {g.reason}" for g in report.failures())
-        db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
-                 {"package_status": "blocked", "rejection_reason": reasons})
-        summary.append(f"BLOCKED {row['job_id']}: {reasons}")
-        return False
+        if failed <= BUILD_SOFT_GATES:
+            # Krish's Yes outranks the gates that decide what he is shown.
+            # Seven of his 26 Yes rows were refused on 2026-09-07 for a
+            # location or a band he had already read on the sheet.
+            rflags.append(f"built on your Yes over {reasons}")
+        else:
+            db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
+                     {"package_status": "blocked", "rejection_reason": reasons})
+            summary.append(f"BLOCKED {row['job_id']}: {reasons}")
+            return False
 
     letter_blocks, cv_blocks = load_blocks(cfg)
     oauth = GoogleOAuth(cfg)
@@ -1850,15 +1864,18 @@ def cmd_dedupe_db() -> int:
     cfg = load()
     rows = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,krish_verdict,package_status,"
-                  "presented_at,status",
+                  "presented_at,status,url,job_url",
         "status": "neq.duplicate", "limit": "5000"})
-    groups: dict[tuple, list[dict]] = {}
+    groups: dict = {}
     for r in rows:
+        # one ATS posting is one posting whatever the incumbent called it;
+        # without a key, the squashed company plus the title decides
+        key = ats_key(r.get("url") or r.get("job_url"))
         groups.setdefault(
-            (_squash(r.get("company") or ""), _norm_title(r.get("title") or "")),
+            key or (_squash(r.get("company") or ""), _norm_title(r.get("title") or "")),
             []).append(r)
     marked, held = 0, 0
-    for ident, group in sorted(groups.items()):
+    for ident, group in sorted(groups.items(), key=lambda kv: str(kv[0])):
         if len(group) < 2 or not ident[0] or not ident[1]:
             continue
 

@@ -64,16 +64,44 @@ def select_for_build(cfg: Config, sheet=None, headers=None, *,
         yes_rows.append(r)
     if not yes_rows:
         return []
-    from .run import match_rows
+    from .run import ats_key, match_rows
     known = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,url,job_url,score,comp,location,"
                   "warm_path_person,warm_path_tier,package_status,krish_verdict,"
-                  "rejection_reason,status",
+                  "rejection_reason,status,presented_at",
         "limit": "5000"})
-    pairs, _, _, _ = match_rows(yes_rows, list(known))
-    picked = [d for _, d in pairs if (d.get("package_status") or "none") != "built"]
+    pairs, _, _, ambiguous = match_rows(yes_rows, list(known))
+    chosen = [d for _, d in pairs]
+    # The incumbent recorded some postings twice under two job_ids with one
+    # URL, so the matcher calls them ambiguous and nothing was ever built for
+    # ElevenLabs GM UK, Cloudflare Chief of Staff or Harvey AMER. The same
+    # ATS posting is the same posting; take the row with the most standing.
+    for srow, _n in ambiguous:
+        d = same_posting(srow, known)
+        if d:
+            chosen.append(d)
+    picked = [d for d in chosen if (d.get("package_status") or "none") != "built"]
     picked.sort(key=lambda d: d.get("score") or 0, reverse=True)
     return picked[:cap] if cap else picked
+
+
+def same_posting(srow, known: list[dict]) -> dict | None:
+    """The DB row that is this sheet row's posting, among twins sharing its
+    ATS key. Standing decides: his verdict, then a package, then presented."""
+    from .run import ats_key
+    key = ats_key(srow.jd_url)
+    if not key:
+        return None
+    twins = [d for d in known if ats_key(d.get("url") or d.get("job_url")) == key
+             and d.get("status") != "duplicate"]
+    if not twins:
+        return None
+
+    def rank(d):
+        return (bool((d.get("krish_verdict") or "").strip()),
+                (d.get("package_status") or "none") != "none",
+                bool(d.get("presented_at")))
+    return sorted(twins, key=rank, reverse=True)[0]
 
 
 def route_status(role_row: dict) -> str:

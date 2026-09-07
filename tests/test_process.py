@@ -270,3 +270,67 @@ def test_learning_report_names_declines_allow_list_and_g12_hits():
     assert "oscar" in lines[2]
     assert "1 posting(s)" in lines[3]
     assert any("Common Room" in line for line in lines)
+
+
+def test_a_yes_row_builds_over_a_geography_or_band_gate(monkeypatch):
+    """Seven Yes rows were refused on 2026-09-07 for a location or a band
+    Krish had already read on the sheet. His Yes outranks the gates that
+    decide what he is shown; dead, never-apply and the package gates still
+    stop a build."""
+    from hunter.gates import GateReport, GateResult
+    grid = [list(HEADERS), [""] * N_COLS,
+            data_row("Yes", "Denodo", "Chief Revenue Officer", "https://a.example/1")]
+    s = FakeSheet(grid)
+    from hunter.sources import ResolvedRole
+    monkeypatch.setattr(run_mod, "resolve_for_build",
+                        lambda cfg, row, cache, **kw: (
+                            ResolvedRole(company="Denodo", title=row["title"], url=row["url"],
+                                         jd_url=row["url"], jd_text="x" * 300, live=True,
+                                         source="t", location="Palo Alto, CA"), None, []))
+    calls = {}
+    monkeypatch.setattr(run_mod, "run_gates", lambda role, **kw: GateReport([
+        GateResult("G1", True, "live"),
+        GateResult("G6", False, "location outside canon 9.4 geography: 'Palo Alto, CA'")]))
+    monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
+
+    def stop_here(cfg):
+        calls["reached_build"] = True
+        raise RuntimeError("stop before the Docs API")
+    import hunter.package.tailor as tailor_mod
+    monkeypatch.setattr(tailor_mod, "load_blocks", stop_here)
+    summary = []
+    with pytest.raises(RuntimeError):
+        run_mod.build_one(Cfg({"hunter_never_apply": "[]"}), FakeCanon(), s,
+                          {"job_id": "denodo:cro", "company": "Denodo",
+                           "title": "Chief Revenue Officer", "url": "https://a.example/1"},
+                          summary, cache={})
+    assert calls.get("reached_build"), "the build was refused on a soft gate"
+    assert not any(line.startswith("BLOCKED") for line in summary)
+
+    monkeypatch.setattr(run_mod, "run_gates", lambda role, **kw: GateReport([
+        GateResult("G0", False, "company is on the hunter_never_apply list: Meta")]))
+    summary = []
+    ok = run_mod.build_one(Cfg({"hunter_never_apply": "[]"}), FakeCanon(), s,
+                           {"job_id": "denodo:cro", "company": "Denodo",
+                            "title": "Chief Revenue Officer", "url": "https://a.example/1"},
+                           summary, cache={})
+    assert ok is False and summary[0].startswith("BLOCKED denodo:cro: G0")
+
+
+def test_twin_db_rows_on_one_ats_posting_still_build(monkeypatch):
+    """The incumbent recorded ElevenLabs GM UK under two job_ids with one
+    URL; the matcher called it ambiguous and nothing was ever built."""
+    from hunter import router
+    url = "https://jobs.ashbyhq.com/elevenlabs/ca1269c6-12c7-419a-ab4d-458a0a907a17"
+    grid = [list(HEADERS), [""] * N_COLS,
+            data_row("Yes", "ElevenLabs", "General Manager - UK", url, score="9")]
+    s = FakeSheet(grid)
+    known = [{"job_id": "elevenlabs:gm-uk", "company": "ElevenLabs",
+              "title": "General Manager - UK", "url": url, "score": 9,
+              "package_status": "none", "krish_verdict": "go", "presented_at": "x"},
+             {"job_id": "elevenlabs:general-manager-uk-005f76", "company": "ElevenLabs",
+              "title": "General Manager - UK", "url": url, "score": 9,
+              "package_status": "none", "krish_verdict": None, "presented_at": None}]
+    monkeypatch.setattr(router, "db_get", lambda cfg, table, params: known)
+    picked = router.select_for_build(Cfg(), s, HEADERS, cap=0)
+    assert [d["job_id"] for d in picked] == ["elevenlabs:gm-uk"]
