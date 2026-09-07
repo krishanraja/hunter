@@ -334,3 +334,12 @@ def test_twin_db_rows_on_one_ats_posting_still_build(monkeypatch):
     monkeypatch.setattr(router, "db_get", lambda cfg, table, params: known)
     picked = router.select_for_build(Cfg(), s, HEADERS, cap=0)
     assert [d["job_id"] for d in picked] == ["elevenlabs:gm-uk"]
+
+
+def test_the_package_stage_check_also_lets_a_yes_outrank_soft_gates():
+    """The second run_gates call, after the documents exist, re-ran G2, G6 and
+    G7 and blocked the same seven roles the entry check had just let through."""
+    import inspect
+    src = inspect.getsource(run_mod.build_one)
+    assert "hard_fails = [g for g in pkg_report.failures() if g.gate not in BUILD_SOFT_GATES]" in src
+    assert {"G0", "G1", "G8", "G9", "G10"}.isdisjoint(run_mod.BUILD_SOFT_GATES)

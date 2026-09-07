@@ -1782,10 +1782,14 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
           and result.cv_report and result.cv_report.ok)
     if ok:
         pkg_report = run_gates(role, never_apply=never, package_texts=(
-            _doc_text(db, result.letter_doc_id), _doc_text(db, result.cv_doc_id)))
-        ok = pkg_report.passed
+            _doc_text(db, result.letter_doc_id), _doc_text(db, result.cv_doc_id)),
+            company_declines=company_declines)
+        # the same rule as at build entry: a Yes outranks the sourcing gates,
+        # and only G0, G1 and the package gates G8 to G10 can stop it here
+        hard_fails = [g for g in pkg_report.failures() if g.gate not in BUILD_SOFT_GATES]
+        ok = not hard_fails
         if not ok:
-            reasons = "; ".join(f"{g.gate}: {g.reason}" for g in pkg_report.failures())
+            reasons = "; ".join(f"{g.gate}: {g.reason}" for g in hard_fails)
             summary.append(f"BLOCKED {row['job_id']} at package gates: {reasons}")
     if not ok:
         fails = ((result.letter_report.failures if result.letter_report else [])
