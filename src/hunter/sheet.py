@@ -909,8 +909,10 @@ class Sheet:
             if links_before[n] != parse_hyperlink(got[COLS["Job Link"]]):
                 raise SheetError(f"{tab} row {n} Job Link did not land at "
                                  f"{letter('Job Link')}")
+            # a built date lands as a real date in Sheets, and a FORMULA read
+            # returns it as a day serial, so digits are a date here too
             mb = got[COLS["Materials Built"]]
-            if mb and mb != "n/a" and not DATE_RE.match(mb):
+            if mb and mb != "n/a" and not DATE_RE.match(mb) and not mb.isdigit():
                 raise SheetError(f"{tab} row {n} Materials Built reads {mb!r} at "
                                  f"{letter('Materials Built')}")
             if not got[COLS["Warm Path"]].strip() or not got[COLS["Path Evidence"]].strip():
