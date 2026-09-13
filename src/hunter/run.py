@@ -1639,6 +1639,13 @@ def fetch_jd_plain(url: str) -> tuple[bool | None, str]:
     return None, " ".join(text.split())
 
 
+def linkedin_state(url: str) -> tuple[bool | None, str]:
+    """Module-level seam so resolve_for_build's LinkedIn check is stubbable the
+    same way fetch_jd_plain is, and the offline suite never opens a socket."""
+    from .ats import linkedin
+    return linkedin.posting_state(url)
+
+
 def resolve_for_build(cfg: Config, row: dict, cache: dict, *,
                       sheet_snippet: str = "", sheet_why: str = ""
                       ) -> tuple[ResolvedRole, str | None, list[str]]:
@@ -1662,6 +1669,18 @@ def resolve_for_build(cfg: Config, row: dict, cache: dict, *,
                             jd_text="", live=False, source=row.get("source") or "",
                             location=row.get("location") or "",
                             comp=row.get("comp") or ""), None, flags
+    # LinkedIn answers 200 for a removed posting, so the generic page check
+    # cannot see it. Two of the 28 approved rows on 2026-09-13 were gone and
+    # both read as unverified, so packages were built for them.
+    if "linkedin.com/jobs" in url:
+        li_live, li_why = linkedin_state(url)
+        if li_live is False:
+            flags.append(li_why)
+            return ResolvedRole(company=company, title=title, url=url, jd_url=url,
+                                jd_text="", live=False,
+                                source=row.get("source") or "",
+                                location=row.get("location") or "",
+                                comp=row.get("comp") or ""), None, flags
     live, text = fetch_jd_plain(url) if url.startswith("http") else (None, "")
     if live is False:
         flags.append("page returned 404 or 410")
@@ -2611,6 +2630,120 @@ def _status_line(counts: dict, failed: bool) -> str:
             f"{counts.get('built', 0)} packages built")
 
 
+def cmd_bank_check() -> int:
+    """Read only. What can the answer tabs already answer, and what still blocks?
+
+    Krish's ruling 2026-09-13: the answers live in the sheet, in the three tabs
+    that already exist, not in system_config and not in a new tab. This command
+    reports their real state, including the superseded master doc IDs that canon
+    9.9 says must not linger anywhere as if they were current.
+    """
+    from .apply.infobank import INFO_TAB, INTERVIEW_TAB, PROFILE_TAB, load_bank
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+
+    def read_tab(tab: str) -> list[list]:
+        return sheet.read_tab_formulas(f"{tab}!A1:Z400")
+
+    bank = load_bank(read_tab)
+    print(f"answer bank: {len(bank.entries)} rows in {INFO_TAB!r}, "
+          f"{len(bank.profile)} facts in {PROFILE_TAB!r}, "
+          f"{len(bank.interview)} answers in {INTERVIEW_TAB!r}")
+    print(f"voice rules: {len(bank.banned_phrases)} banned phrases, "
+          f"{len(bank.positioning_rules)} positioning rules, "
+          f"{len(bank.why_company_slots)} why-this-company slots")
+
+    blocking = bank.blocking
+    print(f"\nstill empty and declared as needed: {len(blocking)}")
+    for e in sorted(blocking, key=lambda x: (x.section, x.field_name)):
+        note = f"  ({e.notes})" if e.notes else ""
+        print(f"  {e.section} {e.field_name}{note}")
+
+    sens = bank.sensitive
+    print(f"\nnever auto filled, Krish's to give: {len(sens)}")
+    for e in sorted(sens, key=lambda x: x.field_name):
+        print(f"  {e.field_name}: {e.value or '(empty)'}")
+
+    # Canon 9.9: a superseded artifact ID must not linger anywhere as current.
+    current = {config_mod.CV_MASTER_ID, config_mod.LETTER_MASTER_ID}
+    stale = []
+    for key, entry in bank.entries.items():
+        for doc_id in re.findall(r"[-\w]{25,}", entry.value):
+            if len(doc_id) >= 25 and doc_id not in current and (
+                    "doc" in entry.field_name.lower()
+                    or "cv" in entry.field_name.lower()
+                    or "letter" in entry.field_name.lower()
+                    or "template" in entry.field_name.lower()):
+                stale.append((entry.field_name, doc_id))
+    print(f"\nmaster doc pointers that are not canon 9.9 current: {len(stale)}")
+    for name, doc_id in stale:
+        print(f"  {name}: {doc_id}")
+    if stale:
+        print(f"  canon 9.9 current: CV {config_mod.CV_MASTER_ID}, "
+              f"letter {config_mod.LETTER_MASTER_ID}")
+    return 0
+
+
+def cmd_audit_forms(apply: bool = False, limit: int = 0) -> int:
+    """Read the real application form for every Yes row and derive the six
+    form-audit columns. Dry run by default; --apply writes the six cells.
+
+    Never touches column A, Application Status or Applied Date. Nothing here
+    contacts a company: it reads the same public form contract a candidate sees
+    before typing anything.
+    """
+    from .apply import audit as audit_mod
+    from .apply.fetch import account_required, form_for
+    from .apply.infobank import load_bank
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+
+    def read_tab(tab: str) -> list[list]:
+        return sheet.read_tab_formulas(f"{tab}!A1:Z400")
+
+    bank = load_bank(read_tab)
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    todo = [r for r in rows if verdicts.parse(r.verdict)[0] == "go"]
+    if limit:
+        todo = todo[:limit]
+    print(f"auditing {len(todo)} Yes rows against {len(bank.entries)} stored answers"
+          f"{'' if apply else ' (dry run, pass --apply to write)'}\n")
+
+    buckets: dict[str, list[str]] = {}
+    wrote = 0
+    for r in todo:
+        company = r.company or r.cell("Business") or ""
+        url = r.jd_url or ""
+        try:
+            spec = form_for(url, ats_key)
+        except Exception as e:
+            print(f"  {company[:24]:<26} form read failed: {e.__class__.__name__}: {e}")
+            continue
+        result = audit_mod.audit(
+            spec, bank, account_required=account_required(spec),
+            role_location=r.cell("Location"))
+        buckets.setdefault(result.autonomy_score, []).append(company)
+        print(f"  {company[:24]:<26} {result.application_format:<15} "
+              f"{result.form_complexity:<8} {result.autonomy_score:<18} "
+              f"{result.additional_questions}")
+        for item in result.unresolved:
+            print(f"      unresolved: {item}")
+        for item in result.flagged:
+            print(f"      flagged:    {item}")
+        if apply:
+            sheet.update_form_audit(r.row_number, result.cells())
+            wrote += 1
+
+    print("\nby autonomy:")
+    for score in audit_mod.AUTONOMIES:
+        names = buckets.get(score) or []
+        if names:
+            print(f"  {score:<18} {len(names):>2}  {', '.join(sorted(names))}")
+    if apply:
+        print(f"\nwrote the six form-audit columns on {wrote} rows")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     cmd = argv[0] if argv else "recon"
     if cmd == "run":
@@ -2666,6 +2799,11 @@ def main(argv: list[str]) -> int:
             print("usage: python -m hunter.run decline <row>=<reason> ... [--apply]")
             return 2
         return cmd_decline(pairs_in, apply="--apply" in argv)
+    if cmd == "bank-check":
+        return cmd_bank_check()
+    if cmd == "audit-forms":
+        lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else 0
+        return cmd_audit_forms(apply="--apply" in argv, limit=lim)
     if cmd == "verify":
         return cmd_verify(apply="--apply" in argv)
     if cmd == "disconnect":
@@ -2687,6 +2825,7 @@ def main(argv: list[str]) -> int:
     print(f"unknown command {cmd!r}; commands: process [--max N] [--retry-dead], "
           f"run, reconcile, migrate-columns [--apply], migrate-sheet, "
           f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
+          f"bank-check, audit-forms [--apply] [--limit N], "
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2

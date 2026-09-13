@@ -42,6 +42,7 @@ class FakeCanon:
 
 def test_a_linkedin_url_with_a_live_page_builds_unverified(monkeypatch):
     """Ten of the 26 Yes rows had no ATS key and were refused as dead."""
+    monkeypatch.setattr(run_mod, "linkedin_state", lambda url: (None, "stub"))
     monkeypatch.setattr(run_mod, "discover_posting",
                         lambda cfg, company, title, cache: ("unknown", None, "no job board found"))
     monkeypatch.setattr(run_mod, "fetch_jd_plain",
@@ -55,6 +56,7 @@ def test_a_linkedin_url_with_a_live_page_builds_unverified(monkeypatch):
 
 
 def test_a_board_that_lacks_the_title_is_verifiably_dead(monkeypatch):
+    monkeypatch.setattr(run_mod, "linkedin_state", lambda url: (None, "stub"))
     monkeypatch.setattr(run_mod, "discover_posting",
                         lambda cfg, company, title, cache: ("absent", None, "not on the ashby/x board (12 jobs)"))
     role, relink, flags = run_mod.resolve_for_build(
@@ -64,6 +66,7 @@ def test_a_board_that_lacks_the_title_is_verifiably_dead(monkeypatch):
 
 
 def test_a_404_page_is_verifiably_dead(monkeypatch):
+    monkeypatch.setattr(run_mod, "linkedin_state", lambda url: (None, "stub"))
     monkeypatch.setattr(run_mod, "discover_posting",
                         lambda cfg, company, title, cache: ("unknown", None, "no board"))
     monkeypatch.setattr(run_mod, "fetch_jd_plain", lambda url: (False, ""))
@@ -74,6 +77,7 @@ def test_a_404_page_is_verifiably_dead(monkeypatch):
 
 
 def test_a_thin_page_falls_back_to_the_sheets_own_words(monkeypatch):
+    monkeypatch.setattr(run_mod, "linkedin_state", lambda url: (None, "stub"))
     monkeypatch.setattr(run_mod, "discover_posting",
                         lambda cfg, company, title, cache: ("unknown", None, "no board"))
     monkeypatch.setattr(run_mod, "fetch_jd_plain", lambda url: (None, "Sign in to view"))
@@ -86,6 +90,8 @@ def test_a_thin_page_falls_back_to_the_sheets_own_words(monkeypatch):
 
 
 def test_a_discovered_board_relinks_and_checks_directly(monkeypatch):
+    monkeypatch.setattr(run_mod, "linkedin_state", lambda url: (None, "stub"))
+
     class Hit:
         url = "https://jobs.ashbyhq.com/socure/11111111-2222-3333-4444-555555555555"
     monkeypatch.setattr(run_mod, "discover_posting",
@@ -386,3 +392,19 @@ def test_the_sweep_reads_the_salary_field_the_actor_actually_returns(monkeypatch
          "salary": "$250,000 - $300,000", "descriptionText": "x"}])
     out = al.sweep_linkedin(None, ["u"], spend=al.SpendTracker(cap_usd=1), max_charge_usd=1)
     assert out[0].comp_text == "$250,000 - $300,000"
+
+
+def test_a_closed_linkedin_posting_is_dead_not_unverified(monkeypatch):
+    """Denodo and Fractional AI were both gone on 2026-09-13 and both read as
+    unverified, so packages were built for them. A LinkedIn page that says the
+    posting is closed is now verifiably dead."""
+    monkeypatch.setattr(run_mod, "linkedin_state",
+                        lambda url: (False, "LinkedIn says no longer accepting "
+                                            "applications"))
+    monkeypatch.setattr(run_mod, "discover_posting",
+                        lambda cfg, company, title, cache: ("unknown", None, "no board"))
+    role, relink, flags = run_mod.resolve_for_build(
+        None, {"title": "Chief Revenue Officer", "company": "Denodo",
+               "url": "https://www.linkedin.com/jobs/view/cro-9"}, {})
+    assert role.liveness == "checked" and not role.live
+    assert any("no longer accepting" in f for f in flags)

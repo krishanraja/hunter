@@ -1,0 +1,579 @@
+{
+ "absolute_url": "https://job-boards.greenhouse.io/aptoslabs/jobs/4645494005",
+ "data_compliance": [
+  {
+   "type": "gdpr",
+   "requires_consent": false,
+   "requires_processing_consent": false,
+   "requires_retention_consent": false,
+   "retention_period": null,
+   "demographic_data_consent_applies": false
+  }
+ ],
+ "internal_job_id": 4412120005,
+ "location": {
+  "name": "US/Global (Remote)"
+ },
+ "metadata": null,
+ "id": 4645494005,
+ "updated_at": "2026-05-07T14:00:00-04:00",
+ "requisition_id": "324",
+ "title": "Head of Enterprise GTM \u2013 Shelby Platform",
+ "company_name": "Aptos",
+ "first_published": "2026-01-05T09:59:41-05:00",
+ "language": "en",
+ "application_deadline": null,
+ "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;Aptos is a people-first blockchain on a mission to help billions of people achieve universal and fair access to decentralized assets in a safe and scalable way.&lt;/span&gt;&lt;/p&gt;\n&lt;p&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;Founded by some of the original creators and maintainers that researched, designed, and built the Diem blockchain to serve this purpose, we have dedicated several years toward this mission. We believe the open-source Diem technology we have developed is an important foundation of a safe and scalable web3 world where everyone has more equitable opportunities to grow and access financial assets with lower fees and fewer intermediaries.&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;/p&gt;\n&lt;p&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;Aptos (Ohlone for &quot;The People&quot;) encompasses our mission and ethos for why we build.&lt;/span&gt;&lt;/p&gt;&lt;/div&gt;&lt;p data-start=&quot;306&quot; data-end=&quot;621&quot;&gt;Shelby is a high-performance object storage platform with a global namespace, purpose-built for AI and large-scale, data-intensive workloads. It enables organizations to store data once and access it from anywhere\u2014bringing data closer to compute while delivering cloud-grade performance at significantly lower cost.&lt;/p&gt;\n&lt;p data-start=&quot;623&quot; data-end=&quot;948&quot;&gt;As AI infrastructure becomes increasingly distributed, organizations need data platforms that support training, inference, and global collaboration without complex or expensive data replication. Shelby\u2019s \u201cwrite once, read anywhere\u201d architecture simplifies global data movement across regions, teams, and compute environments.&lt;/p&gt;\n&lt;p data-start=&quot;950&quot; data-end=&quot;1245&quot;&gt;Designed for secure, high-throughput, read-optimized access patterns, Shelby plays a critical role across the AI data lifecycle\u2014from data acquisition to model training to inference. The platform can also be deployed within select datacenters, enabling flexible, hybrid infrastructure strategies.&lt;/p&gt;\n&lt;p data-start=&quot;1247&quot; data-end=&quot;1377&quot;&gt;Shelby is built by a team with deep experience in large-scale infrastructure, distributed systems, and production-grade platforms.&lt;/p&gt;\n&lt;hr data-start=&quot;1379&quot; data-end=&quot;1382&quot;&gt;\n&lt;h2 data-section-id=&quot;1froeg&quot; data-start=&quot;1384&quot; data-end=&quot;1395&quot;&gt;The Role&lt;/h2&gt;\n&lt;p data-start=&quot;1397&quot; data-end=&quot;1517&quot;&gt;We\u2019re hiring a &lt;strong data-start=&quot;1412&quot; data-end=&quot;1438&quot;&gt;Head of Enterprise GTM&lt;/strong&gt; to define and lead Shelby\u2019s enterprise go-to-market motion from the ground up.&lt;/p&gt;\n&lt;p data-start=&quot;1519&quot; data-end=&quot;1847&quot;&gt;This is a &lt;strong data-start=&quot;1529&quot; data-end=&quot;1541&quot;&gt;0\u21921 role&lt;/strong&gt; for someone who has taken complex AI, data, or cloud platforms and turned them into real enterprise adoption and revenue. You will translate Shelby\u2019s technical capabilities into clear business value, land initial customers, and shape how the platform is understood and deployed within large organizations.&lt;/p&gt;\n&lt;p data-start=&quot;1849&quot; data-end=&quot;2008&quot;&gt;You will operate as both a strategist and an operator\u2014owning early revenue, building the narrative, and laying the foundation for a scalable enterprise motion.&lt;/p&gt;\n&lt;hr data-start=&quot;2010&quot; data-end=&quot;2013&quot;&gt;\n&lt;h2 data-section-id=&quot;r8dte7&quot; data-start=&quot;2015&quot; data-end=&quot;2034&quot;&gt;Responsibilities&lt;/h2&gt;\n&lt;p data-start=&quot;2036&quot; data-end=&quot;2246&quot;&gt;&lt;strong data-start=&quot;2036&quot; data-end=&quot;2063&quot;&gt;Enterprise GTM Strategy&lt;/strong&gt;&lt;br data-start=&quot;2063&quot; data-end=&quot;2066&quot;&gt;Define and execute Shelby\u2019s positioning across AI infrastructure, data platforms, and distributed compute. Translate technical capabilities into clear enterprise use cases and ROI.&lt;/p&gt;\n&lt;p data-start=&quot;2248&quot; data-end=&quot;2432&quot;&gt;&lt;strong data-start=&quot;2248&quot; data-end=&quot;2278&quot;&gt;Strategic Enterprise Sales&lt;/strong&gt;&lt;br data-start=&quot;2278&quot; data-end=&quot;2281&quot;&gt;Own and close early lighthouse accounts. Lead complex, multi-stakeholder sales cycles across technical and executive buyers within large organizations.&lt;/p&gt;\n&lt;p data-start=&quot;2434&quot; data-end=&quot;2590&quot;&gt;&lt;strong data-start=&quot;2434&quot; data-end=&quot;2464&quot;&gt;Platform Commercialization&lt;/strong&gt;&lt;br data-start=&quot;2464&quot; data-end=&quot;2467&quot;&gt;Turn Shelby from a technical platform into a clear enterprise solution by shaping use cases, pilots, and adoption pathways.&lt;/p&gt;\n&lt;p data-start=&quot;2592&quot; data-end=&quot;2742&quot;&gt;&lt;strong data-start=&quot;2592&quot; data-end=&quot;2620&quot;&gt;Partnerships &amp;amp; Ecosystem&lt;/strong&gt;&lt;br data-start=&quot;2620&quot; data-end=&quot;2623&quot;&gt;Develop relationships with AI, cloud, and infrastructure partners to accelerate adoption and expand Shelby\u2019s footprint.&lt;/p&gt;\n&lt;p data-start=&quot;2744&quot; data-end=&quot;2895&quot;&gt;&lt;strong data-start=&quot;2744&quot; data-end=&quot;2775&quot;&gt;Cross-Functional Leadership&lt;/strong&gt;&lt;br data-start=&quot;2775&quot; data-end=&quot;2778&quot;&gt;Work closely with product and engineering to align customer needs with roadmap, positioning, and deployment strategy.&lt;/p&gt;\n&lt;p data-start=&quot;2897&quot; data-end=&quot;3014&quot;&gt;&lt;strong data-start=&quot;2897&quot; data-end=&quot;2917&quot;&gt;Build the Motion&lt;/strong&gt;&lt;br data-start=&quot;2917&quot; data-end=&quot;2920&quot;&gt;Establish early playbooks, define ICPs, and build toward a repeatable enterprise sales engine.&lt;/p&gt;\n&lt;hr data-start=&quot;3016&quot; data-end=&quot;3019&quot;&gt;\n&lt;h2 data-section-id=&quot;1uwd9qn&quot; data-start=&quot;3021&quot; data-end=&quot;3046&quot;&gt;What We\u2019re Looking For&lt;/h2&gt;\n&lt;ul data-start=&quot;3048&quot; data-end=&quot;3790&quot;&gt;\n&lt;li data-section-id=&quot;uiyjqw&quot; data-start=&quot;3048&quot; data-end=&quot;3145&quot;&gt;10+ years in enterprise GTM, sales, or partnerships across AI, data, cloud, or infrastructure&lt;/li&gt;\n&lt;li data-section-id=&quot;3imnz0&quot; data-start=&quot;3146&quot; data-end=&quot;3345&quot;&gt;Experience at platforms like &lt;span class=&quot;hover:entity-accent entity-underline inline cursor-pointer align-baseline&quot;&gt;&lt;span class=&quot;whitespace-normal&quot;&gt;Google Cloud&lt;/span&gt;&lt;/span&gt;, &lt;span class=&quot;hover:entity-accent entity-underline inline cursor-pointer align-baseline&quot;&gt;&lt;span class=&quot;whitespace-normal&quot;&gt;Microsoft&lt;/span&gt;&lt;/span&gt;, or &lt;span class=&quot;hover:entity-accent entity-underline inline cursor-pointer align-baseline&quot;&gt;&lt;span class=&quot;whitespace-normal&quot;&gt;Salesforce&lt;/span&gt;&lt;/span&gt; preferred&lt;/li&gt;\n&lt;li data-section-id=&quot;trvags&quot; data-start=&quot;3346&quot; data-end=&quot;3444&quot;&gt;Proven ability to take complex technical platforms from &lt;strong data-start=&quot;3404&quot; data-end=&quot;3442&quot;&gt;early stage to enterprise adoption&lt;/strong&gt;&lt;/li&gt;\n&lt;li data-section-id=&quot;1uyjjhf&quot; data-start=&quot;3445&quot; data-end=&quot;3540&quot;&gt;Strong track record selling into Fortune 500 environments with multi-stakeholder complexity&lt;/li&gt;\n&lt;li data-section-id=&quot;1mgi5sn&quot; data-start=&quot;3541&quot; data-end=&quot;3660&quot;&gt;Ability to engage both technical and executive audiences and translate platform capabilities into business outcomes&lt;/li&gt;\n&lt;li data-section-id=&quot;3crkef&quot; data-start=&quot;3661&quot; data-end=&quot;3724&quot;&gt;Experience operating in ambiguous, zero-to-one environments&lt;/li&gt;\n&lt;li data-section-id=&quot;ap6se&quot; data-start=&quot;3725&quot; data-end=&quot;3790&quot;&gt;Strong communication, storytelling, and deal execution skills&lt;/li&gt;\n&lt;/ul&gt;\n&lt;hr data-start=&quot;3792&quot; data-end=&quot;3795&quot;&gt;\n&lt;h2 data-section-id=&quot;1tcakoa&quot; data-start=&quot;3797&quot; data-end=&quot;3810&quot;&gt;Why Shelby&lt;/h2&gt;\n&lt;ul data-start=&quot;3812&quot; data-end=&quot;4085&quot;&gt;\n&lt;li data-section-id=&quot;etljck&quot; data-start=&quot;3812&quot; data-end=&quot;3892&quot;&gt;Define how a next-generation AI infrastructure platform is brought to market&lt;/li&gt;\n&lt;li data-section-id=&quot;18qlqxf&quot; data-start=&quot;3893&quot; data-end=&quot;3957&quot;&gt;Own enterprise adoption from first customer to scaled growth&lt;/li&gt;\n&lt;li data-section-id=&quot;gnbmno&quot; data-start=&quot;3958&quot; data-end=&quot;4023&quot;&gt;Work at the intersection of AI, data, and distributed compute&lt;/li&gt;\n&lt;li data-section-id=&quot;l7ul3p&quot; data-start=&quot;4024&quot; data-end=&quot;4085&quot;&gt;Partner with a team building category-defining technology&lt;/li&gt;\n&lt;/ul&gt;&lt;div class=&quot;content-conclusion&quot;&gt;&lt;p&gt;&lt;strong&gt;Our Benefits&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li style=&quot;font-weight: 400;&quot;&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;100% insurance premium coverage for medical, dental, and vision for you and your dependents (US Employees)&lt;/span&gt;&lt;/li&gt;\n&lt;li style=&quot;font-weight: 400;&quot;&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;Equipment of your choice&lt;/span&gt;&lt;/li&gt;\n&lt;li style=&quot;font-weight: 400;&quot;&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;Flexible vacation time, 11 holidays, and floating company days off&amp;nbsp;&lt;/span&gt;&lt;/li&gt;\n&lt;li style=&quot;font-weight: 400;&quot;&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;Competitive Salary&lt;/span&gt;&lt;/li&gt;\n&lt;li style=&quot;font-weight: 400;&quot;&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;Protocol Token Grants&lt;/span&gt;&lt;/li&gt;\n&lt;li style=&quot;font-weight: 400;&quot;&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;401k matching (US Employees)&lt;/span&gt;&lt;/li&gt;\n&lt;li style=&quot;font-weight: 400;&quot;&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;Fun and inclusive in-person and digital events&lt;/span&gt;&lt;/li&gt;\n&lt;/ul&gt;\n&lt;p&gt;&lt;em&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;Aptos is committed to diversity in the workplace, and we\u2019re proud to be an Equal Opportunity Employer. We do not hire on the basis of race, color, religion, creed, gender, national origin, citizenship, age, disability, veteran status, marital status, pregnancy, parental status, sex, gender expression or identity, sexual orientation, or any other basis protected by local, state or federal law. All employment is decided based on qualifications, merit, and business need.&lt;/span&gt;&lt;/em&gt;&lt;/p&gt;\n&lt;div class=&quot;p-client_container&quot;&gt;\n&lt;div class=&quot;p-ia4_client_container&quot;&gt;\n&lt;div class=&quot;p-ia4_client p-ia4_client--with-search-in-top-nav p-ia4_client--workspace-switcher-rail-visibletest p-ia4_client--narrow-feature-on p-ia4_client--theming&quot;&gt;\n&lt;div class=&quot;p-client_workspace_wrapper&quot;&gt;\n&lt;div class=&quot;p-client_workspace&quot;&gt;\n&lt;div class=&quot;p-client_workspace__layout&quot;&gt;\n&lt;div class=&quot;active-managed-focus-container&quot;&gt;\n&lt;div class=&quot;p-view_contents p-view_contents--secondary p-view_contents--channel-list-pry&quot;&gt;\n&lt;div class=&quot;p-flexpane p-flexpane--iap1 p-flexpane--ia_details_popover&quot; data-qa=&quot;threads_flexpane&quot;&gt;\n&lt;div class=&quot;p-flexpane__body p-threads_flexpane_container p-flexpane__body--light&quot;&gt;\n&lt;div class=&quot;p-file_drag_drop__container p-threads_flexpane&quot;&gt;\n&lt;div class=&quot;flex_one no_min_height&quot;&gt;\n&lt;div id=&quot;C04PR3PB3EV-1709053205.177889-thread-list-Thread&quot;&gt;\n&lt;div id=&quot;C04PR3PB3EV-1709053205.177889-thread-list-Thread&quot; class=&quot;c-virtual_list c-virtual_list--scrollbar c-scrollbar c-scrollbar--always_visible&quot;&gt;\n&lt;div class=&quot;c-scrollbar__hider&quot; data-qa=&quot;slack_kit_scrollbar&quot;&gt;\n&lt;div class=&quot;c-scrollbar__child&quot;&gt;\n&lt;div class=&quot;c-virtual_list__scroll_container&quot; data-qa=&quot;slack_kit_list&quot;&gt;\n&lt;div id=&quot;C04PR3PB3EV-1709053205.177889-thread-list-Thread_1709059995.769659&quot; class=&quot;c-virtual_list__item&quot; data-qa=&quot;virtual-list-item&quot; data-item-key=&quot;1709059995.769659&quot;&gt;\n&lt;div class=&quot;c-message_kit__background c-message_kit__background--hovered c-message_kit__message c-message_kit__thread_message&quot; data-qa=&quot;message_container&quot; data-qa-unprocessed=&quot;false&quot; data-qa-placeholder=&quot;false&quot;&gt;\n&lt;div class=&quot;c-message_kit__hover c-message_kit__hover--hovered&quot; data-qa-hover=&quot;true&quot;&gt;\n&lt;div class=&quot;c-message_kit__actions c-message_kit__actions--default&quot;&gt;\n&lt;div class=&quot;c-message_kit__gutter&quot;&gt;\n&lt;div class=&quot;c-message_kit__gutter__right&quot; data-qa=&quot;message_content&quot;&gt;\n&lt;div class=&quot;c-message_kit__blocks c-message_kit__blocks--rich_text&quot;&gt;\n&lt;div class=&quot;c-message__message_blocks c-message__message_blocks--rich_text&quot; data-qa=&quot;message-text&quot;&gt;\n&lt;div class=&quot;p-block_kit_renderer&quot; data-qa=&quot;block-kit-renderer&quot;&gt;\n&lt;div class=&quot;p-block_kit_renderer__block_wrapper p-block_kit_renderer__block_wrapper--first&quot;&gt;\n&lt;div class=&quot;p-rich_text_block&quot;&gt;\n&lt;div class=&quot;p-client_container&quot;&gt;\n&lt;div class=&quot;p-ia4_client_container&quot;&gt;\n&lt;div class=&quot;p-ia4_client p-ia4_client--with-search-in-top-nav p-ia4_client--workspace-switcher-rail-visibletest p-ia4_client--narrow-feature-on p-ia4_client--theming&quot;&gt;\n&lt;div class=&quot;p-client_workspace_wrapper&quot;&gt;\n&lt;div class=&quot;p-client_workspace&quot;&gt;\n&lt;div class=&quot;p-client_workspace__layout&quot;&gt;\n&lt;div class=&quot;active-managed-focus-container&quot;&gt;\n&lt;div class=&quot;p-view_contents p-view_contents--primary p-view_contents--channel-list-pry&quot;&gt;\n&lt;div class=&quot;p-file_drag_drop__container&quot;&gt;\n&lt;div class=&quot;p-workspace__primary_view_body&quot;&gt;\n&lt;div class=&quot;p-message_pane p-message_pane--classic-nav p-message_pane--scrollbar-float-adjustment p-message_pane--with-bookmarks-bar&quot; data-qa=&quot;message_pane&quot;&gt;\n&lt;div class=&quot;c-virtual_list c-virtual_list--scrollbar c-message_list c-message_list--floating c-scrollbar c-scrollbar--fade&quot;&gt;\n&lt;div class=&quot;c-scrollbar__hider&quot; data-qa=&quot;slack_kit_scrollbar&quot;&gt;\n&lt;div class=&quot;c-scrollbar__child&quot;&gt;\n&lt;div class=&quot;c-virtual_list__scroll_container&quot; data-qa=&quot;slack_kit_list&quot;&gt;\n&lt;div id=&quot;1708738159.211909&quot; class=&quot;c-virtual_list__item&quot; data-qa=&quot;virtual-list-item&quot; data-item-key=&quot;1708738159.211909&quot;&gt;\n&lt;div class=&quot;c-message_kit__background c-message_kit__background--hovered p-message_pane_message__message c-message_kit__message&quot; data-qa=&quot;message_container&quot; data-qa-unprocessed=&quot;false&quot; data-qa-placeholder=&quot;false&quot;&gt;\n&lt;div class=&quot;c-message_kit__hover c-message_kit__hover--hovered&quot; data-qa-hover=&quot;true&quot;&gt;\n&lt;div class=&quot;c-message_kit__actions c-message_kit__actions--default&quot;&gt;\n&lt;div class=&quot;c-message_kit__gutter&quot;&gt;\n&lt;div class=&quot;c-message_kit__gutter__right&quot; data-qa=&quot;message_content&quot;&gt;\n&lt;div class=&quot;c-message_kit__blocks c-message_kit__blocks--rich_text&quot;&gt;\n&lt;div class=&quot;c-message__message_blocks c-message__message_blocks--rich_text&quot; data-qa=&quot;message-text&quot;&gt;\n&lt;div class=&quot;p-block_kit_renderer&quot; data-qa=&quot;block-kit-renderer&quot;&gt;\n&lt;div class=&quot;p-block_kit_renderer__block_wrapper p-block_kit_renderer__block_wrapper--first&quot;&gt;\n&lt;div class=&quot;p-rich_text_block&quot;&gt;\n&lt;blockquote class=&quot;c-mrkdwn__quote&quot; data-stringify-type=&quot;quote&quot;&gt;We are committed to providing a safe and secure hiring process for all applicants. Unfortunately, there are individuals who may attempt to impersonate Aptos or our employees for fraudulent purposes.&lt;br&gt;&lt;strong data-stringify-type=&quot;bold&quot;&gt;To protect yourself, please be aware of the following:&lt;/strong&gt;&lt;/blockquote&gt;\n&lt;ul class=&quot;p-rich_text_list p-rich_text_list__bullet&quot; data-stringify-type=&quot;unordered-list&quot; data-indent=&quot;0&quot; data-border=&quot;1&quot; data-border-radius-top-cap=&quot;0&quot; data-border-radius-bottom-cap=&quot;0&quot;&gt;\n&lt;li data-stringify-indent=&quot;0&quot; data-stringify-border=&quot;1&quot;&gt;We will&amp;nbsp;&lt;strong data-stringify-type=&quot;bold&quot;&gt;never&lt;/strong&gt;&amp;nbsp;ask you for payment of any kind during the application or onboarding process, including fees for background checks, training, or equipment.&lt;/li&gt;\n&lt;li data-stringify-indent=&quot;0&quot; data-stringify-border=&quot;1&quot;&gt;We will&amp;nbsp;&lt;strong data-stringify-type=&quot;bold&quot;&gt;always&lt;/strong&gt;&amp;nbsp;communicate with you using our official company email domain.&lt;/li&gt;\n&lt;li data-stringify-indent=&quot;0&quot; data-stringify-border=&quot;1&quot;&gt;We will&amp;nbsp;&lt;strong data-stringify-type=&quot;bold&quot;&gt;never&lt;/strong&gt;&amp;nbsp;request your personal financial information, such as your social security number or bank account details, during the initial application stages or via email or a video/voice call when onboarding.&lt;/li&gt;\n&lt;/ul&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;&lt;/div&gt;",
+ "departments": [
+  {
+   "id": 4141199005,
+   "name": "Shelby",
+   "child_ids": [],
+   "parent_id": null
+  }
+ ],
+ "offices": [
+  {
+   "id": 4000964005,
+   "name": "HQ",
+   "location": "Palo Alto, California, United States",
+   "child_ids": [],
+   "parent_id": null
+  }
+ ],
+ "ai_disclaimer": null,
+ "include_ai_disclaimer": null,
+ "ai_opt_out_request_url": null,
+ "compliance": [
+  {
+   "type": "eeoc",
+   "questions": [],
+   "description": "&lt;p&gt;PUBLIC BURDEN STATEMENT: According to the Paperwork Reduction Act of 1995 no persons are required to respond to a collection of information unless such collection displays a valid OMB control number. This survey should take about 5 minutes to complete.&lt;/p&gt;\n"
+  },
+  {
+   "type": "eeoc",
+   "questions": [
+    {
+     "required": false,
+     "label": "DisabilityStatus",
+     "fields": [
+      {
+       "name": "disability_status",
+       "type": "multi_value_single_select",
+       "values": [
+        {
+         "label": "I do not want to answer",
+         "value": "3"
+        },
+        {
+         "label": "No, I do not have a disability and have not had one in the past",
+         "value": "2"
+        },
+        {
+         "label": "Yes, I have a disability, or have had one in the past",
+         "value": "1"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "description": "&lt;h3&gt;&lt;strong&gt;Voluntary Self-Identification of Disability&lt;/strong&gt;&lt;/h3&gt;\n&lt;div style=&quot;display:flex; justify-content:space-between;&quot;&gt;\n  &lt;div&gt;\n    &lt;div&gt;Form CC-305&lt;/div&gt;\n    &lt;div&gt;Page 1 of 1&lt;/div&gt;\n  &lt;/div&gt;\n  &lt;div&gt;\n    &lt;div&gt;OMB Control Number 1250-0005&lt;/div&gt;\n    &lt;div&gt;Expires 04/30/2026&lt;/div&gt;\n  &lt;/div&gt;\n&lt;/div&gt;\n&lt;br&gt;\n&lt;strong&gt;Why are you being asked to complete this form?&lt;/strong&gt;\n&lt;p&gt;We are a federal contractor or subcontractor. The law requires us to provide equal employment opportunity to qualified people with disabilities. We have a goal of having at least 7% of our workers as people with disabilities. The law says we must measure our progress towards this goal. To do this, we must ask applicants and employees if they have a disability or have ever had one. People can become disabled, so we need to ask this question at least every five years.&lt;/p&gt;\n&lt;p&gt;Completing this form is voluntary, and we hope that you will choose to do so. Your answer is confidential. No one who makes hiring decisions will see it. Your decision to complete the form and your answer will not harm you in any way. If you want to learn more about the law or this form, visit the U.S. Department of Labor\u2019s Office of Federal Contract Compliance Programs (OFCCP) website at &lt;a href=&quot;https://www.dol.gov/ofccp&quot; target=&quot;_blank&quot;&gt;www.dol.gov/ofccp&lt;/a&gt;.&lt;/p&gt;\n&lt;strong&gt;How do you know if you have a disability?&lt;/strong&gt;\n&lt;p&gt;A disability is a condition that substantially limits one or more of your \u201cmajor life activities.\u201d If you have or have ever had such a condition, you are a person with a disability. &lt;strong&gt;Disabilities include, but are not limited to:&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n  &lt;li&gt;Alcohol or other substance use disorder (not currently using drugs illegally)&lt;/li&gt;\n  &lt;li&gt;Autoimmune disorder, for example, lupus, fibromyalgia, rheumatoid arthritis, HIV/AIDS&lt;/li&gt;\n  &lt;li&gt;Blind or low vision&lt;/li&gt;\n  &lt;li&gt;Cancer (past or present)&lt;/li&gt;\n  &lt;li&gt;Cardiovascular or heart disease&lt;/li&gt;\n  &lt;li&gt;Celiac disease&lt;/li&gt;\n  &lt;li&gt;Cerebral palsy&lt;/li&gt;\n  &lt;li&gt;Deaf or serious difficulty hearing&lt;/li&gt;\n  &lt;li&gt;Diabetes&lt;/li&gt;\n  &lt;li&gt;Disfigurement, for example, disfigurement caused by burns, wounds, accidents, or congenital disorders&lt;/li&gt;\n  &lt;li&gt;Epilepsy or other seizure disorder&lt;/li&gt;\n  &lt;li&gt;Gastrointestinal disorders, for example, Crohn&#39;s Disease, irritable bowel syndrome&lt;/li&gt;\n  &lt;li&gt;Intellectual or developmental disability&lt;/li&gt;\n  &lt;li&gt;Mental health conditions, for example, depression, bipolar disorder, anxiety disorder, schizophrenia, PTSD&lt;/li&gt;\n  &lt;li&gt;Missing limbs or partially missing limbs&lt;/li&gt;\n  &lt;li&gt;Mobility impairment, benefiting from the use of a wheelchair, scooter, walker, leg brace(s) and/or other supports&lt;/li&gt;\n  &lt;li&gt;Nervous system condition, for example, migraine headaches, Parkinson\u2019s disease, multiple sclerosis (MS)&lt;/li&gt;\n  &lt;li&gt;Neurodivergence, for example, attention-deficit/hyperactivity disorder (ADHD), autism spectrum disorder, dyslexia, dyspraxia, other learning disabilities&lt;/li&gt;\n  &lt;li&gt;Partial or complete paralysis (any cause)&lt;/li&gt;\n  &lt;li&gt;Pulmonary or respiratory conditions, for example, tuberculosis, asthma, emphysema&lt;/li&gt;\n  &lt;li&gt;Short stature (dwarfism)&lt;/li&gt;\n  &lt;li&gt;Traumatic brain injury&lt;/li&gt;\n&lt;/ul&gt;\n"
+  },
+  {
+   "type": "eeoc",
+   "questions": [
+    {
+     "required": false,
+     "label": "VeteranStatus",
+     "fields": [
+      {
+       "name": "veteran_status",
+       "type": "multi_value_single_select",
+       "values": [
+        {
+         "label": "I don't wish to answer",
+         "value": "3"
+        },
+        {
+         "label": "I identify as one or more of the classifications of a protected veteran",
+         "value": "2"
+        },
+        {
+         "label": "I am not a protected veteran",
+         "value": "1"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "description": "&lt;p&gt;\n  If you believe you belong to any of the categories of protected veterans listed below, please indicate by making the appropriate selection.\n  As a government contractor subject to the Vietnam Era Veterans&#39; Readjustment Assistance Act (VEVRAA), we request this information in order to measure\n  the effectiveness of the outreach and positive recruitment efforts we undertake pursuant to VEVRAA. Classification of protected categories\n  is as follows:\n&lt;/p&gt;\n&lt;p&gt;A &quot;disabled veteran&quot; is one of the following: a veteran of the U.S. military, ground, naval or air service who is entitled to compensation (or who but for the receipt of military retired pay would be entitled to compensation) under laws administered by the Secretary of Veterans Affairs; or a person who was discharged or released from active duty because of a service-connected disability.&lt;/p&gt;\n&lt;p&gt;A &quot;recently separated veteran&quot; means any veteran during the three-year period beginning on the date of such veteran&#39;s discharge or release from active duty in the U.S. military, ground, naval, or air service.&lt;/p&gt;\n&lt;p&gt;An &quot;active duty wartime or campaign badge veteran&quot; means a veteran who served on active duty in the U.S. military, ground, naval or air service during a war, or in a campaign or expedition for which a campaign badge has been authorized under the laws administered by the Department of Defense.&lt;/p&gt;\n&lt;p&gt;An &quot;Armed forces service medal veteran&quot; means a veteran who, while serving on active duty in the U.S. military, ground, naval or air service, participated in a United States military operation for which an Armed Forces service medal was awarded pursuant to Executive Order 12985.&lt;/p&gt;\n"
+  },
+  {
+   "type": "eeoc",
+   "questions": [
+    {
+     "required": false,
+     "label": "Race",
+     "fields": [
+      {
+       "name": "race",
+       "type": "multi_value_single_select",
+       "values": [
+        {
+         "label": "Decline To Self Identify",
+         "value": "8"
+        },
+        {
+         "label": "Two or More Races",
+         "value": "7"
+        },
+        {
+         "label": "Native Hawaiian or Other Pacific Islander",
+         "value": "6"
+        },
+        {
+         "label": "White",
+         "value": "5"
+        },
+        {
+         "label": "Hispanic or Latino",
+         "value": "4"
+        },
+        {
+         "label": "Black or African American",
+         "value": "3"
+        },
+        {
+         "label": "Asian",
+         "value": "2"
+        },
+        {
+         "label": "American Indian or Alaskan Native",
+         "value": "1"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "required": false,
+     "label": "Gender",
+     "fields": [
+      {
+       "name": "gender",
+       "type": "multi_value_single_select",
+       "values": [
+        {
+         "label": "Decline To Self Identify",
+         "value": "3"
+        },
+        {
+         "label": "Female",
+         "value": "2"
+        },
+        {
+         "label": "Male",
+         "value": "1"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "description": "&lt;h3&gt;&lt;strong&gt;Voluntary Self-Identification&lt;/strong&gt;&lt;/h3&gt;&lt;br/&gt;&lt;p&gt;For government reporting purposes, we ask candidates to respond to the below self-identification survey.\nCompletion of the form is entirely voluntary. Whatever your decision, it will not be considered in the hiring\nprocess or thereafter. Any information that you do provide will be recorded and maintained in a\nconfidential file.&lt;/p&gt;\n\n&lt;p&gt;As set forth in Aptos\u2019s Equal Employment Opportunity policy,\nwe do not discriminate on the basis of any protected group status under any applicable law.&lt;/p&gt;\n"
+  }
+ ],
+ "demographic_questions": {
+  "header": "U.S. Standard Demographic Questions",
+  "description": "We invite applicants to share their demographic background. If you choose to complete this survey, your responses may be used to identify areas of improvement in our hiring process.",
+  "questions": [
+   {
+    "id": 4002527005,
+    "label": "How would you describe your gender identity? (mark all that apply)",
+    "required": false,
+    "type": "multi_value_multi_select",
+    "answer_options": [
+     {
+      "id": 4015044005,
+      "label": "Man",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015042005,
+      "label": "Non-binary",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015040005,
+      "label": "Woman",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015038005,
+      "label": "I prefer to self-describe",
+      "free_form": true,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015037005,
+      "label": "I don't wish to answer",
+      "free_form": false,
+      "decline_to_answer": false
+     }
+    ]
+   },
+   {
+    "id": 4002524005,
+    "label": "How would you describe your racial/ethnic background? (mark all that apply)",
+    "required": false,
+    "type": "multi_value_multi_select",
+    "answer_options": [
+     {
+      "id": 4015033005,
+      "label": "Black or of African descent",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015031005,
+      "label": "East Asian",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015030005,
+      "label": "Hispanic, Latinx or of Spanish Origin",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015029005,
+      "label": "Indigenous, American Indian or Alaska Native",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015026005,
+      "label": "Middle Eastern or North African",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015024005,
+      "label": "Native Hawaiian or Pacific Islander",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015022005,
+      "label": "South Asian",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015021005,
+      "label": "Southeast Asian",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015019005,
+      "label": "White or European",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015017005,
+      "label": "I prefer to self-describe",
+      "free_form": true,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015015005,
+      "label": "I don't wish to answer",
+      "free_form": false,
+      "decline_to_answer": false
+     }
+    ]
+   },
+   {
+    "id": 4002522005,
+    "label": "How would you describe your sexual orientation? (mark all that apply)",
+    "required": false,
+    "type": "multi_value_multi_select",
+    "answer_options": [
+     {
+      "id": 4015013005,
+      "label": "Asexual",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015012005,
+      "label": "Bisexual and/or pansexual",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015011005,
+      "label": "Gay",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015010005,
+      "label": "Heterosexual",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015008005,
+      "label": "Lesbian",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015006005,
+      "label": "Queer",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015004005,
+      "label": "I prefer to self-describe",
+      "free_form": true,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4015002005,
+      "label": "I don't wish to answer",
+      "free_form": false,
+      "decline_to_answer": false
+     }
+    ]
+   },
+   {
+    "id": 4002520005,
+    "label": "Do you identify as transgender?",
+    "required": false,
+    "type": "multi_value_single_select",
+    "answer_options": [
+     {
+      "id": 4015000005,
+      "label": "Yes",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4014997005,
+      "label": "No",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4014995005,
+      "label": "I prefer to self-describe",
+      "free_form": true,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4014993005,
+      "label": "I don't wish to answer",
+      "free_form": false,
+      "decline_to_answer": false
+     }
+    ]
+   },
+   {
+    "id": 4002518005,
+    "label": "Do you have a disability or chronic condition (physical, visual, auditory, cognitive, mental, emotional, or other) that substantially limits one or more of your major life activities, including mobility, communication (seeing, hearing, speaking), and learning?",
+    "required": false,
+    "type": "multi_value_single_select",
+    "answer_options": [
+     {
+      "id": 4014989005,
+      "label": "Yes",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4014987005,
+      "label": "No",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4014985005,
+      "label": "I prefer to self-describe",
+      "free_form": true,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4014983005,
+      "label": "I don't wish to answer",
+      "free_form": false,
+      "decline_to_answer": false
+     }
+    ]
+   },
+   {
+    "id": 4002517005,
+    "label": "Are you a veteran or active member of the United States Armed Forces?",
+    "required": false,
+    "type": "multi_value_single_select",
+    "answer_options": [
+     {
+      "id": 4014980005,
+      "label": "Yes, I am a veteran or active member",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4014978005,
+      "label": "No, I am not a veteran or active member",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4014976005,
+      "label": "I prefer to self-describe",
+      "free_form": true,
+      "decline_to_answer": false
+     },
+     {
+      "id": 4014974005,
+      "label": "I don't wish to answer",
+      "free_form": false,
+      "decline_to_answer": false
+     }
+    ]
+   }
+  ]
+ },
+ "questions": [
+  {
+   "description": null,
+   "label": "First Name",
+   "required": true,
+   "fields": [
+    {
+     "name": "first_name",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Last Name",
+   "required": true,
+   "fields": [
+    {
+     "name": "last_name",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Preferred First Name",
+   "required": false,
+   "fields": [
+    {
+     "name": "preferred_name",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Email",
+   "required": true,
+   "fields": [
+    {
+     "name": "email",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Phone",
+   "required": false,
+   "fields": [
+    {
+     "name": "phone",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Resume/CV",
+   "required": false,
+   "fields": [
+    {
+     "name": "resume",
+     "type": "input_file",
+     "values": []
+    },
+    {
+     "name": "resume_text",
+     "type": "textarea",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Cover Letter",
+   "required": false,
+   "fields": [
+    {
+     "name": "cover_letter",
+     "type": "input_file",
+     "values": []
+    },
+    {
+     "name": "cover_letter_text",
+     "type": "textarea",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "LinkedIn Profile",
+   "required": false,
+   "fields": [
+    {
+     "name": "question_8250491005",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Website",
+   "required": false,
+   "fields": [
+    {
+     "name": "question_8250492005",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  }
+ ],
+ "location_questions": []
+}

@@ -595,6 +595,53 @@ class Sheet:
         if got[0] != str(int(score)):
             raise SheetError(f"read-back of row {row_number} Score gave {got[0]!r}")
 
+    def read_tab_formulas(self, rng: str) -> list[list]:
+        """Formula-rendered values from any tab. The answer tabs hold link cells
+        (LinkedIn, website, the master doc URLs); a rendered read loses every
+        URL, the same trap documented at the top of this module."""
+        return self._values(rng, formulas=True)
+
+    # The six form-audit columns are contiguous in HEADERS, so one range covers
+    # them. They were declared, defaulted and asserted in tests but never
+    # written by anything until the apply layer landed.
+    AUDIT_FIRST = "Application Format"
+    AUDIT_LAST = "Form Audit Date"
+    AUDIT_NAMES = ("Application Format", "Attachment Style",
+                   "Additional Questions", "Form Complexity",
+                   "Autonomy Score", "Form Audit Date")
+
+    def update_form_audit(self, row_number: int, cells: dict[str, str]) -> None:
+        """Write only the six form-audit columns of one row. Never column A,
+        never Application Status, never Applied Date; those belong to Krish and
+        to the apply path he approves. Validates, writes an explicit range, then
+        reads back and asserts, the same contract as update_assessment."""
+        if row_number < DATA_START_ROW:
+            raise SheetError(f"refusing to write row {row_number}: header rows")
+        missing = [n for n in self.AUDIT_NAMES if n not in cells]
+        if missing:
+            raise SheetError(f"form audit is missing {missing}; no cell may be blank")
+        values = []
+        for name in self.AUDIT_NAMES:
+            val = plain_text(str(cells[name])).strip()
+            if not val:
+                raise SheetError(f"form audit {name} is blank; canon 9.13 has no blanks")
+            if "\u2014" in val:
+                raise SheetError(f"em dash in form audit {name}")
+            values.append(val[:500])
+        first_idx, last_idx = COLS[self.AUDIT_FIRST], COLS[self.AUDIT_LAST]
+        if last_idx - first_idx + 1 != len(self.AUDIT_NAMES):
+            raise SheetError(
+                "the form-audit columns are no longer contiguous in HEADERS; "
+                "fix this writer rather than writing the wrong cells")
+        rng = cell_range(self.AUDIT_FIRST, row_number, self.AUDIT_LAST)
+        self._write([(rng, [values])])
+        back = self._values(rng, formulas=False) or [[]]
+        got = pad_row(back[0] if back else [], len(self.AUDIT_NAMES))
+        if got[:len(values)] != values:
+            raise SheetError(
+                f"read-back of row {row_number} form audit gave {got[:len(values)]!r}, "
+                f"expected {values!r}")
+
     def read_archive(self) -> list[SheetRow]:
         """Archived rows are still part of "the sheet" for reconciliation.
         Leaving them out makes every archived role look missing, and

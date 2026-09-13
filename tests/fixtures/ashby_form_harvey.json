@@ -1,0 +1,308 @@
+{
+ "data": {
+  "jobPosting": {
+   "title": "Head of GTM Strategy & Operations, AMER",
+   "applicationForm": {
+    "sections": [
+     {
+      "title": "Basic Information",
+      "fieldEntries": [
+       {
+        "isRequired": true,
+        "field": {
+         "id": "90c698ba-6368-4a64-987b-49016ad366c5",
+         "path": "_systemfield_name",
+         "humanReadablePath": "Name",
+         "title": "Legal First and Last Name",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "String",
+         "__autoSerializationID": "StringField"
+        }
+       },
+       {
+        "isRequired": true,
+        "field": {
+         "id": "7b4ab78b-8e26-4ff2-81af-8efaa84a7304",
+         "path": "7c3610a2-745f-4bd7-927a-d8e97e80472c",
+         "humanReadablePath": "",
+         "title": "Preferred First Name",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "String",
+         "__autoSerializationID": "StringField"
+        }
+       },
+       {
+        "isRequired": true,
+        "field": {
+         "id": "7b4ab78b-8e26-4ff2-81af-8efaa84a7304",
+         "path": "5f7ed317-45f1-4be4-aa3e-5e8b3820b404",
+         "humanReadablePath": "",
+         "title": "Preferred Last Name",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "String",
+         "__autoSerializationID": "StringField"
+        }
+       },
+       {
+        "isRequired": true,
+        "field": {
+         "id": "02fd1d11-019c-4208-9c3d-d60db4e0f073",
+         "path": "_systemfield_email",
+         "humanReadablePath": "Email",
+         "title": "Email",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "Email",
+         "__autoSerializationID": "EmailField"
+        }
+       },
+       {
+        "isRequired": true,
+        "field": {
+         "id": "a2a0b8a6-0b1f-44ad-9fc9-4ef424704c26",
+         "path": "a2a0b8a6-0b1f-44ad-9fc9-4ef424704c26",
+         "humanReadablePath": "",
+         "title": "Phone Number",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "Phone",
+         "__autoSerializationID": "PhoneField"
+        }
+       },
+       {
+        "isRequired": true,
+        "field": {
+         "id": "9ab77334-f5d1-4e2e-8af8-0b46165d4160",
+         "path": "_systemfield_location",
+         "humanReadablePath": "Location",
+         "title": "Location",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "Location",
+         "locationTypes": [
+          "Country",
+          "Region",
+          "City"
+         ],
+         "__autoSerializationID": "LocationField"
+        }
+       },
+       {
+        "isRequired": true,
+        "field": {
+         "id": "52d6c96b-53af-4dfa-ae2c-171ec6525e9b",
+         "path": "dd1d5af7-8d94-4ab6-860a-59b5fca04147",
+         "humanReadablePath": "",
+         "title": "Current or Most Recent Employer",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "String",
+         "__autoSerializationID": "StringField"
+        }
+       },
+       {
+        "isRequired": false,
+        "field": {
+         "id": "782174e3-dafe-4b99-ad21-b0a580a66def",
+         "path": "a0393613-cd27-4354-b328-4b8fdabcdb4e",
+         "humanReadablePath": "",
+         "title": "University or School Attended",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "String",
+         "__autoSerializationID": "StringField"
+        }
+       },
+       {
+        "isRequired": false,
+        "field": {
+         "id": "35987d90-0b56-44cc-b2f6-f59f86c3cc57",
+         "path": "35987d90-0b56-44cc-b2f6-f59f86c3cc57",
+         "humanReadablePath": "",
+         "title": "Pronouns",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "String",
+         "__autoSerializationID": "StringField"
+        }
+       }
+      ]
+     },
+     {
+      "title": "Work Eligibility",
+      "fieldEntries": [
+       {
+        "isRequired": true,
+        "field": {
+         "id": "74da689e-2056-420d-9a18-4227f9bf998e",
+         "path": "74da689e-2056-420d-9a18-4227f9bf998e",
+         "humanReadablePath": "",
+         "title": "Are you legally authorized to work in the country where this role is located, for any employer?",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "Boolean",
+         "__autoSerializationID": "BooleanField"
+        }
+       },
+       {
+        "isRequired": true,
+        "field": {
+         "id": "feae519c-44e5-4ae1-8495-12031ff559bb",
+         "path": "eebeac06-e08c-4eee-b866-81971c178736",
+         "humanReadablePath": "",
+         "title": "Will you now or will you in the future require employment visa sponsorship?",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "ValueSelect",
+         "selectableValues": [
+          {
+           "label": "Yes, I will require Harvey to sponsor my employment",
+           "value": "Yes, I will require Harvey to sponsor my employment"
+          },
+          {
+           "label": "No, I do not require sponsorship to work in the country where this role is located",
+           "value": "No, I do not require sponsorship to work in the country where this role is located",
+           "isArchived": false
+          }
+         ],
+         "__autoSerializationID": "ValueSelectField"
+        }
+       }
+      ]
+     },
+     {
+      "title": "Role Location & Work Model",
+      "fieldEntries": [
+       {
+        "isRequired": true,
+        "field": {
+         "id": "3524b7aa-39ac-4456-8720-668b63dbb8fe",
+         "path": "161ea5e2-3ea4-49cc-bae5-4e14ff877093",
+         "humanReadablePath": "",
+         "title": "This role is tied to the office location listed in the job posting. Team members are expected to work from the office 3 days per week as part of Harvey\u2019s hybrid work model. Are you currently based in the listed location and able to work in person 3 days per week?",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "ValueSelect",
+         "selectableValues": [
+          {
+           "label": "Yes, I\u2019m based in this location and able to work from the office 3 days per week",
+           "value": "Yes, I\u2019m based in this location and able to work from the office 3 days per week"
+          },
+          {
+           "label": "No, I\u2019m not based in this location but willing to relocate",
+           "value": "No, I\u2019m not based in this location but willing to relocate",
+           "isArchived": false
+          },
+          {
+           "label": "No, I\u2019m only able to work remotely",
+           "value": "No, I\u2019m only able to work remotely",
+           "isArchived": false
+          },
+          {
+           "label": "Other (optional context)",
+           "value": "Other (optional context)",
+           "isArchived": false
+          }
+         ],
+         "__autoSerializationID": "ValueSelectField"
+        }
+       },
+       {
+        "isRequired": false,
+        "field": {
+         "id": "2fe2be4c-9a43-4898-b5d8-00d966ce7ccb",
+         "path": "8b9dae4d-2ed4-4da0-a994-e7b1d73d3a5e",
+         "humanReadablePath": "",
+         "title": "If you selected \u201cOther,\u201d please provide additional details.",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "String",
+         "__autoSerializationID": "StringField"
+        }
+       }
+      ]
+     },
+     {
+      "title": "Resume & Professional Links",
+      "fieldEntries": [
+       {
+        "isRequired": true,
+        "field": {
+         "id": "39ebb162-1514-4658-8940-c15a1a71881f",
+         "path": "39ebb162-1514-4658-8940-c15a1a71881f",
+         "humanReadablePath": "",
+         "title": "LinkedIn",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "String",
+         "__autoSerializationID": "StringField"
+        }
+       },
+       {
+        "isRequired": true,
+        "field": {
+         "id": "a0478d34-9175-4df6-992e-d1bca4245b08",
+         "path": "_systemfield_resume",
+         "humanReadablePath": "Resume",
+         "title": "Resume",
+         "isNullable": false,
+         "isPrivate": false,
+         "isDeactivated": false,
+         "isMany": false,
+         "metadata": {},
+         "type": "File",
+         "__autoSerializationID": "FileField"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  }
+ }
+}

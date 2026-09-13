@@ -1,0 +1,426 @@
+"""Deterministic answer resolution: one harvested form field to one stored answer.
+
+Stage one, here, is pure pattern work and covers the bulk. The harvest on
+2026-09-13 across 20 live postings found the same handful of facts asked in many
+phrasings: work authorisation alone appeared 17 times in 8 wordings. Collapsing
+those onto the Info Bank's 4 authorisation rows is most of the value, and it is
+deterministic, so it is testable and it cannot drift.
+
+Stage two, a bounded model classify that may only pick an index out of the
+form's own option list, belongs in a later increment. It is deliberately not
+here: nothing in this module can author an answer. Anything unmatched comes back
+Unanswered, and an Unanswered required field is what forces a manual handoff.
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+from .infobank import AnswerBank, norm_label
+from .model import FormField, looks_like_essay
+
+# Reasons a field is deliberately not auto filled.
+NEEDS_KRISH = "needs Krish"
+NEEDS_ROLE = "needs the role location"
+NEEDS_ESSAY = "needs a drafted essay"
+NO_MATCH = "no stored answer matches"
+
+
+@dataclass(frozen=True)
+class Answer:
+    value: str
+    source: str          # which bank row or profile fact it came from
+    flagged: bool = False  # true when Krish must see it before it moves
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class Unanswered:
+    reason: str
+    note: str = ""
+
+
+Resolution = Answer | Unanswered
+
+YES = "Yes"
+NO = "No"
+
+
+def _has(label: str, *needles: str) -> bool:
+    return all(n in label for n in needles)
+
+
+def _any(label: str, *needles: str) -> bool:
+    return any(n in label for n in needles)
+
+
+# Jurisdiction detection. Order matters: the more specific phrase wins.
+def _jurisdiction(label: str) -> str:
+    if _any(label, "united states", " us ", " usa", "u s ", "america"):
+        return "US"
+    if _any(label, "united kingdom", " uk ", "britain", "shoreditch", "london"):
+        return "UK"
+    if _any(label, "australia",):
+        return "AU"
+    if _any(label, "canada",):
+        return "CA"
+    return ""
+
+
+def _padded(label: str) -> str:
+    return " " + norm_label(label).replace("-", " ") + " "
+
+
+# Krish's residence rule, recorded 2026-09-13: he lives between NYC and London,
+# and for any role he applies to he is resident in that role's city. So a
+# residence or office question is answerable from the posting's own location.
+# These answers are still flagged, so the approval email shows every one before
+# anything moves; the rule removes the blocker, it does not remove the gate.
+NYC_HINTS = ("new york", "nyc", "brooklyn", "manhattan", "tri state",
+             "tri-state", "eastern")
+LONDON_HINTS = ("london", "united kingdom", " uk", "shoreditch", "england")
+US_HINTS = ("united states", " us", "usa", "america", "san francisco", "sf",
+            "remote us", "north america")
+
+BASE_NYC = "Brooklyn, New York, United States"
+BASE_LONDON = "London, United Kingdom"
+
+# Tokens that identify each base inside a question that lists places, so a
+# membership question can be answered by testing rather than by assuming.
+BASE_TOKENS = {
+    BASE_NYC: ("ny", "new york", "brooklyn", "nyc", "united states", "us", "usa"),
+    BASE_LONDON: ("uk", "united kingdom", "london", "england", "gb"),
+}
+# "Do you currently reside in any of the following states: DE, HI, ..." is a
+# membership test, not a residence question. Socure asks exactly this, and the
+# correct answer for a New York resident is No, because NY is not on their list.
+ENUMERATION_HINTS = ("any of the following", "one of the following",
+                     "following states", "following countries",
+                     "listed below", "any of these")
+
+
+def role_base(role_location: str) -> str:
+    """Which of Krish's two bases this posting resolves to, or empty."""
+    low = " " + (role_location or "").lower() + " "
+    if any(h in low for h in LONDON_HINTS):
+        return BASE_LONDON
+    if any(h in low for h in NYC_HINTS):
+        return BASE_NYC
+    if any(h in low for h in US_HINTS):
+        return BASE_NYC
+    return ""
+
+
+
+def match_option(value: str, options) -> str | None:
+    """Map an answer onto one of the form's OWN option labels.
+
+    Vendors rarely offer a bare "Yes" and "No". Harvey's sponsorship question
+    offers "No, I do not require sponsorship to work in the country where this
+    role is located", and its office question offers four sentences. An answer
+    that is not one of the offered labels is not an answer, so every resolution
+    for a field with options goes through here before it is returned.
+    """
+    if not options:
+        return value
+    want = (value or "").strip().lower()
+    labels = [o.label for o in options]
+    for label in labels:
+        if label.strip().lower() == want:
+            return label
+    # An enumerated channel list rarely spells the stored answer exactly:
+    # ElevenLabs offers "Social media (LinkedIn, Instagram, X etc)".
+    if want and want not in ("yes", "no"):
+        named = [x for x in labels if want in x.strip().lower()]
+        if len(named) == 1:
+            return named[0]
+    if want in ("yes", "no"):
+        # Prefix match on the affirmative or negative sentence, which is how
+        # these option lists are actually written.
+        hits = [x for x in labels if x.strip().lower().startswith(want)]
+        if len(hits) == 1:
+            return hits[0]
+        if hits and want == "yes":
+            return hits[0]
+        if hits and want == "no":
+            # Several negatives, as in Trulioo's three way sponsorship select.
+            # Krish requires no sponsorship now and none in the future, so the
+            # option that negates both is the truthful one; a bare negative that
+            # concedes a future need is not.
+            both = [x for x in hits
+                    if "now or in the future" in x.lower()
+                    or "or in the future" in x.lower()
+                    and "but" not in x.lower()]
+            if len(both) == 1:
+                return both[0]
+            plain = [x for x in hits if "but" not in x.lower()
+                     and "future" not in x.lower()]
+            if len(plain) == 1:
+                return plain[0]
+            return None
+    return None
+
+
+class Resolver:
+    """Resolves against an AnswerBank.
+
+    role_location is the posting's location as the sheet records it. Without it
+    every residence and office question stays Unanswered, which is the safe
+    default rather than a guess about where Krish is sitting.
+    """
+
+    def __init__(self, bank: AnswerBank, role_location: str = ""):
+        self.bank = bank
+        self.role_location = role_location or ""
+        self.base = role_base(self.role_location)
+
+    # ---------- authorisation, the single biggest cluster ----------
+
+    def _authorisation(self, label: str) -> Resolution | None:
+        juris = _jurisdiction(label)
+        # "eligible to work WITHOUT any visa sponsorship" asks about
+        # authorisation, not about needing sponsorship. Both wordings contain
+        # "sponsorship", so the negation decides which question it really is.
+        negated = _any(label, "without any visa sponsor", "without visa sponsor",
+                       "without any sponsor", "without sponsor",
+                       "do not require sponsor", "not require any sponsor")
+        asks_sponsorship = _any(label, "sponsor") and not negated
+        asks_authorised = _any(
+            label, "authoriz", "authoris", "eligible", "right to work",
+            "legally able", "work permit") or negated
+        if not (asks_sponsorship or asks_authorised):
+            return None
+
+        # "require sponsorship" is the inverse of "authorised without sponsorship".
+        if asks_sponsorship and not _any(label, "if yes", "select the type"):
+            field = {"US": "Will you require sponsorship in US?",
+                     "UK": "Will you require sponsorship in UK?"}.get(juris)
+            entry = self.bank.get(field) if field else None
+            if entry and entry.usable:
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+            # Krish's standing position, recorded 2026-09-13: no sponsorship
+            # required in US, UK or AU, ever. Absent a jurisdiction, still No.
+            return Answer(NO, "Info Bank: sponsorship rows (US and UK both No)")
+
+        if asks_authorised:
+            # Trulioo asks "Canada or the USA". Either authorisation satisfies
+            # it, and the source must record that the question was a disjunction
+            # so a reader of the approval email is not misled.
+            if _any(label, "canada") and _jurisdiction(label) == "US" \
+                    and _any(label, " or "):
+                us = self.bank.get("Authorized to work in US?")
+                if us and us.usable:
+                    return Answer(us.value,
+                                  f"Info Bank: {us.field_name} "
+                                  f"(question allows Canada or USA)")
+            field = {"US": "Authorized to work in US?",
+                     "UK": "Authorized to work in UK?",
+                     "AU": "Authorized to work in Australia?"}.get(juris)
+            entry = self.bank.get(field) if field else None
+            if entry and entry.usable:
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+            if juris == "CA":
+                # Trulioo asks "Canada or the USA". US authorisation satisfies it.
+                if _any(label, " or "):
+                    us = self.bank.get("Authorized to work in US?")
+                    if us and us.usable:
+                        return Answer(us.value,
+                                      "Info Bank: Authorized to work in US? "
+                                      "(question allows Canada or USA)")
+                return Unanswered(NEEDS_KRISH,
+                                  "no stored Canada authorisation")
+            if not juris:
+                # "the country you currently reside in" / "your intended work
+                # location". Both resolve to the residence rule, which is US or UK.
+                if _any(label, "reside", "currently living", "intended work",
+                        "stated above", "where this role is located",
+                        "country where the job is located"):
+                    return Answer(YES,
+                                  "Info Bank: US, UK and AU authorisation "
+                                  "(residence is NYC or London)")
+                return Answer(YES, "Info Bank: US, UK and AU authorisation")
+        return None
+
+    # ---------- residence, office and relocation ----------
+
+    def _location(self, field: FormField) -> Resolution | None:
+        label = _padded(field.label)
+        if field.kind != "location" and not _any(
+                label, "relocat", "office", "based", "reside", "locat",
+                "time zone", "remote", "days per week", "days a week",
+                "in person", "primary locations", "zip code", "tri state",
+                "commuting distance"):
+            return None
+        if _any(label, "zip code", "postcode", "post code"):
+            entry = self.bank.get("ZIP")
+            if entry and entry.value.strip():
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+            return Unanswered(NEEDS_KRISH, "no stored ZIP")
+        residence = _any(label, "currently living", "where are you currently",
+                         "current location", "anticipated work location",
+                         "intended working location", "primary locations",
+                         "which of these three locations")
+        willingness = _any(label, "relocat", "office", "in person",
+                           "days per week", "days a week", "willing",
+                           "comfortable", "based", "reside", "time zone",
+                           "commuting distance", "remote")
+        if not self.base:
+            why = (f"the posting location {self.role_location!r} does not resolve "
+                   f"to NYC or London" if self.role_location
+                   else "the posting location was not supplied")
+            return Unanswered(NEEDS_ROLE, why)
+        why = f"residence rule: the role is in {self.role_location}"
+
+        # A membership question enumerates places and asks whether he is in one
+        # of them. Answer it by testing the list, never by assuming yes.
+        if _any(label, *ENUMERATION_HINTS):
+            listed = _padded(field.label)
+            tokens = BASE_TOKENS[self.base]
+            inside = any(f" {t} " in listed for t in tokens)
+            return Answer(
+                YES if inside else NO,
+                f"membership test: {self.base} "
+                f"{'appears' if inside else 'does not appear'} in the list this "
+                f"question enumerates", flagged=True)
+        # A select is answerable only with one of its own options. Never emit
+        # free text into a select, and never invent an option it does not offer.
+        if field.options:
+            for opt in field.options:
+                if role_base(opt.label) == self.base:
+                    return Answer(opt.label, why, flagged=True)
+            # No option names a place, so this is a yes/no style select written
+            # as sentences. Answer Yes and let _fit_to_options pick the label.
+            return Answer(YES, why, flagged=True)
+        if residence or field.kind == "location":
+            return Answer(self.base, why, flagged=True)
+        if willingness:
+            return Answer(YES,
+                          f"residence rule: Krish is resident where the role is "
+                          f"({self.role_location})", flagged=True)
+        return Unanswered(NEEDS_ROLE, "location answer depends on the posting")
+
+    # ---------- the simple one to one fields ----------
+
+    _DIRECT = (
+        ("name", ("Full legal name",)),
+        ("email", ("Email (job search)",)),
+        ("phone", ("Phone",)),
+        ("date", ("Earliest start date",)),
+    )
+
+    _URL_FIELDS = (
+        (("linkedin",), "LinkedIn URL"),
+        (("website", "personal site", "blog", "portfolio"), "Personal website"),
+        (("github",), "GitHub"),
+        (("twitter", " x "), "Twitter / X"),
+    )
+
+    def _direct(self, field: FormField) -> Resolution | None:
+        label = _padded(field.label)
+        if field.kind == "url" or _any(label, "linkedin", "website", "github",
+                                      "portfolio", "blog"):
+            for needles, bank_field in self._URL_FIELDS:
+                if _any(label, *needles):
+                    entry = self.bank.get(bank_field)
+                    if entry and entry.usable:
+                        return Answer(entry.value, f"Info Bank: {entry.field_name}")
+                    return Unanswered(NO_MATCH, f"Info Bank {bank_field} is empty")
+        if _any(label, "preferred"):
+            if _any(label, "last name", "surname", "family name"):
+                legal = self.bank.value("Full legal name")
+                if legal:
+                    return Answer(legal.split()[-1],
+                                  "Info Bank: Full legal name (surname)")
+            entry = self.bank.get("Preferred name")
+            if entry and entry.usable:
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        if _any(label, " phone", "phone number", "mobile number"):
+            entry = self.bank.get("Phone")
+            if entry and entry.usable:
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        if _any(label, "legal name"):
+            entry = self.bank.get("Full legal name")
+            if entry and entry.usable:
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        for kind, bank_fields in self._DIRECT:
+            if field.kind != kind:
+                continue
+            for bank_field in bank_fields:
+                entry = self.bank.get(bank_field)
+                if entry and entry.usable:
+                    return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        if _any(label, "pronoun"):
+            entry = self.bank.get("Pronouns")
+            if entry and entry.usable:
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        if _any(label, "current or most recent employer", "current employer"):
+            return Answer("Mindmaker", "Profile: current venture")
+        if _any(label, "university", "school attended", "degree"):
+            entry = self.bank.get("Highest degree completed")
+            if entry and entry.usable:
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        if _any(label, "how did you hear", "how did you get connected",
+                "how did you find"):
+            entry = self.bank.get("How did you hear about us (default)")
+            if entry and entry.usable:
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        if _any(label, "salary", "compensation expectation", "comp expectation"):
+            return Unanswered(
+                NEEDS_KRISH,
+                "Info Bank row 37 says do not enter a salary in a form field; "
+                "a required salary field needs Krish's ruling")
+        if _any(label, "notice period"):
+            entry = self.bank.get("Notice period")
+            if entry and entry.usable:
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        if _any(label, " referred ", " referral ", " referred by",
+                " were you referred"):
+            entry = self.bank.get("Referrer name + email (if any)")
+            if entry and entry.usable:
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+            return Unanswered(NO_MATCH, "no referrer recorded")
+        return None
+
+    # ---------- entry point ----------
+
+    def resolve(self, field: FormField) -> Resolution:
+        if field.kind in ("file_resume", "file_cover"):
+            return Answer("", "package build", note="attached from the built PDF")
+        if field.kind == "consent":
+            return Unanswered(NEEDS_KRISH,
+                              "a consent or acknowledgement is Krish's to give")
+        if field.kind == "demographic":
+            return Unanswered(NEEDS_KRISH,
+                              "demographic disclosure is Krish's to give")
+        if field.kind == "long_text" or (
+                field.kind == "short_text" and looks_like_essay(field.label)):
+            return Unanswered(NEEDS_ESSAY, "drafted per posting, then approved")
+
+        label = _padded(field.label)
+        result: Resolution | None = None
+        for attempt in (self._authorisation(label), self._location(field),
+                        self._direct(field)):
+            if attempt is not None:
+                result = attempt
+                break
+        if result is None:
+            # Last resort: the Info Bank may hold this question verbatim.
+            entry = self.bank.get(field.label)
+            result = (Answer(entry.value, f"Info Bank: {entry.field_name}")
+                      if entry and entry.usable else Unanswered(NO_MATCH))
+        return self._fit_to_options(field, result)
+
+    def _fit_to_options(self, field: FormField, result: Resolution) -> Resolution:
+        """An answer to a select must be one of that select's own labels."""
+        if not isinstance(result, Answer) or not field.options:
+            return result
+        picked = match_option(result.value, field.options)
+        if picked is None:
+            return Unanswered(
+                NO_MATCH,
+                f"the stored answer {result.value!r} is not one of this form's "
+                f"options: {[o.label for o in field.options][:4]}")
+        if picked != result.value:
+            return Answer(picked, result.source + " (matched to the form's option)",
+                          flagged=result.flagged, note=result.note)
+        return result

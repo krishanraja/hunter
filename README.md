@@ -63,6 +63,40 @@ Sheet layout is `sheet.HEADERS` (30 columns), asserted against canon 9.13 at
 every start. `migrate-columns [--apply]` moves a tab from the old 28-column
 layout to it.
 
+## The apply layer
+
+`src/hunter/apply/` reads a posting's real application form and resolves every
+field against the answer tabs Krish already maintains in the workbook. It fills;
+it never submits and never contacts a company.
+
+- `bank-check` (read only) reports the state of `Application Info Bank`,
+  `Profile` and `Interview Answers`: how many answers are stored, which declared
+  cells are still empty, which are Krish's alone to give, and any master doc
+  pointer that canon 9.9 lists as superseded.
+- `audit-forms [--apply] [--limit N]` reads the form for every Yes row and
+  derives the six columns that were dead fields until now (`Application Format`,
+  `Attachment Style`, `Additional Questions`, `Form Complexity`,
+  `Autonomy Score`, `Form Audit Date`). Dry run by default. It never writes
+  column A, `Application Status` or `Applied Date`.
+
+Form contracts come from public endpoints, the same ones a candidate sees before
+typing anything: Ashby via `jobs.ashbyhq.com/api/non-user-graphql` (where `field`
+is a JSON scalar and must be requested bare, and introspection is disabled, so
+`apply/ashby_form.QUERY` is a captured contract), Greenhouse via
+`boards-api.greenhouse.io/.../jobs/{id}?questions=true`. Google Careers and
+LinkedIn need a signed in session, so their forms are recorded as unreadable
+rather than guessed at.
+
+Two rules the resolver will not bend. An answer to a select must be one of that
+select's own option labels, so a stored "No" that matches nothing on the form is
+refused rather than forced. And a question that enumerates places is answered by
+testing the list, never by assuming: Socure asks whether Krish resides in one of
+eleven states that do not include New York, and the answer is No.
+
+Fixtures are written with `json.dump(..., ensure_ascii=True)`. The em dash guard
+scans every `.json` in the tree with no exemption, and the live Aptos Labs
+response really does contain em dashes.
+
 ## Tests
 
 ```
