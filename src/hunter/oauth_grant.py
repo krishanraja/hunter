@@ -84,7 +84,14 @@ def auth_url(client_id: str, redirect_uri: str, state: str) -> str:
         "scope": " ".join(REQUIRED_SCOPES),
         "access_type": "offline",
         "prompt": "consent",
-        "include_granted_scopes": "true",
+        # include_granted_scopes is deliberately FALSE. Set true, Google merges
+        # every scope ever granted to this client id into the new token, and this
+        # client had previously been authorised for admin.directory, Classroom,
+        # Chat, Apps Script, Contacts, Calendar and gmail.settings.sharing. The
+        # 2026-09-14 grant came back carrying all of them, which put Workspace
+        # directory administration on a refresh token that lives in Supabase and
+        # is used by GitHub Actions. hunter needs five scopes; it gets five.
+        "include_granted_scopes": "false",
         "state": state,
     })
 

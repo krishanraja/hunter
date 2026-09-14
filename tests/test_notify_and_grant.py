@@ -91,6 +91,7 @@ def test_a_missing_scope_falls_back_to_stdout_instead_of_failing(monkeypatch, ca
         text = ('{"error":{"details":[{"reason":'
                 '"ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}}')
 
+    monkeypatch.setattr(notify, "mailbox", lambda cfg: "krish@themindmaker.ai")
     monkeypatch.setattr(notify, "GoogleOAuth",
                         lambda cfg: type("T", (), {"access_token": lambda s: "t"})())
     monkeypatch.setattr(notify.requests, "post", lambda *a, **k: R())
@@ -106,6 +107,7 @@ def test_a_real_failure_still_raises(monkeypatch):
         status_code = 500
         text = "upstream exploded"
 
+    monkeypatch.setattr(notify, "mailbox", lambda cfg: "krish@themindmaker.ai")
     monkeypatch.setattr(notify, "GoogleOAuth",
                         lambda cfg: type("T", (), {"access_token": lambda s: "t"})())
     monkeypatch.setattr(notify.requests, "post", lambda *a, **k: R())
@@ -273,3 +275,93 @@ def test_the_standalone_auth_url_asks_for_offline_consent():
             standalone.auth_url("cid", "http://localhost:9/", "st")).query)
     assert q["access_type"] == ["offline"] and q["prompt"] == ["consent"]
     assert set(q["scope"][0].split()) == set(standalone.REQUIRED_SCOPES)
+
+
+# ---------------- the mailbox the token actually owns ----------------
+
+def test_the_working_mailbox_is_on_the_allowlist():
+    """Checked live 2026-09-14: the OAuth account is krish@themindmaker.ai and it
+    is the only sendAs identity on it. hello@krishraja.com is NOT an alias there.
+    Since the reply loop reads that mailbox, a reply Krish sends from it has to be
+    accepted or the approve step silently never works."""
+    assert "krish@themindmaker.ai" in notify.ALLOWED_RECIPIENTS
+
+
+def test_the_mailbox_is_read_from_the_token_not_guessed(monkeypatch):
+    calls = {}
+
+    class R:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            calls["hit"] = True
+            return {"emailAddress": "krish@themindmaker.ai"}
+
+    notify._mailbox = None
+    monkeypatch.setattr(notify, "GoogleOAuth",
+                        lambda cfg: type("T", (), {"access_token": lambda s: "t"})())
+    monkeypatch.setattr(notify.requests, "get", lambda *a, **k: R())
+    assert notify.mailbox(FakeCfg()) == "krish@themindmaker.ai"
+    assert calls.get("hit")
+    notify._mailbox = None
+
+
+def test_a_mailbox_that_is_not_krish_is_refused(monkeypatch):
+    """If the consent was done on the wrong Google account, that must fail loudly
+    rather than hunter cheerfully mailing a stranger's inbox."""
+    class R:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"emailAddress": "someone.else@example.com"}
+
+    notify._mailbox = None
+    monkeypatch.setattr(notify, "GoogleOAuth",
+                        lambda cfg: type("T", (), {"access_token": lambda s: "t"})())
+    monkeypatch.setattr(notify.requests, "get", lambda *a, **k: R())
+    with pytest.raises(NotifyError, match="not on the allowlist"):
+        notify.mailbox(FakeCfg())
+    notify._mailbox = None
+
+
+# ---------------- attachments ----------------
+
+def test_a_pdf_attachment_is_carried_in_the_message():
+    """The single upload case is undeliverable without this: ApprovalEmail carried
+    an attachments field long before anything could send one."""
+    raw = notify.build_message(
+        "krish@themindmaker.ai", "Apply: Harvey", "<p>body</p>",
+        attachments=[("KrishRaja_Application_Harvey.pdf", b"%PDF-1.4 fake")])
+    body = base64.urlsafe_b64decode(raw + "===").decode("utf-8", "replace")
+    assert "KrishRaja_Application_Harvey.pdf" in body
+    assert "application/pdf" in body
+
+
+def test_an_empty_attachment_is_refused_rather_than_sent_as_a_stub():
+    with pytest.raises(NotifyError, match="is empty"):
+        notify.build_message("krish@themindmaker.ai", "s", "<p>x</p>",
+                             attachments=[("empty.pdf", b"")])
+
+
+def test_no_attachment_still_produces_a_valid_message():
+    raw = notify.build_message("krish@themindmaker.ai", "s", "<p>x</p>")
+    assert base64.urlsafe_b64decode(raw + "===")
+
+
+# ---------------- the grant must not widen privilege ----------------
+
+def test_the_consent_does_not_merge_previously_granted_scopes():
+    """include_granted_scopes=true made the 2026-09-14 token come back carrying
+    admin.directory, Classroom, Chat, Apps Script, Contacts, Calendar and
+    gmail.settings.sharing, because this client id had been authorised for them
+    earlier. That token lives in Supabase and is used by CI, so it gets five
+    scopes and no more."""
+    import urllib.parse
+    standalone = _load_standalone()
+    for mod in (oauth_grant, standalone):
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(
+            mod.auth_url("cid", "http://localhost:9/", "st")).query)
+        assert q["include_granted_scopes"] == ["false"], mod.__name__
+        assert len(q["scope"][0].split()) == 5

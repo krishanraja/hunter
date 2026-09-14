@@ -283,3 +283,66 @@ def test_a_short_but_real_instruction_does_amend():
     action, _ = inbox.classify(
         reply(body="Cut the Microsoft bullet from the letter."), row())
     assert action == "amend"
+
+
+# ---------------- hunter must not read its own email as a reply ----------------
+
+def test_the_outbound_email_carries_the_marker():
+    """hunter sends FROM Krish's account TO the same mailbox, so its own email
+    comes back on the next poll looking like a reply from him."""
+    email = build()
+    assert inbox.OUTBOUND_MARKER in email.text
+    assert inbox.OUTBOUND_MARKER in email.html
+    # First line of the text part, so it lands in the sender's own lines.
+    assert email.text.splitlines()[0].strip() == inbox.OUTBOUND_MARKER
+
+
+def test_our_own_email_is_recognised_and_skipped():
+    """Found by the first live send on 2026-09-14: without this, classify read
+    hunter's own approval email as feedback and would have rebuilt and resent in
+    an endless loop into his inbox."""
+    email = build()
+    assert inbox.is_our_own_email(email.text)
+    action, detail = inbox.classify(reply(body=email.text), row())
+    assert action == "skip"
+    assert "own outbound email" in detail
+
+
+def test_a_real_reply_quoting_our_email_is_still_feedback():
+    """The marker is in the quoted part, which is stripped before parsing, so a
+    genuine reply must not be mistaken for our own message."""
+    email = build()
+    quoted = "\n".join("> " + l for l in email.text.splitlines())
+    body = f"Make the hook about their pricing problem.\n\nOn Sun, hunter wrote:\n{quoted}"
+    assert not inbox.is_our_own_email(body)
+    action, feedback = inbox.classify(reply(body=body), row())
+    assert action == "amend"
+    assert "pricing problem" in feedback
+
+
+def test_an_approval_quoting_our_email_still_approves():
+    email = build()
+    quoted = "\n".join("> " + l for l in email.text.splitlines())
+    body = f"APPROVE\n\nOn Sun, hunter wrote:\n{quoted}"
+    action, _ = inbox.classify(reply(body=body), row())
+    assert action == "approve"
+
+
+def test_the_send_records_its_own_message_id_as_processed():
+    """The exact guard, independent of the marker: whichever one fails, the other
+    still stops the loop."""
+    captured = {}
+
+    def fake_insert(cfg, table, rows, **kw):
+        captured["rows"] = rows
+
+    import hunter.apply.approval as mod
+    real = mod.db_insert
+    mod.db_insert = fake_insert
+    try:
+        mod.record_sent(None, token="t", job_id="j", company="Harvey",
+                        role="Head of GTM", fill_plan={"a": 1},
+                        message_id="1a0a17d599a016b5")
+    finally:
+        mod.db_insert = real
+    assert captured["rows"][0]["processed_message_ids"] == ["1a0a17d599a016b5"]

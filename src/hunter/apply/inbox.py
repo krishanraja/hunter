@@ -31,6 +31,19 @@ QUERY = 'subject:"[hunter #" newer_than:14d'
 
 APPROVE = "APPROVE"
 
+# hunter sends FROM Krish's own account TO the same mailbox, so its own approval
+# email comes back on the next poll looking exactly like a reply from him: the
+# sender check passes and the body is long enough to read as an instruction.
+# Unattended that is an endless rebuild-and-resend loop into his inbox, found by
+# the first live send on 2026-09-14. Two independent guards, because one of them
+# failing silently is what the loop would cost:
+#   1. the send records its own Gmail message id on the approval row, which is
+#      exact
+#   2. this marker sits in every outbound body, which survives a lost id
+# A genuine reply never carries the marker in Krish's own lines, because quoted
+# text is stripped before parsing.
+OUTBOUND_MARKER = "[hunter-outbound]"
+
 # Below both thresholds a reply carries no instruction to act on, so it is
 # reported rather than triggering a rebuild. Never affects whether it approves.
 MIN_FEEDBACK_WORDS = 3
@@ -83,6 +96,12 @@ def krishs_own_lines(body: str) -> list[str]:
     while out and not out[-1]:
         out.pop()
     return out
+
+
+def is_our_own_email(body: str) -> bool:
+    """True for a message hunter sent, judged on the lines Krish would have
+    written rather than on the quoted original."""
+    return any(OUTBOUND_MARKER in line for line in krishs_own_lines(body))
 
 
 def read_instruction(body: str) -> tuple[str, str]:
@@ -168,6 +187,8 @@ def classify(reply: dict, row: dict) -> tuple[str, str]:
     """(action, detail). action in approve | amend | skip | reject."""
     if reply["message_id"] in (row.get("processed_message_ids") or []):
         return "skip", "already processed"
+    if is_our_own_email(reply.get("body", "")):
+        return "skip", "this is hunter's own outbound email, not a reply"
     if not is_from_krish(reply.get("from", "")):
         return "reject", f"reply is not from Krish: {reply.get('from', '')!r}"
     state = row.get("state")

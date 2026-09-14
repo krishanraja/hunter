@@ -121,6 +121,7 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
     A = H.append
     A("<div style=\"font:15px/1.55 -apple-system,BlinkMacSystemFont,"
       "'Segoe UI',system-ui,sans-serif;color:#111;max-width:680px\">")
+    A("<div style='display:none'>[hunter-outbound]</div>")
     A(f"<h2 style='margin:0 0 2px;font-size:19px'>{_esc(role)}</h2>")
     A(f"<div style='color:#555;margin-bottom:18px'>{_esc(company)}"
       f"{' &middot; ' + _esc(autonomy) if autonomy else ''}</div>")
@@ -210,7 +211,9 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
     A("</div>")
     html = "\n".join(H)
 
-    T = [f"{role} at {company}", f"autonomy: {autonomy}", ""]
+    # First line of the text part on purpose: inbox.is_our_own_email looks for it
+    # in the lines Krish would have written, and hunter mails its own mailbox.
+    T = ["[hunter-outbound]", f"{role} at {company}", f"autonomy: {autonomy}", ""]
     if needs_you:
         T.append("READ BEFORE APPROVING")
         T += [f"  {l.label}: no answer. {l.source}" for l in needs_you]
@@ -242,13 +245,17 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
 # ---------- the approval ledger ----------
 
 def record_sent(cfg: Config, *, token: str, job_id: str, company: str,
-                role: str, fill_plan: dict) -> None:
+                role: str, fill_plan: dict,
+                message_id: str = "") -> None:
+    """message_id is hunter's OWN sent message. Recording it as already processed
+    is what stops the next poll reading our approval email as a reply from Krish.
+    """
     db_insert(cfg, TABLE, [{
         "token": token, "job_id": job_id, "company": company, "role": role,
         "state": AWAITING, "plan_hash": plan_hash(fill_plan),
         "fill_plan": json.dumps(fill_plan, sort_keys=True, default=str),
         "sent_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "processed_message_ids": [],
+        "processed_message_ids": [message_id] if message_id else [],
     }], on_conflict="token")
 
 

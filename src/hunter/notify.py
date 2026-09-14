@@ -32,13 +32,26 @@ from .config import Config, GoogleOAuth
 
 GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 
-# Krish's job search address, as Profile and the Info Bank both record it. The
-# allowlist is deliberately tiny and hard coded: a typo in a sheet cell must not
-# be able to redirect an approval email to a stranger.
+# Every address that is Krish. The allowlist is deliberately tiny and hard coded:
+# a typo in a sheet cell must not be able to redirect an approval email to a
+# stranger.
+#
+# krish@themindmaker.ai is here because it is the mailbox the OAuth token actually
+# owns (checked 2026-09-14: it is the only sendAs identity on the account, and
+# hello@krishraja.com is not an alias on it). That matters twice over. Mail sent
+# anywhere else leaves from this address, and more importantly the reply loop reads
+# THIS mailbox, so a reply Krish sends from it would have been rejected as "not
+# from Krish" and the approve step would have silently never worked.
 ALLOWED_RECIPIENTS = frozenset({
+    "krish@themindmaker.ai",
     "hello@krishraja.com",
     "krishanraja@gmail.com",
 })
+
+GMAIL_PROFILE = "https://gmail.googleapis.com/gmail/v1/users/me/profile"
+
+# Resolved once per process from the token itself, not guessed from a sheet cell.
+_mailbox: str | None = None
 
 
 class NotifyError(RuntimeError):
@@ -51,6 +64,33 @@ def send_summary(cfg: Config, text: str) -> dict:
     return {"sent": True, "channel": "stdout, carried by the Actions run log"}
 
 
+def mailbox(cfg: Config) -> str:
+    """The address this token actually owns, read from Gmail rather than assumed.
+
+    This is the default recipient because it is the one address delivery and
+    readability are both guaranteed for: hunter sends to the mailbox it reads, so
+    the reply loop can always see the answer. It is Krish's own account by
+    definition, so it cannot be a leak.
+    """
+    global _mailbox
+    if _mailbox:
+        return _mailbox
+    token = GoogleOAuth(cfg).access_token()
+    r = requests.get(GMAIL_PROFILE, timeout=30,
+                     headers={"Authorization": "Bearer " + token})
+    if r.status_code != 200:
+        raise NotifyError(f"could not read the mailbox identity "
+                          f"({r.status_code}); run python grant_gmail.py")
+    addr = (r.json().get("emailAddress") or "").strip().lower()
+    if addr not in ALLOWED_RECIPIENTS:
+        raise NotifyError(
+            f"the authenticated mailbox is {addr!r}, which is not on the "
+            f"allowlist. Either the wrong Google account was used for the "
+            f"consent, or {addr!r} needs adding to ALLOWED_RECIPIENTS.")
+    _mailbox = addr
+    return addr
+
+
 def _check_recipient(to: str) -> str:
     addr = (to or "").strip().lower()
     if addr not in ALLOWED_RECIPIENTS:
@@ -61,7 +101,8 @@ def _check_recipient(to: str) -> str:
 
 
 def build_message(to: str, subject: str, html: str, *,
-                  text: str | None = None) -> str:
+                  text: str | None = None,
+                  attachments: list[tuple[str, bytes]] | None = None) -> str:
     """A base64url encoded MIME message, which is what the Gmail API takes.
 
     Standard base64 is not interchangeable here: the API rejects + and /.
@@ -77,6 +118,14 @@ def build_message(to: str, subject: str, html: str, *,
     msg["Subject"] = subject
     msg.set_content(text or re.sub(r"<[^>]+>", " ", html))
     msg.add_alternative(html, subtype="html")
+    # A form with one upload slot gets the merged letter-plus-CV PDF as a real
+    # attachment. ApprovalEmail carried an attachments field long before anything
+    # could send one, so that case would have arrived with no file at all.
+    for name, blob in (attachments or []):
+        if not blob:
+            raise NotifyError(f"attachment {name!r} is empty")
+        msg.add_attachment(blob, maintype="application", subtype="pdf",
+                           filename=name)
     return base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
 
 
@@ -86,16 +135,17 @@ def scope_missing(exc_text: str) -> bool:
 
 
 def send_email(cfg: Config, subject: str, html: str, *,
-               to: str = "hello@krishraja.com",
-               text: str | None = None) -> dict:
+               to: str = "",
+               text: str | None = None,
+               attachments: list[tuple[str, bytes]] | None = None) -> dict:
     """Mail Krish. Degrades to stdout rather than failing a run.
 
     Until the gmail.send grant exists (python -m hunter.oauth_grant), the token
     carries documents, drive and spreadsheets only, so this falls back and says
     so. That keeps every caller testable before the grant lands.
     """
-    to = _check_recipient(to)
-    raw = build_message(to, subject, html, text=text)
+    to = _check_recipient(to or mailbox(cfg))
+    raw = build_message(to, subject, html, text=text, attachments=attachments)
     token = GoogleOAuth(cfg).access_token()
     r = requests.post(GMAIL_SEND, timeout=45,
                       headers={"Authorization": "Bearer " + token,
