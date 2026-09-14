@@ -1742,7 +1742,10 @@ BUILD_SOFT_GATES = {"G2", "G3", "G4", "G5", "G6", "G7", "G11", "G12"}
 
 def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
               summary: list[str], *, cache: dict | None = None,
-              company_declines: dict | None = None) -> bool:
+              company_declines: dict | None = None,
+              feedback: str = "") -> bool:
+    """feedback carries Krish's own words from an amend reply, verbatim, so a
+    rebuild acts on what he actually asked for rather than a paraphrase."""
     from .package.build import build_package, read_master_facts
     from .package.tailor import load_blocks, tailor
 
@@ -1791,9 +1794,32 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     oauth = GoogleOAuth(cfg)
     db = DocBuild(oauth.access_token)
     facts = read_master_facts(db)
+    # Evidence is what lets tailor generate the summary and the hook at all: the
+    # voice gate traces every number and company name in generated prose against
+    # it, and passing it empty disables generation rather than allowing ungated
+    # text. The haystack is the master's own words plus Krish's recorded proof
+    # points and long-form answers from the workbook, plus the JD.
+    from .apply.infobank import load_bank
+    from .package.voicegate import build_evidence
+    bank = None
+    evidence, banned = "", ()
+    try:
+        bank = load_bank(lambda tab: sheet.read_tab_formulas(f"{tab}!A1:Z400"))
+        evidence = build_evidence(
+            facts.cv_master_text,
+            "\n".join(bank.profile.values()),
+            "\n".join(bank.interview.values()),
+            "\n".join(e.value for e in bank.entries.values()),
+            role.jd_text)
+        banned = bank.banned_phrases
+    except Exception as e:
+        summary.append(f"note {row['job_id']}: answer tabs unreadable "
+                       f"({e.__class__.__name__}), generated prose disabled")
     tr = tailor(cfg, canon, company=role.company, title=role.title,
                 jd_text=role.jd_text, master_competencies=facts.cv_competencies,
-                letter_blocks=letter_blocks)
+                letter_blocks=letter_blocks, highlights=facts.cv_highlights,
+                evidence=evidence, banned_phrases=banned,
+                feedback=feedback)
     result = build_package(db, tr, company=role.company, title=role.title,
                            letter_blocks=letter_blocks, cv_blocks=cv_blocks,
                            facts=facts)
@@ -2754,6 +2780,86 @@ def cmd_audit_forms(apply: bool = False, limit: int = 0) -> int:
     return 0
 
 
+def _answer_bank(sheet: Sheet):
+    from .apply.infobank import load_bank
+    return load_bank(lambda tab: sheet.read_tab_formulas(f"{tab}!A1:Z400"))
+
+
+def cmd_bank_seed(apply: bool = False) -> int:
+    """Write the answers Krish gave in conversation into the Application Info
+    Bank, and correct the two superseded master doc pointers canon 9.9 forbids.
+
+    Dry run by default. Every value carries the ruling that produced it, row
+    numbers are resolved by matching the field name rather than hard coded, and
+    every cell is read back and asserted after writing.
+    """
+    from .apply import bankseed
+    from .apply.infobank import INFO_TAB
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    rows = sheet.read_tab_formulas(f"'{INFO_TAB}'!A1:D200")
+    changes, problems = bankseed.plan_changes(rows)
+
+    print(f"{INFO_TAB}: {len(rows)} rows read, {len(changes)} cell(s) to write"
+          f"{'' if apply else ' (dry run, pass --apply to write)'}\n")
+    for c in sorted(changes, key=lambda x: (x.row, x.column)):
+        tag = "NEW ROW" if c.is_new else "       "
+        print(f"  {tag} {c.column}{c.row:<4} {c.field_name[:46]}")
+        if c.before:
+            print(f"          was:  {c.before[:88]}")
+        print(f"          now:  {c.after[:88]}")
+        if c.ruling:
+            print(f"          why:  {c.ruling}")
+    if problems:
+        print("\nnot written:")
+        for p in problems:
+            print("  " + p)
+    if apply:
+        n = bankseed.apply_changes(sheet, changes)
+        print(f"\nwrote and verified {n} cell(s)")
+        print("re-run: python -m hunter.run simulate")
+    return 0
+
+
+def cmd_simulate(send: bool = False) -> int:
+    """A dummy rehearsal of the whole application loop. Touches no company, no
+    Drive document and no Pipeline row; the posting is a literal, not a fetch.
+
+    Krish's instruction 2026-09-14: rehearse before the first real dry run.
+    """
+    from . import notify
+    from .apply import simulate
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    bank = _answer_bank(sheet)
+    to = notify.mailbox(cfg)
+    result = simulate.run(bank, to=to)
+
+    print(f"simulation against {len(bank.entries)} stored answers, "
+          f"recipient {to}\n")
+    for name, ok, detail in result.checks:
+        mark = "ok  " if ok else "FAIL"
+        print(f"  {mark} {name}" + (f"  [{detail}]" if detail else ""))
+    print(f"\n{sum(1 for _, ok, _ in result.checks if ok)} of "
+          f"{len(result.checks)} checks passed")
+    if result.failures:
+        print("\nfailures:")
+        for name, _, detail in result.failures:
+            print(f"  {name}: {detail}")
+
+    if send:
+        if not result.ok:
+            print("\nrefusing to send the simulated email while checks fail")
+            return 1
+        out = notify.send_email(cfg, result.email.subject, result.email.html,
+                                to=to, text=result.email.text)
+        print(f"\nsimulated approval email sent: {out}")
+    else:
+        print("\n(dry run. pass --send to mail the simulated approval email "
+              "to yourself)")
+    return 0 if result.ok else 1
+
+
 def main(argv: list[str]) -> int:
     cmd = argv[0] if argv else "recon"
     if cmd == "run":
@@ -2809,6 +2915,10 @@ def main(argv: list[str]) -> int:
             print("usage: python -m hunter.run decline <row>=<reason> ... [--apply]")
             return 2
         return cmd_decline(pairs_in, apply="--apply" in argv)
+    if cmd == "bank-seed":
+        return cmd_bank_seed(apply="--apply" in argv)
+    if cmd == "simulate":
+        return cmd_simulate(send="--send" in argv)
     if cmd == "bank-check":
         return cmd_bank_check()
     if cmd == "audit-forms":
@@ -2835,7 +2945,7 @@ def main(argv: list[str]) -> int:
     print(f"unknown command {cmd!r}; commands: process [--max N] [--retry-dead], "
           f"run, reconcile, migrate-columns [--apply], migrate-sheet, "
           f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
-          f"bank-check, audit-forms [--apply] [--limit N], "
+          f"bank-check, audit-forms [--apply] [--limit N], simulate [--send], bank-seed [--apply], "
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2

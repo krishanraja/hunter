@@ -55,6 +55,8 @@ _QUOTE_HEADER = re.compile(
     r"^\s*(on .+wrote:|from:|sent:|to:|subject:|-{2,}\s*original message|"
     r"_{5,}|sent from my )", re.I)
 _SIGNATURE = re.compile(r"^\s*(--\s*$|sent from my )", re.I)
+# "On <something>:" with nothing after it is a quote intro, not Krish's words.
+_ORPHAN_QUOTE_INTRO = re.compile(r"^\s*(on|el|le)\b.{0,120}:\s*$", re.I)
 
 
 class InboxError(RuntimeError):
@@ -93,7 +95,11 @@ def krishs_own_lines(body: str) -> list[str]:
         if _SIGNATURE.match(line):
             break
         out.append(line)
-    while out and not out[-1]:
+    # A quote intro line that our header pattern did not catch would otherwise
+    # leak into the feedback. Clients word these differently ("On Sun, 14 Sep at
+    # 10:00, X wrote:", "On Sun:", "El dom, X escribio:"), so drop a trailing line
+    # that opens like one rather than trying to enumerate every wording.
+    while out and (not out[-1] or _ORPHAN_QUOTE_INTRO.match(out[-1])):
         out.pop()
     return out
 
