@@ -161,6 +161,37 @@ def match_option(value: str, options) -> str | None:
     return None
 
 
+
+# Krish's ruling 2026-09-14: a REQUIRED salary field gets the recorded floor and
+# is flagged in the approval email. Info Bank row 37 previously said never enter
+# a salary in a form field, which made Fleek and Trulioo impossible to complete;
+# the row is amended to required-field-only so the rule and the behaviour agree.
+_MONEY = re.compile(r"\$?\s*(\d[\d,]*)\s*([kKmM])?")
+
+
+def comp_floor(bank: AnswerBank) -> str:
+    """The numeric floor, from an explicit numeric row if one exists, otherwise
+    parsed from the recorded comp text ("$250K+ base ..." -> "250000")."""
+    explicit = bank.value("Salary expectations (numeric floor)")
+    if explicit.strip().isdigit():
+        return explicit.strip()
+    for field_name in ("Salary expectations (verbal answer if asked)",
+                       "Target comp"):
+        text = bank.value(field_name) or bank.profile.get(norm_label(field_name), "")
+        m = _MONEY.search(text or "")
+        if not m:
+            continue
+        amount = int(m.group(1).replace(",", ""))
+        suffix = (m.group(2) or "").lower()
+        if suffix == "k":
+            amount *= 1000
+        elif suffix == "m":
+            amount *= 1_000_000
+        if amount >= 1000:
+            return str(amount)
+    return ""
+
+
 class Resolver:
     """Resolves against an AnswerBank.
 
@@ -365,10 +396,20 @@ class Resolver:
             if entry and entry.usable:
                 return Answer(entry.value, f"Info Bank: {entry.field_name}")
         if _any(label, "salary", "compensation expectation", "comp expectation"):
+            floor = comp_floor(self.bank)
+            if field.required and floor:
+                return Answer(
+                    floor,
+                    "Info Bank: the recorded comp floor, entered because this "
+                    "field is required (Krish's ruling 2026-09-14)",
+                    flagged=True)
+            if not floor:
+                return Unanswered(NEEDS_KRISH,
+                                  "no comp floor is recorded to enter")
             return Unanswered(
                 NEEDS_KRISH,
-                "Info Bank row 37 says do not enter a salary in a form field; "
-                "a required salary field needs Krish's ruling")
+                "this salary field is optional, so it is left to Krish "
+                "(Info Bank row 37)")
         if _any(label, "notice period"):
             entry = self.bank.get("Notice period")
             if entry and entry.usable:
@@ -381,17 +422,50 @@ class Resolver:
             return Unanswered(NO_MATCH, "no referrer recorded")
         return None
 
+    # ---------- consent and demographics, always flagged ----------
+
+    CONSENT_FIELD = ("Consent to recruiting privacy policies and "
+                     "acknowledgements")
+
+    def _consent(self) -> Resolution:
+        entry = self.bank.get(self.CONSENT_FIELD)
+        if entry and entry.usable:
+            return Answer(entry.value, f"Info Bank: {entry.field_name}",
+                          flagged=True)
+        return Unanswered(NEEDS_KRISH,
+                          "a consent or acknowledgement is Krish's to give, and "
+                          f"the Info Bank has no {self.CONSENT_FIELD!r} row yet")
+
+    _DEMOGRAPHIC_FIELDS = (
+        (("gender", "sex"), "Gender"),
+        (("race", "ethnic", "hispanic"), "Race / ethnicity"),
+        (("veteran", "military"), "Veteran status"),
+        (("disab",), "Disability status"),
+    )
+
+    def _demographic(self, field: FormField) -> Resolution:
+        label = _padded(field.label)
+        for needles, bank_field in self._DEMOGRAPHIC_FIELDS:
+            if _any(label, *needles):
+                entry = self.bank.get(bank_field)
+                if entry and entry.usable:
+                    return Answer(entry.value, f"Info Bank: {entry.field_name}",
+                                  flagged=True)
+                return Unanswered(
+                    NEEDS_KRISH,
+                    f"Info Bank {bank_field} is empty; a demographic "
+                    f"disclosure is Krish's to give")
+        return Unanswered(NEEDS_KRISH, "unrecognised demographic question")
+
     # ---------- entry point ----------
 
     def resolve(self, field: FormField) -> Resolution:
         if field.kind in ("file_resume", "file_cover"):
             return Answer("", "package build", note="attached from the built PDF")
         if field.kind == "consent":
-            return Unanswered(NEEDS_KRISH,
-                              "a consent or acknowledgement is Krish's to give")
+            return self._fit_to_options(field, self._consent())
         if field.kind == "demographic":
-            return Unanswered(NEEDS_KRISH,
-                              "demographic disclosure is Krish's to give")
+            return self._fit_to_options(field, self._demographic(field))
         if field.kind == "long_text" or (
                 field.kind == "short_text" and looks_like_essay(field.label)):
             return Unanswered(NEEDS_ESSAY, "drafted per posting, then approved")
@@ -406,7 +480,8 @@ class Resolver:
         if result is None:
             # Last resort: the Info Bank may hold this question verbatim.
             entry = self.bank.get(field.label)
-            result = (Answer(entry.value, f"Info Bank: {entry.field_name}")
+            result = (Answer(entry.value, f"Info Bank: {entry.field_name}",
+                             flagged=bool(entry.always_flagged))
                       if entry and entry.usable else Unanswered(NO_MATCH))
         return self._fit_to_options(field, result)
 

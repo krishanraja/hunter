@@ -151,6 +151,9 @@ INFO_ROWS = [
     ["Authorized to work in Australia?", "Yes", "\U0001F7E2 LOCKED", ""],
     ["SECTION E - REFERRAL / SOURCE"],
     ["How did you hear about us (default)", "LinkedIn", "\U0001F7E2 LOCKED", ""],
+    ["SECTION C - COMPENSATION & LOGISTICS"],
+    ["Salary expectations (verbal answer if asked)",
+     "$250K+ base + meaningful equity", "\U0001F7E2 LOCKED", ""],
     ["SECTION G - DEMOGRAPHIC / EEO"],
     ["Race / ethnicity", "", "\U0001F534 SENSITIVE", "Optional"],
     ["SECTION H - REFERENCES"],
@@ -284,11 +287,25 @@ def test_consent_and_demographic_are_never_auto_filled():
     assert isinstance(demo, Unanswered) and "Krish" in demo.reason
 
 
-def test_salary_in_a_form_field_refuses_and_says_why():
+def test_a_required_salary_field_gets_the_floor_and_is_flagged():
+    """Krish's ruling 2026-09-14. Fleek and Trulioo both require this field, so
+    refusing outright made those two applications impossible to complete."""
     got = Resolver(build_bank()).resolve(
-        field("What are your salary expectations?", kind="number"))
-    assert isinstance(got, Unanswered)
-    assert "row 37" in got.note and "ruling" in got.note
+        field("What are your salary expectations?", kind="number", required=True))
+    assert isinstance(got, Answer) and got.value == "250000"
+    assert got.flagged, "a salary must always reach the approval email"
+
+
+def test_an_optional_salary_field_is_still_left_to_krish():
+    got = Resolver(build_bank()).resolve(
+        field("What are your salary expectations?", kind="number",
+              required=False))
+    assert isinstance(got, Unanswered) and "optional" in got.note
+
+
+def test_the_comp_floor_is_parsed_from_the_recorded_text():
+    from hunter.apply.resolve import comp_floor
+    assert comp_floor(build_bank()) == "250000"
 
 
 def test_essays_are_not_resolved_here():
@@ -630,3 +647,76 @@ def test_a_live_linkedin_posting_stays_unknown_not_live(monkeypatch):
     monkeypatch.setattr(linkedin.requests, "get", lambda *a, **k: R())
     live, why = linkedin.posting_state(R.url)
     assert live is None and "not assertable" in why
+
+
+# ---------------- sensitive answers: stored, and always shown ----------------
+
+def sensitive_bank() -> AnswerBank:
+    """The Info Bank as it will read once Krish's 2026-09-14 answers are in."""
+    rows = [r[:] for r in INFO_ROWS]
+    filled = {
+        "Race / ethnicity": "Two or more races",
+        "Gender": "Male",
+        "Veteran status": "Not a veteran",
+        "Disability status": "No disability",
+    }
+    out = []
+    for r in rows:
+        if r and r[0] in filled:
+            r = [r[0], filled[r[0]], "\U0001F534 SENSITIVE", ""]
+        out.append(r)
+    for name, value in filled.items():
+        if not any(r and r[0] == name for r in out):
+            out.append([name, value, "\U0001F534 SENSITIVE", ""])
+    out.append(["Consent to recruiting privacy policies and acknowledgements",
+                "Yes", "\U0001F534 SENSITIVE", ""])
+    tabs = {"Application Info Bank": out, "Profile": PROFILE_ROWS,
+            "Interview Answers": INTERVIEW_ROWS}
+    return load_bank(lambda tab: tabs[tab])
+
+
+def test_a_sensitive_row_with_a_value_is_usable_and_always_flagged():
+    bank = sensitive_bank()
+    race = bank.get("Race / ethnicity")
+    assert race.usable is True, "Krish supplied the value, so the field can fill"
+    assert race.always_flagged is True, "and it must still reach every email"
+
+
+def test_a_sensitive_row_without_a_value_stays_unanswered():
+    bank = build_bank()
+    assert bank.get("Race / ethnicity").usable is False
+
+
+def test_demographics_resolve_from_the_bank_and_stay_flagged():
+    r = Resolver(sensitive_bank())
+    for label, expected in (
+            ("Race / ethnicity", "Two or more races"),
+            ("Gender", "Male"),
+            ("Veteran status", "Not a veteran"),
+            ("Disability status", "No disability")):
+        got = r.resolve(field(label, kind="demographic"))
+        assert isinstance(got, Answer), f"{label} came back {got!r}"
+        assert got.value == expected and got.flagged
+
+
+def test_a_demographic_select_is_matched_to_the_forms_own_option():
+    from hunter.apply.model import Option
+    gh = field("Race / Ethnicity", kind="demographic", options=(
+        Option("Asian (Not Hispanic or Latino)", "1"),
+        Option("Two or More Races (Not Hispanic or Latino)", "2"),
+        Option("Decline To Self Identify", "3")))
+    got = Resolver(sensitive_bank()).resolve(gh)
+    assert isinstance(got, Answer)
+    assert got.value.startswith("Two or More Races")
+
+
+def test_consent_resolves_from_the_bank_and_stays_flagged():
+    got = Resolver(sensitive_bank()).resolve(
+        field("Applicant Arbitration Agreement Acknowledgement", kind="consent"))
+    assert isinstance(got, Answer) and got.value == "Yes" and got.flagged
+
+
+def test_consent_without_a_bank_row_still_refuses():
+    got = Resolver(build_bank()).resolve(
+        field("Applicant Arbitration Agreement Acknowledgement", kind="consent"))
+    assert isinstance(got, Unanswered) and "Krish" in got.reason

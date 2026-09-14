@@ -17,8 +17,11 @@ reconciliation. hunter never edits canon; changes are filed to
 ## Ground rules
 
 - No em dashes anywhere, enforced by `tests/test_repo_guards.py`.
-- Never send anything to a human. The only outbound channel is `notify.py`,
-  which can only message Krish.
+- Never send anything to a company. The only outbound channel is `notify.py`,
+  which can only reach Krish: the recipient is checked against a hard coded
+  allowlist in code, not promised in a comment.
+- Every application is emailed to Krish for approval before anything moves,
+  with links to the CV and cover letter (`Profile` row 60, both gates).
 - Never commit a secret. Secrets live in Supabase `system_config` and are read
   at runtime. The environment carries exactly two values: `SUPABASE_URL` and
   `SUPABASE_SERVICE_ROLE_KEY`.
@@ -26,6 +29,27 @@ reconciliation. hunter never edits canon; changes are filed to
   Never a new master, never a version number on a copy.
 - The masters are read live at run time. Cached descriptions of them are never
   trusted; `read_master_facts` refuses to build when the live structure moves.
+
+## The approval gate
+
+`notify.py` sends through Gmail `users.messages.send` on the OAuth plane. That
+needs the `gmail.send` scope, which the stored refresh token did not carry, so
+run this once on your own machine:
+
+```
+python -m hunter.oauth_grant          # writes the new token to system_config
+python -m hunter.oauth_grant --print  # prints it instead, if the write fails
+```
+
+It opens a loopback consent flow, requests all four scopes together
+(`documents drive spreadsheets gmail.send`), and refuses to write unless all four
+come back AND a Gmail call and a Sheets read both succeed. A consent that added
+`gmail.send` while dropping `spreadsheets` would break the sheet writer with no
+visible error until the next scheduled run, so that check is the point of the
+module. Until the grant exists, `notify.send_email` falls back to stdout and says
+how to fix it, so everything downstream stays testable.
+
+The Gmail API is already enabled on the project; only the scope was missing.
 
 ## Runtime
 

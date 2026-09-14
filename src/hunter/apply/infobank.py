@@ -74,10 +74,24 @@ class BankEntry:
 
     @property
     def usable(self) -> bool:
-        """A value we may enter without asking Krish first."""
-        if self.status in (SENSITIVE, PER_ROLE):
+        """A value we may enter on a form.
+
+        Krish supplied his demographic answers on 2026-09-14 and said he
+        consents to the acknowledgement checkboxes, while also requiring that
+        every application reach him by email first. So SENSITIVE stopped meaning
+        "unusable" and started meaning "usable but always shown": with a value
+        it fills the field and appears in the approval email, without one it
+        stays Unanswered. PER_ROLE is never reused verbatim.
+        """
+        if self.status == PER_ROLE:
             return False
         return bool(self.value.strip())
+
+    @property
+    def always_flagged(self) -> bool:
+        """Answers that must appear in the approval email every single time,
+        however routine they become."""
+        return self.status == SENSITIVE
 
     @property
     def blocking(self) -> bool:
