@@ -32,14 +32,26 @@ reconciliation. hunter never edits canon; changes are filed to
 
 ## The approval gate
 
-`notify.py` sends through Gmail `users.messages.send` on the OAuth plane. That
-needs the `gmail.send` scope, which the stored refresh token did not carry, so
-run this once on your own machine:
+`notify.py` sends through Gmail `users.messages.send` on the OAuth plane, and the
+reply loop reads through `gmail.readonly`. The stored refresh token carried
+neither, so the consent has to be granted once, on the machine with the browser.
+
+Use the standalone script at the repo root. It is standard library only: no
+`pip install`, no `PYTHONPATH`, no repo import, so it runs on a bare Python on
+any machine. Save the one file anywhere and run it:
 
 ```
-python -m hunter.oauth_grant          # writes the new token to system_config
-python -m hunter.oauth_grant --print  # prints it instead, if the write fails
+python grant_gmail.py            # writes the new token to system_config
+python grant_gmail.py --print    # prints it instead, if the write fails
 ```
+
+It prompts for the Supabase URL and service role key if they are not already in
+the shell (the key is read hidden), and fetches the OAuth client id and secret
+from `system_config` itself.
+
+`python -m hunter.oauth_grant` is the same flow as an importable, tested module,
+for use inside a checkout where the package is installed (`pip install -e .`).
+A test asserts the two request identical scopes, so they cannot drift.
 
 It opens a loopback consent flow, requests all four scopes together
 (`documents drive spreadsheets gmail.send`), and refuses to write unless all four

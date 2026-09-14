@@ -215,3 +215,61 @@ def test_verify_refuses_to_write_when_a_scope_is_missing(monkeypatch):
     monkeypatch.setattr(oauth_grant.requests, "get", lambda *a, **k: Get())
     with pytest.raises(oauth_grant.GrantError, match="spreadsheets"):
         oauth_grant.verify(FakeCfg(), "newtoken")
+
+
+# ---------------- the standalone script and the importable one must agree ----------------
+
+def _load_standalone():
+    """grant_gmail.py sits at the repo root and is not importable as a package,
+    which is the whole point: Krish runs it as a file on a machine where nothing
+    is installed."""
+    import importlib.util
+    import pathlib
+    path = pathlib.Path(__file__).parent.parent / "grant_gmail.py"
+    spec = importlib.util.spec_from_file_location("grant_gmail_standalone", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_standalone_script_requests_exactly_the_same_scopes():
+    """Two copies of a scope list is a drift risk. If they ever disagree, one of
+    the two consents is wrong and the failure would surface as a broken plane
+    days later."""
+    standalone = _load_standalone()
+    assert standalone.REQUIRED_SCOPES == oauth_grant.REQUIRED_SCOPES
+
+
+def test_the_standalone_script_imports_nothing_outside_the_standard_library():
+    """It runs on a bare python with no pip install. A third party import here is
+    the bug that made the first version unusable."""
+    import ast
+    import pathlib
+    import sys
+    path = pathlib.Path(__file__).parent.parent / "grant_gmail.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    mods = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            mods |= {a.name.split(".")[0] for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            mods.add(node.module.split(".")[0])
+    outside = sorted(mods - set(sys.stdlib_module_names))
+    assert not outside, f"grant_gmail.py imports non-stdlib modules: {outside}"
+
+
+def test_the_standalone_scope_check_catches_a_dropped_scope():
+    standalone = _load_standalone()
+    for scope in standalone.REQUIRED_SCOPES:
+        granted = " ".join(s for s in standalone.REQUIRED_SCOPES if s != scope)
+        assert standalone.missing_scopes(granted) == [scope], scope
+
+
+def test_the_standalone_auth_url_asks_for_offline_consent():
+    import urllib.parse
+    standalone = _load_standalone()
+    q = urllib.parse.parse_qs(
+        urllib.parse.urlsplit(
+            standalone.auth_url("cid", "http://localhost:9/", "st")).query)
+    assert q["access_type"] == ["offline"] and q["prompt"] == ["consent"]
+    assert set(q["scope"][0].split()) == set(standalone.REQUIRED_SCOPES)
