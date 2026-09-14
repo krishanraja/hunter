@@ -45,9 +45,18 @@ DOCS = "https://www.googleapis.com/auth/documents"
 DRIVE = "https://www.googleapis.com/auth/drive"
 SHEETS = "https://www.googleapis.com/auth/spreadsheets"
 GMAIL_SEND = "https://www.googleapis.com/auth/gmail.send"
+# Reading Krish's replies is how the approve-or-amend loop works. gmail.readonly
+# is the narrowest scope that can read a reply body: gmail.metadata cannot see
+# one, and gmail.modify would be broader for no gain, because idempotency comes
+# from a Supabase ledger of processed message ids rather than from Gmail labels.
+# It does grant read of the whole mailbox, which is worth stating plainly: hunter
+# only ever queries on its own subject token and never stores a body beyond the
+# instruction it extracts.
+GMAIL_READ = "https://www.googleapis.com/auth/gmail.readonly"
 
-# All four, always. Three of these already work; losing one is the failure mode.
-REQUIRED_SCOPES = (DOCS, DRIVE, SHEETS, GMAIL_SEND)
+# All five, always. Three of these already work; losing one is the failure mode,
+# and it would not surface until the next scheduled run.
+REQUIRED_SCOPES = (DOCS, DRIVE, SHEETS, GMAIL_SEND, GMAIL_READ)
 CONFIG_KEY = "hunter_google_oauth_refresh_token"
 
 
@@ -193,7 +202,8 @@ def main(argv: list[str]) -> int:
     state = secrets.token_urlsafe(24)
     url = auth_url(client_id, redirect_uri, state)
 
-    print("Opening the Google consent screen. Approve ALL FOUR scopes:")
+    print(f"Opening the Google consent screen. Approve ALL "
+          f"{len(REQUIRED_SCOPES)} scopes:")
     for s in REQUIRED_SCOPES:
         print("  -", s)
     print("\nGoogle will warn that the app is unverified. It is your own "

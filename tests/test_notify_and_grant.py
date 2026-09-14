@@ -119,15 +119,43 @@ def test_all_four_scopes_present_is_the_only_passing_case():
     assert oauth_grant.missing_scopes(" ".join(oauth_grant.REQUIRED_SCOPES)) == []
 
 
+def _all_but(*dropped):
+    """Derived from REQUIRED_SCOPES so adding a scope cannot leave these tests
+    quietly asserting the wrong thing."""
+    return " ".join(s for s in oauth_grant.REQUIRED_SCOPES if s not in dropped)
+
+
 def test_a_grant_missing_gmail_send_is_caught():
-    granted = f"{oauth_grant.DOCS} {oauth_grant.DRIVE} {oauth_grant.SHEETS}"
-    assert oauth_grant.missing_scopes(granted) == [oauth_grant.GMAIL_SEND]
+    assert oauth_grant.missing_scopes(_all_but(oauth_grant.GMAIL_SEND)) == \
+        [oauth_grant.GMAIL_SEND]
 
 
 def test_a_grant_that_silently_drops_spreadsheets_is_caught():
-    """The expensive failure: gmail.send arrives, the sheet writer dies quietly."""
-    granted = f"{oauth_grant.DOCS} {oauth_grant.DRIVE} {oauth_grant.GMAIL_SEND}"
-    assert oauth_grant.missing_scopes(granted) == [oauth_grant.SHEETS]
+    """The expensive failure: the mail scopes arrive, the sheet writer dies
+    quietly, and nothing surfaces it until the next scheduled run."""
+    assert oauth_grant.missing_scopes(_all_but(oauth_grant.SHEETS)) == \
+        [oauth_grant.SHEETS]
+
+
+def test_every_single_scope_is_individually_load_bearing():
+    """Dropping any one of them must be caught, not just the ones we thought of."""
+    for scope in oauth_grant.REQUIRED_SCOPES:
+        assert oauth_grant.missing_scopes(_all_but(scope)) == [scope], scope
+
+
+def test_a_grant_missing_gmail_readonly_is_caught():
+    """The reply loop cannot work without read. Added to the same consent so
+    Krish is never asked twice: a refresh token cannot gain a scope later."""
+    assert oauth_grant.missing_scopes(_all_but(oauth_grant.GMAIL_READ)) == \
+        [oauth_grant.GMAIL_READ]
+
+
+def test_the_grant_asks_for_read_and_send_separately():
+    assert oauth_grant.GMAIL_READ in oauth_grant.REQUIRED_SCOPES
+    assert oauth_grant.GMAIL_SEND in oauth_grant.REQUIRED_SCOPES
+    assert oauth_grant.GMAIL_READ != oauth_grant.GMAIL_SEND
+    # gmail.modify would subsume both and is deliberately not requested.
+    assert not any("gmail.modify" in s for s in oauth_grant.REQUIRED_SCOPES)
 
 
 def test_scope_order_and_extra_scopes_do_not_matter():

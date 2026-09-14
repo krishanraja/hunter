@@ -35,6 +35,11 @@ class MasterFacts:
     letter_bold: list[str]
     letter_bullets: list[str]  # full text of the 4 proof bullets, in order
     placeholder_counts: dict[str, int]
+    # Added 2026-09-14 for generated summaries and highlight reordering. Defaulted
+    # so every existing constructor call keeps working.
+    cv_summary_count: int = 1  # how many paragraphs PROFESSIONAL SUMMARY spans
+    cv_highlights: list[str] = field(default_factory=list)
+    cv_master_text: str = ""   # the haystack voicegate traces generated prose against
 
 
 @dataclass
@@ -117,6 +122,29 @@ def read_master_facts(db: DocBuild) -> MasterFacts:
             "CV master summary paragraph 1 carries bold runs; the block swap would "
             "lose them, refusing to build")
 
+    # How far the summary actually runs: every non-empty paragraph between the
+    # heading and the next ALL CAPS heading. Krish's master carries three. The
+    # generated summary replaces the whole span, which is what stops the CV
+    # shipping in two registers; replacing only p1 is what caused that.
+    next_heading = next(
+        (i for i, pp in enumerate(cv_paras[summary_idx + 1:], summary_idx + 1)
+         if pp["text"].strip() and pp["text"].strip().isupper()), None)
+    summary_span = [pp for pp in cv_paras[summary_idx + 1:next_heading]
+                    if pp["text"].strip()]
+    summary_count = len(summary_span) or 1
+
+    # CAREER HIGHLIGHTS, in the master's order. Canon 9.12 says reorder them per
+    # role and never add one, so the text is captured and only the order moves.
+    hl_idx = next((i for i, pp in enumerate(cv_paras)
+                   if pp["text"].strip() == "CAREER HIGHLIGHTS"), None)
+    highlights: list[str] = []
+    if hl_idx is not None:
+        hl_next = next(
+            (i for i, pp in enumerate(cv_paras[hl_idx + 1:], hl_idx + 1)
+             if pp["text"].strip() and pp["text"].strip().isupper()), None)
+        highlights = [pp["text"].strip() for pp in cv_paras[hl_idx + 1:hl_next]
+                      if pp["text"].strip()]
+
     letter_bullets = [p["text"].strip() for p in letter_paras if p["bullet"]]
     if len(letter_bullets) != 4:
         raise BuildError(
@@ -132,6 +160,9 @@ def read_master_facts(db: DocBuild) -> MasterFacts:
         cv_competencies=competencies,
         competency_sep=sep,
         cv_summary_p1=p1["text"].strip(),
+        cv_summary_count=summary_count,
+        cv_highlights=highlights,
+        cv_master_text=cv_text,
         cv_headings_present=headings_ok,
         letter_bold=db.bold_runs(letter),
         letter_bullets=letter_bullets,
@@ -171,7 +202,10 @@ def build_letter(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
                  today: datetime.date | None = None) -> tuple[str, VerifyReport]:
     today = today or datetime.date.today()
     date_text = today.strftime("%B %d, %Y").replace(" 0", " ")
-    hook = assemble_hook(letter_blocks, tr.block_key, company, tr.jd_mirror)
+    # The generated hook wins. assemble_hook stays the fallback for when the
+    # voice gate rejected it, which is why the block layer is not removed.
+    hook = (tr.hook or "").strip() or assemble_hook(
+        letter_blocks, tr.block_key, company, tr.jd_mirror)
     doc_title = _unique_title(db, f"KrishRaja_CoverLetter_{company}",
                               config.LETTER_FOLDER_ID, slugify(title))
     doc_id = db.copy_master(config.LETTER_MASTER_ID, doc_title, config.LETTER_FOLDER_ID)
@@ -194,14 +228,30 @@ def build_letter(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
 
 def build_cv(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
              company: str, title: str, cv_blocks: dict) -> tuple[str, VerifyReport]:
-    summary_text = cv_blocks[tr.block_key]["text"]
+    """The generated summary replaces the WHOLE summary span. The approved block
+    is the fallback, used only when the voice gate rejected the generated prose,
+    and in that case it replaces just paragraph 1 as it always did."""
+    generated = (tr.summary or "").strip()
+    summary_text = generated or cv_blocks[tr.block_key]["text"]
     doc_title = _unique_title(db, f"KrishRaja_CV_{company}",
                               config.CV_FOLDER_ID, slugify(title))
     doc_id = db.copy_master(config.CV_MASTER_ID, doc_title, config.CV_FOLDER_ID)
-    db.set_unstyled_paragraph(doc_id, facts.cv_summary_p1[:60], summary_text)
+    if generated and facts.cv_summary_count > 1:
+        db.replace_paragraph_block(doc_id, facts.cv_summary_p1[:60],
+                                   facts.cv_summary_count, generated)
+    else:
+        db.set_unstyled_paragraph(doc_id, facts.cv_summary_p1[:60], summary_text)
     anchor = facts.competency_sep.join(facts.cv_competencies[:2])
     db.set_unstyled_paragraph(doc_id, anchor,
                               facts.competency_sep.join(tr.competency_order))
+    # Canon 9.12 requires highlights reordered per role. A reorder that cannot
+    # prove it kept the bold runs raises, and the CV keeps the master's order
+    # rather than shipping with the bold in the wrong place.
+    if tr.highlight_order and facts.cv_highlights \
+            and sorted(tr.highlight_order) == list(range(len(facts.cv_highlights))) \
+            and tr.highlight_order != list(range(len(facts.cv_highlights))):
+        anchors = [h[:60] for h in facts.cv_highlights]
+        db.reorder_paragraphs(doc_id, anchors, tr.highlight_order)
     report = verify(db, doc_id, master_bold=facts.cv_bold, kind="cv",
                     expect_bullets=facts.cv_bullet_count,
                     expect_present=[summary_text])
