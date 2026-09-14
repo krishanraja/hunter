@@ -17,9 +17,11 @@ class FakeDocs:
     the paragraph). Insertion arrives UNSTYLED, exactly as the real API behaves,
     so a reorder that forgets to re-apply bold will fail these tests."""
 
-    def __init__(self, paragraphs: list[tuple[str, list[tuple[int, int]]]]):
+    def __init__(self, paragraphs, bulleted=()):
         self.paras = [{"text": t if t.endswith("\n") else t + "\n",
-                       "bolds": list(b)} for t, b in paragraphs]
+                       "bolds": list(b),
+                       "bullet": i in set(bulleted)}
+                      for i, (t, b) in enumerate(paragraphs)]
         self.batches = 0
 
     # ---- the shape DocBuild.get/paragraphs expects ----
@@ -44,7 +46,10 @@ class FakeDocs:
                             "textStyle": ({"bold": True} if marks[run_start]
                                           else {})}})
                     run_start = i
-            content.append({"paragraph": {"elements": elements},
+            para = {"elements": elements}
+            if p.get("bullet"):
+                para["bullet"] = {"listId": "L1"}
+            content.append({"paragraph": para,
                             "startIndex": idx,
                             "endIndex": idx + len(text)})
             idx += len(text)
@@ -62,11 +67,26 @@ class FakeDocs:
             elif "insertText" in r:
                 self._insert(r["insertText"]["location"]["index"],
                              r["insertText"]["text"])
+            elif "createParagraphBullets" in r:
+                rng = r["createParagraphBullets"]["range"]
+                self._bullet(rng["startIndex"], rng["endIndex"])
             elif "updateTextStyle" in r:
                 rng = r["updateTextStyle"]["range"]
                 bold = bool(r["updateTextStyle"]["textStyle"].get("bold"))
                 if bold:
                     self._bold(rng["startIndex"], rng["endIndex"])
+
+    def _bullet(self, s: int, e: int) -> None:
+        """Bullets apply per paragraph whose range intersects the request."""
+        idx = 1
+        for p in self.paras:
+            end = idx + len(p["text"])
+            if idx < e and end > s:
+                p["bullet"] = True
+            idx = end
+
+    def bullet_count(self) -> int:
+        return sum(1 for p in self.paras if p.get("bullet"))
 
     def _flat(self) -> tuple[str, list[bool]]:
         text = "".join(p["text"] for p in self.paras)
@@ -80,6 +100,9 @@ class FakeDocs:
         return text, marks
 
     def _rebuild(self, text: str, marks: list[bool]) -> None:
+        bullets_by_text = {}
+        for p in self.paras:
+            bullets_by_text.setdefault(p["text"], []).append(p.get("bullet", False))
         self.paras = []
         start = 0
         for i, ch in enumerate(text):
@@ -94,7 +117,9 @@ class FakeDocs:
                         run = None
                 if run is not None:
                     bolds.append((run, len(segm)))
-                self.paras.append({"text": seg, "bolds": bolds})
+                queue = bullets_by_text.get(seg)
+                flag = queue.pop(0) if queue else False
+                self.paras.append({"text": seg, "bolds": bolds, "bullet": flag})
                 start = i + 1
 
     def _delete(self, s: int, e: int) -> None:
@@ -294,3 +319,108 @@ def test_the_block_replacement_refuses_a_span_that_runs_off_the_end():
     db = make_db(fake)
     with pytest.raises(RuntimeError, match="needed 99"):
         db.replace_paragraph_block("doc", "With 16 years", 99, "replacement")
+
+
+# ---------------- same-day rebuilds must not deadlock ----------------
+
+def test_a_same_day_rebuild_gets_a_new_name_instead_of_failing():
+    """build_package builds the letter before the CV and is not atomic, so
+    anything that raises in the CV leaves the letter behind and the retry has
+    nowhere to land. That killed three consecutive attempts on the first live
+    Harvey build, and the docstring already recorded the same shape for Cohere."""
+    import datetime
+
+    from hunter.package.build import _unique_title
+
+    taken = {
+        "KrishRaja_CV_Harvey",
+        "KrishRaja_CV_Harvey_head-of-gtm",
+        "KrishRaja_CV_Harvey_head-of-gtm_20260914",
+    }
+
+    class FakeDrive:
+        def find_by_name(self, name, parent_id):
+            return [{"id": "x"}] if name in taken else []
+
+    got = _unique_title(FakeDrive(), "KrishRaja_CV_Harvey", "folder",
+                        "head-of-gtm", today=datetime.date(2026, 9, 14))
+    assert got == "KrishRaja_CV_Harvey_head-of-gtm_20260914_02"
+    taken.add(got)
+    got2 = _unique_title(FakeDrive(), "KrishRaja_CV_Harvey", "folder",
+                         "head-of-gtm", today=datetime.date(2026, 9, 14))
+    assert got2 == "KrishRaja_CV_Harvey_head-of-gtm_20260914_03"
+
+
+def test_a_runaway_retry_loop_is_refused_rather_than_piling_up_copies():
+    import datetime
+
+    from hunter.package.build import BuildError, _unique_title
+
+    class AlwaysTaken:
+        def find_by_name(self, name, parent_id):
+            return [{"id": "x"}]
+
+    with pytest.raises(BuildError, match="retrying in a loop"):
+        _unique_title(AlwaysTaken(), "KrishRaja_CV_Harvey", "folder", "role",
+                      today=datetime.date(2026, 9, 14))
+
+
+def test_the_suffix_is_not_a_cv_version_number():
+    """Canon 9.12 forbids a version number on a per-role copy. The suffix counts
+    same-day attempts at one role, and the master's own version is untouched."""
+    import datetime
+
+    from hunter.package.build import _unique_title
+
+    class OneTaken:
+        def find_by_name(self, name, parent_id):
+            return [{"id": "x"}] if name == "KrishRaja_CV_Harvey" else []
+
+    got = _unique_title(OneTaken(), "KrishRaja_CV_Harvey", "folder", "role",
+                        today=datetime.date(2026, 9, 14))
+    assert got == "KrishRaja_CV_Harvey_role"
+    assert "v1" not in got and "v14" not in got
+
+
+# ---------------- bullets must survive the reorder ----------------
+
+def test_reorder_preserves_bullet_formatting():
+    """insertText creates PLAIN paragraphs. The first real Harvey build reordered
+    the highlights correctly and silently stripped the bullet from all seven; the
+    package verifier caught it as "expected 26 bullets, found 19"."""
+    fake = FakeDocs(HIGHLIGHTS, bulleted=range(len(HIGHLIGHTS)))
+    assert fake.bullet_count() == len(HIGHLIGHTS)
+    db = make_db(fake)
+    db.reorder_paragraphs("doc", [h[:60] for h, _ in HIGHLIGHTS],
+                          [2, 0, 1, 3, 4, 5, 6])
+    assert fake.bullet_count() == len(HIGHLIGHTS), "a bullet was lost"
+
+
+def test_a_reorder_that_loses_bullets_raises_rather_than_shipping():
+    fake = FakeDocs(HIGHLIGHTS, bulleted=range(len(HIGHLIGHTS)))
+    db = make_db(fake)
+    real_apply = fake.apply
+
+    def drop_bullets(reqs):
+        real_apply([r for r in reqs if "createParagraphBullets" not in r])
+
+    db.batch = lambda doc_id, reqs: drop_bullets(reqs)
+    with pytest.raises(RuntimeError, match="lost bullet formatting"):
+        db.reorder_paragraphs("doc", [h[:60] for h, _ in HIGHLIGHTS],
+                              [1, 0, 2, 3, 4, 5, 6])
+
+
+def test_unbulleted_paragraphs_do_not_gain_a_bullet():
+    fake = FakeDocs(HIGHLIGHTS)  # none bulleted
+    db = make_db(fake)
+    db.reorder_paragraphs("doc", [h[:60] for h, _ in HIGHLIGHTS],
+                          [6, 5, 4, 3, 2, 1, 0])
+    assert fake.bullet_count() == 0
+
+
+def test_a_mixed_block_keeps_exactly_the_bullets_it_had():
+    fake = FakeDocs(HIGHLIGHTS, bulleted=(0, 1, 2))
+    db = make_db(fake)
+    db.reorder_paragraphs("doc", [h[:60] for h, _ in HIGHLIGHTS],
+                          [3, 4, 5, 6, 0, 1, 2])
+    assert fake.bullet_count() == 3

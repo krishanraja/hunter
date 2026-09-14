@@ -40,6 +40,11 @@ class MasterFacts:
     cv_summary_count: int = 1  # how many paragraphs PROFESSIONAL SUMMARY spans
     cv_highlights: list[str] = field(default_factory=list)
     cv_master_text: str = ""   # the haystack voicegate traces generated prose against
+    # Bold phrases from the SUMMARY SECTION ONLY. cv_bold is the whole document, and
+    # carrying that over bolded "Captify" and "18" inside the generated summary
+    # because those phrases are bold elsewhere in the CV. Replacing the summary only
+    # licenses preserving the summary's own convention.
+    cv_summary_bold: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -132,6 +137,8 @@ def read_master_facts(db: DocBuild) -> MasterFacts:
     summary_span = [pp for pp in cv_paras[summary_idx + 1:next_heading]
                     if pp["text"].strip()]
     summary_count = len(summary_span) or 1
+    summary_bold = [r["text"].strip() for pp in summary_span for r in pp["runs"]
+                    if r["bold"] and r["text"].strip()]
 
     # CAREER HIGHLIGHTS, in the master's order. Canon 9.12 says reorder them per
     # role and never add one, so the text is captured and only the order moves.
@@ -161,6 +168,7 @@ def read_master_facts(db: DocBuild) -> MasterFacts:
         competency_sep=sep,
         cv_summary_p1=p1["text"].strip(),
         cv_summary_count=summary_count,
+        cv_summary_bold=summary_bold,
         cv_highlights=highlights,
         cv_master_text=cv_text,
         cv_headings_present=headings_ok,
@@ -189,8 +197,23 @@ def _unique_title(db: DocBuild, base: str, parent_id: str, role_slug: str,
     dated = f"{with_slug}_{stamp}"
     if not db.find_by_name(dated, parent_id):
         return dated
-    raise BuildError(f"title collision even with the role slug and today's date: "
-                     f"{dated!r}; needs human review")
+    # A SECOND failure on the same day used to be fatal. build_package is not
+    # atomic: it builds the letter, then the CV, so anything that raises in the CV
+    # leaves the letter behind, and the retry has nowhere to land. That happened
+    # three times in a row on the first live Harvey build. The docstring above
+    # already recorded the same shape for Cohere on 2026-09-07, patched one level
+    # deep; this is the next level.
+    #
+    # The suffix disambiguates same-day rebuilds. It is NOT a CV version number,
+    # which canon 9.12 forbids: the master is versioned, per-role copies are not,
+    # and this counts attempts at one role on one day.
+    for attempt in range(2, 21):
+        candidate = f"{dated}_{attempt:02d}"
+        if not db.find_by_name(candidate, parent_id):
+            return candidate
+    raise BuildError(
+        f"twenty copies of {dated!r} already exist; something is retrying in a "
+        f"loop, so refusing to add another. Needs human review.")
 
 
 def slugify(text: str) -> str:
@@ -226,6 +249,23 @@ def build_letter(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
     return doc_id, report
 
 
+_MONEY_PHRASE = re.compile(
+    r"\$\s?\d[\d,.]*\s*[KkMmBb]?(?:\s+(?:to|and)\s+\$?\s?\d[\d,.]*\s*[KkMmBb]?)?"
+    r"(?:\s+ARR)?|\d[\d,.]*\s*%(?:\s+EBITDA)?")
+
+
+def _summary_bold_targets(text: str) -> list[str]:
+    """The money and percentage phrases in a generated summary, which is what the
+    master bolds. Derived from the text so nothing is bolded that is not there."""
+    out, seen = [], set()
+    for m in _MONEY_PHRASE.finditer(text or ""):
+        frag = m.group(0).strip()
+        if frag and frag not in seen:
+            seen.add(frag)
+            out.append(frag)
+    return out
+
+
 def build_cv(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
              company: str, title: str, cv_blocks: dict) -> tuple[str, VerifyReport]:
     """The generated summary replaces the WHOLE summary span. The approved block
@@ -237,8 +277,25 @@ def build_cv(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
                               config.CV_FOLDER_ID, slugify(title))
     doc_id = db.copy_master(config.CV_MASTER_ID, doc_title, config.CV_FOLDER_ID)
     if generated and facts.cv_summary_count > 1:
+        # Canon 9.12: numbers are bold inside the prose, keep the bolding when
+        # tailoring. The master bolds a phrase in summary paragraph 2, so the
+        # replacement is explicitly allowed and the convention is reapplied to the
+        # numbers in the new text rather than lost with the old words.
+        # The money phrases in the new prose, plus any phrase the master bolded in
+        # ITS OWN SUMMARY that survives verbatim into the new text. The master bolds
+        # "14-agent autonomous AI operating system" there and the generated summary
+        # still says it, so dropping that bold is a real loss, which the package
+        # verifier caught on the first live build. Scoped to the summary because the
+        # whole-document list also bolds employer names like "Captify".
+        bold = _summary_bold_targets(generated)
+        for frag in facts.cv_summary_bold:
+            frag = frag.strip()
+            if frag and frag in generated and frag not in bold:
+                bold.append(frag)
+        bold = sorted(set(bold), key=lambda x: generated.index(x))
         db.replace_paragraph_block(doc_id, facts.cv_summary_p1[:60],
-                                   facts.cv_summary_count, generated)
+                                   facts.cv_summary_count, generated,
+                                   allow_styled=True, bold_substrings=bold)
     else:
         db.set_unstyled_paragraph(doc_id, facts.cv_summary_p1[:60], summary_text)
     anchor = facts.competency_sep.join(facts.cv_competencies[:2])

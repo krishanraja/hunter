@@ -27,6 +27,18 @@ DRIVE = "https://www.googleapis.com/drive/v3/files"
 DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 
 
+def _coalesce(ranges):
+    """Merge touching or overlapping (start, end) pairs, so a block of bullets is
+    created as one list rather than several adjacent ones."""
+    out = []
+    for start, end in sorted(ranges):
+        if out and start <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], end))
+        else:
+            out.append((start, end))
+    return out
+
+
 class DocBuild:
     def __init__(self, access_token: str | Callable[[], str]):
         self._token = access_token
@@ -143,14 +155,24 @@ class DocBuild:
             {"insertText": {"location": {"index": target["start"]}, "text": new_text}},
         ])
 
-    def replace_paragraph_block(self, doc_id, first_anchor, count, new_text):
+    def replace_paragraph_block(self, doc_id, first_anchor, count, new_text, *,
+                                allow_styled=False, bold_substrings=()):
         """Replace `count` consecutive paragraphs, starting at the one matching
         first_anchor, with a single block of text.
 
         Used for the PROFESSIONAL SUMMARY, where swapping only the first of three
         paragraphs left the master's own two behind and shipped a CV in two
-        registers. Refuses if ANY paragraph in the span carries a bold run, so
-        this can never be pointed at the employer entries or the highlights.
+        registers.
+
+        By default it REFUSES if any paragraph in the span carries a bold run, so
+        it can never be pointed at the employer entries or the highlights by
+        accident. Krish's master bolds "14-agent autonomous AI operating system"
+        in summary paragraph 2, which tripped that guard on the first real build.
+        Replacing the summary is deliberate, and canon 9.12 says numbers stay bold
+        inside the prose, so the caller acknowledges the styled span with
+        allow_styled and passes the substrings to bold in the NEW text. The old
+        runs are gone because the old words are gone; the convention is carried
+        over rather than lost.
 
         new_text may contain newlines; each becomes its own paragraph.
         """
@@ -167,10 +189,12 @@ class DocBuild:
                 f"needed {count}")
         for p in span:
             styled = [r for r in p["runs"] if r["bold"] and r["text"].strip()]
-            if styled:
+            if styled and not allow_styled:
                 raise RuntimeError(
                     f"refusing to replace the block: paragraph "
-                    f"{p['text'][:40]!r} carries {len(styled)} bold run(s)")
+                    f"{p['text'][:40]!r} carries {len(styled)} bold run(s). Pass "
+                    f"allow_styled=True only where the replacement is deliberate, "
+                    f"with bold_substrings for the new text.")
         start = span[0]["start"]
         end = span[-1]["end"] - 1  # keep the final paragraph mark
         self.batch(doc_id, [
@@ -178,6 +202,34 @@ class DocBuild:
                                               "endIndex": end}}},
             {"insertText": {"location": {"index": start}, "text": new_text}},
         ])
+        # Carry the master's convention onto the new prose, then prove it landed.
+        # Drop any target contained in a longer one: bolding "$55M" and then
+        # "$55M automated marketplace" merges them into a single run, after which
+        # the narrower target no longer exists as a run and the check below would
+        # report a loss that did not happen. Widest phrase wins.
+        candidates = [b for b in bold_substrings if b and b in new_text]
+        wanted = [b for b in candidates
+                  if not any(b != other and b in other for other in candidates)]
+        if wanted:
+            reqs = []
+            for frag in wanted:
+                at = new_text.index(frag)
+                reqs.append({"updateTextStyle": {
+                    "range": {"startIndex": start + at,
+                              "endIndex": start + at + len(frag)},
+                    "textStyle": {"bold": True}, "fields": "bold"}})
+            self.batch(doc_id, reqs)
+            after = self.get(doc_id)
+            # Containment, not equality: Docs may merge or split runs around the
+            # applied ranges, so what matters is that the phrase IS bold, not that
+            # it is exactly one run.
+            bold_text = " \n ".join(
+                r["text"] for p in self.paragraphs(after) for r in p["runs"]
+                if r["bold"] and r["text"].strip())
+            missing = [f for f in wanted if f.strip() not in bold_text]
+            if missing:
+                raise RuntimeError(
+                    f"bold did not land on {missing!r} in the replaced block")
         return len(span)
 
     def reorder_paragraphs(self, doc_id, anchors, order):
@@ -214,13 +266,19 @@ class DocBuild:
         captured = []
         for p in found:
             text = p["text"]
+            # Bullets matter as much as bold. insertText creates PLAIN paragraphs,
+            # so the first real Harvey build reordered the highlights correctly and
+            # silently stripped the bullet from all seven; the package verifier
+            # caught it as "expected 26 bullets, found 19". Capture the flag and
+            # restore it, then assert it came back.
             bolds = []
             for r in p["runs"]:
                 if r["bold"] and r["text"].strip():
                     rel_start = r["start"] - p["start"]
                     bolds.append((rel_start, rel_start + len(r["text"]),
                                   r["text"]))
-            captured.append({"text": text, "bolds": bolds})
+            captured.append({"text": text, "bolds": bolds,
+                             "bullet": bool(p["bullet"])})
         expected_bold = sorted(b[2].strip() for c in captured for b in c["bolds"])
 
         start = found[0]["start"]
@@ -233,30 +291,56 @@ class DocBuild:
             {"insertText": {"location": {"index": start}, "text": payload}},
         ])
 
-        # Re-apply bold at the new offsets, computed from the payload we built.
+        # Re-apply bold AND the bullet at the new offsets, computed from the
+        # payload we built.
         reqs = []
+        bullet_ranges = []
         cursor = start
         for i in order:
             cap = captured[i]
             body = cap["text"]
+            length = len(body if body.endswith("\n") else body + "\n")
             for rel_start, rel_end, _ in cap["bolds"]:
                 reqs.append({"updateTextStyle": {
                     "range": {"startIndex": cursor + rel_start,
                               "endIndex": cursor + rel_end},
                     "textStyle": {"bold": True},
                     "fields": "bold"}})
-            cursor += len(body if body.endswith("\n") else body + "\n")
+            if cap["bullet"]:
+                bullet_ranges.append((cursor, cursor + length))
+            cursor += length
+        # One contiguous run of bullets is the normal case (a highlight block), so
+        # coalesce rather than issuing one request per paragraph: createParagraphBullets
+        # on adjacent ranges separately can renumber them into different lists.
+        for rng_start, rng_end in _coalesce(bullet_ranges):
+            reqs.append({"createParagraphBullets": {
+                "range": {"startIndex": rng_start, "endIndex": rng_end},
+                "bulletPreset": "BULLET_DISC_CIRCLE_SQUARE"}})
         if reqs:
             self.batch(doc_id, reqs)
 
-        # The assertion that earns the operation.
+        # The assertion that earns the operation. It must look ONLY at the
+        # paragraphs that moved: a substring filter over the whole document also
+        # picks up the generated summary's own bolded numbers, which share phrases
+        # with the highlights, and reports a loss that did not happen. Found on the
+        # first real Harvey build.
         after = self.get(doc_id)
-        got_bold = sorted(
-            r["text"].strip()
-            for p in self.paragraphs(after)
-            for r in p["runs"]
-            if r["bold"] and r["text"].strip()
-            and any(r["text"].strip() in c["text"] for c in captured))
+        wanted_texts = {c["text"].strip() for c in captured}
+        moved = [p for p in self.paragraphs(after)
+                 if p["text"].strip() in wanted_texts]
+        if len(moved) != len(captured):
+            raise RuntimeError(
+                f"after reorder, found {len(moved)} of {len(captured)} moved "
+                f"paragraphs; refusing to assert against a partial block")
+        expected_bullets = sum(1 for c in captured if c["bullet"])
+        got_bullets = sum(1 for p in moved if p["bullet"])
+        if got_bullets != expected_bullets:
+            raise RuntimeError(
+                f"reorder lost bullet formatting: expected {expected_bullets} "
+                f"bulleted paragraphs, got {got_bullets}")
+        got_bold = sorted(r["text"].strip()
+                          for p in moved for r in p["runs"]
+                          if r["bold"] and r["text"].strip())
         if got_bold != expected_bold:
             raise RuntimeError(
                 "reorder lost or moved bold runs; expected "

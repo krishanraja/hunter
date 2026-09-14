@@ -349,7 +349,14 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
         try:
             resp = client.messages.create(
                 model=model,
-                max_tokens=2000,
+                # 2000 was enough when this returned a decision object only.
+                # Generating the summary and the hook pushed the response past it,
+                # and the truncated JSON surfaced as "response was not valid JSON",
+                # which sent the first live Harvey build silently to the block
+                # fallback. rationale.py already checks stop_reason for this; the
+                # check below now does too, so the cause is reported rather than
+                # guessed at.
+                max_tokens=16000,
                 messages=[{"role": "user", "content": content}],
                 output_config={"format": {"type": "json_schema",
                                           "schema": TAILOR_SCHEMA}},
@@ -359,6 +366,10 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
             continue
         if resp.stop_reason == "refusal":
             last_fails = ["model refused the request"]
+            continue
+        if resp.stop_reason == "max_tokens":
+            last_fails = [f"response hit the output cap ({resp.usage.output_tokens} "
+                          f"tokens) and is truncated; raise max_tokens"]
             continue
         text = next((b.text for b in resp.content if b.type == "text"), "")
         try:
