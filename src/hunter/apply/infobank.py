@@ -46,6 +46,24 @@ _STATUS_PATTERNS = (
 # Section headers in the Info Bank, keyed by the letter used on the tab.
 _SECTION_RE = re.compile(r"^SECTION\s+([A-J])\b", re.I)
 
+# Some answer cells carry an em dash, for example the education row reads
+# "MA Design Strategy (Distinction) \u2014 University for the Creative Arts". That
+# would break Krish's own rule the moment it reached a form, and notify.py
+# refuses to send an email containing one, so it would block the application
+# entirely. Profile's voice rule says to use hyphens, semicolons or brackets, so
+# the substitution follows his own instruction rather than inventing one. The
+# original is preserved on the entry so bank-check can report the cells to fix.
+EM_DASH = "\u2014"
+
+
+def strip_em_dash(text: str) -> str:
+    """An em dash between words becomes a comma, which reads correctly in the
+    cells that actually carry one ("MA Design Strategy (Distinction), University
+    for the Creative Arts"). A trailing one becomes a hyphen."""
+    out = (text or "")
+    out = re.sub(r"\s*" + EM_DASH + r"\s*(?=\S)", ", ", out)
+    return out.replace(EM_DASH, "-")
+
 
 def parse_status(cell: str) -> str:
     low = (cell or "").strip().lower()
@@ -71,6 +89,11 @@ class BankEntry:
     value: str
     status: str
     notes: str = ""
+    raw_value: str = ""       # before em dash substitution
+
+    @property
+    def had_em_dash(self) -> bool:
+        return bool(self.raw_value) and self.raw_value != self.value
 
     @property
     def usable(self) -> bool:
@@ -123,6 +146,13 @@ class AnswerBank:
     def sensitive(self) -> list[BankEntry]:
         return [e for e in self.entries.values() if e.status == SENSITIVE]
 
+    @property
+    def em_dash_cells(self) -> list[BankEntry]:
+        """Cells whose stored value breaks the no-em-dash rule. hunter substitutes
+        on read so an application is never blocked, and reports them so the sheet
+        can be fixed at source."""
+        return [e for e in self.entries.values() if e.had_em_dash]
+
 
 def _rows(values: list[list], width: int = 4) -> list[list[str]]:
     out = []
@@ -147,9 +177,10 @@ def parse_info_bank(values: list[list]) -> dict[str, BankEntry]:
         status = parse_status(cells[2])
         if status == UNKNOWN and not cells[1].strip():
             continue  # a header or a legend line, not an answer row
+        raw = cells[1].strip()
         entries[norm_label(first)] = BankEntry(
-            section=section, field_name=first, value=cells[1].strip(),
-            status=status, notes=cells[3].strip())
+            section=section, field_name=first, value=strip_em_dash(raw),
+            status=status, notes=cells[3].strip(), raw_value=raw)
     return entries
 
 

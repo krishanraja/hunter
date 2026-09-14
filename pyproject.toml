@@ -7,10 +7,16 @@ dependencies = [
     "requests>=2.31",
     "google-auth>=2.28",
     "anthropic>=1.0",
+    # One upload slot means one attachment carrying both documents. Concatenating
+    # finished PDFs cannot disturb formatting, which building a combined Doc could.
+    "pypdf>=4.2",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "responses>=0.25"]
+# Submission drives the real form. Installed only where a submit actually runs,
+# so the scheduled sourcing and packaging runs stay lean.
+browser = ["playwright>=1.44"]
 
 [build-system]
 requires = ["setuptools>=68"]

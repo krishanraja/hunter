@@ -2659,6 +2659,16 @@ def cmd_bank_check() -> int:
         note = f"  ({e.notes})" if e.notes else ""
         print(f"  {e.section} {e.field_name}{note}")
 
+    dashes = bank.em_dash_cells
+    print(f"\ncells whose stored value carries an em dash: {len(dashes)}")
+    for e in sorted(dashes, key=lambda x: x.field_name):
+        print(f"  {e.field_name}")
+        print(f"    stored:    {e.raw_value[:90]}")
+        print(f"    used as:   {e.value[:90]}")
+    if dashes:
+        print("  hunter substitutes on read so an application is never blocked; "
+              "fix the cells to stop the substitution.")
+
     sens = bank.sensitive
     print(f"\nnever auto filled, Krish's to give: {len(sens)}")
     for e in sorted(sens, key=lambda x: x.field_name):

@@ -720,3 +720,52 @@ def test_consent_without_a_bank_row_still_refuses():
     got = Resolver(build_bank()).resolve(
         field("Applicant Arbitration Agreement Acknowledgement", kind="consent"))
     assert isinstance(got, Unanswered) and "Krish" in got.reason
+
+
+# ---------------- em dashes in the bank's own cells ----------------
+
+def test_an_em_dash_in_a_stored_answer_is_substituted_not_shipped():
+    """The education row really does carry one. Left alone it would break Krish's
+    own rule on a live application, and notify.py refuses to send an email
+    containing one, so it would block the application outright."""
+    from hunter.apply.infobank import strip_em_dash
+    em = "\u2014"
+    raw = f"MA Design Strategy (Distinction) {em} University for the Creative Arts"
+    out = strip_em_dash(raw)
+    assert em not in out
+    assert out == ("MA Design Strategy (Distinction), University for the "
+                   "Creative Arts")
+
+
+def test_clean_text_is_left_exactly_alone():
+    from hunter.apply.infobank import strip_em_dash
+    for text in ("Krish Raja", "+1 (347) 665-8225", "$250K+ base", ""):
+        assert strip_em_dash(text) == text
+
+
+def test_the_bank_reports_which_cells_need_fixing_at_source():
+    em = "\u2014"
+    rows = [r[:] for r in INFO_ROWS]
+    rows.append(["Highest degree completed",
+                 f"MA Design Strategy {em} University for the Creative Arts",
+                 "\U0001F7E2 LOCKED", ""])
+    tabs = {"Application Info Bank": rows, "Profile": PROFILE_ROWS,
+            "Interview Answers": INTERVIEW_ROWS}
+    bank = load_bank(lambda tab: tabs[tab])
+    offenders = bank.em_dash_cells
+    assert [e.field_name for e in offenders] == ["Highest degree completed"]
+    assert em in offenders[0].raw_value, "the original is kept for reporting"
+    assert em not in offenders[0].value, "the used value is clean"
+
+
+def test_a_resolved_answer_never_carries_an_em_dash():
+    em = "\u2014"
+    rows = [r[:] for r in INFO_ROWS]
+    rows.append(["Highest degree completed", f"MA Design Strategy {em} UCA",
+                 "\U0001F7E2 LOCKED", ""])
+    tabs = {"Application Info Bank": rows, "Profile": PROFILE_ROWS,
+            "Interview Answers": INTERVIEW_ROWS}
+    bank = load_bank(lambda tab: tabs[tab])
+    got = Resolver(bank).resolve(
+        field("University or School Attended", kind="short_text"))
+    assert isinstance(got, Answer) and em not in got.value
