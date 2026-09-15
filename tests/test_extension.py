@@ -136,7 +136,43 @@ def test_the_extension_watches_for_the_submit():
     body = code_only(RUN)
     assert "SUBMITTED_MARKS" in body
     assert "/submitted" in body
-    assert "location.href !== startedAt" in body, "leaving the form counts too"
+
+
+def test_only_the_form_saying_so_counts_as_a_submission():
+    """A navigation is not evidence.
+
+    An earlier version also treated any move off the /application path as a
+    submission, so clicking back to the job description recorded an application
+    that was never sent: the role moved to Applied on his sheet, the receipt email
+    claimed the form had acknowledged it, and hunter then skipped his real APPROVE
+    for that role because the token already read submitted.
+
+    Nothing is lost. A real submission that only redirects is caught when the new
+    page carries one of the marks, or by hunter's watcher on the employer's own
+    "thanks for applying" email, which is better evidence than anything a script
+    in the page can see.
+    """
+    body = code_only(RUN)
+    assert "location.href !== startedAt" not in body
+    assert "startedAt" not in body, "the navigation test is gone, not commented out"
+    # And the evidence quotes the words it matched, so the receipt email can quote
+    # something real rather than asserting a press nobody observed.
+    assert "SUBMITTED_MARKS.find" in body
+    assert "the form said" in body
+
+
+def test_a_refused_write_is_not_reported_as_success():
+    """fetch does not throw on a 4xx or 5xx, so the previous version painted the
+    green "Hunter has it" banner over a write that never happened. That is the
+    same lie as a silent failure, pointing the other way."""
+    body = code_only(RUN)
+    post = body[body.index("'/submitted'"):]
+    assert "res.ok" in post, "the status is read"
+    assert "res.status === 410" in post, "a replaced application says so"
+    # The green banner cannot be reached without passing the status check.
+    ok_at = post.index("res.ok")
+    green_at = post.index("Hunter has it")
+    assert ok_at < green_at
 
 
 def test_it_watches_without_pressing_anything():

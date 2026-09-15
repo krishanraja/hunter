@@ -133,6 +133,30 @@ Fixtures are written with `json.dump(..., ensure_ascii=True)`. The em dash guard
 scans every `.json` in the tree with no exemption, and the live Aptos Labs
 response really does contain em dashes.
 
+## Is it actually working
+
+```
+python -m hunter.run doctor            # everything, including the live endpoints
+python -m hunter.run doctor --offline  # just the git and version checks
+```
+
+`pytest` checks this repository against itself. `doctor` asks a different
+question: does what is DEPLOYED agree with what is built. It reads only, writes
+nothing, and is safe to run while an application is open.
+
+It exists because three drifts that cost most of a day all passed the test suite
+clean:
+
+- a fix sat on a branch while `main` was behind it, and `main` is where the
+  browser extension Krish downloads comes from
+- the scheduled workflow reads `.github/workflows/` from `main`, so a command that
+  existed only on a branch never ran and his APPROVE sat unread
+- the control-center endpoint the extension POSTs to was written, committed
+  locally and never pushed, so the sheet kept saying Not applied on roles he had
+  applied to
+
+See `CLAUDE.md` for the rules those failures produced.
+
 ## Tests
 
 ```
