@@ -152,3 +152,56 @@ def test_it_gives_up_watching_rather_than_running_for_ever():
 def test_a_failure_to_report_is_told_to_him():
     """Silently failing to record it is the same silence in a new place."""
     assert "could not be told" in RUN
+
+
+def test_the_manifest_version_matches_the_payload_floor():
+    """The two numbers that decide whether Krish is told his copy is stale.
+
+    payload.MIN_EXTENSION is the oldest build that can fill what hunter now
+    sends. If the shipped manifest were below it, every freshly downloaded
+    extension would open every application under an out-of-date warning; if the
+    manifest were raised without the floor, a stale copy would stay silent. They
+    move together.
+    """
+    from hunter.apply import payload as P
+    shipped = json.loads((EXT / "manifest.json").read_text())["version"]
+    assert shipped == P.MIN_EXTENSION
+
+
+def test_a_stale_extension_says_so_rather_than_claiming_success():
+    """The failure this exists to stop: Krish opened an application whose payload
+    carried his equal opportunity answers, his extension predated the code that
+    reads them, the section came up empty, and the banner said every field was
+    filled. A version he cannot see is a silent failure."""
+    body = code_only(RUN)
+    assert "getManifest()" in body            # it knows its own version
+    assert "needs_extension" in body          # and what the payload requires
+    assert "older(MINE" in body               # and compares them
+    # The warning has to reach him before the reassurance does.
+    stale = body.index("older(MINE, payload.needs_extension)")
+    green = body.index("Filled all ")
+    assert stale < green
+    # And it must say what to do, not merely that something is wrong.
+    assert "main.zip" in RUN
+    assert "chrome://extensions" in RUN
+    assert "reload" in RUN.lower()
+
+
+def test_the_version_compare_gets_the_awkward_cases_right():
+    """1.10.0 is newer than 1.9.0, and a missing segment is a zero. Run the real
+    function rather than a description of it, offline, through node."""
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    fn = re.search(r"function older\(mine, need\) \{.*?\n  \}", RUN, re.S)
+    assert fn, "older() is no longer in run.js"
+    cases = [("1.0.0", "1.1.0", True), ("1.1.0", "1.1.0", False),
+             ("1.2.0", "1.1.0", False), ("1.9.0", "1.10.0", True),
+             ("1.10.0", "1.9.0", False), ("1.1", "1.1.0", False),
+             ("1", "1.1.0", True), ("", "1.1.0", True)]
+    script = fn.group(0).replace("\n  ", "\n") + "\n" + "\n".join(
+        f"if (older({m!r}, {n!r}) !== {str(w).lower()}) "
+        f"throw new Error({m!r} + ' vs ' + {n!r});" for m, n, w in cases)
+    subprocess.run([node, "-e", script], check=True, timeout=30)

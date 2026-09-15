@@ -43,6 +43,29 @@
     return el;
   }
 
+  // Chrome never updates an unpacked extension, so this folder is frozen at
+  // whatever Krish last downloaded while hunter moves on. The payload states the
+  // oldest build that can fill it; below that, a green "filled everything"
+  // banner is a lie, which is the exact failure that left an equal opportunity
+  // section empty and looked like success.
+  function older(mine, need) {
+    const a = String(mine || '0').split('.').map(Number);
+    const b = String(need || '0').split('.').map(Number);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const x = a[i] || 0, y = b[i] || 0;
+      if (x !== y) return x < y;
+    }
+    return false;
+  }
+
+  const MINE = (chrome.runtime.getManifest() || {}).version || '0';
+  const STALE =
+    'Your Hunter extension is version ' + MINE + ' and this application needs ' +
+    '%NEED%. It has filled what it can, and parts of this form are probably ' +
+    'empty. Download https://github.com/krishanraja/hunter/archive/refs/heads/' +
+    'main.zip, extract it over your hunter folder, then press the reload arrow ' +
+    'on the Hunter card at chrome://extensions and reopen this link.';
+
   const cap = capability();
   if (!cap) return;
 
@@ -78,7 +101,10 @@
 
   const out = await window.__hunterFill(payload);
   const done = out.filled.length + out.files.length;
-  if (out.required_missed.length) {
+  const stale = older(MINE, payload.needs_extension);
+  if (stale) {
+    banner(STALE.replace('%NEED%', payload.needs_extension), 'bad');
+  } else if (out.required_missed.length) {
     banner('Filled ' + done + '. DO THESE YOURSELF before submitting: ' +
            out.required_missed.join('; '), 'bad');
   } else if (out.missed.length) {

@@ -23,6 +23,20 @@ from .submit import CHOICE_KINDS, TYPEAHEAD_KINDS, driver_for
 # quietly leaving it blank.
 FILLABLE = ("text", "choice", "typeahead", "file")
 
+# The oldest extension build that can fill everything this payload carries.
+#
+# Chrome does not update an unpacked extension, so the copy in Krish's folder is
+# frozen at whatever he last downloaded while this code moves on. That cost a
+# real round: the demographics block shipped here, his extension predated the
+# code that reads it, and the form came up with the equal opportunity section
+# empty under a green banner saying every field was filled. A version he cannot
+# see is a silent failure, so the payload states the floor and the extension
+# says out loud when it is below it.
+#
+# Raise this whenever the extension gains an ability a payload depends on, and
+# raise extension/manifest.json to match.
+MIN_EXTENSION = "1.1.0"
+
 # Playwright's own pseudo-classes. Real to Playwright, a syntax error to
 # document.querySelectorAll, so they are dead weight in a payload a browser has
 # to read. The extension finds those controls by their label instead.
@@ -137,6 +151,7 @@ def build(plan: FillPlan, *, attachments: dict[str, bytes] | None = None,
                        "selectors": selectors, "required": bool(f.required)})
     return {
         "version": 1,
+        "needs_extension": MIN_EXTENSION,
         "url": driver.apply_url(),
         "company": plan.company,
         "role": plan.role,
