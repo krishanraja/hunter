@@ -3113,6 +3113,65 @@ def cmd_approvals_drain(apply: bool = False) -> int:
     return 0
 
 
+def cmd_submit(token: str, confirm: bool = False) -> int:
+    """Fill one approved application. Press submit only with --confirm.
+
+    Without --confirm it fills the real form on the real site and stops, which is
+    how the first live one gets checked: read the screenshot, confirm every field
+    and that the button is untouched, then run it again with --confirm.
+    """
+    from .apply import approval, merge, submit as submit_mod
+    from .apply.audit import ATT_CV
+    from .docbuild import DocBuild
+
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    row = approval.get_row(cfg, token)
+    if not row:
+        print(f"no approval row for token {token!r}")
+        return 1
+    rows = db_get(cfg, "hunter_seen_roles",
+                  {"select": "*", "job_id": f"eq.{row['job_id']}", "limit": "1"})
+    if not rows:
+        print(f"no role row for {row['job_id']}")
+        return 1
+
+    plan, au, role = build_fill_plan(cfg, sheet, rows[0])
+    db = DocBuild(GoogleOAuth(cfg).access_token())
+    cv_id = (rows[0].get("package_cv_url") or "").split("/d/")[-1].split("/")[0]
+    letter_id = (rows[0].get("package_letter_url") or "").split("/d/")[-1].split("/")[0]
+    attachments: dict[str, bytes] = {}
+    if cv_id and letter_id:
+        cv_pdf, letter_pdf = db.export_pdf(cv_id), db.export_pdf(letter_id)
+        if au.attachment_style == ATT_CV:
+            # One slot, one file, letter first: the same rule the approval email
+            # told him it would follow.
+            attachments["file_resume"] = merge.merge_pdfs(letter_pdf, cv_pdf)
+        else:
+            attachments["file_resume"] = cv_pdf
+            attachments["file_cover"] = letter_pdf
+
+    print(f"{role.company} {role.title}\n  {plan.ats} {plan.slug}/{plan.posting_id}"
+          f"\n  {len(plan.fields)} fields, {len(plan.blocking)} blocking, "
+          f"attachments: {', '.join(attachments) or 'none'}")
+    try:
+        out = submit_mod.submit(cfg, token, plan, attachments=attachments,
+                                confirm=confirm)
+    except submit_mod.SubmitBlocked as e:
+        print(f"\nREFUSED: {e}")
+        return 1
+    print(f"\nstate: {out['state']}"
+          + (f"  ({out['reason']})" if out.get("reason") else ""))
+    if out.get("filled"):
+        print(f"  filled: {', '.join(out['filled'][:8])}")
+    if out.get("missed"):
+        print(f"  NOT filled: {', '.join(out['missed'][:8])}")
+    if out["state"] == "filled":
+        print(f"\nNothing was sent. Re-run with --confirm to press submit:"
+              f"\n  python -m hunter.run submit --token {token} --confirm")
+    return 0 if out["state"] in ("filled", approval.SUBMITTED) else 1
+
+
 def cmd_gtm_seed(apply: bool = False) -> int:
     """Write the AI-native GTM evidence key. Dry run by default.
 
@@ -3246,6 +3305,16 @@ def main(argv: list[str]) -> int:
         return cmd_bank_seed(apply="--apply" in argv)
     if cmd == "gtm-seed":
         return cmd_gtm_seed(apply="--apply" in argv)
+    if cmd == "submit":
+        tok = ""
+        if "--token" in argv:
+            i = argv.index("--token")
+            if i + 1 < len(argv):
+                tok = argv[i + 1]
+        if not tok:
+            print("usage: python -m hunter.run submit --token X [--confirm]")
+            return 2
+        return cmd_submit(tok, confirm="--confirm" in argv)
     if cmd == "approvals-drain":
         return cmd_approvals_drain(apply="--apply" in argv)
     if cmd == "approvals":
@@ -3285,7 +3354,7 @@ def main(argv: list[str]) -> int:
           f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
           f"bank-check, audit-forms [--apply] [--limit N], simulate [--send], bank-seed [--apply], "
           "gtm-seed [--apply], approvals [--apply] [--job-id X], "
-          "approvals-drain [--apply], "
+          "approvals-drain [--apply], submit --token X [--confirm], "
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2
