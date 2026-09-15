@@ -95,7 +95,16 @@ JD_OVERLAP_THRESHOLD = 0.5
 SUMMARY_MIN_CHARS = 350
 SUMMARY_MAX_CHARS = 1100
 HOOK_MIN_CHARS = 150
-HOOK_MAX_CHARS = 650
+# Calibrated from the five approved blocks, which run 271 to 330 characters and
+# all fit on page one of the master letter. 650 did not: the first live package
+# generated a 477-character hook and the letter spilled to a second page carrying
+# nothing but the contact footer, against canon 9.12's "One page." build.py still
+# measures the rendered PDF, because a character budget is only a proxy and the
+# master letter can move again.
+HOOK_MAX_CHARS = 380
+# What the ladder in build.build_letter trims a long hook back to before giving
+# up on generation and shipping the approved block.
+HOOK_TRIM_CHARS = 300
 
 
 class TailorError(RuntimeError):

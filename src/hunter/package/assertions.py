@@ -26,17 +26,26 @@ CV_HEADLINE = "AI-Native Commercial Strategy Leader"
 LETTER_LOCKED_LINE = "nine figures rarely ship AI into production"
 
 
+# Canon 9.12: "One page." for the cover letter. The CV has no page rule in canon,
+# so its count is reported and never asserted, on the same principle as the word
+# count above.
+LETTER_PAGE_LIMIT = 1
+
+
 @dataclass
 class VerifyReport:
     ok: bool
     failures: list[str] = field(default_factory=list)
     body_word_count: int = 0
+    # 0 means the artifact was not rendered, not that it has no pages.
+    page_count: int = 0
 
 
 def verify(db, doc_id, *, master_bold: list[str], kind: str,
            cut_bullet_text: str | None = None,
            expect_bullets: int | None = None,
-           expect_present: list[str] | None = None) -> VerifyReport:
+           expect_present: list[str] | None = None,
+           page_count: int = 0) -> VerifyReport:
     """Return a VerifyReport. db is a DocBuild; doc_id the finished copy."""
     doc = db.get(doc_id)
     paras = db.paragraphs(doc)
@@ -98,6 +107,9 @@ def verify(db, doc_id, *, master_bold: list[str], kind: str,
     if kind == "letter":
         if LETTER_LOCKED_LINE not in full:
             fails.append("A7 locked nine-figures line missing")
+        if page_count > LETTER_PAGE_LIMIT:
+            fails.append(f"A9 letter renders {page_count} pages, canon 9.12 "
+                         f"requires {LETTER_PAGE_LIMIT}")
     elif kind == "cv":
         if CV_HEADLINE not in full:
             fails.append("A7 headline missing or altered")
@@ -108,4 +120,5 @@ def verify(db, doc_id, *, master_bold: list[str], kind: str,
         fails.append(f"A0 unknown kind {kind!r}")
 
     return VerifyReport(ok=not fails, failures=fails,
-                        body_word_count=len(full.split()))
+                        body_word_count=len(full.split()),
+                        page_count=page_count)

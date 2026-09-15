@@ -22,8 +22,9 @@ def build_ok_letter(letter_fixture):
         jd_mirror="",
         hiring_lead="Hiring Team",
     )
-    doc_id, report = build_letter(db, facts, tr, company="Sierra", title="Head of GTM",
-                                  letter_blocks=TEST_LETTER_BLOCKS)
+    doc_id, report, _pdf = build_letter(db, facts, tr, company="Sierra",
+                                        title="Head of GTM",
+                                        letter_blocks=TEST_LETTER_BLOCKS)
     assert report.ok, report.failures
     cut = facts.letter_bullets[tr.letter_bullet_to_cut - 1]
     return db, facts, doc_id, cut

@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 
 from .. import config
 from ..docbuild import DocBuild
-from .assertions import VerifyReport, verify
-from .tailor import TailorResult, assemble_hook
+from .assertions import LETTER_PAGE_LIMIT, VerifyReport, verify
+from .tailor import HOOK_TRIM_CHARS, TailorResult, assemble_hook
 
 COMPETENCY_DOT = "·"  # the middle dot; surrounding spacing is measured
 DELETE_BLOCK_ANCHOR = "DELETE THIS BLOCK"
@@ -220,15 +220,64 @@ def slugify(text: str) -> str:
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", text.lower())).strip("-")
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def trim_hook(text: str, limit: int) -> str:
+    """The longest run of WHOLE sentences from the start of the hook that fits
+    inside `limit`. Whole sentences because a hook cut mid-clause reads as a
+    mistake, and the first sentence is the observation about the company, which
+    is the part worth keeping. Empty when even one sentence will not fit, which
+    tells the caller to go to the approved block instead."""
+    out = ""
+    for piece in _SENTENCE_END.split((text or "").strip()):
+        candidate = (out + " " + piece).strip() if out else piece.strip()
+        if len(candidate) > limit:
+            break
+        out = candidate
+    return out
+
+
+def hook_ladder(tr: TailorResult, letter_blocks: dict, company: str) -> list[tuple[str, str]]:
+    """(hook, label) in the order to try them, best first. The approved block is
+    always last and always present: it is the one hook known to fit on one page,
+    so the ladder can never run out of rungs."""
+    rungs: list[tuple[str, str]] = []
+    generated = (tr.hook or "").strip()
+    if generated:
+        rungs.append((generated, "generated hook"))
+        trimmed = trim_hook(generated, HOOK_TRIM_CHARS)
+        if trimmed and trimmed != generated:
+            rungs.append((trimmed,
+                          f"generated hook trimmed to {len(trimmed)} chars to fit one page"))
+    block = assemble_hook(letter_blocks, tr.block_key, company, tr.jd_mirror)
+    if not rungs or block != rungs[0][0]:
+        rungs.append((block, "approved block hook, generation did not fit one page"))
+    return rungs
+
+
 def build_letter(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
                  company: str, title: str, letter_blocks: dict,
-                 today: datetime.date | None = None) -> tuple[str, VerifyReport]:
+                 today: datetime.date | None = None,
+                 measure_pages: bool = True,
+                 notes: list[str] | None = None
+                 ) -> tuple[str, VerifyReport, bytes | None]:
+    """Returns (doc_id, report, letter PDF bytes or None).
+
+    The PDF is exported here rather than in build_package because canon 9.12's
+    one-page rule can only be checked against the rendered artifact, and a hook
+    that does not fit has to be shrunk before the letter is verified. The bytes
+    come back so build_package reuses them instead of exporting the same document
+    twice.
+    """
     today = today or datetime.date.today()
     date_text = today.strftime("%B %d, %Y").replace(" 0", " ")
+    notes = notes if notes is not None else []
     # The generated hook wins. assemble_hook stays the fallback for when the
-    # voice gate rejected it, which is why the block layer is not removed.
-    hook = (tr.hook or "").strip() or assemble_hook(
-        letter_blocks, tr.block_key, company, tr.jd_mirror)
+    # voice gate rejected it or it does not fit, which is why the block layer is
+    # not removed.
+    rungs = hook_ladder(tr, letter_blocks, company)
+    hook = rungs[0][0]
     doc_title = _unique_title(db, f"KrishRaja_CoverLetter_{company}",
                               config.LETTER_FOLDER_ID, slugify(title))
     doc_id = db.copy_master(config.LETTER_MASTER_ID, doc_title, config.LETTER_FOLDER_ID)
@@ -243,10 +292,36 @@ def build_letter(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
     removed = db.delete_block(doc_id, DELETE_BLOCK_ANCHOR)
     cut_text = facts.letter_bullets[tr.letter_bullet_to_cut - 1]
     removed += db.delete_paragraph(doc_id, cut_text[:40])
+
+    pdf: bytes | None = None
+    pages = 0
+    if measure_pages:
+        from ..apply.merge import page_count
+        # Deletions are done, so the document is now the length it will ship at.
+        # Walk down the ladder in place: each rung swaps the hook paragraph and
+        # re-renders. Shrinking in the same document keeps one doc id and one
+        # URL, which is what the approval email already points at.
+        for i, (candidate, label) in enumerate(rungs):
+            if i:
+                # The master bolds the whole hook paragraph: its
+                # {{COMPANY_SPECIFIC_HOOK}} placeholder run is bold, so the
+                # inserted hook is too. set_unstyled_paragraph refuses a styled
+                # paragraph by design, so the swap goes through the block
+                # replacement with the new hook bolded exactly as the old one was.
+                db.replace_paragraph_block(doc_id, hook[:40], 1, candidate,
+                                           allow_styled=True,
+                                           bold_substrings=(candidate,))
+                notes.append(label)
+                hook = candidate
+            pdf = db.export_pdf(doc_id)
+            pages = page_count(pdf)
+            if pages <= LETTER_PAGE_LIMIT:
+                break
+
     report = verify(db, doc_id, master_bold=facts.letter_bold, kind="letter",
                     cut_bullet_text=cut_text, expect_bullets=3,
-                    expect_present=[hook])
-    return doc_id, report
+                    expect_present=[hook], page_count=pages)
+    return doc_id, report, pdf
 
 
 _MONEY_PHRASE = re.compile(
@@ -323,8 +398,10 @@ def build_package(db: DocBuild, tr: TailorResult, *, company: str, title: str,
     result = PackageResult()
     result.notes.extend(tr.flags)
 
-    letter_id, letter_report = build_letter(db, facts, tr, company=company,
-                                            title=title, letter_blocks=letter_blocks)
+    letter_id, letter_report, letter_pdf = build_letter(
+        db, facts, tr, company=company, title=title,
+        letter_blocks=letter_blocks, measure_pages=export_pdfs,
+        notes=result.notes)
     result.letter_doc_id, result.letter_report = letter_id, letter_report
     result.letter_url = doc_url(letter_id)
 
@@ -339,11 +416,20 @@ def build_package(db: DocBuild, tr: TailorResult, *, company: str, title: str,
         return result
 
     if export_pdfs:
+        from ..apply.merge import page_count
         cv_name = f"KrishRaja_CV_{company}.pdf"
         letter_name = f"KrishRaja_CoverLetter_{company}.pdf"
-        result.cv_pdf_id = db.upload_pdf(cv_name, config.CV_FOLDER_ID, db.export_pdf(cv_id))
-        result.letter_pdf_id = db.upload_pdf(letter_name, config.LETTER_FOLDER_ID,
-                                             db.export_pdf(letter_id))
+        cv_pdf = db.export_pdf(cv_id)
+        result.cv_pdf_id = db.upload_pdf(cv_name, config.CV_FOLDER_ID, cv_pdf)
+        # build_letter already rendered the letter to measure its pages; exporting
+        # it again would be a second render of a document nothing has touched.
+        result.letter_pdf_id = db.upload_pdf(
+            letter_name, config.LETTER_FOLDER_ID,
+            letter_pdf if letter_pdf is not None else db.export_pdf(letter_id))
         result.cv_pdf_url = pdf_url(result.cv_pdf_id)
         result.letter_pdf_url = pdf_url(result.letter_pdf_id)
+        # Reported, never asserted: canon 9.12 sets no page count for the CV, and
+        # a number Krish has not ruled on is his to judge, like the word count.
+        result.notes.append(f"letter {letter_report.page_count} page(s), "
+                            f"CV {page_count(cv_pdf)} page(s)")
     return result
