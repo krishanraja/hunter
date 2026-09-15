@@ -78,4 +78,10 @@ jobs:
       # broken run never reaches the step that can submit an application.
       - name: Read approval replies
         if: steps.cmd.outputs.args == 'drain'
-        run: python -m hunter.run approvals-drain --apply --send
+        # --apply, NOT --send. Pressing submit from here goes through a headless
+        # Chromium in a datacentre, which an invisible bot check scores and
+        # refuses with nothing shown: the first application it pressed was
+        # recorded as submitted and never reached the employer. An APPROVE now
+        # moves the token to approved and waits for `apply-local`, which opens the
+        # filled form in Krish's own browser for him to press.
+        run: python -m hunter.run approvals-drain --apply
