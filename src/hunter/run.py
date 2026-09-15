@@ -2940,7 +2940,22 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
     return plan, au, role
 
 
-def cmd_approvals(apply: bool = False, job_id: str = "") -> int:
+def hunt_url_for(cfg: Config, job_id: str) -> str:
+    """A link that OPENS Control Center on this role.
+
+    Never a link that submits. Mail scanners and link preview bots issue GET
+    requests to every URL in an email, so a one-click send URL can be pressed by a
+    robot before Krish has read the message. The app is authenticated and the send
+    button lives there.
+    """
+    base = (cfg.optional("control_center_url") or "").rstrip("/")
+    if not base:
+        return ""
+    from urllib.parse import quote
+    return f"{base}/#/people?lane=bridges&job={quote(job_id)}"
+
+
+def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -> int:
     """Build and, with --apply, send one approval email per built package.
 
     Dry run by default: it prints the whole application as the email will show it,
@@ -2950,8 +2965,9 @@ def cmd_approvals(apply: bool = False, job_id: str = "") -> int:
     """
     from . import notify
     from .apply import approval, merge
+    from .apply import submit as submit_mod
     from .docbuild import DocBuild
-    from .package.build import doc_url
+    from .package.build import doc_url, slugify
 
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
@@ -2982,20 +2998,55 @@ def cmd_approvals(apply: bool = False, job_id: str = "") -> int:
         plan, au, role = build_fill_plan(cfg, sheet, row, bank=bank)
         token = approval.new_token(row["job_id"])
         attachments: list[tuple[str, bytes]] = []
+        attachments_by_kind: dict[str, bytes] = {}
+        attachment_names: dict[str, str] = {}
         merged_name = ""
         cv_id = (row.get("package_cv_url") or "").split("/d/")[-1].split("/")[0]
         letter_id = (row.get("package_letter_url") or "").split("/d/")[-1].split("/")[0]
         from .apply.audit import ATT_CV
-        if au.attachment_style == ATT_CV and cv_id and letter_id:
-            # One upload slot on the form, so one file: canon's merge order is the
-            # letter first, then the CV.
-            merged_name = merge.merged_name(role.company)
-            attachments.append((merged_name,
-                                merge.merge_pdfs(db.export_pdf(letter_id),
-                                                 db.export_pdf(cv_id))))
+        if cv_id and letter_id:
+            cv_pdf, letter_pdf = db.export_pdf(cv_id), db.export_pdf(letter_id)
+            if au.attachment_style == ATT_CV:
+                # One upload slot on the form, so one file: canon's merge order is
+                # the letter first, then the CV.
+                merged_name = merge.merged_name(role.company)
+                merged = merge.merge_pdfs(letter_pdf, cv_pdf)
+                attachments.append((merged_name, merged))
+                attachments_by_kind["file_resume"] = merged
+                # The employer reads this filename off the form.
+                attachment_names["file_resume"] = merged_name
+            else:
+                attachments_by_kind["file_resume"] = cv_pdf
+                attachments_by_kind["file_cover"] = letter_pdf
+                attachment_names["file_resume"] = "KrishRaja_CV.pdf"
+                attachment_names["file_cover"] = "KrishRaja_CoverLetter.pdf"
+        # Fill the real form and photograph it BEFORE asking. Approving the picture
+        # is approving what gets submitted, because plan_hash covers the exact field
+        # values, so asking twice bought nothing and cost him two more emails and up
+        # to two more hours. Nothing is submitted here: submit() presses only with
+        # confirm=True, which this call does not pass.
+        shot_name, filled, missed = "", 0, ()
+        form_notes: list[str] = []
+        if prefill:
+            pv = submit_mod.preview(plan, attachments=attachments_by_kind,
+                                    names=attachment_names)
+            filled, missed = len(pv["filled"]), tuple(pv["missed"])
+            # What a control offered when nothing matched. Ashby's Location has no
+            # "Brooklyn, New York", so without this the email says the field is
+            # missed and he has to open the form himself to find out why.
+            form_notes = list(pv.get("notes") or [])
+            if pv["png"]:
+                shot_name = f"form_{slugify(role.company)}.png"
+                attachments.append((shot_name, pv["png"]))
+            if pv["blocker"] or pv["error"]:
+                print(f"  form not filled in advance: "
+                      f"{pv['blocker'] or pv['error']}")
+
         email = approval.render(
             company=role.company, role=role.title, jd_url=role.jd_url,
             autonomy=au.autonomy_score, token=token, to=to,
+            form_shot=shot_name, form_filled=filled, form_missed=missed,
+            hunt_url=hunt_url_for(cfg, row["job_id"]),
             lines=plan.field_lines(), essays=plan.essays,
             summary=plan.summary, hook=plan.hook,
             cv_url=row.get("package_cv_url") or "",
@@ -3003,7 +3054,11 @@ def cmd_approvals(apply: bool = False, job_id: str = "") -> int:
             cv_pdf_url=row.get("package_cv_pdf_url") or "",
             letter_pdf_url=row.get("package_letter_pdf_url") or "",
             merged_attachment=merged_name,
-            notes=plan.notes + list(au.unresolved) + list(au.flagged))
+            # Not au.unresolved or au.flagged: render() already derives both
+            # from `lines` and prints them above. Passing them again put every
+            # flagged field in the email twice, which was invisible only while
+            # the text part was dropping notes.
+            notes=plan.notes + form_notes)
 
         print(f"\n{'=' * 72}\n{email.subject}\n{'=' * 72}")
         print(email.text)
@@ -3033,11 +3088,15 @@ def cmd_approvals(apply: bool = False, job_id: str = "") -> int:
     return 0
 
 
-def cmd_approvals_drain(apply: bool = False) -> int:
+def cmd_approvals_drain(apply: bool = False, send: bool = False) -> int:
     """Read Krish's replies and act on each one. Dry run by default.
 
     Three outcomes, and every reply gets exactly one:
-      approve  the token moves to approved, and submit is the next command
+      approve  the token moves to approved, and with --send the application is
+               submitted in the same pass. He approved a picture of the completed
+               form, so the approval covers the send; asking a second time cost two
+               more emails and up to two more hours and bought nothing. The gate
+               inside submit still runs and still refuses on a changed plan hash
       amend    the old token is superseded so a stale APPROVE cannot land later,
                the package is rebuilt with his words passed through verbatim, and
                a fresh approval email goes out with a new token
@@ -3079,9 +3138,16 @@ def cmd_approvals_drain(apply: bool = False) -> int:
                                decided_at=NOW())
             approval.mark_processed(cfg, r["token"], r["message_id"],
                                     row.get("processed_message_ids"))
-            print(f"         approved. next: python -m hunter.run submit "
-                  f"--token {r['token']}")
             acted += 1
+            if not send:
+                print(f"         approved, not sent. To send: "
+                      f"python -m hunter.run submit --token {r['token']} --confirm")
+                continue
+            # He approved a picture of the completed form, so the approval covers
+            # the send: asking again bought nothing and cost two more emails. The
+            # gate still runs inside submit and still refuses on a changed plan hash.
+            rc = cmd_submit(r["token"], confirm=True)
+            print(f"         {'submitted' if rc == 0 else 'not submitted, see above'}")
             continue
 
         # amend. The old token dies first: if the rebuild fails, the worst case is
@@ -3111,6 +3177,159 @@ def cmd_approvals_drain(apply: bool = False) -> int:
     if apply:
         print(f"\n{acted} reply(ies) acted on")
     return 0
+
+
+def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
+                   company: str, role: str, screenshot: str = "",
+                   summary: list[str] | None = None) -> None:
+    """Everything that has to be true once an application is actually sent.
+
+    Four writes and a message, none of which existed. A submission reached the
+    employer, the approval ledger recorded it, and nothing else moved: the
+    Pipeline row went on reading "Not applied" with no date, the role row in
+    Supabase kept a null application_state, the row never left the Pipeline tab,
+    and Krish was told nothing at all. He asked for confirmation and there was
+    none to give, because the run printed into a GitHub Actions log and stopped.
+
+    Deliberately best effort per step and loud about each failure: a sent
+    application must never be un-sent by a bookkeeping error, and a step that
+    fails silently here puts us straight back where we started.
+    """
+    note = summary if summary is not None else []
+    today = datetime.date.today().isoformat()
+
+    # The sheet carries no job_id, so the row is found by company and role. It
+    # must match exactly one: Harvey alone has six roles on these tabs and
+    # stamping the wrong one "Applied" is worse than stamping none.
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    want = ((company or "").strip().lower(), (role or "").strip().lower())
+    hits = [r for r in rows
+            if ((r.company or "").strip().lower(), (r.role or "").strip().lower()) == want]
+    target = hits[0] if len(hits) == 1 else None
+    if target is None:
+        note.append(f"{len(hits)} Pipeline rows match {company} / {role}; "
+                    f"sheet not updated, do it by hand")
+    else:
+        rn = target.row_number
+        for what, fn in (
+                ("Application Status and Applied Date",
+                 lambda: sheet.mark_applied(rn, when=today)),
+                ("column A verdict",
+                 lambda: sheet.set_verdicts({rn: verdicts.APPLIED}))):
+            try:
+                fn()
+                note.append(f"sheet row {rn}: wrote {what}")
+            except Exception as e:
+                note.append(f"sheet row {rn}: {what} FAILED: {e}")
+
+    try:
+        db_patch(cfg, "hunter_seen_roles", {"job_id": job_id},
+                 {"application_state": "submitted", "applied_at": NOW()})
+        note.append("hunter_seen_roles: application_state submitted")
+    except Exception as e:
+        note.append(f"hunter_seen_roles patch FAILED: {e}")
+
+    # Off Pipeline and onto Applied, which is cmd_archive's job and was only ever
+    # run by hand against a column A value nothing set.
+    try:
+        cmd_archive(apply=True)
+        note.append("ran the archive pass: decided rows moved to the Applied tab")
+    except Exception as e:
+        note.append(f"archive to the Applied tab FAILED: {e}")
+
+    try:
+        send_applied_receipt(cfg, company=company, role=role, when=today,
+                             screenshot=screenshot, notes=note)
+        note.append("receipt emailed")
+    except Exception as e:
+        note.append(f"receipt email FAILED: {e}")
+    for line in note:
+        print(f"  {line}")
+
+
+def send_applied_receipt(cfg: Config, *, company: str, role: str, when: str,
+                         screenshot: str = "", notes: list[str] | None = None) -> None:
+    """Tell Krish it went. The step whose absence was the whole complaint."""
+    from . import notify
+    lines = "".join(f"<li>{n}</li>" for n in (notes or []))
+    shot = (f"<p><a href=\"{screenshot}\">the form as it was submitted</a></p>"
+            if screenshot else "")
+    html = (f"<div style=\"font:15px/1.55 -apple-system,BlinkMacSystemFont,"
+            f"'Segoe UI',system-ui,sans-serif;color:#111;max-width:680px\">"
+            f"<div style='display:none'>[hunter-outbound]</div>"
+            f"<h2 style='margin:0 0 2px;font-size:19px'>Submitted</h2>"
+            f"<div style='color:#555;margin-bottom:18px'>{role} at {company}"
+            f" &middot; {when}</div>{shot}"
+            f"<p style='color:#555'>The sheet and the ledger were updated:</p>"
+            f"<ul style='color:#555'>{lines}</ul></div>")
+    text = "\n".join(["[hunter-outbound]", f"Submitted: {role} at {company} on {when}"]
+                      + ([f"Form: {screenshot}"] if screenshot else [])
+                      + [f"  {n}" for n in (notes or [])])
+    notify.send_email(cfg, f"Submitted: {company} {role}", html,
+                      to=notify.mailbox(cfg), text=text)
+
+
+def cmd_submit(token: str, confirm: bool = False) -> int:
+    """Fill one approved application. Press submit only with --confirm.
+
+    Without --confirm it fills the real form on the real site and stops, which is
+    how the first live one gets checked: read the screenshot, confirm every field
+    and that the button is untouched, then run it again with --confirm.
+    """
+    from .apply import approval, merge, submit as submit_mod
+    from .apply.audit import ATT_CV
+    from .docbuild import DocBuild
+
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    row = approval.get_row(cfg, token)
+    if not row:
+        print(f"no approval row for token {token!r}")
+        return 1
+    rows = db_get(cfg, "hunter_seen_roles",
+                  {"select": "*", "job_id": f"eq.{row['job_id']}", "limit": "1"})
+    if not rows:
+        print(f"no role row for {row['job_id']}")
+        return 1
+
+    plan, au, role = build_fill_plan(cfg, sheet, rows[0])
+    db = DocBuild(GoogleOAuth(cfg).access_token())
+    cv_id = (rows[0].get("package_cv_url") or "").split("/d/")[-1].split("/")[0]
+    letter_id = (rows[0].get("package_letter_url") or "").split("/d/")[-1].split("/")[0]
+    attachments: dict[str, bytes] = {}
+    if cv_id and letter_id:
+        cv_pdf, letter_pdf = db.export_pdf(cv_id), db.export_pdf(letter_id)
+        if au.attachment_style == ATT_CV:
+            # One slot, one file, letter first: the same rule the approval email
+            # told him it would follow.
+            attachments["file_resume"] = merge.merge_pdfs(letter_pdf, cv_pdf)
+        else:
+            attachments["file_resume"] = cv_pdf
+            attachments["file_cover"] = letter_pdf
+
+    print(f"{role.company} {role.title}\n  {plan.ats} {plan.slug}/{plan.posting_id}"
+          f"\n  {len(plan.fields)} fields, {len(plan.blocking)} blocking, "
+          f"attachments: {', '.join(attachments) or 'none'}")
+    try:
+        out = submit_mod.submit(cfg, token, plan, attachments=attachments,
+                                confirm=confirm)
+    except submit_mod.SubmitBlocked as e:
+        print(f"\nREFUSED: {e}")
+        return 1
+    print(f"\nstate: {out['state']}"
+          + (f"  ({out['reason']})" if out.get("reason") else ""))
+    if out.get("filled"):
+        print(f"  filled: {', '.join(out['filled'][:8])}")
+    if out.get("missed"):
+        print(f"  NOT filled: {', '.join(out['missed'][:8])}")
+    if out["state"] == "filled":
+        print(f"\nNothing was sent. Re-run with --confirm to press submit:"
+              f"\n  python -m hunter.run submit --token {token} --confirm")
+    if out["state"] == approval.SUBMITTED:
+        record_applied(cfg, canon, sheet, row["job_id"],
+                       company=role.company, role=role.title,
+                       screenshot=out.get("screenshot") or "")
+    return 0 if out["state"] in ("filled", approval.SUBMITTED) else 1
 
 
 def cmd_gtm_seed(apply: bool = False) -> int:
@@ -3214,6 +3433,14 @@ def main(argv: list[str]) -> int:
         lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else 0
         return cmd_regate(from_row=frm, apply="--apply" in argv, limit=lim,
                           archive="--no-archive" not in argv)
+    # source and packages have been on the workflow's dispatch menu since it was
+    # written and run.main handled neither, so choosing either exited 2 with a usage
+    # line. They live in run_command, which is the hunter_commands path Control
+    # Center presses; this routes the menu to the same work.
+    if cmd in ("source", "packages"):
+        cfg = load()
+        print(run_command(cfg, cmd))
+        return 0
     if cmd == "drain":
         cid = argv[argv.index("--id") + 1] if "--id" in argv else None
         return cmd_drain(cid)
@@ -3246,8 +3473,19 @@ def main(argv: list[str]) -> int:
         return cmd_bank_seed(apply="--apply" in argv)
     if cmd == "gtm-seed":
         return cmd_gtm_seed(apply="--apply" in argv)
+    if cmd == "submit":
+        tok = ""
+        if "--token" in argv:
+            i = argv.index("--token")
+            if i + 1 < len(argv):
+                tok = argv[i + 1]
+        if not tok:
+            print("usage: python -m hunter.run submit --token X [--confirm]")
+            return 2
+        return cmd_submit(tok, confirm="--confirm" in argv)
     if cmd == "approvals-drain":
-        return cmd_approvals_drain(apply="--apply" in argv)
+        return cmd_approvals_drain(apply="--apply" in argv,
+                                   send="--send" in argv)
     if cmd == "approvals":
         jid = ""
         if "--job-id" in argv:
@@ -3285,7 +3523,7 @@ def main(argv: list[str]) -> int:
           f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
           f"bank-check, audit-forms [--apply] [--limit N], simulate [--send], bank-seed [--apply], "
           "gtm-seed [--apply], approvals [--apply] [--job-id X], "
-          "approvals-drain [--apply], "
+          "approvals-drain [--apply] [--send], submit --token X [--confirm], "
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2

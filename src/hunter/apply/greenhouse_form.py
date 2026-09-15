@@ -64,6 +64,25 @@ def _kind(name: str, label: str, vendor_type: str) -> str:
     return base
 
 
+# Two required controls the board API never reports. Measured 2026-09-15 against
+# three live boards: `country` is on every one of them, `candidate-location` on
+# two of the three, and both carry the required asterisk. A plan built from the
+# API alone therefore says every required field has an answer while the form has
+# two empty ones, which is the exact condition submit.py exists to prevent. They
+# are added here rather than in the driver because they are part of what the form
+# asks, and the approval email should show Krish both answers before he approves.
+DOM_ONLY = (
+    ("country", "Country", "location"),
+    ("candidate-location", "Location (City)", "location"),
+)
+
+
+def _dom_only(present: set[str]) -> list[FormField]:
+    return [FormField(key=key, label=label, kind=kind, required=True,
+                      options=(), vendor_type="dom_only")
+            for key, label, kind in DOM_ONLY if key not in present]
+
+
 def parse(payload: dict, *, slug: str, posting_id: str) -> FormSpec:
     questions = payload.get("questions")
     if questions is None:
@@ -91,6 +110,13 @@ def parse(payload: dict, *, slug: str, posting_id: str) -> FormSpec:
                 key=name, label=label,
                 kind=_kind(name, label, vendor_type),
                 required=required, options=options, vendor_type=vendor_type))
+    # After the phone, before the files, which is where the live page puts them.
+    known = {f.key for f in fields}
+    extra = _dom_only(known)
+    if extra:
+        at = next((i for i, f in enumerate(fields)
+                   if f.kind in ("file_resume", "file_cover")), len(fields))
+        fields[at:at] = extra
     return FormSpec(ats="greenhouse", slug=slug, posting_id=posting_id,
                     title=payload.get("title") or "", fields=tuple(fields))
 

@@ -431,3 +431,97 @@ def test_a_different_firm_sharing_a_prefix_is_not_the_same_employer():
     from hunter.sources import distinctive_tokens as d
     assert not same_employer(d("EY"), d("EY-Parthenon"))
     assert not same_employer(frozenset(), d("Anything"))
+
+
+# ---------- the mindmake wedge ----------
+
+def _wedge_setup(monkeypatch, *, title, leader_title, applied=None, company="Cresta"):
+    import hunter.people.bridges as bridges_mod
+    roles = [{"job_id": "c:1", "company": company, "title": title, "score": 9,
+              "status": "staging", "krish_verdict": None, "warm_path_person": None,
+              "application_state": applied}]
+    contacts = [make_contact("leader", "Lin Qiao", company, 30)]
+    contacts[0]["current_title"] = leader_title
+    calls = {"insert": [], "patch": [], "delete": []}
+    monkeypatch.setattr(bridges_mod, "target_roles", lambda cfg, limit=60: roles)
+    monkeypatch.setattr(bridges_mod, "db_get", lambda cfg, table, params:
+                        [] if table == "bridge_candidates" else contacts)
+    monkeypatch.setattr(bridges_mod, "db_insert",
+                        lambda cfg, table, rows, **kw: calls["insert"].extend(rows))
+    monkeypatch.setattr(bridges_mod, "db_patch",
+                        lambda cfg, table, match, values: calls["patch"].append((match, values)))
+    monkeypatch.setattr(bridges_mod, "db_delete",
+                        lambda cfg, table, params: calls["delete"].append(params))
+    monkeypatch.setattr(bridges_mod, "load_headhunters", lambda sheet: [])
+    stats = bridges_mod.build_bridges(None, sheet=None)
+    tiers = [r["path_tier"] for r in calls["insert"]]
+    return stats, tiers, calls
+
+
+def test_an_open_commercial_seat_at_a_company_whose_leader_he_knows_makes_a_wedge(monkeypatch):
+    """Krish 2026-09-15: a CEO with a GTM seat open is warm to the practice, and
+    the approach is either a client or the highest-level way into the role."""
+    stats, tiers, calls = _wedge_setup(
+        monkeypatch, title="Head of GTM Strategy", leader_title="CEO and cofounder")
+    assert "mindmake_wedge" in tiers
+    assert stats["mindmake_wedges"] == 1
+    wedge = next(r for r in calls["insert"] if r["path_tier"] == "mindmake_wedge")
+    # Opens on the observation, never the offer: no price, no programme name.
+    assert "nothing to sell" in wedge["draft_ask"]
+    assert "product, price, positioning or people" in wedge["draft_ask"]
+    for forbidden in ("$", "Build your AI GTM", "Mindmake"):
+        assert forbidden not in wedge["draft_ask"], forbidden
+
+
+def test_a_role_he_already_applied_to_gets_no_wedge(monkeypatch):
+    """Applying through the ATS and pitching the CEO the same week reads as "he
+    will take anything" if the two ever compare notes. One road per company."""
+    stats, tiers, _ = _wedge_setup(
+        monkeypatch, title="Head of GTM Strategy", leader_title="CEO",
+        applied="Applied")
+    assert "mindmake_wedge" not in tiers
+    assert stats["mindmake_wedges"] == 0
+
+
+def test_a_non_leader_is_not_a_wedge(monkeypatch):
+    """Peer to peer or nothing. A Programmatic Director decides neither a hire
+    nor an engagement."""
+    _stats, tiers, _ = _wedge_setup(
+        monkeypatch, title="Head of GTM Strategy",
+        leader_title="Programmatic Director ANZ")
+    assert "mindmake_wedge" not in tiers
+
+
+def test_a_seat_his_practice_does_not_speak_to_is_not_a_wedge(monkeypatch):
+    """A company hiring a Head of Engineering has no GTM question to open on."""
+    _stats, tiers, _ = _wedge_setup(
+        monkeypatch, title="Head of Platform Engineering", leader_title="CEO")
+    assert "mindmake_wedge" not in tiers
+
+
+def test_one_leader_per_role_not_three(monkeypatch):
+    import hunter.people.bridges as bridges_mod
+    roles = [{"job_id": "c:1", "company": "Cresta", "title": "Head of Revenue",
+              "score": 9, "status": "staging", "krish_verdict": None,
+              "warm_path_person": None, "application_state": None}]
+    contacts = []
+    for i, t in enumerate(("CEO", "President", "Chief Revenue Officer")):
+        c = make_contact(f"l{i}", f"Leader {i}", "Cresta", 30)
+        c["current_title"] = t
+        contacts.append(c)
+    ins = []
+    monkeypatch.setattr(bridges_mod, "target_roles", lambda cfg, limit=60: roles)
+    monkeypatch.setattr(bridges_mod, "db_get", lambda cfg, table, params:
+                        [] if table == "bridge_candidates" else contacts)
+    monkeypatch.setattr(bridges_mod, "db_insert",
+                        lambda cfg, table, rows, **kw: ins.extend(rows))
+    monkeypatch.setattr(bridges_mod, "db_patch", lambda *a, **k: None)
+    monkeypatch.setattr(bridges_mod, "db_delete", lambda *a, **k: None)
+    monkeypatch.setattr(bridges_mod, "load_headhunters", lambda sheet: [])
+    bridges_mod.build_bridges(None, sheet=None)
+    assert len([r for r in ins if r["path_tier"] == "mindmake_wedge"]) == 1
+
+
+def test_the_wedge_is_retired_like_any_other_derived_tier():
+    from hunter.people.bridges import DERIVED_TIERS
+    assert "mindmake_wedge" in DERIVED_TIERS

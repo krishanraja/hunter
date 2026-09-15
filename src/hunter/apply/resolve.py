@@ -82,8 +82,18 @@ LONDON_HINTS = ("london", "united kingdom", " uk", "shoreditch", "england")
 US_HINTS = ("united states", " us", "usa", "america", "san francisco", "sf",
             "remote us", "north america")
 
-BASE_NYC = "Brooklyn, New York, United States"
+# The city, not the neighbourhood. Ashby's geocoder, and every other one this
+# layer meets, has no "Brooklyn, New York": typing it offers New York City, and
+# typing "Brooklyn" alone offers Brooklyn Park, MINNESOTA. Krish's rule is London
+# or New York depending on where the role is, so the answer is the city itself.
+BASE_NYC = "New York, United States"
 BASE_LONDON = "London, United Kingdom"
+
+# Every Greenhouse board asks for a country as its own required field, separate
+# from the city. Answering it with the city string would put "New York, United
+# States" into a list of countries and match nothing.
+BASE_COUNTRY = {BASE_NYC: "United States", BASE_LONDON: "United Kingdom"}
+COUNTRY_HINTS = ("country", "nation")
 
 # Tokens that identify each base inside a question that lists places, so a
 # membership question can be answered by testing rather than by assuming.
@@ -277,7 +287,7 @@ class Resolver:
     def _location(self, field: FormField) -> Resolution | None:
         label = _padded(field.label)
         if field.kind != "location" and not _any(
-                label, "relocat", "office", "based", "reside", "locat",
+                label, "relocat", "office", "based", "reside", "locat", "country",
                 "time zone", "remote", "days per week", "days a week",
                 "in person", "primary locations", "zip code", "tri state",
                 "commuting distance"):
@@ -302,6 +312,13 @@ class Resolver:
             return Unanswered(NEEDS_ROLE, why)
         why = f"residence rule: the role is in {self.role_location}"
 
+        # The country, where that is what was asked. Checked before the
+        # enumeration and option paths so a country select is answered with a
+        # country rather than with a city or a Yes.
+        if _any(label, *COUNTRY_HINTS) and not _any(label, *ENUMERATION_HINTS) \
+                and not _any(label, "authoriz", "authoris", "sponsor", "visa",
+                             "citizen", "work in the country"):
+            return Answer(BASE_COUNTRY[self.base], why, flagged=True)
         # A membership question enumerates places and asks whether he is in one
         # of them. Answer it by testing the list, never by assuming yes.
         if _any(label, *ENUMERATION_HINTS):
@@ -373,6 +390,20 @@ class Resolver:
             entry = self.bank.get("Full legal name")
             if entry and entry.usable:
                 return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        # Greenhouse asks for the given name and the surname as two fields.
+        # Both carry kind "name", so the bank's Full legal name went into each
+        # and the form read "Krish Raja" twice. Guarded against Ashby's single
+        # "Legal First and Last Name", which wants the whole thing and contains
+        # the words "last name" inside it.
+        if field.kind == "name" and not _any(label, "first and last", "full name"):
+            legal = self.bank.value("Full legal name")
+            if legal and len(legal.split()) > 1:
+                if _any(label, "first name", "given name", "forename"):
+                    return Answer(legal.split()[0],
+                                  "Info Bank: Full legal name (given name)")
+                if _any(label, "last name", "surname", "family name"):
+                    return Answer(legal.split()[-1],
+                                  "Info Bank: Full legal name (surname)")
         for kind, bank_fields in self._DIRECT:
             if field.kind != kind:
                 continue

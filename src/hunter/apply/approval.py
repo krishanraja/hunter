@@ -101,6 +101,8 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
            cv_url: str = "", letter_url: str = "",
            cv_pdf_url: str = "", letter_pdf_url: str = "",
            merged_attachment: str = "",
+           form_shot: str = "", form_filled: int = 0, form_missed: tuple = (),
+           hunt_url: str = "",
            notes: list[str] | None = None) -> ApprovalEmail:
     """The whole application, reviewable without opening a document."""
     essays = essays or {}
@@ -148,11 +150,40 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
     A(f"<a href=\"{amend_link}\" style='display:inline-block;padding:11px 20px;"
       "margin-left:10px;border:1px solid #bbb;color:#111;text-decoration:none;"
       "border-radius:6px'>Amend</a>")
+    # A link that OPENS Control Center on this role, never one that submits.
+    # Mail scanners and link preview bots issue GET requests to every URL in an
+    # email, so a one-click send URL can be pressed by a robot before Krish has
+    # read the message. The app is authenticated and the send button lives there.
+    if hunt_url:
+        A(f"<a href=\"{_esc(hunt_url)}\" style='display:inline-block;padding:11px "
+          "20px;margin-left:10px;border:1px solid #bbb;color:#111;"
+          "text-decoration:none;border-radius:6px'>Open in Control Center</a>")
     A("</div>")
-    A("<p style='color:#666;font-size:13px;margin:0 0 22px'>Both buttons open a "
-      "reply. Press send. Only the word "
+    A("<p style='color:#666;font-size:13px;margin:0 0 22px'>The first two buttons "
+      "open a reply. Press send. Only the word "
       f"<code>{APPROVE_WORD}</code> on its own line submits; anything else is "
-      "treated as feedback and comes back to you for approval again.</p>")
+      "treated as feedback and comes back to you for approval again."
+      + (" The third opens this role in Control Center, where the same send button "
+         "lives. It is a link to the app, not a link that sends: a mail scanner "
+         "following it can do nothing." if hunt_url else "") + "</p>")
+
+    # The filled form, before he is asked. Approving the picture IS approving what
+    # gets submitted, because plan_hash covers the exact field values, so there is
+    # no reason to ask him twice. This is what collapsed four emails into two.
+    if form_shot:
+        A("<h3 style='font-size:14px;text-transform:uppercase;letter-spacing:.04em;"
+          "color:#666;margin:22px 0 8px'>The form, already filled</h3>")
+        A(f"<p style='margin:0 0 6px'>Attached as <strong>{_esc(form_shot)}</strong>: "
+          f"a picture of their actual form with {form_filled} field(s) filled in. "
+          f"Nothing was submitted. Approving this email sends exactly what you see."
+          "</p>")
+        if form_missed:
+            A("<p style='margin:0 0 6px;color:#a15c00'>Not filled: "
+              + _esc(", ".join(form_missed[:6])) + "</p>")
+    elif form_shot == "" and form_filled == 0:
+        A("<p style='margin:0 0 6px;color:#a15c00'>The form could not be filled in "
+          "advance, so there is no picture to check. Approving still records your "
+          "decision; the submission will be attempted and reported.</p>")
 
     A("<h3 style='font-size:14px;text-transform:uppercase;letter-spacing:.04em;"
       "color:#666;margin:22px 0 8px'>Documents</h3><ul style='margin:0;"
@@ -214,13 +245,27 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
     # First line of the text part on purpose: inbox.is_our_own_email looks for it
     # in the lines Krish would have written, and hunter mails its own mailbox.
     T = ["[hunter-outbound]", f"{role} at {company}", f"autonomy: {autonomy}", ""]
-    if needs_you:
+    # Same condition as the HTML block above. The text part printed the heading
+    # only when a field had no answer, and dropped `notes` altogether, so the
+    # reason a field could not be filled reached the HTML and not the plain text
+    # the dry run prints.
+    if needs_you or flagged or notes:
         T.append("READ BEFORE APPROVING")
         T += [f"  {l.label}: no answer. {l.source}" for l in needs_you]
-    if flagged:
         T += [f"  {l.label}: {l.value} ({l.source})" for l in flagged]
+        T += [f"  {n}" for n in notes]
     T += ["", f"Reply {APPROVE_WORD} on its own line to submit.",
           "Reply with anything else and it is treated as feedback.", ""]
+    if form_shot:
+        T.append(f"The form, already filled: see {form_shot} attached. "
+                 f"{form_filled} field(s) filled, nothing submitted.")
+        if form_missed:
+            T.append("Not filled: " + ", ".join(form_missed[:6]))
+    if hunt_url:
+        # A link that OPENS the app, never one that fires the submission. Mail
+        # scanners and link preview bots issue GET requests to URLs in email, so a
+        # one-click send URL can be pressed by a robot before Krish reads it.
+        T.append(f"Or open it in Control Center: {hunt_url}")
     if merged_attachment:
         T.append(f"Attached: {merged_attachment}")
     for label, url in (("CV", cv_url), ("Letter", letter_url),

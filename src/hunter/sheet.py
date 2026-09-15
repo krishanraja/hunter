@@ -85,6 +85,10 @@ PKG_BUILT_BRIDGE = "Materials staged - bridge first"
 PKG_BUILT_UNVERIFIED = "Materials staged - liveness unverified"
 PKG_DEAD = "Posting dead, cannot build"
 PACKAGE_STATUSES = {PKG_BUILT_DIRECT, PKG_BUILT_BRIDGE, PKG_BUILT_UNVERIFIED, PKG_DEAD}
+
+# What the Application Status cell reads once hunter has actually sent one. The
+# default in the row template is "Not applied"; nothing ever wrote the other value.
+APPLIED_STATUS = "Applied"
 BUILT_STATUSES = {PKG_BUILT_DIRECT, PKG_BUILT_BRIDGE, PKG_BUILT_UNVERIFIED}
 
 WARM_NONE = DEFAULTS_BY_NAME["Warm Path"]
@@ -345,9 +349,16 @@ class Sheet:
         params = {"valueRenderOption": "FORMULA"} if formulas else {}
         return self._get(f"/values/{rng}", params).get("values", [])
 
-    def _write(self, blocks: list[tuple[str, list[list]]]) -> None:
+    def _write(self, blocks: list[tuple[str, list[list]]], *, raw: bool = False) -> None:
+        """USER_ENTERED by default, because most writes here are HYPERLINK formulas.
+
+        raw=True for a value that must survive as the text it is. Sheets parses
+        "2026-09-15" under USER_ENTERED into a date value, and a cell with no date
+        format then displays the serial number: the first application hunter ever
+        sent recorded its Applied Date as 46280.
+        """
         self._post("/values:batchUpdate", {
-            "valueInputOption": "USER_ENTERED",
+            "valueInputOption": "RAW" if raw else "USER_ENTERED",
             "data": [{"range": rng, "values": values} for rng, values in blocks]})
 
     # ---------- reading ----------
@@ -753,6 +764,29 @@ class Sheet:
         got = (back[0][0] if back and back[0] else "").strip()
         if got != status:
             raise SheetError(f"row {row_number} Package Status read back as {got!r}")
+
+    def mark_applied(self, row_number: int, *, when: str) -> None:
+        """Application Status and Applied Date on one row, read back.
+
+        The two cells that were never written by anything. A submission landed on
+        the employer's desk, the ledger recorded it, and this row went on reading
+        "Not applied" forever, which is why Krish had no confirmation that the
+        machine had done anything at all.
+        """
+        if row_number < DATA_START_ROW:
+            raise SheetError(f"refusing to write into header rows: {row_number}")
+        when = plain_text(when).strip()
+        if not when:
+            raise SheetError("refusing to mark a row applied with no date")
+        self._write([(cell_range("Application Status", row_number), [[APPLIED_STATUS]]),
+                     (cell_range("Applied Date", row_number), [[when]])], raw=True)
+        for header, expected in (("Application Status", APPLIED_STATUS),
+                                 ("Applied Date", when)):
+            back = self._values(cell_range(header, row_number), formulas=False) or [[""]]
+            got = (back[0][0] if back and back[0] else "").strip()
+            if got != expected:
+                raise SheetError(f"row {row_number} {header} read back as {got!r}, "
+                                 f"expected {expected!r}")
 
     def update_warm_paths(self, mapping: dict[int, tuple[str, str]]) -> int:
         """Warm Path and Path Evidence on named rows, validated, read back.

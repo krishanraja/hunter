@@ -361,3 +361,21 @@ def test_a_token_with_no_approval_row_is_skipped_not_amended():
     # With a row, the same reply is feedback.
     action, _ = inbox.classify(reply, {"token": "t", "state": "awaiting"})
     assert action == "amend"
+
+
+def test_the_text_part_carries_the_notes_too():
+    """The HTML showed why a field could not be filled and the text did not.
+
+    Ashby's Location has no "Brooklyn, New York", so the note naming the options
+    the form actually offers is the whole reason the field reads missed. It is
+    also what the dry run prints before anything is sent.
+    """
+    note = ("Location: no option matched 'Brooklyn, New York, United States'. "
+            "The form offers: New York City, New York, United States")
+    email = approval.render(
+        company="Harvey", role="Head of GTM", jd_url="", autonomy="Full",
+        token="t1", to="hello@krishraja.com", lines=[], essays={},
+        summary="", hook="", notes=[note])
+    assert "READ BEFORE APPROVING" in email.text
+    assert note in email.text
+    assert note in email.html
