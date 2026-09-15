@@ -3068,6 +3068,11 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
         if not apply:
             print("  (dry run, no token minted. pass --apply to send)")
             continue
+        if not plan.readable or not plan.fields:
+            print(f"  REFUSING to send: the form could not be read"
+                  + (f": {plan.notes[0]}" if plan.notes else "")
+                  + ". Nothing to approve.")
+            continue
         if not plan.ready:
             print(f"  REFUSING to send: {len(plan.blocking)} required field(s) "
                   f"have no answer: "

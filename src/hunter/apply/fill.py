@@ -53,6 +53,12 @@ class FillPlan:
     hook: str = ""
     attachment_style: str = ""
     notes: list[str] = field(default_factory=list)
+    # False when the vendor would not describe its form: a dead posting, or a
+    # board that answered with nothing. Carried through because `ready` cannot
+    # see it: a form with no fields has no unanswered required field either, so
+    # a dead posting read as ready and an approval email went out for a role
+    # nobody can apply to.
+    readable: bool = True
 
     @property
     def blocking(self) -> tuple[FilledField, ...]:
@@ -64,9 +70,15 @@ class FillPlan:
 
     @property
     def ready(self) -> bool:
-        """Every required field has a value. Being ready is not permission to
-        send; that still needs Krish's approval token."""
-        return not self.blocking
+        """A form that was read, has fields, and has every required one answered.
+
+        Being ready is not permission to send; that still needs Krish's approval
+        token. The first two clauses exist because the third is vacuous without
+        them: Slingshot AI's posting was dead, Ashby returned no form, the plan
+        had zero fields and therefore zero unanswered required fields, and an
+        approval email went out for a role nobody can apply to.
+        """
+        return bool(self.readable and self.fields and not self.blocking)
 
     def as_dict(self) -> dict:
         """The canonical form for hashing. Only what actually gets submitted goes
@@ -110,7 +122,8 @@ def build_payload(spec: FormSpec, bank: AnswerBank, *, company: str, role: str,
         return FillPlan(ats=spec.ats, slug=spec.slug, posting_id=spec.posting_id,
                         company=company, role=role, jd_url=jd_url,
                         summary=summary, hook=hook, essays=essays,
-                        attachment_style=attachment_style, notes=notes)
+                        attachment_style=attachment_style, notes=notes,
+                        readable=False)
 
     filled: list[FilledField] = []
     for f in spec.fields:
