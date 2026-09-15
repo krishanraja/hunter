@@ -85,3 +85,13 @@ def test_an_unmatched_typeahead_leaves_the_box_empty():
 def test_a_required_field_it_could_not_fill_is_reported_loudly():
     assert "required_missed" in FILL and "required_missed" in RUN
     assert "DO THESE YOURSELF" in RUN
+
+
+def test_a_no_answer_on_a_yes_no_control_reads_as_answered():
+    """A segmented Yes/No answers "No" by pressing the No button, which
+    correctly leaves the mirror checkbox FALSE. Reading only the checkbox called
+    the OpenAI sponsorship question unfilled and told him to do it himself."""
+    body = code_only(FILL)
+    where = body[body.index("function holdsChoice"):]
+    where = where[:where.index("function holdsFile")]
+    assert "aria-pressed" in where, "the pressed button is the answer, not the mirror"

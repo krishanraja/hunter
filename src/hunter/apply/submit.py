@@ -866,6 +866,12 @@ _EMPTY_REQUIRED_JS = """() => {
       empty = ![...group].some(x => x.checked);
     } else if (e.type === 'file') {
       empty = !(e.files && e.files.length);
+    } else if (e.type === 'checkbox' && e.parentElement
+               && e.parentElement.querySelector(
+                    'button[aria-pressed="true"], button[data-option][aria-pressed="true"]')) {
+      // A segmented Yes/No answered "No" leaves the mirror checkbox false and
+      // is still answered. The pressed button is the answer.
+      empty = false;
     } else if (e.getAttribute('role') === 'combobox'
                || e.getAttribute('aria-autocomplete') === 'list') {
       // react-select clears its search input on selection and renders the

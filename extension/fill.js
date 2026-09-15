@@ -231,6 +231,19 @@
     }
     const el = els[0];
     if (el && (el.getAttribute('type') || '').toLowerCase() === 'checkbox') {
+      // A segmented Yes/No answers "No" by pressing the No button, which
+      // correctly leaves the mirror checkbox FALSE. Reading only the checkbox
+      // called a correctly answered sponsorship question unfilled and told him
+      // to do it himself.
+      const parent = el.parentElement;
+      const buttons = parent
+        ? parent.querySelectorAll('button[aria-pressed], button[data-option]') : [];
+      for (const b of buttons) {
+        if (want !== norm(b.textContent) && want !== norm(b.getAttribute('data-option'))) {
+          continue;
+        }
+        return norm(b.getAttribute('aria-pressed')) === 'true';
+      }
       return el.checked === true;
     }
     return false;
