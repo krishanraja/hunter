@@ -2848,6 +2848,121 @@ def cmd_bank_seed(apply: bool = False) -> int:
     return 0
 
 
+def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
+                    bank=None, summary: str = "", hook: str = ""):
+    """(FillPlan, Audit) for one approved role. No network writes, no mail.
+
+    Shared by approvals and, later, submit, so the plan the email shows and the
+    plan the browser fills are produced by the same code. A second implementation
+    is how the plan hash stops meaning anything.
+    """
+    from .apply import audit as audit_mod
+    from .apply import fetch, fill
+    from .ats import discover as disc
+    role, _relink, _flags = resolve_for_build(cfg, row, disc.load_cache(cfg))
+    bank = bank if bank is not None else _answer_bank(sheet)
+    spec = fetch.form_for(role.jd_url, ats_key)
+    au = audit_mod.audit(spec, bank, role_location=role.location)
+    plan = fill.build_payload(spec, bank, company=role.company, role=role.title,
+                              jd_url=role.jd_url, role_location=role.location,
+                              summary=summary, hook=hook,
+                              attachment_style=au.attachment_style)
+    return plan, au, role
+
+
+def cmd_approvals(apply: bool = False, job_id: str = "") -> int:
+    """Build and, with --apply, send one approval email per built package.
+
+    Dry run by default: it prints the whole application as the email will show it,
+    and mints no token, so nothing can be approved by accident. A token is recorded
+    only when the mail is actually sent, because a token with no email behind it is
+    a live approval Krish never saw.
+    """
+    from . import notify
+    from .apply import approval, merge
+    from .docbuild import DocBuild
+    from .package.build import doc_url
+
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    params = {"select": "*", "package_status": "eq.built",
+              "order": "package_built_at.desc", "limit": "50"}
+    if job_id:
+        params["job_id"] = f"eq.{job_id}"
+    rows = db_get(cfg, "hunter_seen_roles", params)
+    if not rows:
+        print("no built packages to send" + (f" for {job_id}" if job_id else ""))
+        return 1
+
+    to = notify.mailbox(cfg)
+    bank = _answer_bank(sheet)
+    oauth = GoogleOAuth(cfg)
+    db = DocBuild(oauth.access_token())
+    sent = 0
+    for row in rows:
+        live = [r for r in db_get(cfg, approval.TABLE,
+                                 {"select": "token,state",
+                                  "job_id": f"eq.{row['job_id']}"})
+                if r["state"] in (approval.AWAITING, approval.APPROVED,
+                                  approval.SUBMITTED)]
+        if live:
+            print(f"skip {row['job_id']}: {live[0]['state']} token already "
+                  f"{live[0]['token']}")
+            continue
+        plan, au, role = build_fill_plan(cfg, sheet, row, bank=bank)
+        token = approval.new_token(row["job_id"])
+        attachments: list[tuple[str, bytes]] = []
+        merged_name = ""
+        cv_id = (row.get("package_cv_url") or "").split("/d/")[-1].split("/")[0]
+        letter_id = (row.get("package_letter_url") or "").split("/d/")[-1].split("/")[0]
+        from .apply.audit import ATT_CV
+        if au.attachment_style == ATT_CV and cv_id and letter_id:
+            # One upload slot on the form, so one file: canon's merge order is the
+            # letter first, then the CV.
+            merged_name = merge.merged_name(role.company)
+            attachments.append((merged_name,
+                                merge.merge_pdfs(db.export_pdf(letter_id),
+                                                 db.export_pdf(cv_id))))
+        email = approval.render(
+            company=role.company, role=role.title, jd_url=role.jd_url,
+            autonomy=au.autonomy_score, token=token, to=to,
+            lines=plan.field_lines(), essays=plan.essays,
+            summary=plan.summary, hook=plan.hook,
+            cv_url=row.get("package_cv_url") or "",
+            letter_url=row.get("package_letter_url") or "",
+            cv_pdf_url=row.get("package_cv_pdf_url") or "",
+            letter_pdf_url=row.get("package_letter_pdf_url") or "",
+            merged_attachment=merged_name,
+            notes=plan.notes + list(au.unresolved) + list(au.flagged))
+
+        print(f"\n{'=' * 72}\n{email.subject}\n{'=' * 72}")
+        print(email.text)
+        print(f"  fields: {len(plan.fields)}, blocking: {len(plan.blocking)}, "
+              f"flagged: {len(plan.flagged)}, attachments: "
+              f"{merged_name or 'two links'}")
+        if not apply:
+            print("  (dry run, no token minted. pass --apply to send)")
+            continue
+        if not plan.ready:
+            print(f"  REFUSING to send: {len(plan.blocking)} required field(s) "
+                  f"have no answer: "
+                  + ", ".join(f.label for f in plan.blocking))
+            continue
+        out = notify.send_email(cfg, email.subject, email.html, to=to,
+                               text=email.text,
+                               attachments=attachments or None)
+        approval.record_sent(cfg, token=token, job_id=row["job_id"],
+                             company=role.company, role=role.title,
+                             fill_plan=plan.as_dict(),
+                             message_id=out.get("id", ""))
+        sent += 1
+        print(f"  sent to {to}, token {token}, "
+              f"plan_hash {approval.plan_hash(plan.as_dict())}")
+    if apply:
+        print(f"\n{sent} approval email(s) sent")
+    return 0
+
+
 def cmd_gtm_seed(apply: bool = False) -> int:
     """Write the AI-native GTM evidence key. Dry run by default.
 
@@ -2981,6 +3096,13 @@ def main(argv: list[str]) -> int:
         return cmd_bank_seed(apply="--apply" in argv)
     if cmd == "gtm-seed":
         return cmd_gtm_seed(apply="--apply" in argv)
+    if cmd == "approvals":
+        jid = ""
+        if "--job-id" in argv:
+            i = argv.index("--job-id")
+            if i + 1 < len(argv):
+                jid = argv[i + 1]
+        return cmd_approvals(apply="--apply" in argv, job_id=jid)
     if cmd == "simulate":
         return cmd_simulate(send="--send" in argv)
     if cmd == "bank-check":
@@ -3010,7 +3132,7 @@ def main(argv: list[str]) -> int:
           f"run, reconcile, migrate-columns [--apply], migrate-sheet, "
           f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
           f"bank-check, audit-forms [--apply] [--limit N], simulate [--send], bank-seed [--apply], "
-          "gtm-seed [--apply], "
+          "gtm-seed [--apply], approvals [--apply] [--job-id X], "
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2
