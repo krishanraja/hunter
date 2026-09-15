@@ -47,6 +47,19 @@ from .notify import send_summary
 TODAY = lambda: datetime.date.today().isoformat()
 NOW = lambda: datetime.datetime.utcnow().isoformat() + "Z"
 
+# The one word hunter_seen_roles.application_state carries for an applied role,
+# and the word Control Center prints straight into the Hunt lane.
+#
+# Two writers of this column disagreed. record_applied wrote "submitted" while
+# sync_applied_state writes the sheet's own Verdict vocabulary, "Applied", and
+# cmd_close_submitted treated only "submitted" as done. So the next full pass
+# relabelled the row, close-submitted stopped recognising it, and record_applied
+# ran again: a duplicate Submitted receipt for every applied role, every hour.
+APPLIED_STATE = "Applied"
+# Both spellings count as written, so rows already carrying the old one are not
+# re-processed.
+APPLIED_STATES = (APPLIED_STATE, "submitted")
+
 
 def assert_canon_alignment(canon: Canon) -> None:
     """Canon supersedes code. If canon moved, stop and say which side to fix."""
@@ -3408,9 +3421,18 @@ def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
                 note.append(f"sheet row {rn}: {what} FAILED: {e}")
 
     try:
+        # "Applied", not "submitted". Two writers of this one column disagreed:
+        # this one wrote "submitted" and sync_applied_state writes "Applied" from
+        # the sheet's own Verdict vocabulary. cmd_close_submitted skips a row only
+        # when it reads "submitted", so the next full pass relabelled it,
+        # close-submitted stopped recognising it as done, and record_applied ran
+        # again: a duplicate Submitted receipt for every applied role, every hour,
+        # for ever. Control Center also prints this column straight into the Hunt
+        # lane (DesktopBridges), where "Applied" is the word and "submitted" was a
+        # lowercase oddity beside it.
         db_patch(cfg, "hunter_seen_roles", {"job_id": job_id},
-                 {"application_state": "submitted", "applied_at": NOW()})
-        note.append("hunter_seen_roles: application_state submitted")
+                 {"application_state": APPLIED_STATE, "applied_at": NOW()})
+        note.append(f"hunter_seen_roles: application_state {APPLIED_STATE}")
     except Exception as e:
         note.append(f"hunter_seen_roles patch FAILED: {e}")
 
@@ -3836,7 +3858,7 @@ def cmd_close_submitted(apply: bool = False) -> int:
          "limit": "200"})}
     open_ones = [r for r in rows
                  if (state.get(r["job_id"], {}).get("application_state") or "")
-                 != "submitted"]
+                 not in APPLIED_STATES]
     print(f"{len(rows)} submitted, {len(open_ones)} not yet written to the sheet"
           f"{'' if apply else ' (dry run, pass --apply)'}")
     for r in open_ones:
