@@ -27,7 +27,13 @@ from ..package import voicegate
 # Long enough to answer, short enough to read. Application boxes are not essays
 # however the question is phrased, and a wall of text reads as a wall of text.
 MIN_CHARS = 220
-MAX_CHARS = 900
+MAX_CHARS = 1400
+
+# How many times to ask for it shorter before giving up. The first version threw
+# a whole answer away for being 909 characters against a 900 cap, which left the
+# OpenAI "Additional Information" box empty over nine characters. A cap is a
+# shape to aim at, not a reason to send nothing.
+TRIM_ATTEMPTS = 3
 
 SYSTEM = """You are drafting one answer to one question on a job application, \
 in the applicant's own voice.
@@ -73,14 +79,45 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
               f"QUESTION:\n{question}\n\n"
               f"JOB DESCRIPTION:\n{jd_text[:6000]}\n\n"
               f"EVIDENCE (everything you may draw on):\n{evidence[:120000]}")
+    client = anthropic.Anthropic(api_key=key)
     try:
-        client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
             model=model, max_tokens=1200, system=SYSTEM,
             messages=[{"role": "user", "content": prompt}])
     except Exception as e:
         return "", f"{e.__class__.__name__}: {str(e)[:120]}"
 
+    answer, why = _parse(resp)
+    if not answer:
+        return "", why
+
+    # Ask for it shorter rather than discarding it. Same for a gate failure: the
+    # model can be told what it got wrong and try again, which is how the cover
+    # letter's hook already works.
+    messages = [{"role": "user", "content": prompt}]
+    for attempt in range(TRIM_ATTEMPTS):
+        problem = _problem(answer, evidence, banned_phrases)
+        if not problem:
+            return answer, ""
+        if attempt == TRIM_ATTEMPTS - 1:
+            break
+        messages = messages + [
+            {"role": "assistant", "content": json.dumps({"answer": answer})},
+            {"role": "user", "content":
+             f"That answer will not do: {problem}. Keep everything that is "
+             f"true and specific, cut what is not, and return the same JSON."}]
+        try:
+            resp = client.messages.create(model=model, max_tokens=1200,
+                                          system=SYSTEM, messages=messages)
+        except Exception as e:
+            return "", f"{e.__class__.__name__}: {str(e)[:120]}"
+        answer, why = _parse(resp)
+        if not answer:
+            return "", why
+    return "", _problem(answer, evidence, banned_phrases) or "unknown"
+
+
+def _parse(resp) -> tuple[str, str]:
     raw = _text(resp).strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0]
@@ -90,14 +127,23 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
         return "", "the model did not return the JSON it was asked for"
     if not answer:
         return "", "the model returned an empty answer"
-    if len(answer) > MAX_CHARS:
-        return "", f"the draft ran to {len(answer)} characters, over {MAX_CHARS}"
+    return answer, ""
 
+
+def _problem(answer: str, evidence: str,
+             banned_phrases: tuple[str, ...]) -> str:
+    """What is wrong with this draft, in words the model can act on."""
+    if len(answer) > MAX_CHARS:
+        return (f"it runs to {len(answer)} characters and must be under "
+                f"{MAX_CHARS}")
+    if len(answer) < MIN_CHARS:
+        return (f"it is only {len(answer)} characters and must be at least "
+                f"{MIN_CHARS}")
     verdict = voicegate.check(answer, evidence=evidence,
                               banned_phrases=banned_phrases)
     if not verdict.ok:
-        return "", "the voice gate rejected it: " + "; ".join(verdict.failures[:3])
-    return answer, ""
+        return "the voice gate rejected it: " + "; ".join(verdict.failures[:3])
+    return ""
 
 
 def draft_all(cfg: Config, questions: list[str], *, company: str, role: str,

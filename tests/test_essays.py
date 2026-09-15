@@ -78,7 +78,10 @@ def test_an_invented_number_is_rejected_rather_than_sent(monkeypatch):
     earned, under his name, on an application he cannot recall."""
     got, why = draft("I grew that business from $9m to $250m in eleven months "
                      "and led a team of four hundred people across nine markets, "
-                     "which is the experience I would bring to this role here.",
+                     "which is the experience I would bring to this role here. "
+                     "The same pattern held at every other company I have worked "
+                     "for, and it is the reason I am writing to you about this "
+                     "particular seat rather than any of the others open now.",
                      monkeypatch)
     assert got == ""
     assert "voice gate" in why
@@ -112,7 +115,10 @@ def test_every_question_gets_an_answer_or_a_reason(monkeypatch):
     """A silent failure here is a blank box on a real application."""
     fake_model("I took Nine's data and automation line from $9m to $61m, which "
                "is the closest thing I have to the job you are describing and "
-               "the reason I am writing at all about this particular role.",
+               "the reason I am writing at all about this particular role. I ran "
+               "a 14-agent fleet at Mindmake afterwards, so the operating half "
+               "of this is familiar ground rather than something I would be "
+               "learning on your time.",
                monkeypatch)
     notes: list[str] = []
     out = essays.draft_all(Cfg(), ["Why us?", "A hard problem?"],
@@ -126,9 +132,58 @@ def test_a_banned_phrase_is_refused(monkeypatch):
     """The naming law applies to a drafted answer exactly as it does to the
     letter."""
     fake_model("I took Nine from $9m to $61m while at Mindmaker, which is the "
-               "work closest to what you are hiring for in this particular role.",
+               "work closest to what you are hiring for in this particular role. "
+               "I ran a 14-agent fleet there and the operating half of that is "
+               "the part I would bring to you, rather than the strategy deck "
+               "that usually arrives instead of it.",
                monkeypatch)
     got, why = essays.draft_one(Cfg(), question="q", company="c", role="r",
                                 jd_text="", evidence=EVIDENCE,
                                 banned_phrases=("Mindmaker",))
     assert got == "" and "voice gate" in why
+
+
+
+def test_a_draft_nine_characters_over_is_asked_for_a_shorter_one(monkeypatch):
+    """The OpenAI "Additional Information" box was left empty because a draft
+    came back at 909 characters against a 900 cap and the whole answer was
+    thrown away. A cap is a shape to aim at, not a reason to send nothing."""
+    good = ("I took Nine's data and automation line from $9m to $61m over three "
+            "years, and ran a 14-agent fleet at Mindmake after that. ")
+    long_one = good + "x" * (essays.MAX_CHARS + 9 - len(good))
+    seen = []
+
+    class Block:
+        type = "text"
+        def __init__(self, t): self.text = t
+
+    class Resp:
+        def __init__(self, t): self.content = [Block(t)]
+
+    class Messages:
+        def create(self, **kw):
+            seen.append(kw["messages"])
+            body = long_one if len(seen) == 1 else good * 2
+            return Resp(json.dumps({"answer": body}))
+
+    class Client:
+        def __init__(self, **kw): self.messages = Messages()
+
+    import sys, types
+    mod = types.ModuleType("anthropic")
+    mod.Anthropic = Client
+    monkeypatch.setitem(sys.modules, "anthropic", mod)
+
+    got, why = essays.draft_one(Cfg(), question="q", company="c", role="r",
+                                jd_text="", evidence=EVIDENCE)
+    assert why == "" and got
+    assert len(seen) == 2, "it should have asked once more"
+    said = str(seen[1][-1]["content"])
+    assert "characters" in said, "the retry has to say what was wrong"
+
+
+def test_it_gives_up_rather_than_looping_for_ever(monkeypatch):
+    fake_model("short", monkeypatch)
+    got, why = essays.draft_one(Cfg(), question="q", company="c", role="r",
+                                jd_text="", evidence=EVIDENCE)
+    assert got == "" and "characters" in why
