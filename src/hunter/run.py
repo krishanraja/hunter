@@ -3619,6 +3619,11 @@ def _open_approved(seen: set[str], *, port: int, profile_dir: str) -> int:
         if cmd_apply_local(token=r["token"], port=port,
                            profile_dir=profile_dir) == 0:
             opened += 1
+        # One at a time. Ten approvals answered in one sitting would otherwise
+        # arrive as ten tabs at once, which is not a review, and the next one is
+        # a minute away anyway.
+        if opened:
+            break
     return opened
 
 

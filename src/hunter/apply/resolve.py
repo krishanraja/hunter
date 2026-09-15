@@ -67,6 +67,14 @@ def _jurisdiction(label: str) -> str:
     return ""
 
 
+def _affirmative(value: str) -> str | None:
+    """Is a stored answer a yes? Only these words, never a guess."""
+    low = (value or "").strip().lower().rstrip(".")
+    return low if low in ("yes", "y", "true", "i agree", "agree", "i consent",
+                          "consent", "i acknowledge", "acknowledge",
+                          "i confirm", "confirm") else None
+
+
 def _padded(label: str) -> str:
     return " " + norm_label(label).replace("-", " ") + " "
 
@@ -525,6 +533,17 @@ class Resolver:
         if not isinstance(result, Answer) or not field.options:
             return result
         picked = match_option(result.value, field.options)
+        # An acknowledgement with exactly one option is a tick box written as a
+        # select: "I acknowledge that I have read the Arbitration Agreement" is
+        # not a yes/no question, it is the only thing that can be said. His stored
+        # Yes does not match the wording, so every such field came back needing
+        # him, on nearly every form. Still flagged, so he reads it before
+        # approving; a consent is his to give and this only stops him retyping it.
+        if picked is None and field.kind == "consent" and len(field.options) == 1 \
+                and _affirmative(result.value):
+            only = field.options[0].label
+            return Answer(only, result.source + " (the form's only option)",
+                          flagged=True, note=result.note)
         if picked is None:
             return Unanswered(
                 NO_MATCH,
