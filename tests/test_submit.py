@@ -1414,3 +1414,57 @@ def test_an_unknown_ats_does_not_kill_the_local_flow(tmp_path):
     out = submit_mod.open_for_human(plan(ats="linkedin", fields=[field()]),
                                     keep_dir=str(tmp_path))
     assert "no driver" in out["error"]
+
+
+def test_it_finds_the_chromium_that_is_actually_installed(tmp_path, monkeypatch):
+    """A pinned playwright and a preinstalled browser disagree about the build
+    number more often than not, and this has now cost two runs: the first failed
+    loudly, the second quietly sent an approval email with no screenshot and no
+    "still empty and required" list. So an unset HUNTER_CHROMIUM_PATH no longer
+    means give up.
+
+    Newest build wins, compared as a number: chromium-1194 sorts before
+    chromium-234 as text, which would pick the older browser.
+    """
+    for build in ("234", "1194"):
+        exe = tmp_path / f"chromium-{build}" / "chrome-linux" / "chrome"
+        exe.parent.mkdir(parents=True)
+        exe.write_text("#!/bin/sh\n")
+        exe.chmod(0o755)
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+    assert submit_mod._chromium_on_disk() == str(
+        tmp_path / "chromium-1194" / "chrome-linux" / "chrome")
+
+
+def test_nothing_on_disk_raises_the_real_error(tmp_path, monkeypatch):
+    """A missing browser must not be swallowed into a mystery. The fallback is a
+    second chance, not a way to lose the reason."""
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+    monkeypatch.delenv("HUNTER_CHROMIUM_PATH", raising=False)
+    assert submit_mod._chromium_on_disk() == ""
+
+    class Boom:
+        class chromium:
+            @staticmethod
+            def launch(**kw):
+                raise RuntimeError("Executable doesn't exist at /opt/nope")
+
+    with pytest.raises(RuntimeError, match="Executable doesn't exist"):
+        submit_mod._launch(Boom)
+
+
+def test_an_explicit_executable_still_wins(monkeypatch):
+    """HUNTER_CHROMIUM_PATH is how a deliberate choice is made, so the search
+    must never override it."""
+    monkeypatch.setenv("HUNTER_CHROMIUM_PATH", "/my/own/chrome")
+    seen = {}
+
+    class Stub:
+        class chromium:
+            @staticmethod
+            def launch(**kw):
+                seen.update(kw)
+                return "browser"
+
+    assert submit_mod._launch(Stub) == "browser"
+    assert seen["executable_path"] == "/my/own/chrome"

@@ -793,19 +793,58 @@ def page_blocker(page) -> str:
 # ---------- the run ----------
 
 def _launch(pw):
-    """Chromium, honouring an explicitly provided executable.
+    """Chromium, honouring an explicitly provided executable, then whatever is
+    actually on the disk.
 
     HUNTER_CHROMIUM_PATH exists because a pinned playwright and a preinstalled
     browser disagree about the build number more often than not: this sandbox
     carries chromium-1194 and the pip playwright wanted 1234, so the launch failed
-    with "Executable doesn't exist" and no form could be filled. Unset, it behaves
-    exactly as before and downloads or finds its own.
+    with "Executable doesn't exist" and no form could be filled.
+
+    It has now failed that way twice, the second time silently degrading an
+    approval email rather than stopping, so an unset variable no longer means
+    give up. PLAYWRIGHT_BROWSERS_PATH holds a chromium whatever its build number,
+    and a browser one directory along is better than none at all. The explicit
+    variable still wins, and where nothing is found the original error is raised
+    rather than swallowed.
     """
     import os
     exe = (os.environ.get("HUNTER_CHROMIUM_PATH") or "").strip()
     if exe:
         return pw.chromium.launch(headless=True, executable_path=exe)
-    return pw.chromium.launch(headless=True)
+    try:
+        return pw.chromium.launch(headless=True)
+    except Exception:
+        found = _chromium_on_disk()
+        if not found:
+            raise
+        return pw.chromium.launch(headless=True, executable_path=found)
+
+
+def _chromium_on_disk() -> str:
+    """Any chromium playwright has already downloaded, newest build first."""
+    import glob
+    import os
+    root = (os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "").strip()
+    roots = [root] if root else []
+    roots += [os.path.expanduser("~/.cache/ms-playwright")]
+    for r in roots:
+        hits = glob.glob(os.path.join(r, "chromium*", "chrome-linux", "chrome"))
+        hits += glob.glob(os.path.join(r, "chromium*", "chrome-linux64", "chrome"))
+        hits = [h for h in hits if os.access(h, os.X_OK)]
+        if hits:
+            # chromium-1194 sorts before chromium-234 as text, so compare the
+            # build number as a number.
+            def build(path: str) -> int:
+                part = path.split(os.sep)
+                for seg in part:
+                    if seg.startswith("chromium") and "-" in seg:
+                        tail = seg.rsplit("-", 1)[-1]
+                        if tail.isdigit():
+                            return int(tail)
+                return 0
+            return sorted(hits, key=build)[-1]
+    return ""
 
 
 def _open_and_fill(pw, plan: FillPlan, attachments: dict, cls, names=None):
