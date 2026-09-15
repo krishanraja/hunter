@@ -1187,3 +1187,73 @@ def test_submit_waits_for_the_form_like_preview_does(approved):
                  browser_factory=factory_for(page))
     assert page.waited
     assert out["pressed"] is True, out.get("reason")
+
+
+# ---------- the press is not the proof ----------
+
+class PressPage(FormPage):
+    """A page that says something, or nothing, once the button is pressed."""
+
+    def __init__(self, controls, after="", url="https://x/apply"):
+        super().__init__(controls)
+        self.after, self.url, self.pressed = after, url, False
+
+    def content(self):
+        return self.after if self.pressed else "<form></form>"
+
+    def get_by_role(self, role, name="", exact=True):
+        page = self
+
+        class R:
+            first = None
+            def click(self, **kw):
+                page.clicked.append(f"{role}:{name}")
+                page.pressed = True
+        r = R(); r.first = r
+        return r
+
+
+def test_an_acknowledged_submission_quotes_what_the_form_said(approved):
+    page = PressPage({"email": {"tag": "input", "type": "email"}},
+                     after="<h1>Thanks for applying!</h1>")
+    out = submit(Cfg(), "t1", approved["plan"], confirm=True,
+                 browser_factory=factory_for(page))
+    assert out["state"] == approval.SUBMITTED
+    assert out["confirmation"] == "thanks for applying"
+
+
+def test_a_press_with_no_acknowledgement_says_so(approved):
+    """"The click did not raise" is not evidence the employer has anything.
+    press_submit() returned and the very next line recorded SUBMITTED.
+
+    The state stays SUBMITTED, because the button WAS pressed and retrying an
+    application that did land is the one unrecoverable mistake here. What changes
+    is what Krish is told.
+    """
+    page = PressPage({"email": {"tag": "input", "type": "email"}},
+                     after="<form>still the form</form>")
+    out = submit(Cfg(), "t1", approved["plan"], confirm=True,
+                 browser_factory=factory_for(page))
+    assert out["state"] == approval.SUBMITTED
+    assert out["confirmation"] == ""
+    assert (approved["writes"][-1][1]["failure_reason"]
+            == "pressed, no confirmation seen")
+
+
+def test_leaving_the_form_behind_counts_as_acknowledgement(approved):
+    class Navigating(PressPage):
+        def content(self):
+            return "<div>done</div>" if self.pressed else "<form></form>"
+
+        @property
+        def url(self):
+            return "https://x/confirmation" if self.pressed else "https://x/apply"
+
+        @url.setter
+        def url(self, _v):
+            pass
+
+    page = Navigating({"email": {"tag": "input", "type": "email"}})
+    out = submit(Cfg(), "t1", approved["plan"], confirm=True,
+                 browser_factory=factory_for(page))
+    assert "confirmation" in out["confirmation"]

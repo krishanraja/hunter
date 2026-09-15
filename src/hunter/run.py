@@ -3229,6 +3229,7 @@ def report_stalled_approvals(cfg: Config, *, apply: bool = False) -> list[str]:
 
 def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
                    company: str, role: str, screenshot: str = "",
+                   confirmation: str = "", after_png: bytes = b"",
                    summary: list[str] | None = None) -> None:
     """Everything that has to be true once an application is actually sent.
 
@@ -3287,7 +3288,8 @@ def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
 
     try:
         send_applied_receipt(cfg, company=company, role=role, when=today,
-                             screenshot=screenshot, notes=note)
+                             screenshot=screenshot, notes=note,
+                             confirmation=confirmation, after_png=after_png)
         note.append("receipt emailed")
     except Exception as e:
         note.append(f"receipt email FAILED: {e}")
@@ -3296,25 +3298,53 @@ def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
 
 
 def send_applied_receipt(cfg: Config, *, company: str, role: str, when: str,
-                         screenshot: str = "", notes: list[str] | None = None) -> None:
-    """Tell Krish it went. The step whose absence was the whole complaint."""
+                         screenshot: str = "", notes: list[str] | None = None,
+                         confirmation: str = "", after_png: bytes = b"") -> None:
+    """Tell Krish it went, and be honest about how well that is known.
+
+    His question, and the right one: "usually when I apply I get an email from
+    the company saying thanks for applying". The button having been pressed
+    without raising is not the same as the employer having the application, and
+    the first version of this receipt asserted the second while only knowing the
+    first. So the receipt now quotes what the form itself said, attaches a
+    picture of the page AFTER the press, and says plainly when there was no
+    acknowledgement to quote.
+    """
     from . import notify
     lines = "".join(f"<li>{n}</li>" for n in (notes or []))
     shot = (f"<p><a href=\"{screenshot}\">the form as it was submitted</a></p>"
             if screenshot else "")
+    if confirmation:
+        proof = (f"<p style='border-left:3px solid #1a7f37;background:#f2fbf4;"
+                 f"padding:10px 12px;margin:0 0 14px'>The form acknowledged it: "
+                 f"<strong>{confirmation}</strong></p>")
+    else:
+        proof = ("<p style='border-left:3px solid #c47f00;background:#fffbf0;"
+                 "padding:10px 12px;margin:0 0 14px'><strong>Pressed, but the "
+                 "form showed no confirmation.</strong> The attached picture is "
+                 "the page straight after the click. Nothing has been retried: a "
+                 "second submission is worse than an unconfirmed one.</p>")
     html = (f"<div style=\"font:15px/1.55 -apple-system,BlinkMacSystemFont,"
             f"'Segoe UI',system-ui,sans-serif;color:#111;max-width:680px\">"
             f"<div style='display:none'>[hunter-outbound]</div>"
             f"<h2 style='margin:0 0 2px;font-size:19px'>Submitted</h2>"
             f"<div style='color:#555;margin-bottom:18px'>{role} at {company}"
-            f" &middot; {when}</div>{shot}"
+            f" &middot; {when}</div>{proof}{shot}"
             f"<p style='color:#555'>The sheet and the ledger were updated:</p>"
             f"<ul style='color:#555'>{lines}</ul></div>")
-    text = "\n".join(["[hunter-outbound]", f"Submitted: {role} at {company} on {when}"]
-                      + ([f"Form: {screenshot}"] if screenshot else [])
-                      + [f"  {n}" for n in (notes or [])])
-    notify.send_email(cfg, f"Submitted: {company} {role}", html,
-                      to=notify.mailbox(cfg), text=text)
+    text = "\n".join(
+        ["[hunter-outbound]", f"Submitted: {role} at {company} on {when}",
+         (f"The form acknowledged it: {confirmation}" if confirmation else
+          "Pressed, but the form showed no confirmation. See the attached "
+          "picture of the page straight after the click. Nothing retried.")]
+        + ([f"Form: {screenshot}"] if screenshot else [])
+        + [f"  {n}" for n in (notes or [])])
+    attachments = ([(f"after_submit_{slugify(company)}.png", after_png)]
+                   if after_png else None)
+    subject = (f"Submitted: {company} {role}" if confirmation
+               else f"Submitted (UNCONFIRMED): {company} {role}")
+    notify.send_email(cfg, subject, html, to=notify.mailbox(cfg), text=text,
+                      attachments=attachments)
 
 
 def cmd_submit(token: str, confirm: bool = False) -> int:
@@ -3376,7 +3406,9 @@ def cmd_submit(token: str, confirm: bool = False) -> int:
     if out["state"] == approval.SUBMITTED:
         record_applied(cfg, canon, sheet, row["job_id"],
                        company=role.company, role=role.title,
-                       screenshot=out.get("screenshot") or "")
+                       screenshot=out.get("screenshot") or "",
+                       confirmation=out.get("confirmation") or "",
+                       after_png=out.get("after_png") or b"")
     elif confirm:
         # A send that was attempted and did not land is exactly as silent as a
         # send that landed used to be. The reason reached a GitHub Actions log and
