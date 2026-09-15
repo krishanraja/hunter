@@ -1364,3 +1364,38 @@ def test_a_blocked_page_is_reported_rather_than_filled(tmp_path):
                                     keep_dir=str(tmp_path),
                                     connector=connector_for(page))
     assert out["blocker"] == "captcha"
+
+
+def test_an_already_running_chrome_is_reused(monkeypatch):
+    """Starting a second Chrome on the same profile fails, and reusing the
+    browser he already has open is the whole point."""
+    started = []
+    monkeypatch.setattr(submit_mod, "_port_open", lambda port: True)
+    monkeypatch.setattr("subprocess.Popen",
+                        lambda *a, **k: started.append(a) or None)
+    submit_mod._start_local_chrome("chrome", "", 9222)
+    assert started == []
+
+
+def test_a_browser_that_never_opens_its_port_says_so(monkeypatch):
+    """ECONNREFUSED with no explanation is what a fixed sleep gives you on a
+    cold start."""
+    monkeypatch.setattr(submit_mod, "_port_open", lambda port: False)
+    monkeypatch.setattr("subprocess.Popen", lambda *a, **k: None)
+    monkeypatch.setattr(submit_mod.time, "sleep", lambda s: None)
+    with pytest.raises(SubmitBlocked) as e:
+        submit_mod._start_local_chrome("chrome", "", 9222)
+    assert "debugging port" in str(e.value)
+
+
+def test_a_running_browser_needs_no_chrome_on_disk(tmp_path, monkeypatch):
+    """Asking where Chrome is installed while Chrome is already running and
+    waiting on that port is a refusal with no cause."""
+    monkeypatch.setattr(submit_mod, "_port_open", lambda port: True)
+    def no_chrome(_=""):
+        raise SubmitBlocked("no Chrome found")
+    monkeypatch.setattr(submit_mod, "_chrome_binary", no_chrome)
+    page = FormPage({"email": {"tag": "input", "type": "email"}})
+    out = submit_mod.open_for_human(plan(fields=[field()]), keep_dir=str(tmp_path),
+                                    connector=connector_for(page))
+    assert out["error"] == "" and out["filled"] == ["Email"]

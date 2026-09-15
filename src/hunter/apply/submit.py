@@ -924,9 +924,17 @@ def _chrome_binary(explicit: str = "") -> str:
     if env:
         return env
     candidates = [
+        # Windows first: that is the machine this actually runs on.
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        os.path.expandvars(
+            r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        "google-chrome", "chromium", "chromium-browser",
+        "google-chrome", "chromium", "chromium-browser", "chrome.exe",
+        "msedge.exe",
     ]
     for c in candidates:
         found = c if os.path.exists(c) else shutil.which(c)
@@ -948,14 +956,36 @@ def _start_local_chrome(chrome: str, profile_dir: str, port: int):
     masked or spoofed. The score ends up reflecting what is actually true, which
     is a person at their own computer about to press a button themselves.
     """
-    import subprocess
+    import socket, subprocess
+    if _port_open(port):
+        # A Chrome is already listening. Use it: starting a second one on the
+        # same profile fails, and reusing his open browser is the point.
+        return
     args = [chrome, f"--remote-debugging-port={port}", "--no-first-run",
             "--no-default-browser-check"]
     if profile_dir:
         args.append(f"--user-data-dir={profile_dir}")
     subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      start_new_session=True)
-    time.sleep(LOCAL_START_S)
+    # Wait for the port, not a guess. A fixed sleep is either slower than it
+    # needs to be or shorter than a cold start on a laptop, and the second one
+    # fails with ECONNREFUSED and no explanation.
+    for _ in range(LOCAL_START_S * 4):
+        if _port_open(port):
+            return
+        time.sleep(0.25)
+    raise SubmitBlocked(
+        f"Chrome did not open its debugging port on {port}. Close every Chrome "
+        f"window and try again, or pass --port with a different number.")
+
+
+def _port_open(port: int) -> bool:
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+            return True
+    except OSError:
+        return False
 
 
 def open_for_human(plan: FillPlan, *, attachments: dict[str, bytes] | None = None,
@@ -991,7 +1021,11 @@ def open_for_human(plan: FillPlan, *, attachments: dict[str, bytes] | None = Non
     try:
         with connector() as pw:
             if not cdp_url:
-                _start_local_chrome(_chrome_binary(chrome), profile_dir, port)
+                # The port first, the binary only if nothing is listening. Asking
+                # where Chrome is installed while Chrome is already running and
+                # waiting on that port is a refusal with no cause.
+                if not _port_open(port):
+                    _start_local_chrome(_chrome_binary(chrome), profile_dir, port)
                 cdp_url = f"http://127.0.0.1:{port}"
             browser = pw.chromium.connect_over_cdp(cdp_url)
             ctx = browser.contexts[0] if browser.contexts else browser.new_context()
