@@ -3155,7 +3155,7 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
         open_key = payload_mod.new_key()
         try:
             pay = payload_mod.build(plan, attachments=attachments_by_kind,
-                                    names=attachment_names)
+                                    names=attachment_names, bank=bank)
         except Exception as e:
             pay, open_key = None, ""
             print(f"  no fill payload for this one: {e}")

@@ -82,3 +82,52 @@ def test_a_file_field_with_no_bytes_is_not_announced():
 def test_the_url_is_the_drivers_own():
     p = P.build(plan([f()]))
     assert p["url"] == "https://jobs.ashbyhq.com/harvey/p1/application"
+
+
+# ---------- the questions no board API reports ----------
+
+class Entry:
+    def __init__(self, value, usable=True):
+        self.value, self.usable = value, usable
+
+
+class Bank:
+    def __init__(self, **rows): self.rows = rows
+    def get(self, name): return self.rows.get(name)
+
+
+def test_his_recorded_demographics_travel_with_the_payload():
+    """OpenAI's form asks gender, race, veteran and disability. Ashby's API
+    reports none of them, so no field named them and every one went out blank
+    on a form where Krish's own answers were already on record."""
+    d = P.demographics(Bank(**{
+        "Gender": Entry("Male"),
+        "Race / ethnicity": Entry("Two or more races"),
+        "Veteran status": Entry("Not a veteran"),
+        "Disability status": Entry("No disability"),
+    }))
+    by = {x["label"]: x for x in d}
+    assert set(by) == {"Gender", "Race or ethnicity", "Veteran status",
+                       "Disability status"}
+    assert "male" in by["Gender"]["phrases"]
+    # The wording a real form uses, not the wording his bank uses.
+    assert any("not a protected veteran" in p for p in by["Veteran status"]["phrases"])
+    assert any("do not have a disability" in p
+               for p in by["Disability status"]["phrases"])
+
+
+def test_an_answer_with_no_mapping_is_never_guessed_at():
+    assert P.demographics(Bank(**{"Gender": Entry("Genderqueer")})) == []
+
+
+def test_a_row_he_has_not_filled_is_left_alone():
+    assert P.demographics(Bank(**{"Gender": Entry("")})) == []
+    assert P.demographics(Bank(**{"Gender": Entry("Male", usable=False)})) == []
+    assert P.demographics(None) == []
+
+
+def test_male_and_female_are_not_the_same_answer():
+    """"male" is inside "female". A substring match picks the wrong radio on the
+    very first question, which is why the extension matches on word boundaries."""
+    d = {x["label"]: x for x in P.demographics(Bank(**{"Gender": Entry("Female")}))}
+    assert d["Gender"]["phrases"] == ["female"]

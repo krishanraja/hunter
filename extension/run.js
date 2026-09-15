@@ -46,6 +46,12 @@
     const res = await fetch(
       api + '?token=' + encodeURIComponent(cap.token) + '&key=' + encodeURIComponent(cap.key),
       { method: 'GET', credentials: 'omit' });
+    if (res.status === 410) {
+      const said = await res.json().catch(() => ({}));
+      banner(said.message || 'This application was replaced by a newer one. '
+        + 'Open the most recent email for this role.', 'bad');
+      return;
+    }
     if (!res.ok) throw new Error('the server said ' + res.status);
     payload = await res.json();
   } catch (e) {

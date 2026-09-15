@@ -178,11 +178,19 @@
     setNative(el, '');
   }
 
+  const usedInputs = new Set();
+
   function actFile(file) {
     for (const sel of file.selectors || []) {
       let el;
       try { el = document.querySelector(sel); } catch (e) { continue; }
       if (!el) continue;
+      // A slot another document already took is not this document's slot. The
+      // cover letter's own selector missed, fell through to the generic
+      // input[type=file], and landed on top of the CV: the Resume box held
+      // KrishRaja_CoverLetter.pdf and the Cover letter box was empty.
+      if (usedInputs.has(el)) continue;
+      usedInputs.add(el);
       const bin = atob(file.b64);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -258,6 +266,44 @@
     return false;
   }
 
+  function wordMatch(haystack, phrase) {
+    // On word boundaries. "male" is inside "female", so a substring test picks
+    // the wrong radio on the very first question.
+    const at = haystack.indexOf(phrase);
+    if (at < 0) return false;
+    const before = at === 0 ? ' ' : haystack[at - 1];
+    const after = at + phrase.length >= haystack.length
+      ? ' ' : haystack[at + phrase.length];
+    return !/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(after);
+  }
+
+  function actDemographic(entry, out) {
+    // These are on the page and absent from the board's API, so no field in the
+    // payload names them. Krish's answers are in his own info bank and he asked
+    // for them to be filled; the phrases come from hunter, the matching happens
+    // here because only here can see the real labels.
+    const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+    const hits = [];
+    for (const r of radios) {
+      if (r.checked) continue;
+      const lab = labelOf(r);
+      if (!lab) continue;
+      for (const phrase of entry.phrases || []) {
+        if (wordMatch(lab, norm(phrase))) { hits.push({ r, phrase }); break; }
+      }
+    }
+    if (hits.length !== 1) {
+      // None, or more than one, is not an answer. Leave it for him.
+      out.missed.push(entry.label);
+      return;
+    }
+    hits[0].r.click();
+    if (!hits[0].r.checked && hits[0].r.labels && hits[0].r.labels[0]) {
+      hits[0].r.labels[0].click();
+    }
+    (hits[0].r.checked ? out.filled : out.missed).push(entry.label);
+  }
+
   async function run(payload) {
     // Documents first: a vendor that autofills from the CV writes over the
     // fields afterwards, so anything typed before the upload is lost.
@@ -271,6 +317,7 @@
     await sleep(600);
 
     const out = { filled: [], missed: [], files: [], required_missed: [] };
+    for (const d of payload.demographics || []) actDemographic(d, out);
     for (const f of payload.files || []) {
       (holdsFile(f) ? out.files : out.missed).push(f.label);
     }

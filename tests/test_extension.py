@@ -95,3 +95,34 @@ def test_a_no_answer_on_a_yes_no_control_reads_as_answered():
     where = body[body.index("function holdsChoice"):]
     where = where[:where.index("function holdsFile")]
     assert "aria-pressed" in where, "the pressed button is the answer, not the mirror"
+
+
+def test_a_document_never_lands_in_a_slot_another_already_took():
+    """The cover letter's own selector missed, fell through to the generic
+    input[type=file], and landed on top of the CV: the Resume box held
+    KrishRaja_CoverLetter.pdf and the Cover letter box was empty."""
+    body = code_only(FILL)
+    assert "usedInputs" in body
+    where = body[body.index("function actFile"):]
+    where = where[:where.index("function ") + where[where.index("function ") + 8:].index("function ")]
+    assert "usedInputs.has(el)" in where
+
+
+def test_demographics_match_on_word_boundaries():
+    """"male" is inside "female"."""
+    body = code_only(FILL)
+    assert "function wordMatch" in body
+    assert "actDemographic" in body
+    where = body[body.index("function wordMatch"):body.index("function actDemographic")]
+    assert "/[a-z0-9]/" in where, "a substring test picks Female for Male"
+
+
+def test_an_ambiguous_demographic_is_left_for_him():
+    body = code_only(FILL)
+    where = body[body.index("function actDemographic"):]
+    assert "hits.length !== 1" in where, "none, or more than one, is not an answer"
+
+
+def test_a_superseded_link_explains_itself():
+    """Krish opened an older email and got "the server said 404"."""
+    assert "410" in RUN and "replaced by a newer one" in RUN
