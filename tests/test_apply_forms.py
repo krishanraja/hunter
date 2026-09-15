@@ -802,3 +802,62 @@ def test_a_split_name_field_gets_its_own_half(label, expected):
     r = Resolver(build_bank())
     got = r.resolve(field(label, kind="name"))
     assert getattr(got, "value", None) == expected
+
+
+def _opt(label):
+    from hunter.apply.model import Option
+    return Option(label=label, value=label)
+
+
+def _bank_with_consent():
+    from hunter.apply.infobank import load_bank
+    rows = [r[:] for r in INFO_ROWS] + [
+        ["Consent to recruiting privacy policies and acknowledgements", "Yes",
+         "\U0001F7E2 LOCKED", ""]]
+    tabs = {"Application Info Bank": rows, "Profile": PROFILE_ROWS,
+            "Interview Answers": INTERVIEW_ROWS}
+    return load_bank(lambda tab: tabs[tab])
+
+
+def test_a_single_option_acknowledgement_takes_that_option():
+    """"I acknowledge that I have read the Arbitration Agreement" is not a
+    yes/no question, it is the only thing that can be said. His stored Yes did
+    not match the wording, so this came back needing him on nearly every form."""
+    r = Resolver(_bank_with_consent())
+    f = field("Applicant Arbitration Agreement Acknowledgement", kind="consent",
+              options=(_opt("I acknowledge that I have opened, read, and "
+                            "understood the Arbitration Agreement."),))
+    got = r.resolve(f)
+    assert getattr(got, "value", "").startswith("I acknowledge")
+    assert getattr(got, "flagged", False), "a consent is still his to read"
+
+
+def test_a_real_choice_is_never_answered_for_him():
+    """Two options is a question. Only one is a tick box."""
+    r = Resolver(_bank_with_consent())
+    f = field("Do you agree to the terms?", kind="consent",
+              options=(_opt("I agree"), _opt("I do not agree")))
+    got = r.resolve(f)
+    assert getattr(got, "value", None) in (None, "I agree") or isinstance(got, Unanswered)
+
+
+def test_a_dead_posting_is_never_ready():
+    """Slingshot AI's posting was dead, Ashby returned no form, the plan had zero
+    fields and therefore zero unanswered required fields, and an approval email
+    went out for a role nobody can apply to. `ready` was vacuously true."""
+    from hunter.apply.fill import build_payload
+    from hunter.apply.model import FormSpec
+    spec = FormSpec(ats="ashby", slug="x", posting_id="y", title="", fields=(),
+                    readable=False, note="Ashby returned no posting; the posting is dead")
+    plan = build_payload(spec, build_bank(), company="Slingshot AI", role="CoS")
+    assert plan.readable is False
+    assert plan.fields == ()
+    assert plan.ready is False, "a form nobody can fill is not ready to send"
+
+
+def test_a_readable_form_with_no_fields_is_not_ready_either():
+    from hunter.apply.fill import build_payload
+    from hunter.apply.model import FormSpec
+    spec = FormSpec(ats="ashby", slug="x", posting_id="y", title="", fields=())
+    plan = build_payload(spec, build_bank(), company="X", role="Y")
+    assert plan.ready is False

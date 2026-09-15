@@ -106,6 +106,7 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
            cv_pdf_url: str = "", letter_pdf_url: str = "",
            merged_attachment: str = "",
            form_shot: str = "", form_filled: int = 0, form_missed: tuple = (),
+           open_url: str = "",
            hunt_url: str = "",
            notes: list[str] | None = None) -> ApprovalEmail:
     """The whole application, reviewable without opening a document."""
@@ -146,6 +147,17 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
         for n in notes:
             A(f"<li>{_esc(n)}</li>")
         A("</ul></div>")
+
+    if open_url:
+        A("<div style='margin:0 0 6px'>")
+        A(f"<a href=\"{_esc(open_url)}\" style='display:inline-block;padding:13px 24px;"
+          "background:#1a7f37;color:#fff;text-decoration:none;border-radius:6px;"
+          "font-weight:700;font-size:16px'>Open the filled form</a>")
+        A("</div>")
+        A("<p style='color:#666;font-size:13px;margin:0 0 18px'>Opens the real "
+          "application with every field already filled and your CV attached. Read "
+          "it and press Submit yourself. Hunter never presses it, and this link "
+          "cannot: it is a link to the employer's own form.</p>")
 
     A("<div style='margin:0 0 20px'>")
     A(f"<a href=\"{approve_link}\" style='display:inline-block;padding:11px 20px;"
@@ -261,6 +273,8 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
         T += [f"  {l.label}: no answer. {l.source}" for l in needs_you]
         T += [f"  {l.label}: {l.value} ({l.source})" for l in flagged]
         T += [f"  {n}" for n in notes]
+    if open_url:
+        T += ["", "OPEN THE FILLED FORM (then press Submit yourself):", open_url]
     T += ["", f"Reply {APPROVE_WORD} on its own line to approve.",
           "Reply with anything else and it is treated as feedback.",
           "A minute later this form opens in your own Chrome, filled in, with "

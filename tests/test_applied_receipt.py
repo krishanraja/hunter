@@ -192,3 +192,41 @@ def test_waiting_on_krish_is_not_a_fault(ledger):
                      "state": _ap.AWAITING, "decided_at": None, "sent_at": _iso(72)}]
     assert R.report_stalled_approvals(None, apply=True) == []
     assert mail == []
+
+
+def test_the_watcher_opens_one_form_at_a_time(monkeypatch):
+    """Ten approvals answered in one sitting would arrive as ten tabs at once,
+    which is not a review. The next one is a minute away anyway."""
+    monkeypatch.setattr(R, "build_context", lambda: (None, None))
+    monkeypatch.setattr(R, "db_get", lambda cfg, table, params: [
+        {"token": "t1"}, {"token": "t2"}, {"token": "t3"}])
+    opened = []
+    monkeypatch.setattr(R, "cmd_apply_local",
+                        lambda token=None, port=0, profile_dir="":
+                        opened.append(token) or 0)
+    seen = set()
+    assert R._open_approved(seen, port=9222, profile_dir="") == 1
+    assert opened == ["t1"]
+    assert R._open_approved(seen, port=9222, profile_dir="") == 1
+    assert opened == ["t1", "t2"]
+
+
+def test_a_dead_posting_is_retired_not_just_skipped(monkeypatch):
+    """Krish: the listing has been taken down, so the role should be purged.
+    A skipped row is still a built package and comes back on the next run."""
+    from hunter import sheet as sheet_mod
+    patched = []
+    monkeypatch.setattr(R, "db_patch",
+                        lambda cfg, table, match, values: patched.append(
+                            (table, match, values)))
+    sheet = FakeSheet([row(71, "Slingshot AI", "Chief of Staff, GTM")])
+    sheet.package_status = {}
+    sheet.update_package_status = lambda rn, st: sheet.package_status.__setitem__(rn, st)
+    R.retire_dead_posting(None, Canon(), sheet, "slingshotai:cos-gtm",
+                          company="Slingshot AI", role="Chief of Staff, GTM",
+                          why="Ashby returned no posting; the posting is dead")
+    table, match, values = patched[0]
+    assert table == "hunter_seen_roles"
+    assert values["package_status"] == "dead" and values["status"] == "dead"
+    assert sheet.package_status == {71: sheet_mod.PKG_DEAD}
+    assert "dead posting" in sheet.verdicts_set[71]
