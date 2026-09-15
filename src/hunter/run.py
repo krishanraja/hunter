@@ -3179,6 +3179,96 @@ def cmd_approvals_drain(apply: bool = False, send: bool = False) -> int:
     return 0
 
 
+def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
+                   company: str, role: str, screenshot: str = "",
+                   summary: list[str] | None = None) -> None:
+    """Everything that has to be true once an application is actually sent.
+
+    Four writes and a message, none of which existed. A submission reached the
+    employer, the approval ledger recorded it, and nothing else moved: the
+    Pipeline row went on reading "Not applied" with no date, the role row in
+    Supabase kept a null application_state, the row never left the Pipeline tab,
+    and Krish was told nothing at all. He asked for confirmation and there was
+    none to give, because the run printed into a GitHub Actions log and stopped.
+
+    Deliberately best effort per step and loud about each failure: a sent
+    application must never be un-sent by a bookkeeping error, and a step that
+    fails silently here puts us straight back where we started.
+    """
+    note = summary if summary is not None else []
+    today = datetime.date.today().isoformat()
+
+    # The sheet carries no job_id, so the row is found by company and role. It
+    # must match exactly one: Harvey alone has six roles on these tabs and
+    # stamping the wrong one "Applied" is worse than stamping none.
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    want = ((company or "").strip().lower(), (role or "").strip().lower())
+    hits = [r for r in rows
+            if ((r.company or "").strip().lower(), (r.role or "").strip().lower()) == want]
+    target = hits[0] if len(hits) == 1 else None
+    if target is None:
+        note.append(f"{len(hits)} Pipeline rows match {company} / {role}; "
+                    f"sheet not updated, do it by hand")
+    else:
+        rn = target.row_number
+        for what, fn in (
+                ("Application Status and Applied Date",
+                 lambda: sheet.mark_applied(rn, when=today)),
+                ("column A verdict",
+                 lambda: sheet.set_verdicts({rn: verdicts.APPLIED}))):
+            try:
+                fn()
+                note.append(f"sheet row {rn}: wrote {what}")
+            except Exception as e:
+                note.append(f"sheet row {rn}: {what} FAILED: {e}")
+
+    try:
+        db_patch(cfg, "hunter_seen_roles", {"job_id": job_id},
+                 {"application_state": "submitted", "applied_at": NOW()})
+        note.append("hunter_seen_roles: application_state submitted")
+    except Exception as e:
+        note.append(f"hunter_seen_roles patch FAILED: {e}")
+
+    # Off Pipeline and onto Applied, which is cmd_archive's job and was only ever
+    # run by hand against a column A value nothing set.
+    try:
+        cmd_archive(apply=True)
+        note.append("ran the archive pass: decided rows moved to the Applied tab")
+    except Exception as e:
+        note.append(f"archive to the Applied tab FAILED: {e}")
+
+    try:
+        send_applied_receipt(cfg, company=company, role=role, when=today,
+                             screenshot=screenshot, notes=note)
+        note.append("receipt emailed")
+    except Exception as e:
+        note.append(f"receipt email FAILED: {e}")
+    for line in note:
+        print(f"  {line}")
+
+
+def send_applied_receipt(cfg: Config, *, company: str, role: str, when: str,
+                         screenshot: str = "", notes: list[str] | None = None) -> None:
+    """Tell Krish it went. The step whose absence was the whole complaint."""
+    from . import notify
+    lines = "".join(f"<li>{n}</li>" for n in (notes or []))
+    shot = (f"<p><a href=\"{screenshot}\">the form as it was submitted</a></p>"
+            if screenshot else "")
+    html = (f"<div style=\"font:15px/1.55 -apple-system,BlinkMacSystemFont,"
+            f"'Segoe UI',system-ui,sans-serif;color:#111;max-width:680px\">"
+            f"<div style='display:none'>[hunter-outbound]</div>"
+            f"<h2 style='margin:0 0 2px;font-size:19px'>Submitted</h2>"
+            f"<div style='color:#555;margin-bottom:18px'>{role} at {company}"
+            f" &middot; {when}</div>{shot}"
+            f"<p style='color:#555'>The sheet and the ledger were updated:</p>"
+            f"<ul style='color:#555'>{lines}</ul></div>")
+    text = "\n".join(["[hunter-outbound]", f"Submitted: {role} at {company} on {when}"]
+                      + ([f"Form: {screenshot}"] if screenshot else [])
+                      + [f"  {n}" for n in (notes or [])])
+    notify.send_email(cfg, f"Submitted: {company} {role}", html,
+                      to=notify.mailbox(cfg), text=text)
+
+
 def cmd_submit(token: str, confirm: bool = False) -> int:
     """Fill one approved application. Press submit only with --confirm.
 
@@ -3235,6 +3325,10 @@ def cmd_submit(token: str, confirm: bool = False) -> int:
     if out["state"] == "filled":
         print(f"\nNothing was sent. Re-run with --confirm to press submit:"
               f"\n  python -m hunter.run submit --token {token} --confirm")
+    if out["state"] == approval.SUBMITTED:
+        record_applied(cfg, canon, sheet, row["job_id"],
+                       company=role.company, role=role.title,
+                       screenshot=out.get("screenshot") or "")
     return 0 if out["state"] in ("filled", approval.SUBMITTED) else 1
 
 
