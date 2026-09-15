@@ -3042,11 +3042,25 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
                 print(f"  form not filled in advance: "
                       f"{pv['blocker'] or pv['error']}")
 
+        # What the extension will put into the form. Built from the same plan and
+        # the same documents the picture above was taken from, so what he sees in
+        # the email and what lands in the form are one thing.
+        from .apply import payload as payload_mod
+        open_key = payload_mod.new_key()
+        try:
+            pay = payload_mod.build(plan, attachments=attachments_by_kind,
+                                    names=attachment_names)
+        except Exception as e:
+            pay, open_key = None, ""
+            print(f"  no fill payload for this one: {e}")
+        open_url = (f"{pay['url']}#hunter={token}.{open_key}" if pay else "")
+
         email = approval.render(
             company=role.company, role=role.title, jd_url=role.jd_url,
             autonomy=au.autonomy_score, token=token, to=to,
             form_shot=shot_name, form_filled=filled, form_missed=missed,
             hunt_url=hunt_url_for(cfg, row["job_id"]),
+            open_url=open_url,
             lines=plan.field_lines(), essays=plan.essays,
             summary=plan.summary, hook=plan.hook,
             cv_url=row.get("package_cv_url") or "",
@@ -3069,9 +3083,15 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
             print("  (dry run, no token minted. pass --apply to send)")
             continue
         if not plan.readable or not plan.fields:
-            print(f"  REFUSING to send: the form could not be read"
-                  + (f": {plan.notes[0]}" if plan.notes else "")
-                  + ". Nothing to approve.")
+            # A posting the board no longer serves is gone, not pending. Leaving
+            # it as a built package means it comes back on every run and Krish
+            # gets an approval email for a role nobody can apply to. Retire it
+            # where it lives: the role row, and his sheet.
+            why = plan.notes[0] if plan.notes else "the form could not be read"
+            print(f"  REFUSING to send: {why}")
+            if apply:
+                retire_dead_posting(cfg, canon, sheet, row["job_id"],
+                                    company=role.company, role=role.title, why=why)
             continue
         if not plan.ready:
             print(f"  REFUSING to send: {len(plan.blocking)} required field(s) "
@@ -3085,6 +3105,11 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
                              company=role.company, role=role.title,
                              fill_plan=plan.as_dict(),
                              message_id=out.get("id", ""))
+        try:
+            db_patch(cfg, approval.TABLE, {"token": token},
+                     {"fill_payload": pay, "open_key": open_key})
+        except Exception as e:
+            print(f"  could not store the fill payload: {e}")
         sent += 1
         print(f"  sent to {to}, token {token}, "
               f"plan_hash {approval.plan_hash(plan.as_dict())}")
@@ -3630,6 +3655,43 @@ def _open_approved(seen: set[str], *, port: int, profile_dir: str) -> int:
         if opened:
             break
     return opened
+
+
+def retire_dead_posting(cfg: Config, canon, sheet: Sheet, job_id: str, *,
+                        company: str, role: str, why: str) -> None:
+    """Take a posting the board no longer serves off the board here too.
+
+    Krish: "slingshot says the job is not found, which means the listing has been
+    taken down, so I should not be sent an email in this case, the role should be
+    purged". Skipping it quietly is not enough, because a skipped row is still a
+    built package and comes back on the next run and the one after that.
+    """
+    note: list[str] = []
+    try:
+        db_patch(cfg, "hunter_seen_roles", {"job_id": job_id},
+                 {"package_status": "dead", "status": "dead",
+                  "rejection_reason": why[:300]})
+        note.append("role row marked dead")
+    except Exception as e:
+        note.append(f"could not mark the role row dead: {e}")
+
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    want = ((company or "").strip().lower(), (role or "").strip().lower())
+    hits = [r for r in rows
+            if ((r.company or "").strip().lower(), (r.role or "").strip().lower()) == want]
+    if len(hits) != 1:
+        note.append(f"{len(hits)} Pipeline rows match; sheet left alone")
+    else:
+        rn = hits[0].row_number
+        try:
+            sheet.update_package_status(rn, sheet_mod.PKG_DEAD)
+            sheet.set_verdicts(
+                {rn: verdicts.DECLINE_PREFIX + verdicts.ALL_CODES["dead_posting"]})
+            note.append(f"sheet row {rn} retired")
+        except Exception as e:
+            note.append(f"sheet row {rn} not retired: {e}")
+    for line in note:
+        print(f"    {line}")
 
 
 def cmd_confirmations(apply: bool = False) -> int:

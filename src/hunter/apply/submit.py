@@ -1008,7 +1008,11 @@ def open_for_human(plan: FillPlan, *, attachments: dict[str, bytes] | None = Non
     import os, tempfile
     out = {"filled": [], "missed": [], "notes": [], "error": "", "blocker": "",
            "url": "", "files": []}
-    cls = driver_for(plan)
+    try:
+        cls = driver_for(plan)
+    except SubmitError as e:
+        out["error"] = str(e)
+        return out
     if connector is None:
         try:
             from playwright.sync_api import sync_playwright
@@ -1104,7 +1108,15 @@ def preview(plan: FillPlan, *, attachments: dict[str, bytes] | None = None,
     """
     out = {"filled": [], "missed": [], "png": b"", "blocker": "", "error": "",
            "notes": []}
-    cls = driver_for(plan)
+    # Inside the guard, not before it. An ATS with no driver raised straight out
+    # of preview and killed the whole approvals batch on its first LinkedIn row,
+    # so twenty-three applications were not sent because one of them was not a
+    # kind of form this can open.
+    try:
+        cls = driver_for(plan)
+    except SubmitError as e:
+        out["error"] = str(e)
+        return out
     if browser_factory is None:
         try:
             from playwright.sync_api import sync_playwright

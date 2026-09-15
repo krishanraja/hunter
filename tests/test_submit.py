@@ -1399,3 +1399,18 @@ def test_a_running_browser_needs_no_chrome_on_disk(tmp_path, monkeypatch):
     out = submit_mod.open_for_human(plan(fields=[field()]), keep_dir=str(tmp_path),
                                     connector=connector_for(page))
     assert out["error"] == "" and out["filled"] == ["Email"]
+
+
+def test_an_unknown_ats_does_not_kill_the_batch():
+    """driver_for was called before preview's guard, so one LinkedIn row raised
+    straight out and twenty-three applications went unsent because one of them
+    was not a kind of form this can open."""
+    out = submit_mod.preview(plan(ats="linkedin", fields=[field()]))
+    assert "no driver" in out["error"]
+    assert out["filled"] == []
+
+
+def test_an_unknown_ats_does_not_kill_the_local_flow(tmp_path):
+    out = submit_mod.open_for_human(plan(ats="linkedin", fields=[field()]),
+                                    keep_dir=str(tmp_path))
+    assert "no driver" in out["error"]
