@@ -138,3 +138,57 @@ def test_the_applied_date_is_written_as_text_not_a_date_value():
         pass
     assert seen["raw"] is True
     assert any("2026-09-15" in str(v) for _, v in seen["blocks"])
+
+
+# ---------- the queue notices when it stops ----------
+
+import datetime as _dt
+from hunter.apply import approval as _ap
+
+
+def _iso(hours_ago):
+    return (_dt.datetime.now(_dt.timezone.utc)
+            - _dt.timedelta(hours=hours_ago)).isoformat()
+
+
+@pytest.fixture
+def ledger(monkeypatch):
+    rows = {"data": []}
+    mail = []
+    monkeypatch.setattr(R, "db_get",
+                        lambda cfg, table, params: [
+                            r for r in rows["data"]
+                            if r["state"] == params["state"].split("eq.")[-1]])
+    import hunter.notify as N
+    monkeypatch.setattr(N, "send_email",
+                        lambda cfg, subject, html, **kw: mail.append(subject))
+    monkeypatch.setattr(N, "mailbox", lambda cfg: "krish@example.com")
+    return rows, mail
+
+
+def test_an_approval_nobody_acted_on_is_named(ledger):
+    """He replied APPROVE, nothing read it, and nothing noticed that nothing had
+    happened. A queue with no alarm on it stops quietly."""
+    rows, mail = ledger
+    rows["data"] = [{"token": "harvey:x", "company": "Harvey", "role": "Head of GTM",
+                     "state": _ap.APPROVED, "decided_at": _iso(5), "sent_at": _iso(6)}]
+    stuck = R.report_stalled_approvals(None, apply=True)
+    assert len(stuck) == 1 and "Harvey" in stuck[0]
+    assert mail and mail[0].startswith("Stalled: 1")
+
+
+def test_a_fresh_approval_is_not_an_alarm(ledger):
+    rows, mail = ledger
+    rows["data"] = [{"token": "harvey:x", "company": "Harvey", "role": "Head of GTM",
+                     "state": _ap.APPROVED, "decided_at": _iso(0), "sent_at": _iso(1)}]
+    assert R.report_stalled_approvals(None, apply=True) == []
+    assert mail == []
+
+
+def test_waiting_on_krish_is_not_a_fault(ledger):
+    """An AWAITING row is waiting on him, and he takes as long as he takes."""
+    rows, mail = ledger
+    rows["data"] = [{"token": "harvey:x", "company": "Harvey", "role": "Head of GTM",
+                     "state": _ap.AWAITING, "decided_at": None, "sent_at": _iso(72)}]
+    assert R.report_stalled_approvals(None, apply=True) == []
+    assert mail == []
