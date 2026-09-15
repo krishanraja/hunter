@@ -85,6 +85,16 @@ BANNED_LANGUAGE = [
     "leverage", "synergy", "cutting-edge", "best-in-class", "game-chang",
 ]
 
+# The whole haystack reaches the prompt. It was capped at 12000 characters until
+# 2026-09-15, by which point the real haystack ran to 30743: the master CV, the
+# Profile and Interview Answers tabs, the stored form answers and the mindmake
+# engagement records. Everything past the cap was a claim voicegate would happily
+# TRACE, because the gate reads the full string, and the model could never SOURCE,
+# because it never saw it. A truncated evidence bank is the one failure mode this
+# design cannot detect on its own, so there is no silent truncation: over the
+# ceiling raises a flag rather than quietly cutting.
+EVIDENCE_MAX_CHARS = 120000
+
 THIN_JD_CHARS = 200
 JD_MIRROR_MAX_WORDS = 12
 JD_OVERLAP_THRESHOLD = 0.5
@@ -292,7 +302,7 @@ def _prompt(canon, company: str, title: str, jd_text: str,
             .replace("[[HIGHLIGHTS]]",
                      "\n".join(f"{i}. {h}" for i, h in enumerate(hl)))
             .replace("[[HIGHLIGHT_COUNT]]", str(len(hl)))
-            .replace("[[EVIDENCE]]", evidence_view[:12000])
+            .replace("[[EVIDENCE]]", evidence_view)
             .replace("[[VOICE_RULES]]", voice_rules)
             .replace("[[JD]]", jd_text[:20000]))
 
@@ -326,6 +336,11 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
     generate = bool(evidence.strip())
     if not generate:
         flags.append("no evidence supplied, generated prose disabled")
+    if len(evidence) > EVIDENCE_MAX_CHARS:
+        # Truncating here would let the gate permit claims the model cannot see.
+        flags.append(f"evidence is {len(evidence)} chars, over the "
+                     f"{EVIDENCE_MAX_CHARS} ceiling; it was sent whole, review "
+                     f"the prompt size")
     if len(jd_text.strip()) < THIN_JD_CHARS:
         flags.append("thin JD, block default clause used")
 

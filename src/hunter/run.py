@@ -1803,6 +1803,15 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     from .package.voicegate import build_evidence
     bank = None
     evidence, banned = "", ()
+    # The mindmake engagement records and the two named programs. Without this key
+    # the gate rejects any AI-native GTM claim, because it can trace none of it:
+    # that is why the first real package never mentioned the work Krish is most
+    # experienced in. optional(), not require(): a missing key costs that one story
+    # and must not cost the application. See apply/gtmseed.py.
+    gtm_evidence = cfg.optional("hunter_ai_gtm_evidence")
+    if not gtm_evidence:
+        rflags.append("hunter_ai_gtm_evidence missing, AI-native GTM claims "
+                      "cannot be traced and will be rejected; run gtm-seed")
     try:
         bank = load_bank(lambda tab: sheet.read_tab_formulas(f"{tab}!A1:Z400"))
         evidence = build_evidence(
@@ -1810,6 +1819,7 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
             "\n".join(bank.profile.values()),
             "\n".join(bank.interview.values()),
             "\n".join(e.value for e in bank.entries.values()),
+            gtm_evidence,
             role.jd_text)
         banned = bank.banned_phrases
     except Exception as e:
@@ -2821,6 +2831,29 @@ def cmd_bank_seed(apply: bool = False) -> int:
     return 0
 
 
+def cmd_gtm_seed(apply: bool = False) -> int:
+    """Write the AI-native GTM evidence key. Dry run by default.
+
+    Krish 2026-09-15: the first package said nothing about the AI-native GTM work
+    he is most experienced in. It could not: the voice gate traces every generated
+    number and name back to the evidence haystack, and none of that work was in
+    it. This command puts it there, printed in full first, because hunter does not
+    write its own evidence unreviewed.
+    """
+    from .apply import gtmseed
+    cfg, _canon = build_context()
+    key, value, exists = gtmseed.plan(cfg)
+    print(f"system_config.{key}: {len(value)} chars, "
+          f"{'UPDATE existing key' if exists else 'INSERT new key'}"
+          f"{'' if apply else ' (dry run, pass --apply to write)'}\n")
+    print(value)
+    if apply:
+        n = gtmseed.write(cfg)
+        print(f"\nwrote and read back {n} chars")
+        print("re-run: python -m hunter.run build <job_id>")
+    return 0
+
+
 def cmd_simulate(send: bool = False) -> int:
     """A dummy rehearsal of the whole application loop. Touches no company, no
     Drive document and no Pipeline row; the posting is a literal, not a fetch.
@@ -2917,6 +2950,8 @@ def main(argv: list[str]) -> int:
         return cmd_decline(pairs_in, apply="--apply" in argv)
     if cmd == "bank-seed":
         return cmd_bank_seed(apply="--apply" in argv)
+    if cmd == "gtm-seed":
+        return cmd_gtm_seed(apply="--apply" in argv)
     if cmd == "simulate":
         return cmd_simulate(send="--send" in argv)
     if cmd == "bank-check":
@@ -2946,6 +2981,7 @@ def main(argv: list[str]) -> int:
           f"run, reconcile, migrate-columns [--apply], migrate-sheet, "
           f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
           f"bank-check, audit-forms [--apply] [--limit N], simulate [--send], bank-seed [--apply], "
+          "gtm-seed [--apply], "
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2
