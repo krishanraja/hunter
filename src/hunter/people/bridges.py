@@ -28,7 +28,8 @@ from .strength import EVIDENCE_KEYS  # noqa: F401  (re-export for the guard test
 # a person named in the a16z newsletter as having just joined the company is
 # timelier than an ex-employee and colder than anyone Krish actually knows.
 TIER_BASE = {"current_employee": 40, "newsletter_move": 30, "ex_employee": 25,
-             "headhunter": 20, "cold_target": 15, "peer_transition": 10}
+             "headhunter": 20, "mindmake_wedge": 18, "cold_target": 15,
+             "peer_transition": 10}
 
 # Control Center's graph (contacts + contact_intelligence) scores relationship by
 # tier, not by message counts. These numbers are the RANKING WEIGHT: they decide
@@ -134,7 +135,41 @@ def tier_words(contact: dict) -> str:
 # one of them that this run did not derive is stale. cold_target is not here: the
 # cold_targets() command writes it on its own schedule and this pass must not eat it.
 DERIVED_TIERS = ("current_employee", "ex_employee", "newsletter_move",
-                 "headhunter", "peer_transition")
+                 "headhunter", "peer_transition", "mindmake_wedge")
+
+# The mindmake wedge, Krish's idea 2026-09-15: "a CEO is likely to be warm to my
+# mindmake services if they have that role open. It could be a win either to get a
+# new customer, or a really clever way in to the role at the highest level with a
+# peer to peer outreach."
+#
+# The trigger is right and the framing matters more than the trigger. Three things
+# shape how this is built, all of them constraints rather than features:
+#
+#   1. It opens on the OBSERVATION, never the offer. A company hiring a commercial
+#      leader has a salary allocated, not advisory budget, so "saw you are hiring,
+#      want consulting instead" lands badly and cheapens a practice whose canon says
+#      the price is private and the primary action is Start here. The opener is the
+#      diagnostic he would give anyway.
+#   2. It is a CHOICE, not a parallel track. Applying through the ATS and pitching
+#      the CEO the same week reads as "he will take anything" if the two ever
+#      compare notes, so the wedge is offered only where he has not already applied,
+#      and the draft says plainly that the role is the other road.
+#   3. The outcome is instrumented, because the honest expectation is that this
+#      converts to the ROLE more often than to a client, and six weeks of recorded
+#      outcomes will say so better than either of us can guess now.
+#
+# Only a leader: the wedge is peer to peer or it is nothing, and a Programmatic
+# Director is not the person who decides either a hire or an engagement.
+WEDGE_LEADER = re.compile(
+    r"\b(chief executive|ceo|founder|co.founder|president|managing partner|"
+    r"chief revenue|cro\b|chief commercial|cco\b|chief operating|coo\b|"
+    r"general manager|managing director)\b", re.I)
+
+# And only where the open seat is the one his practice speaks to. A company hiring a
+# Head of Engineering has no GTM question for him to open on.
+WEDGE_SEAT = re.compile(
+    r"\b(gtm|go.to.market|revenue|commercial|sales|growth|marketing|"
+    r"partnerships?|strategy|chief of staff|general manager)\b", re.I)
 COLD_KEY = "hunter_cold_targets_max_per_run"
 NEWSLETTER_WINDOW_DAYS = 120
 PRIORITY_BONUS = {"A": 15, "B": 8, "C": 3}
@@ -179,6 +214,22 @@ DRAFTS = {
         "I am going after the {role} role at {company} and you are the person "
         "it reports into or sits beside. Rather than go in through the form, "
         "could I have 15 minutes to hear what the role has to solve first?"),
+    # Opens on the observation and never on the offer. No price, no programme
+    # name, no "I help companies like yours": a leader who has just opened a
+    # commercial seat is being told what the seat usually means, by someone who
+    # has designed the model twice. It converts to an engagement or to the role,
+    # and the last line makes the second road explicit rather than coy, because
+    # finding out later that he also applied is the outcome worth avoiding.
+    "mindmake_wedge": (
+        "You have {role} open. In my experience that seat opens when the "
+        "go-to-market model is being rebuilt rather than when a chair is empty, "
+        "and the rebuild usually turns on one of four things: product, price, "
+        "positioning or people. I have designed that model from both sides, as "
+        "the operator carrying the number and as the advisor brought in to fix "
+        "it. Happy to tell you which of the four I would look at first at "
+        "{company}, in 15 minutes, with nothing to sell at the end of it. If "
+        "the answer is that you want someone in the seat rather than beside it, "
+        "say so and I will put my name in properly."),
 }
 
 
@@ -191,13 +242,13 @@ def target_roles(cfg: Config, limit: int = 60) -> list[dict]:
     were being built into roles he had never been shown.
     """
     rows = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,company,title,score,status,krish_verdict,warm_path_person",
+        "select": "job_id,company,title,score,status,krish_verdict,warm_path_person,application_state",
         "status": "in.(staging,presented)",
         "presented_at": "not.is.null",
         "order": "score.desc.nullslast",
         "limit": str(limit)})
     gos = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,company,title,score,status,krish_verdict,warm_path_person",
+        "select": "job_id,company,title,score,status,krish_verdict,warm_path_person,application_state",
         "krish_verdict": "not.is.null", "status": "neq.duplicate",
         "limit": str(limit)})
     seen, out = set(), []
@@ -352,7 +403,7 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
     # discards: a tier floor that dropped 47 of 55 candidates and said nothing, and
     # a company match that found nobody and read the same as a company with nobody
     # to find. A pass that throws work away reports how much.
-    considered = dropped = no_contact = 0
+    considered = dropped = no_contact = wedge = 0
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     for role in roles:
         cslug = slugify(role["company"])
@@ -446,6 +497,30 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
                     DRAFTS["headhunter"].format(firm=firm, company=role["company"],
                                                 role=role["title"]), now))
 
+        # The mindmake wedge. Offered where the open seat is one his practice
+        # speaks to, a leader at that company is reachable, and he has NOT already
+        # applied: doing both to one company in one week is the failure mode, not
+        # the feature. See WEDGE_LEADER above for why only a leader qualifies.
+        if WEDGE_SEAT.search(role["title"] or "") \
+                and not (role.get("application_state") or "").strip():
+            for c in pool[:6]:
+                if not WEDGE_LEADER.search(c.get("current_title") or ""):
+                    continue
+                wedge += 1
+                score = TIER_BASE["mindmake_wedge"] + (c.get("strength_score") or 0) * 0.3
+                words = tier_words(c)
+                upserts.append(_candidate(
+                    role, c["contact_key"], "mindmake_wedge",
+                    f"{c['full_name']} leads {role['company']} as "
+                    f"{c.get('current_title') or 'a leader there'} and the open "
+                    f"{role['title']} seat is the opening"
+                    + (f"; {words}" if words else "")
+                    + ". Peer to peer, about their GTM model, not about the role.",
+                    "the person who decides both", score,
+                    DRAFTS["mindmake_wedge"].format(company=role["company"],
+                                                    role=role["title"]), now))
+                break  # one leader per role: a company gets one approach, not three
+
         covered_by_hh = any(role in hits for hits in hh_role_hits.values())
         if not found_in_network and not covered_by_hh:
             # a NULL contact_key would dodge the unique constraint and stack
@@ -499,7 +574,7 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
             "headhunter_firms_surfaced": len(hh_role_hits),
             "considered": considered, "dropped_out_of_network": dropped,
             "roles_with_no_contact_at_company": no_contact,
-            "superseded": superseded}
+            "superseded": superseded, "mindmake_wedges": wedge}
 
 
 def _candidate(role, contact_key, tier, evidence, proximity, score, draft, now):
