@@ -3447,7 +3447,8 @@ def send_send_failed(cfg: Config, *, company: str, role: str, token: str,
                       to=notify.mailbox(cfg), text=text)
 
 
-def cmd_apply_local(token: str = "", cdp_url: str = "", profile_dir: str = "") -> int:
+def cmd_apply_local(token: str = "", cdp_url: str = "", profile_dir: str = "",
+                    port: int = 0) -> int:
     """Open the next approved application, filled, in Krish's own browser.
 
     His answer to the thing that actually blocks this: "have the approve button
@@ -3510,8 +3511,16 @@ def cmd_apply_local(token: str = "", cdp_url: str = "", profile_dir: str = "") -
             names["file_cover"] = "KrishRaja_CoverLetter.pdf"
 
     print(f"{role.company} {role.title}\n  opening the form in your browser")
-    out = submit_mod.open_for_human(plan, attachments=attachments, names=names,
-                                    cdp_url=cdp_url, profile_dir=profile_dir)
+    try:
+        out = submit_mod.open_for_human(
+            plan, attachments=attachments, names=names, cdp_url=cdp_url,
+            profile_dir=profile_dir,
+            **({"port": port} if port else {}))
+    except submit_mod.SubmitBlocked as e:
+        # A missing browser is the one setup mistake this will actually hit, and
+        # a stack trace is not an instruction.
+        print(f"  {e}")
+        return 1
     if out["error"] or out["blocker"]:
         print(f"  could not open it: {out['blocker'] or out['error']}")
         return 1
@@ -3523,8 +3532,9 @@ def cmd_apply_local(token: str = "", cdp_url: str = "", profile_dir: str = "") -
     if out["files"]:
         print(f"  attached: {', '.join(p.split('/')[-1] for p in out['files'])}")
     print(f"\n  {out['url']}\n"
-          f"  Read it, press Submit, then tell hunter it went:\n"
-          f"    python -m hunter.run applied --token {row['token']}")
+          f"  Read it and press Submit. The employer's receipt closes the row by\n"
+          f"  itself, usually within minutes. Nothing else to do.\n"
+          f"  (If it never arrives: python -m hunter.run applied --token {row['token']})")
     return 0
 
 
@@ -3551,6 +3561,126 @@ def cmd_applied(token: str) -> int:
                    company=row.get("company") or "", role=row.get("role") or "",
                    confirmation="pressed by Krish in his own browser")
     print(f"recorded: {row.get('company')} {row.get('role')}")
+    return 0
+
+
+def cmd_watch(once: bool = False, every: int = 60, port: int = 0,
+              profile_dir: str = "") -> int:
+    """Sit on Krish's PC and open each approved application as it is approved.
+
+    His actual ask: press Approve in the email and have a filled form appear,
+    ready to submit. Nothing else in this system can deliver that, because a web
+    page may not put a file into a file input and no link ever will. Something
+    has to be running on the machine with the browser on it. This is that thing,
+    and it is the only part of hunter that lives on his computer.
+
+    So the loop he sees is: reply APPROVE, wait a minute, press Submit. No
+    command, no terminal. It also runs the confirmation pass, so the receipt from
+    the employer closes the row without him doing anything at all.
+    """
+    from .apply import submit as submit_mod
+    seen: set[str] = set()
+    port = port or submit_mod.DEBUG_PORT
+    print(f"watching for approved applications, every {every}s. Ctrl-C to stop.")
+    while True:
+        try:
+            opened = _open_approved(seen, port=port, profile_dir=profile_dir)
+            if opened:
+                print(f"  {opened} form(s) opened. Read each one and press Submit.")
+            cmd_confirmations(apply=True)
+        except KeyboardInterrupt:
+            print("\nstopped")
+            return 0
+        except Exception as e:
+            # A watcher that dies on one bad poll is a watcher he finds dead a
+            # week later, which is the failure this whole session has been about.
+            print(f"  poll failed, carrying on: {e.__class__.__name__}: {e}")
+        if once:
+            return 0
+        try:
+            time.sleep(every)
+        except KeyboardInterrupt:
+            print("\nstopped")
+            return 0
+
+
+def _open_approved(seen: set[str], *, port: int, profile_dir: str) -> int:
+    """Open every approved application not opened already this session."""
+    from .apply import approval
+    cfg, _canon = build_context()
+    rows = db_get(cfg, approval.TABLE,
+                  {"select": "token", "state": f"eq.{approval.APPROVED}",
+                   "order": "decided_at.asc", "limit": "10"})
+    opened = 0
+    for r in rows:
+        if r["token"] in seen:
+            continue
+        seen.add(r["token"])
+        if cmd_apply_local(token=r["token"], port=port,
+                           profile_dir=profile_dir) == 0:
+            opened += 1
+    return opened
+
+
+def cmd_confirmations(apply: bool = False) -> int:
+    """Close the loop from the employer's own receipt. Dry run by default.
+
+    Krish presses Submit himself, so hunter cannot see the click. Asking him to
+    run one more command afterwards is a step he will forget, and then the sheet
+    lies in the other direction. Every ATS sends "thanks for applying" within
+    minutes, and that email is better evidence than anything hunter could observe
+    from its own side, because it comes from the employer rather than from the
+    browser that pressed the button.
+
+    Never decides that an application happened. It only recognises a receipt for
+    one already on record as approved or pressed, and matches it by company.
+    """
+    from .apply import approval, confirmations
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    open_rows = []
+    for state in (approval.APPROVED, approval.SUBMITTED):
+        open_rows += db_get(cfg, approval.TABLE,
+                            {"select": "token,company,role,state,job_id,submitted_at",
+                             "state": f"eq.{state}", "limit": "100"})
+    # A SUBMITTED row with a confirmation already recorded is finished.
+    open_rows = [r for r in open_rows
+                 if r["state"] == approval.APPROVED or not r.get("submitted_at")
+                 or r["state"] == approval.SUBMITTED]
+    if not open_rows:
+        print("no applications waiting on a receipt")
+        return 0
+    try:
+        messages = confirmations.fetch(cfg)
+    except confirmations.ConfirmError as e:
+        print(str(e))
+        return 1
+    pairs = confirmations.match(messages, open_rows)
+    print(f"{len(messages)} candidate message(s), {len(open_rows)} open "
+          f"application(s), {len(pairs)} matched"
+          f"{'' if apply else ' (dry run, pass --apply to record)'}")
+    closed = 0
+    for msg, row in pairs:
+        already = row["state"] == approval.SUBMITTED and row.get("submitted_at")
+        print(f"\n  {row['company']} {row['role']}")
+        print(f"    receipt: {msg['subject'][:80]!r}")
+        print(f"    from:    {msg['sender'][:60]}")
+        if already:
+            print("    already recorded as submitted; nothing to do")
+            continue
+        if not apply:
+            continue
+        approval.set_state(cfg, row["token"], approval.SUBMITTED,
+                           submitted_at=NOW(),
+                           failure_reason=f"confirmed by the employer: "
+                                          f"{msg['subject'][:200]}")
+        record_applied(cfg, canon, sheet, row["job_id"],
+                       company=row.get("company") or "",
+                       role=row.get("role") or "",
+                       confirmation=f"{msg['sender']}: {msg['subject']}"[:200])
+        closed += 1
+    if apply:
+        print(f"\n{closed} application(s) closed from an employer receipt")
     return 0
 
 
@@ -3716,6 +3846,13 @@ def main(argv: list[str]) -> int:
         return cmd_apply_local(token=_flag("--token"),
                                cdp_url=_flag("--cdp"),
                                profile_dir=_flag("--profile"))
+    if cmd == "watch":
+        return cmd_watch(once="--once" in argv,
+                         every=int(_flag("--every", "60")),
+                         port=int(_flag("--port", "0")),
+                         profile_dir=_flag("--profile"))
+    if cmd == "confirmations":
+        return cmd_confirmations(apply="--apply" in argv)
     if cmd == "applied":
         tok = _flag("--token")
         if not tok:
