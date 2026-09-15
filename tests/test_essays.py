@@ -231,3 +231,34 @@ def test_a_plain_text_answer_is_accepted(monkeypatch):
     got, why = essays.draft_one(Cfg(), question="q", company="c", role="r",
                                 jd_text="", evidence=EVIDENCE)
     assert why == "" and got == good
+
+
+def test_a_reply_cut_off_at_the_token_limit_is_named_as_that(monkeypatch):
+    """One draft in three came back as '{"answer":"Three things the CV does
+    not...' with no closing brace: cut mid-object, read as malformed, and the
+    box went out blank for a reason that had nothing to do with the answer."""
+    class Block:
+        type = "text"
+        def __init__(self, t): self.text = t
+
+    class Resp:
+        stop_reason = "max_tokens"
+        def __init__(self, t): self.content = [Block(t)]
+
+    class Messages:
+        def create(self, **kw):
+            Messages.seen = kw
+            return Resp('{"answer":"Three things the CV does not make obvious')
+
+    class Client:
+        def __init__(self, **kw): self.messages = Messages()
+
+    import sys, types
+    mod = types.ModuleType("anthropic")
+    mod.Anthropic = Client
+    monkeypatch.setitem(sys.modules, "anthropic", mod)
+
+    got, why = essays.draft_one(Cfg(), question="q", company="c", role="r",
+                                jd_text="", evidence=EVIDENCE)
+    assert got == "" and "cut off" in why
+    assert Messages.seen["max_tokens"] >= 4000, "room to close the JSON"

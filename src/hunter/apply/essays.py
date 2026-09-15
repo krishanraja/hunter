@@ -35,6 +35,13 @@ MAX_CHARS = 1400
 # shape to aim at, not a reason to send nothing.
 TRIM_ATTEMPTS = 3
 
+# Room to finish the sentence AND close the JSON. At 1200 one draft in three came
+# back as '{"answer":"Three things the CV does not...' with no closing brace: the
+# reply was cut mid-object and read as "could not find an answer", which is a
+# blank box on his application for a reason that has nothing to do with the
+# answer. A cap on the reply is not a cap on the answer; MAX_CHARS is.
+MAX_TOKENS = 4000
+
 SYSTEM = """You are drafting one answer to one question on a job application, \
 in the applicant's own voice.
 
@@ -91,7 +98,7 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
     client = anthropic.Anthropic(api_key=key)
     try:
         resp = client.messages.create(
-            model=model, max_tokens=1200, system=SYSTEM,
+            model=model, max_tokens=MAX_TOKENS, system=SYSTEM,
             messages=[{"role": "user", "content": prompt}])
     except Exception as e:
         return "", f"{e.__class__.__name__}: {str(e)[:120]}"
@@ -116,7 +123,7 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
              f"That answer will not do: {problem}. Keep everything that is "
              f"true and specific, cut what is not, and return the same JSON."}]
         try:
-            resp = client.messages.create(model=model, max_tokens=1200,
+            resp = client.messages.create(model=model, max_tokens=MAX_TOKENS,
                                           system=SYSTEM, messages=messages)
         except Exception as e:
             return "", f"{e.__class__.__name__}: {str(e)[:120]}"
@@ -129,11 +136,16 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
 def _parse(resp) -> tuple[str, str]:
     """The answer, however the model chose to wrap it.
 
+    A reply cut off at the token limit is named as that, not as a malformed one:
+    the two need different fixes and only one of them is the model's fault.
+
     A strict json.loads of the whole reply threw away a good answer because the
     model put a sentence in front of it. The JSON asked for is a container, not
     the point, so this looks for the object anywhere in the reply and falls back
     to the plain text when there is no object at all.
     """
+    if getattr(resp, "stop_reason", "") == "max_tokens":
+        return "", "the reply was cut off at the token limit"
     raw = _text(resp).strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
