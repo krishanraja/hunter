@@ -3176,7 +3176,55 @@ def cmd_approvals_drain(apply: bool = False, send: bool = False) -> int:
             print("         rebuilt, but the new approval email did not send")
     if apply:
         print(f"\n{acted} reply(ies) acted on")
+    report_stalled_approvals(cfg, apply=apply)
     return 0
+
+
+def report_stalled_approvals(cfg: Config, *, apply: bool = False) -> list[str]:
+    """Name every approval the machine should have moved on and did not.
+
+    The class of failure behind Krish's "no feedback at all": he replied APPROVE,
+    nothing read it, and nothing anywhere noticed that nothing had happened. A
+    queue with no alarm on it is a queue that stops quietly.
+
+    Rows still AWAITING are not a fault, since they are waiting on him. Rows
+    APPROVED or AMENDING are hunter's own work in flight, and a drain that runs
+    every hour should clear them within minutes of the decision.
+    """
+    from .apply import approval as ap
+    stuck: list[str] = []
+    cutoff = (datetime.datetime.now(datetime.timezone.utc)
+              - datetime.timedelta(hours=2)).isoformat()
+    for state in (ap.APPROVED, ap.AMENDING):
+        for r in db_get(cfg, ap.TABLE,
+                        {"select": "token,company,role,state,decided_at,sent_at",
+                         "state": f"eq.{state}",
+                         "order": "sent_at.asc", "limit": "50"}):
+            when = (r.get("decided_at") or r.get("sent_at") or "")
+            if when and when > cutoff:
+                continue
+            stuck.append(f"{r['state']} since {when[:19] or 'unknown'}: "
+                         f"{r.get('company')} {r.get('role')} [{r['token']}]")
+    if not stuck:
+        return stuck
+    print("\nSTALLED, the machine should have moved these on:")
+    for line in stuck:
+        print(f"  {line}")
+    if apply:
+        try:
+            from . import notify
+            html = ("<div style='display:none'>[hunter-outbound]</div>"
+                    "<h2 style='font-size:19px;margin:0 0 10px'>Stalled approvals</h2>"
+                    "<p style='color:#555'>Decided, and not acted on within the "
+                    "hour. Something in the chain is not running.</p><ul>"
+                    + "".join(f"<li>{l}</li>" for l in stuck) + "</ul>")
+            notify.send_email(cfg, f"Stalled: {len(stuck)} approval(s)", html,
+                              to=notify.mailbox(cfg),
+                              text="\n".join(["[hunter-outbound]",
+                                              "Stalled approvals"] + stuck))
+        except Exception as e:
+            print(f"  stall notice email FAILED: {e}")
+    return stuck
 
 
 def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
@@ -3329,7 +3377,42 @@ def cmd_submit(token: str, confirm: bool = False) -> int:
         record_applied(cfg, canon, sheet, row["job_id"],
                        company=role.company, role=role.title,
                        screenshot=out.get("screenshot") or "")
+    elif confirm:
+        # A send that was attempted and did not land is exactly as silent as a
+        # send that landed used to be. The reason reached a GitHub Actions log and
+        # stopped, and Krish went on believing an approved application was in.
+        try:
+            send_send_failed(cfg, company=role.company, role=role.title,
+                             token=token, state=out["state"],
+                             reason=out.get("reason") or "",
+                             missed=out.get("missed") or [],
+                             notes=out.get("notes") or [])
+            print("  told him it did not send")
+        except Exception as e:
+            print(f"  failure notice email FAILED: {e}")
     return 0 if out["state"] in ("filled", approval.SUBMITTED) else 1
+
+
+def send_send_failed(cfg: Config, *, company: str, role: str, token: str,
+                     state: str, reason: str, missed: list[str],
+                     notes: list[str]) -> None:
+    """Say plainly that an approved application did NOT go, and why."""
+    from . import notify
+    bits = "".join(f"<li>{n}</li>" for n in (list(missed) + list(notes)))
+    html = (f"<div style=\"font:15px/1.55 -apple-system,BlinkMacSystemFont,"
+            f"'Segoe UI',system-ui,sans-serif;color:#111;max-width:680px\">"
+            f"<div style='display:none'>[hunter-outbound]</div>"
+            f"<h2 style='margin:0 0 2px;font-size:19px'>NOT sent</h2>"
+            f"<div style='color:#555;margin-bottom:18px'>{role} at {company}</div>"
+            f"<p><strong>{state}</strong>: {reason}</p>"
+            + (f"<ul style='color:#555'>{bits}</ul>" if bits else "")
+            + f"<p style='color:#888;font-size:13px'>The approval is still on "
+              f"record. Nothing was submitted.</p></div>")
+    text = "\n".join(["[hunter-outbound]", f"NOT sent: {role} at {company}",
+                       f"{state}: {reason}"] + [f"  {n}" for n in
+                                                (list(missed) + list(notes))])
+    notify.send_email(cfg, f"NOT sent: {company} {role}", html,
+                      to=notify.mailbox(cfg), text=text)
 
 
 def cmd_gtm_seed(apply: bool = False) -> int:
