@@ -90,3 +90,33 @@ def test_the_prompt_carries_the_evidence_whole():
 def test_the_real_evidence_is_well_inside_the_ceiling():
     # Nothing is truncated today, and the flag exists for the day that changes.
     assert len(EVIDENCE) < EVIDENCE_MAX_CHARS
+
+
+# ---------- the naming law ----------
+
+def test_the_banned_variants_do_not_ban_the_correct_name():
+    """voicegate lowercases both the phrase and the body, so "MindMake" in this list
+    would ban "Mindmake" too. The first package using this evidence wrote
+    "Build your AI GTM at Mind/Make", which is what the list is for."""
+    from hunter.apply.gtmseed import NAME_VARIANTS_BANNED
+    good = "I run Build your AI GTM at Mindmake, and the site is mindmake.co."
+    hay = voicegate.build_evidence(EVIDENCE)
+    verdict = voicegate.check(good, evidence=hay,
+                              banned_phrases=NAME_VARIANTS_BANNED)
+    assert verdict.ok, verdict.failures
+
+
+def test_each_variant_is_caught():
+    from hunter.apply.gtmseed import NAME_VARIANTS_BANNED
+    hay = voicegate.build_evidence(EVIDENCE)
+    for bad in ("Build your AI GTM at Mind/Make.", "I founded Mindmaker.",
+                "The Mindmaker programs.", "Delivered through Mindmake AI."):
+        verdict = voicegate.check(bad, evidence=hay,
+                                  banned_phrases=NAME_VARIANTS_BANNED)
+        assert not verdict.ok, bad
+        assert any("banned phrase" in f for f in verdict.failures)
+
+
+def test_the_law_is_in_the_evidence_so_the_model_reads_it():
+    assert "naming law" in EVIDENCE
+    assert "Never Mind/Make" in EVIDENCE

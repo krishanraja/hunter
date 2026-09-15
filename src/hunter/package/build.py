@@ -14,7 +14,11 @@ from dataclasses import dataclass, field
 from .. import config
 from ..docbuild import DocBuild
 from .assertions import LETTER_PAGE_LIMIT, VerifyReport, verify
-from .tailor import HOOK_TRIM_CHARS, TailorResult, assemble_hook
+from .tailor import TailorResult, assemble_hook
+
+# Each rung is a render, so the ladder is bounded. Six covers a five-sentence hook
+# plus the approved block.
+HOOK_LADDER_MAX_RUNGS = 6
 
 COMPETENCY_DOT = "·"  # the middle dot; surrounding spacing is measured
 DELETE_BLOCK_ANCHOR = "DELETE THIS BLOCK"
@@ -223,14 +227,17 @@ def slugify(text: str) -> str:
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 
 
+def sentences(text: str) -> list[str]:
+    return [s for s in _SENTENCE_END.split((text or "").strip()) if s.strip()]
+
+
 def trim_hook(text: str, limit: int) -> str:
     """The longest run of WHOLE sentences from the start of the hook that fits
     inside `limit`. Whole sentences because a hook cut mid-clause reads as a
     mistake, and the first sentence is the observation about the company, which
-    is the part worth keeping. Empty when even one sentence will not fit, which
-    tells the caller to go to the approved block instead."""
+    is the part worth keeping. Empty when even one sentence will not fit."""
     out = ""
-    for piece in _SENTENCE_END.split((text or "").strip()):
+    for piece in sentences(text):
         candidate = (out + " " + piece).strip() if out else piece.strip()
         if len(candidate) > limit:
             break
@@ -238,21 +245,34 @@ def trim_hook(text: str, limit: int) -> str:
     return out
 
 
-def hook_ladder(tr: TailorResult, letter_blocks: dict, company: str) -> list[tuple[str, str]]:
-    """(hook, label) in the order to try them, best first. The approved block is
-    always last and always present: it is the one hook known to fit on one page,
-    so the ladder can never run out of rungs."""
+def hook_ladder(tr: TailorResult, letter_blocks: dict,
+                company: str) -> list[tuple[str, str]]:
+    """(hook, label) in the order to try them, best first.
+
+    One rung per whole-sentence prefix, longest first, then the approved block.
+    Adaptive on purpose: the first version had fixed rungs at 380, 300 and then the
+    block, and the block hooks run 271 to 330, so rungs two and three were the same
+    size and there was nothing between 300 characters and one sentence. A real build
+    on 2026-09-15 failed A9 on all three, because the master letter leaves less room
+    on page one than any of them needed. Stepping a sentence at a time finds whatever
+    room there actually is rather than guessing at it.
+    """
     rungs: list[tuple[str, str]] = []
     generated = (tr.hook or "").strip()
-    if generated:
-        rungs.append((generated, "generated hook"))
-        trimmed = trim_hook(generated, HOOK_TRIM_CHARS)
-        if trimmed and trimmed != generated:
-            rungs.append((trimmed,
-                          f"generated hook trimmed to {len(trimmed)} chars to fit one page"))
+    parts = sentences(generated)
+    for n in range(len(parts), 0, -1):
+        text = " ".join(parts[:n]).strip()
+        if not text or any(text == t for t, _ in rungs):
+            continue
+        label = ("generated hook" if n == len(parts) else
+                 f"generated hook cut to {n} of {len(parts)} sentences "
+                 f"({len(text)} chars) to fit one page")
+        rungs.append((text, label))
+        if len(rungs) >= HOOK_LADDER_MAX_RUNGS - 1:
+            break
     block = assemble_hook(letter_blocks, tr.block_key, company, tr.jd_mirror)
-    if not rungs or block != rungs[0][0]:
-        rungs.append((block, "approved block hook, generation did not fit one page"))
+    if not any(block == t for t, _ in rungs):
+        rungs.append((block, "approved block hook, no generated hook fit one page"))
     return rungs
 
 
@@ -342,12 +362,22 @@ def _summary_bold_targets(text: str) -> list[str]:
 
 
 def build_cv(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
-             company: str, title: str, cv_blocks: dict) -> tuple[str, VerifyReport]:
+             company: str, title: str, cv_blocks: dict,
+             notes: list[str] | None = None) -> tuple[str, VerifyReport]:
     """The generated summary replaces the WHOLE summary span. The approved block
     is the fallback, used only when the voice gate rejected the generated prose,
     and in that case it replaces just paragraph 1 as it always did."""
+    notes = notes if notes is not None else []
     generated = (tr.summary or "").strip()
     summary_text = generated or cv_blocks[tr.block_key]["text"]
+    # Which of the master's own summary bolds the new prose no longer contains. They
+    # cannot be re-applied to words that are not there, and A5 must not read that as
+    # a styling loss on the rest of the document. Reported either way.
+    dropped_bold = [f.strip() for f in (facts.cv_summary_bold if generated else [])
+                    if f.strip() and f.strip() not in generated]
+    for frag in dropped_bold:
+        notes.append(f"master bolded {frag!r} in the summary; the generated summary "
+                     f"does not use that wording, so the bold is gone with it")
     doc_title = _unique_title(db, f"KrishRaja_CV_{company}",
                               config.CV_FOLDER_ID, slugify(title))
     doc_id = db.copy_master(config.CV_MASTER_ID, doc_title, config.CV_FOLDER_ID)
@@ -386,7 +416,8 @@ def build_cv(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
         db.reorder_paragraphs(doc_id, anchors, tr.highlight_order)
     report = verify(db, doc_id, master_bold=facts.cv_bold, kind="cv",
                     expect_bullets=facts.cv_bullet_count,
-                    expect_present=[summary_text])
+                    expect_present=[summary_text],
+                    dropped_bold=dropped_bold)
     return doc_id, report
 
 
@@ -406,7 +437,7 @@ def build_package(db: DocBuild, tr: TailorResult, *, company: str, title: str,
     result.letter_url = doc_url(letter_id)
 
     cv_id, cv_report = build_cv(db, facts, tr, company=company, title=title,
-                                cv_blocks=cv_blocks)
+                                cv_blocks=cv_blocks, notes=result.notes)
     result.cv_doc_id, result.cv_report = cv_id, cv_report
     result.cv_url = doc_url(cv_id)
 

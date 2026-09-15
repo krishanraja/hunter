@@ -9,15 +9,25 @@ come from the job description.
 from hunter.apply.gtmseed import BLOCK_KEY, CV_BLOCK, LETTER_BLOCK
 from hunter.package import voicegate
 from hunter.package.tailor import (AI_NATIVE_JD_THRESHOLD, BLOCK_KEYS,
-                                  ai_native_signals, select_candidates)
+                                  ai_native_signals, is_ai_native_jd,
+                                  select_candidates)
 
 # The live Harvey title, verbatim from the pipeline row that exposed this.
 HARVEY_TITLE = "Head of GTM Strategy & Operations, AMER"
 
+# Harvey's own boilerplate, verbatim from the live JD. One sentence in 4325
+# characters, which is why counting terms across the whole JD failed: the rest of
+# it describes the job, not the product.
 AI_NATIVE_JD = (
-    "We are an AI-native company building on frontier model research. Our LLM "
-    "agents run agentic workflows across the product, and inference cost is a "
-    "first-order commercial constraint."
+    "Own GTM strategy and operations for the Americas. By combining frontier "
+    "agentic AI, an enterprise-grade platform, and deep domain expertise, we are "
+    "reshaping how critical knowledge work gets done for decades to come. Partner "
+    "with AMER Enterprise Sales Leadership to develop field strategy."
+)
+# No strong phrase, four weak ones. The other road to the same verdict.
+WEAK_SIGNAL_JD = (
+    "Our LLM powers generative ai workflows. Inference cost and prompt quality are "
+    "first-order commercial constraints, and evals gate every release."
 )
 # A media business that uses AI. Says "AI" repeatedly and is not an AI company.
 MEDIA_JD = (
@@ -51,9 +61,30 @@ def test_one_mention_of_ai_is_not_a_signal():
     assert BLOCK_KEY not in candidates
 
 
-def test_the_threshold_is_a_count_not_a_keyword():
-    assert len(ai_native_signals(MEDIA_JD)) < AI_NATIVE_JD_THRESHOLD
-    assert len(ai_native_signals(AI_NATIVE_JD)) >= AI_NATIVE_JD_THRESHOLD
+def test_one_strong_phrase_is_enough_because_it_appears_once():
+    strong, weak = ai_native_signals(AI_NATIVE_JD)
+    assert strong
+    assert len(weak) < AI_NATIVE_JD_THRESHOLD  # counting alone would have missed it
+    assert is_ai_native_jd(AI_NATIVE_JD)[0]
+
+
+def test_weak_signals_still_count_together():
+    strong, weak = ai_native_signals(WEAK_SIGNAL_JD)
+    assert not strong
+    assert len(weak) >= AI_NATIVE_JD_THRESHOLD
+    assert is_ai_native_jd(WEAK_SIGNAL_JD)[0]
+
+
+def test_a_publisher_that_uses_ai_is_not_an_ai_company():
+    strong, weak = ai_native_signals(MEDIA_JD)
+    assert not strong
+    assert len(weak) < AI_NATIVE_JD_THRESHOLD
+    assert not is_ai_native_jd(MEDIA_JD)[0]
+
+
+def test_the_promotion_says_why_in_the_run_report():
+    _candidates, flags = select_candidates(HARVEY_TITLE, AI_NATIVE_JD)
+    assert any("frontier agentic" in f or "agentic ai" in f for f in flags)
 
 
 def test_an_ai_title_needs_no_jd_signal():

@@ -79,8 +79,25 @@ CV_BLOCK = {
     "approved_at": "2026-09-15",
 }
 
+# 00_NORTH_STAR.md calls this one absolute: "a business with two names has none."
+# The first package to use this evidence wrote "Build your AI GTM at Mind/Make",
+# which traced fine because the gate splits on the slash and is still wrong on a
+# document going to an employer. Fed to the gate as banned phrases so a variant
+# cannot reach a document, rather than left to the prompt to remember.
+# NOT "MindMake": voicegate lowercases both sides, so that entry would ban the
+# correct name along with the variant. Only variants that stay distinct in
+# lowercase belong here, which is why a test pins exactly that.
+NAME_VARIANTS_BANNED = (
+    "Mind/Make", "Mind Make", "Mindmaker", "The Mindmaker", "Mindmake AI",
+    "themindmaker",
+)
+
 EVIDENCE = """\
 ## AI-native GTM, the Mindmake practice
+
+The business is Mindmake, one word, and the site is mindmake.co. Never Mind/Make,
+never MindMake, never Mindmaker, never Mindmake AI. This is a naming law, not a
+preference: a business with two names has none.
 
 Mindmake is Krish's principal-led AI and commercial strategy practice. It helps a
 leader use AI to extend their judgement, taste and expertise, then turn that

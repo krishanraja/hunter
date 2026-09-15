@@ -8,7 +8,7 @@ import pytest
 from hunter import config
 from hunter.apply.merge import MergeError, page_count
 from hunter.package.build import build_letter, hook_ladder, read_master_facts, trim_hook
-from hunter.package.tailor import HOOK_TRIM_CHARS, TailorResult
+from hunter.package.tailor import TailorResult
 
 from conftest import TEST_LETTER_BLOCKS, make_synthetic_cv
 from fake_docs import FakeDocBuild
@@ -71,8 +71,8 @@ def test_page_count_refuses_nothing():
 # ---------- the ladder ----------
 
 def test_trim_hook_keeps_whole_sentences():
-    trimmed = trim_hook(LONG_HOOK, HOOK_TRIM_CHARS)
-    assert len(trimmed) <= HOOK_TRIM_CHARS
+    trimmed = trim_hook(LONG_HOOK, 300)
+    assert len(trimmed) <= 300
     assert trimmed.endswith(".")
     assert LONG_HOOK.startswith(trimmed)
 
@@ -81,13 +81,25 @@ def test_trim_hook_returns_empty_when_one_sentence_does_not_fit():
     assert trim_hook("A single sentence far too long to fit in the budget.", 10) == ""
 
 
-def test_hook_ladder_always_ends_on_the_approved_block():
+def test_hook_ladder_steps_one_sentence_at_a_time_then_the_block():
     rungs = hook_ladder(_tr(LONG_HOOK), TEST_LETTER_BLOCKS, "Harvey")
-    assert [label for _, label in rungs][0] == "generated hook"
-    assert len(rungs) == 3
+    assert rungs[0] == (LONG_HOOK, "generated hook")
+    # One rung per whole-sentence prefix, strictly shorter each time, block last.
+    lengths = [len(t) for t, _ in rungs[:-1]]
+    assert lengths == sorted(lengths, reverse=True)
+    assert len(set(lengths)) == len(lengths)
     assert "approved block" in rungs[-1][1]
-    # The block hook is the one rung known to fit, so the ladder cannot run out.
     assert "Harvey is" in rungs[-1][0]
+    assert len(rungs) <= 6
+
+
+def test_the_ladder_has_a_rung_between_a_long_hook_and_one_sentence():
+    """The flaw in the first version: rungs at 380 then 300 then a block hook of
+    303, so nothing sat between 300 characters and a single sentence, and a real
+    build failed A9 on all three rungs."""
+    rungs = hook_ladder(_tr(LONG_HOOK), TEST_LETTER_BLOCKS, "Harvey")
+    lengths = [len(t) for t, _ in rungs[:-1]]
+    assert len(lengths) >= 3, lengths
 
 
 def test_hook_ladder_is_just_the_block_when_nothing_was_generated():
@@ -119,10 +131,13 @@ def test_a_two_page_letter_steps_down_a_rung_and_says_so(letter_fixture):
     doc_id, report, _pdf = _build(db, facts, _tr(LONG_HOOK), notes)
     assert report.ok, report.failures
     assert report.page_count == 1
-    assert len(notes) == 1 and "trimmed" in notes[0]
+    assert len(notes) == 1 and "cut to" in notes[0]
     full = "".join(p["text"] for p in db.paragraphs(db.get(doc_id)))
     assert LONG_HOOK not in full
-    assert trim_hook(LONG_HOOK, HOOK_TRIM_CHARS) in full
+    # The next rung down is the whole hook minus its last sentence.
+    from hunter.package.build import sentences
+    parts = sentences(LONG_HOOK)
+    assert " ".join(parts[:-1]) in full
 
 
 def test_a_letter_that_never_fits_fails_a9_and_ships_nothing(letter_fixture):
@@ -135,7 +150,8 @@ def test_a_letter_that_never_fits_fails_a9_and_ships_nothing(letter_fixture):
     assert any(f.startswith("A9") for f in report.failures), report.failures
     assert report.page_count == 2
     # It walked the whole ladder before giving up, rather than failing on rung one.
-    assert len(db.exports) == 3
+    assert len(db.exports) == len(hook_ladder(_tr(LONG_HOOK), TEST_LETTER_BLOCKS,
+                                              "Harvey"))
 
 
 def test_measure_pages_off_reports_zero_and_never_renders(letter_fixture):

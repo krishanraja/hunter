@@ -1746,7 +1746,7 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
               feedback: str = "") -> bool:
     """feedback carries Krish's own words from an amend reply, verbatim, so a
     rebuild acts on what he actually asked for rather than a paraphrase."""
-    from .package.build import build_package, read_master_facts
+    from .package.build import build_package, doc_url, read_master_facts
     from .package.tailor import load_blocks, tailor
 
     if cache is None:
@@ -1799,15 +1799,18 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     # it, and passing it empty disables generation rather than allowing ungated
     # text. The haystack is the master's own words plus Krish's recorded proof
     # points and long-form answers from the workbook, plus the JD.
+    from .apply import gtmseed
     from .apply.infobank import load_bank
     from .package.voicegate import build_evidence
     bank = None
-    evidence, banned = "", ()
+    evidence = ""
     # The mindmake engagement records and the two named programs. Without this key
     # the gate rejects any AI-native GTM claim, because it can trace none of it:
     # that is why the first real package never mentioned the work Krish is most
     # experienced in. optional(), not require(): a missing key costs that one story
     # and must not cost the application. See apply/gtmseed.py.
+    # The naming law applies whether or not the workbook tabs load.
+    banned = gtmseed.NAME_VARIANTS_BANNED
     gtm_evidence = cfg.optional("hunter_ai_gtm_evidence")
     if not gtm_evidence:
         rflags.append("hunter_ai_gtm_evidence missing, AI-native GTM claims "
@@ -1821,7 +1824,7 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
             "\n".join(e.value for e in bank.entries.values()),
             gtm_evidence,
             role.jd_text)
-        banned = bank.banned_phrases
+        banned = tuple(bank.banned_phrases) + gtmseed.NAME_VARIANTS_BANNED
     except Exception as e:
         summary.append(f"note {row['job_id']}: answer tabs unreadable "
                        f"({e.__class__.__name__}), generated prose disabled")
@@ -1829,7 +1832,8 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
                 jd_text=role.jd_text, master_competencies=facts.cv_competencies,
                 letter_blocks=letter_blocks, highlights=facts.cv_highlights,
                 evidence=evidence, banned_phrases=banned,
-                feedback=feedback)
+                feedback=feedback,
+                keep_verbatim=tuple(facts.cv_summary_bold))
     result = build_package(db, tr, company=role.company, title=role.title,
                            letter_blocks=letter_blocks, cv_blocks=cv_blocks,
                            facts=facts)
@@ -1852,6 +1856,17 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
                  {"package_status": "blocked",
                   "rejection_reason": f"package verification failed: {fails}"})
+        # Said out loud, not only written to the row. This branch printed nothing at
+        # all until 2026-09-15, so a build that correctly refused to ship a two-page
+        # letter looked exactly like a build that did nothing.
+        summary.append(f"BLOCKED {row['job_id']} at verification: "
+                       + "; ".join(fails))
+        for note in result.notes:
+            summary.append(f"  note: {note}")
+        if result.letter_doc_id:
+            summary.append(f"  CL {doc_url(result.letter_doc_id)} (left for review)")
+        if result.cv_doc_id:
+            summary.append(f"  CV {doc_url(result.cv_doc_id)} (left for review)")
         return False
 
     db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]}, {
@@ -1866,7 +1881,9 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
             letter_url=result.letter_url, cv_pdf_url=result.cv_pdf_url,
             letter_pdf_url=result.letter_pdf_url, package_status=status,
             built_date=TODAY())
-    flags = "; ".join(tr.flags + result.notes + rflags) or "clean"
+    # build_package already copies tr.flags into result.notes, so adding tr.flags
+    # here printed every tailoring flag twice in the run summary.
+    flags = "; ".join(result.notes + rflags) or "clean"
     summary.append(f"BUILT {row['job_id']} block={tr.block_key} "
                    f"words={result.letter_report.body_word_count} flags={flags}")
     summary.append(f"  CV {result.cv_url}")

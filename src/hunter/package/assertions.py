@@ -45,7 +45,8 @@ def verify(db, doc_id, *, master_bold: list[str], kind: str,
            cut_bullet_text: str | None = None,
            expect_bullets: int | None = None,
            expect_present: list[str] | None = None,
-           page_count: int = 0) -> VerifyReport:
+           page_count: int = 0,
+           dropped_bold: list[str] | None = None) -> VerifyReport:
     """Return a VerifyReport. db is a DocBuild; doc_id the finished copy."""
     doc = db.get(doc_id)
     paras = db.paragraphs(doc)
@@ -90,6 +91,15 @@ def verify(db, doc_id, *, master_bold: list[str], kind: str,
     expected = [b for b in master_bold if "{{" not in b]
     if cut_bullet_text:
         expected = [b for b in expected if b not in cut_bullet_text]
+    # Same principle as the cut bullet: a bold run cannot survive words that are
+    # deliberately gone. Since the PROFESSIONAL SUMMARY became generated prose, a
+    # phrase the master bolds inside it may be paraphrased rather than repeated, and
+    # A5 was reporting that as a styling loss on the whole document. The caller
+    # passes only the summary bolds that did not survive into the new text, and
+    # reports each one, so a phrase of Krish's going missing is visible rather than
+    # either silent or fatal.
+    for dropped in (dropped_bold or []):
+        expected = [b for b in expected if b != dropped and b not in dropped]
     lost = [b for b in expected
             if not any(b in seg for seg in bold_segments)]
     if lost:

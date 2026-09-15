@@ -57,20 +57,58 @@ AI_NATIVE_TITLE = re.compile(
     r"\bai.native\b|\bai\b[^,]{0,20}\b(?:gtm|go.to.market|revenue|commercial)\b"
     r"|\b(?:gtm|go.to.market|revenue|commercial)\b[^,]{0,20}\bai\b")
 
+# What the summary and the hook must carry when the employer's product IS AI.
+# Krish, on the first real package for exactly such a role: it "does not talk about
+# how I am one of the most experienced in designing AI native GTM through the
+# customers I've worked with through mind/make ... with my signature 'Build your AI
+# Brain' and 'Build your AI GTM' programs." Offering the right block was not enough:
+# the model read a GTM operations JD and led on operating-model credentials, which
+# is a fair reading of the JD and not what he asked for. So the instruction is
+# explicit rather than left to inference.
+AI_NATIVE_ANGLE = """\
+**This employer's product is AI, so the AI-native GTM work is not optional here.**
+Krish designs AI-native go-to-market models for a living, through his practice, and
+that is the single most relevant thing about him for this role. The summary must say
+so and the hook must build on it. Name the program he runs, Build your AI GTM, and
+the four levers it works across: product, price, positioning and people. Ground it
+in the client work in the evidence, the first-party identity repositioning and the
+$254K POC at AdFixus, the publisher that went from 14 competing vendors to three
+decisions, the advisory that turned expertise into products clients could buy.
+
+His operating-model record still matters and belongs in the summary. It is the
+second thing, not the first.
+"""
+
 # The seats where an AI-native company changes which block is right. A partnerships
 # or corp dev seat has its own block that already fits an AI company; a GTM or
 # market-building seat does not.
 AI_NATIVE_PROMOTES = frozenset({"commercial_strategy", "gm_market_builder"})
 
 # What makes a posting an AI-native COMPANY rather than a company that mentions AI.
-# Every JD in this pipeline says "AI" at least once, so a single keyword decides
-# nothing; the test is how many distinct signals the JD carries.
+#
+# Counting distinct terms across the whole JD was the first attempt and it failed on
+# the posting that prompted all of this: Harvey's 4325-character GTM operations JD
+# carries exactly one, "agentic", because a GTM job description describes the JOB.
+# The company appears once, in a sentence of its own boilerplate: "By combining
+# frontier agentic AI, an enterprise-grade platform, and deep domain expertise,
+# we're reshaping how critical knowledge work gets done."
+#
+# So the test is a phrase only a company whose product IS AI puts in its own
+# description. One of those is enough. The weaker terms stay, counted, for the JDs
+# that do describe an AI product at length, because a single weak term proves
+# nothing: a publisher saying "AI in the newsroom" and "AI tooling for our sales
+# team" is not an AI company.
+AI_NATIVE_JD_STRONG = (
+    "ai-native", "ai native", "frontier ai", "frontier model",
+    "frontier agentic", "agentic ai", "foundation model",
+    "large language model", "ai platform", "ai product", "ai research",
+    "ai lab", "ai company", "ai assistant", "our models", "ai-powered platform",
+    "generative ai platform", "ai for legal", "ai copilot",
+)
 AI_NATIVE_JD_TERMS = (
-    "ai-native", "ai native", "frontier model", "foundation model",
-    "large language model", "llm", "generative ai", "genai", "ai agents",
-    "agentic", "ai product", "ai platform", "ai research", "ai lab",
-    "ai company", "ai adoption", "our models", "our model", "inference",
-    "prompt", "fine-tun", "ai-powered", "ai powered", "copilot",
+    "llm", "generative ai", "genai", "ai agents", "agentic", "ai adoption",
+    "our model", "inference", "prompt", "fine-tun", "ai-powered", "ai powered",
+    "copilot", "model training", "evals",
 )
 AI_NATIVE_JD_THRESHOLD = 4
 
@@ -135,16 +173,17 @@ JD_OVERLAP_THRESHOLD = 0.5
 SUMMARY_MIN_CHARS = 350
 SUMMARY_MAX_CHARS = 1100
 HOOK_MIN_CHARS = 150
-# Calibrated from the five approved blocks, which run 271 to 330 characters and
-# all fit on page one of the master letter. 650 did not: the first live package
-# generated a 477-character hook and the letter spilled to a second page carrying
-# nothing but the contact footer, against canon 9.12's "One page." build.py still
-# measures the rendered PDF, because a character budget is only a proxy and the
-# master letter can move again.
-HOOK_MAX_CHARS = 380
-# What the ladder in build.build_letter trims a long hook back to before giving
-# up on generation and shipping the approved block.
-HOOK_TRIM_CHARS = 300
+# Measured, not inferred. Rendering the live master letter with three proof bullets
+# and hooks of increasing length on 2026-09-15: 321 characters is one page, 331 is
+# two. So the headroom is about 325, and 300 leaves a little for a longer hiring
+# lead or a fourth line of address.
+#
+# This was 650 when the first live package spilled onto a second page with a
+# 477-character hook, then 380, which was still over: the five approved blocks run
+# 271 to 330 BEFORE their [[JD_MIRROR]] slot is filled, and a twelve-word mirror can
+# add 70. build.py still measures the rendered PDF, because a character budget is a
+# proxy and the master letter can move again.
+HOOK_MAX_CHARS = 300
 
 
 class TailorError(RuntimeError):
@@ -208,10 +247,24 @@ def assemble_hook(letter_blocks: dict, block_key: str, company: str,
 
 # ---------- deterministic family selection ----------
 
-def ai_native_signals(jd_text: str) -> list[str]:
-    """The distinct AI-native terms a JD carries. A count, not a keyword match."""
+def ai_native_signals(jd_text: str) -> tuple[list[str], list[str]]:
+    """(strong signals, weak signals) the JD carries. One strong is enough; weak
+    ones only count together."""
     low = (jd_text or "").lower()
-    return sorted({t for t in AI_NATIVE_JD_TERMS if t in low})
+    strong = sorted({t for t in AI_NATIVE_JD_STRONG if t in low})
+    weak = sorted({t for t in AI_NATIVE_JD_TERMS if t in low})
+    return strong, weak
+
+
+def is_ai_native_jd(jd_text: str) -> tuple[bool, str]:
+    """(verdict, why). The why goes in the run report, so a promotion is never a
+    silent reclassification of the company."""
+    strong, weak = ai_native_signals(jd_text)
+    if strong:
+        return True, f"its own description says {', '.join(strong[:3])}"
+    if len(weak) >= AI_NATIVE_JD_THRESHOLD:
+        return True, f"{len(weak)} AI signals ({', '.join(weak[:4])})"
+    return False, ""
 
 
 def select_candidates(title: str, jd_text: str = "") -> tuple[list[str], list[str]]:
@@ -229,12 +282,10 @@ def select_candidates(title: str, jd_text: str = "") -> tuple[list[str], list[st
     flags: list[str] = []
     if candidates and AI_NATIVE_BLOCK not in candidates \
             and set(candidates) & AI_NATIVE_PROMOTES:
-        signals = ai_native_signals(jd_text)
-        if len(signals) >= AI_NATIVE_JD_THRESHOLD:
+        native, why = is_ai_native_jd(jd_text)
+        if native:
             candidates = [AI_NATIVE_BLOCK] + candidates
-            flags.append(
-                f"AI-native company on {len(signals)} JD signals "
-                f"({', '.join(signals[:4])}), ai_native_gtm offered first")
+            flags.append(f"AI-native company, {why}; ai_native_gtm offered first")
     if not candidates:
         candidates = [FALLBACK_BLOCK]
         flags.append("weak archetype match, review the hook before sending")
@@ -337,10 +388,25 @@ def validate(data: dict, master_competencies: list[str], candidates: list[str],
 
 # ---------- the model call ----------
 
+def _keep_verbatim_block(phrases: tuple[str, ...]) -> str:
+    """Krish bolds these phrases in his own summary. A paraphrase loses the bold with
+    the words, which the package verifier reports as a dropped run: it is allowed,
+    since the summary is generated, but his own phrasing is better than a rewrite of
+    it. Asking is cheaper than excusing."""
+    keep = [p.strip() for p in phrases if p and p.strip()]
+    if not keep:
+        return ""
+    lines = "\n".join(f'- "{p}"' for p in keep)
+    return ("**Keep these phrases word for word if you use the fact behind them.** "
+            "Krish bolds them in his own summary, and a paraphrase loses the "
+            "emphasis along with his wording:\n" + lines + "\n")
+
+
 def _prompt(canon, company: str, title: str, jd_text: str,
             master_competencies: list[str], candidates: list[str],
             letter_blocks: dict, *, highlights: list[str] | None = None,
-            evidence_view: str = "", voice_rules: str = "") -> str:
+            evidence_view: str = "", voice_rules: str = "",
+            angle: str = "", keep_verbatim: tuple[str, ...] = ()) -> str:
     template = resources.files("hunter").joinpath("prompts/tailor.md").read_text()
     blocks_view = "\n\n".join(
         f"### {k}\n{letter_blocks[k]['text']}" for k in candidates)
@@ -354,6 +420,8 @@ def _prompt(canon, company: str, title: str, jd_text: str,
             .replace("[[HIGHLIGHTS]]",
                      "\n".join(f"{i}. {h}" for i, h in enumerate(hl)))
             .replace("[[HIGHLIGHT_COUNT]]", str(len(hl)))
+            .replace("[[ANGLE]]", angle)
+            .replace("[[KEEP_VERBATIM]]", _keep_verbatim_block(keep_verbatim))
             .replace("[[EVIDENCE]]", evidence_view)
             .replace("[[VOICE_RULES]]", voice_rules)
             .replace("[[JD]]", jd_text[:20000]))
@@ -375,7 +443,8 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
            master_competencies: list[str], letter_blocks: dict,
            highlights: list[str] | None = None, evidence: str = "",
            banned_phrases: tuple[str, ...] = (),
-           feedback: str = "") -> TailorResult:
+           feedback: str = "",
+           keep_verbatim: tuple[str, ...] = ()) -> TailorResult:
     """evidence is the haystack voicegate traces every generated number and name
     against: the master's own text plus Krish's recorded proof points. Passing it
     empty disables generation rather than allowing ungated prose, because an
@@ -407,11 +476,14 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
                                "hunter_anthropic_api_key missing from system_config")
     model = cfg.optional("hunter_anthropic_model", "claude-opus-5")
     client = anthropic.Anthropic(api_key=api_key)
+    native, _why = is_ai_native_jd(jd_text)
     prompt = _prompt(canon, company, title, jd_text, master_competencies,
                      candidates, letter_blocks, highlights=highlights,
                      evidence_view=evidence if generate else "",
                      voice_rules="\n".join(f"- never write {p!r}"
-                                           for p in banned_phrases))
+                                           for p in banned_phrases),
+                     angle=AI_NATIVE_ANGLE if native else "",
+                     keep_verbatim=keep_verbatim)
     if feedback:
         prompt += ("\n\n## Krish's feedback on the previous draft\n\n"
                    "Apply this exactly. It overrides your earlier choices.\n\n"

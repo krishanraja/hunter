@@ -424,3 +424,22 @@ def test_a_mixed_block_keeps_exactly_the_bullets_it_had():
     db.reorder_paragraphs("doc", [h[:60] for h, _ in HIGHLIGHTS],
                           [3, 4, 5, 6, 0, 1, 2])
     assert fake.bullet_count() == 3
+
+
+def test_anchors_resolve_forward_past_a_summary_that_repeats_them():
+    """A real build on 2026-09-15 failed with "paragraphs are not contiguous:
+    [9, 7, ...]". The generated PROFESSIONAL SUMMARY repeated a career highlight's
+    opening words, and resolving every anchor from the top of the document matched
+    the summary instead of the highlight. The anchors arrive in document order, so
+    resolution has to move forward too.
+    """
+    decoy = bold_on(
+        "Grew broadcaster data revenue from $9M to $61M in three years, and rebuilt "
+        "the commercial model underneath it.", "$9M to $61M")
+    fake = FakeDocs([decoy] + HIGHLIGHTS)
+    db = make_db(fake)
+    order = [4, 0, 1, 2, 3, 5, 6]
+    db.reorder_paragraphs("doc", [h[:60] for h, _ in HIGHLIGHTS], order)
+    # The decoy stayed put and the seven highlights moved.
+    assert fake.texts()[0] == decoy[0]
+    assert fake.texts()[1:] == [HIGHLIGHTS[i][0] for i in order]
