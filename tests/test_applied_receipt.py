@@ -65,7 +65,12 @@ def test_a_sent_application_updates_the_sheet_the_row_and_krish(wired):
     table, match, values = wired["patch"][0]
     assert table == "hunter_seen_roles"
     assert match == {"job_id": "harvey:head-of-gtm"}
-    assert values["application_state"] == "submitted"
+    # "Applied", the one word the sheet's Verdict column and Control Center's
+    # Hunt lane both use. It wrote "submitted" while sync_applied_state wrote
+    # "Applied" from the same column, and cmd_close_submitted treated only
+    # "submitted" as done, so the next full pass relabelled the row and this ran
+    # again: a duplicate Submitted receipt for every applied role, every hour.
+    assert values["application_state"] == R.APPLIED_STATE == "Applied"
     assert values["applied_at"]
     assert wired["archive"] == 1
     assert wired["mail"] and wired["mail"][0]["company"] == "Harvey"
@@ -230,3 +235,35 @@ def test_a_dead_posting_is_retired_not_just_skipped(monkeypatch):
     assert values["package_status"] == "dead" and values["status"] == "dead"
     assert sheet.package_status == {71: sheet_mod.PKG_DEAD}
     assert "dead posting" in sheet.verdicts_set[71]
+
+
+def test_a_role_already_written_is_not_written_again(monkeypatch):
+    """The duplicate receipt bug, from the other end.
+
+    cmd_close_submitted decides a submitted approval still needs sheet work by
+    reading hunter_seen_roles.application_state. Both spellings have to count as
+    written, or every role applied for before this fix would be re-recorded and
+    re-emailed on the next hourly run.
+    """
+    seen = {
+        "a": {"job_id": "a", "application_state": "Applied"},
+        "b": {"job_id": "b", "application_state": "submitted"},
+        "c": {"job_id": "c", "application_state": None},
+    }
+    approvals = [{"token": k, "job_id": k, "company": k.upper(), "role": "r",
+                  "submitted_at": "2026-09-15T20:00:00Z", "failure_reason": ""}
+                 for k in ("a", "b", "c")]
+
+    def fake_db_get(cfg, table, params):
+        return approvals if table.endswith("approvals") else list(seen.values())
+
+    recorded: list[str] = []
+    monkeypatch.setattr(R, "db_get", fake_db_get)
+    monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "GoogleServiceAccount",
+                        lambda cfg: type("T", (), {"access_token": ""})())
+    monkeypatch.setattr(R, "record_applied",
+                        lambda *a, **k: recorded.append(a[3]))
+    assert R.cmd_close_submitted(apply=True) == 0
+    assert recorded == ["c"], "only the role with nothing written should be written"
