@@ -434,11 +434,11 @@ def test_without_a_role_location_every_residence_question_stays_unanswered():
 
 
 @pytest.mark.parametrize("role_location,expected", [
-    ("New York, NY", "Brooklyn, New York, United States"),
-    ("Brooklyn, NY", "Brooklyn, New York, United States"),
+    ("New York, NY", "New York, United States"),
+    ("Brooklyn, NY", "New York, United States"),
     ("London, UK", "London, United Kingdom"),
     ("London", "London, United Kingdom"),
-    ("Remote US", "Brooklyn, New York, United States"),
+    ("Remote US", "New York, United States"),
 ])
 def test_residence_resolves_to_the_roles_city(role_location, expected):
     """Krish's rule 2026-09-13: he lives between NYC and London, and for any role
@@ -784,3 +784,21 @@ def test_the_employer_field_obeys_the_naming_law():
     for variant in NAME_VARIANTS_BANNED:
         assert variant.lower() != got.value.lower()
     assert "mindmaker" not in got.value.lower()
+
+
+@pytest.mark.parametrize("label,expected", [
+    ("First Name", "Krish"),
+    ("Last Name", "Raja"),
+    ("Given Name", "Krish"),
+    ("Surname", "Raja"),
+    # Ashby asks for both in one box, and that label contains "last name".
+    ("Legal First and Last Name", "Krish Raja"),
+    ("Full legal name", "Krish Raja"),
+])
+def test_a_split_name_field_gets_its_own_half(label, expected):
+    """Greenhouse asks for the given name and the surname separately. Both carry
+    kind "name", so the bank's Full legal name went into each and the live form
+    read "Krish Raja" twice."""
+    r = Resolver(build_bank())
+    got = r.resolve(field(label, kind="name"))
+    assert getattr(got, "value", None) == expected

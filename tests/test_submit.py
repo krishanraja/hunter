@@ -307,6 +307,7 @@ class FormPage:
         self.order: list[str] = []
         self.uploaded: list[str] = []
         self.upload_paths: list[str] = []
+        self.upload_selectors: list[str] = []
         self.upload_alive = True
 
     def content(self): return "<form></form>"
@@ -355,7 +356,11 @@ class FormPage:
                 if allowed is not None and label not in allowed:
                     raise RuntimeError(f"no option {label!r}")
                 page.selected[frag] = label
-            def input_value(self): return page.selected.get(frag, "")
+            def input_value(self):
+                # A select reports its chosen label, a text box what was typed.
+                if frag in page.selected:
+                    return page.selected[frag]
+                return page.typed.get(frag, "")
             def check(self, **kw):
                 if not spec.get("checkable", True):
                     raise RuntimeError("element is not visible")
@@ -374,6 +379,7 @@ class FormPage:
             def set_input_files(self, p, **kw):
                 import os
                 page.order.append("attach")
+                page.upload_selectors.append(sel)
                 page.uploaded.append(os.path.basename(p))
                 page.upload_paths.append(p)
             def locator(self, subsel):
@@ -625,8 +631,21 @@ class TypeaheadPage:
     `results` maps what is typed to the options offered back.
     """
 
+    class _Keyboard:
+        """Real key events, because that is what opens a react-select menu."""
+        def __init__(self, page): self.page = page
+        def type(self, text, **kw):
+            self.page.typed.append(text)
+            # A real box holds what was typed into it, which is what lets the
+            # driver notice react-select eating the first characters.
+            self.page.value = text
+        def press(self, key, **kw):
+            if key == "Backspace":
+                self.page.value = ""
+
     def __init__(self, results: dict):
         self.results, self.typed, self.value = results, [], ""
+        self.keyboard = TypeaheadPage._Keyboard(self)
         self.clicked_option = ""
         self.html = "<form></form>"
 
@@ -648,7 +667,9 @@ class TypeaheadPage:
                 return {"role": "combobox", "aria-autocomplete": "list"}.get(name)
             def click(self, **kw): pass
             def fill(self, v, **kw): page.value = v
-            def type(self, v, **kw): page.typed.append(v)
+            def type(self, v, **kw):
+                raise AssertionError(
+                    "typed through the element; react-select needs key events")
             def input_value(self): return page.value
         l = L(); l.first = l
         return l
@@ -811,7 +832,7 @@ def test_the_file_goes_on_before_the_fields_are_typed():
                  "options_pressed": ["Yes", "No"], "checkable": False},
         "sponsor": {"tag": "select",
                     "options": ["No, I do not require sponsorship"]},
-        "resume": {"tag": "input", "type": "file"},
+        'type="file"': {"tag": "input", "type": "file"},
     })
     fields = list(_choice_plan().fields) + [
         FilledField(key="resume", label="Resume", kind="file_resume",
@@ -835,7 +856,7 @@ def test_the_parse_is_waited_out_before_the_fields_are_typed():
                     if self.polls < 3 else "<form></form>")
 
     page = Parsing({"email": {"tag": "input", "type": "email"},
-                    "resume": {"tag": "input", "type": "file"}})
+                    'type="file"': {"tag": "input", "type": "file"}})
     fields = [field(), FilledField(key="resume", label="Resume",
                                    kind="file_resume", required=True,
                                    value="the built PDF", source="package")]
@@ -853,7 +874,7 @@ def _upload_plan():
 
 def _upload_page():
     return FormPage({"email": {"tag": "input", "type": "email"},
-                     "resume": {"tag": "input", "type": "file"}})
+                     'type="file"': {"tag": "input", "type": "file"}})
 
 
 def test_the_employer_sees_the_document_named_as_canon_names_it():
@@ -885,9 +906,270 @@ def test_a_rejected_upload_is_reported_missed_not_filled():
                     else "<form></form>")
 
     page = Rejecting({"email": {"tag": "input", "type": "email"},
-                      "resume": {"tag": "input", "type": "file"}})
+                      'type="file"': {"tag": "input", "type": "file"}})
     out = submit_mod.preview(_upload_plan(), attachments={"file_resume": b"%PDF"},
                              browser_factory=factory_for(page))
     assert "Resume" in out["missed"]
     assert "Resume" not in out["filled"]
     assert out["notes"]
+
+
+# ---------- which option is the answer ----------
+
+def _london_plan():
+    return plan(fields=[
+        FilledField(key="_systemfield_location", label="Location", kind="location",
+                    required=True, value="London, United Kingdom",
+                    source="residence rule")])
+
+
+def test_london_matches_the_geocoders_longer_name():
+    """Ashby offers "London, Greater London, England, United Kingdom", which does
+    not contain "London, United Kingdom" as text at all. Every segment of the
+    answer is in it, in order, which is what makes it the same place."""
+    page = TypeaheadPage({"London, United Kingdom": [
+        "London, Greater London, England, United Kingdom", "United Kingdom"]})
+    drv = submit_mod.AshbyDriver(page, _london_plan())
+    drv.fill()
+    assert drv.filled == ["Location"]
+    assert page.value == "London, Greater London, England, United Kingdom"
+
+
+def test_london_ontario_is_never_taken():
+    """The same search offers London, Ontario, Canada. Segments in order rule it
+    out: it has London and no United Kingdom after it."""
+    page = TypeaheadPage({"London, United Kingdom": [
+        "London, Ontario, Canada", "London, Kentucky, United States"]})
+    drv = submit_mod.AshbyDriver(page, _london_plan())
+    drv.fill()
+    assert drv.missed == ["Location"]
+    assert page.clicked_option == ""
+
+
+def test_new_york_prefers_the_exact_option():
+    """Both are the right place. The exact one is the safer of the two."""
+    page = TypeaheadPage({"New York, United States": [
+        "New York City, New York, United States", "New York, United States"]})
+    drv = submit_mod.AshbyDriver(page, plan(fields=[
+        FilledField(key="_systemfield_location", label="Location",
+                    kind="location", required=True,
+                    value="New York, United States", source="residence rule")]))
+    drv.fill()
+    assert drv.filled == ["Location"]
+    assert page.value == "New York, United States"
+
+
+def test_an_exact_option_beats_a_segment_match_earlier_in_the_list():
+    assert submit_mod._best_option(
+        ["New York City, New York, United States", "New York, United States"],
+        "new york, united states") == 1
+    # With no exact option, the geocoder's own top-ranked segment match wins.
+    assert submit_mod._best_option(
+        ["New York City, New York, United States",
+         "New York metropolitan area, United States"],
+        "new york, united states") == 0
+    assert submit_mod._best_option(
+        ["New York metropolitan area, United States", "New York, United States"],
+        "new york, united states") == 1
+
+
+def test_a_failed_typeahead_leaves_nothing_half_typed():
+    """An unconfirmed combobox holding "Brooklyn" reads on the approval picture
+    as an answer, and is not one."""
+    page = TypeaheadPage({
+        "Brooklyn, New York, United States": ["New York City, New York, United States"],
+        "Brooklyn": ["Brooklyn Park, Minnesota, United States"]})
+    drv = submit_mod.AshbyDriver(page, _location_plan())
+    drv.fill()
+    assert drv.missed == ["Location"]
+    assert page.value == ""
+
+
+# ---------- Greenhouse ----------
+
+def test_greenhouse_loads_the_host_greenhouse_actually_serves():
+    """boards.greenhouse.io answers a live posting with a redirect to the board
+    carrying ?error=true, so every Greenhouse run loaded a search box and filled
+    nothing. The postings are on job-boards.greenhouse.io."""
+    drv = submit_mod.GreenhouseDriver(FormPage({}), plan(ats="greenhouse"))
+    url = drv.apply_url()
+    assert url.startswith("https://job-boards.greenhouse.io/")
+    assert "boards.greenhouse.io/" in url and "//boards.greenhouse.io" not in url
+
+
+def test_greenhouse_puts_each_document_in_its_own_slot():
+    """Greenhouse gives the resume and the cover letter separate inputs, so
+    `input[type=file]`.first put both in the resume slot."""
+    page = FormPage({"#resume": {"tag": "input", "type": "file"},
+                     "#cover_letter": {"tag": "input", "type": "file"}})
+    fields = [
+        FilledField(key="resume", label="Resume/CV", kind="file_resume",
+                    required=True, value="the built PDF", source="package"),
+        FilledField(key="cover_letter", label="Cover Letter", kind="file_cover",
+                    required=True, value="the built letter", source="package")]
+    submit_mod.preview(
+        plan(ats="greenhouse", fields=fields),
+        attachments={"file_resume": b"%PDF-cv", "file_cover": b"%PDF-letter"},
+        names={"file_resume": "KrishRaja_CV.pdf",
+               "file_cover": "KrishRaja_CoverLetter.pdf"},
+        browser_factory=factory_for(page))
+    assert sorted(page.uploaded) == ["KrishRaja_CV.pdf",
+                                     "KrishRaja_CoverLetter.pdf"]
+
+
+class PageWithHiddenRequired(FormPage):
+    """A form carrying a required control the vendor's API never reported."""
+
+    def __init__(self, controls, still_empty):
+        super().__init__(controls)
+        self.still_empty = still_empty
+
+    def evaluate(self, expr):
+        return list(self.still_empty)
+
+
+def test_a_required_control_the_api_never_mentioned_still_stops_the_press(approved):
+    """Greenhouse's board API omits `country` and `candidate-location`, both
+    required on the live page. A plan built from that API says every required
+    field has an answer while the form has two empty ones, which is exactly the
+    condition submit.py exists to prevent. The page is asked, not the plan."""
+    page = PageWithHiddenRequired({"email": {"tag": "input", "type": "email"}},
+                                  ["Country"])
+    out = submit(Cfg(), "t1", approved["plan"], confirm=True,
+                 browser_factory=factory_for(page))
+    assert out["state"] == approval.QUEUED
+    assert "Country" in out["reason"]
+    assert page.clicked == []
+
+
+def test_a_page_with_nothing_empty_is_not_stopped(approved):
+    page = PageWithHiddenRequired({"email": {"tag": "input", "type": "email"}}, [])
+    out = submit(Cfg(), "t1", approved["plan"], confirm=True,
+                 browser_factory=factory_for(page))
+    assert out["pressed"] is True
+
+
+def test_a_field_a_vendor_blanks_behind_us_is_filled_again():
+    """Greenhouse parses the uploaded CV and writes its own answers into the name
+    and email boxes, and that write lands after the upload rather than with it.
+    The first pass filled all four, the parser blanked all four, and the form went
+    to the approval picture with no name on it while the driver reported success.
+    """
+    class Clearing(FormPage):
+        """Blanks every text box once, the way a resume parser does."""
+        def __init__(self, controls):
+            super().__init__(controls)
+            self.wiped = False
+
+        def locator(self, sel):
+            loc = super().locator(sel)
+            page = self
+            inner = loc.input_value
+
+            def input_value():
+                if not page.wiped:
+                    page.wiped = True
+                    page.typed.clear()
+                    return ""
+                return inner()
+            loc.input_value = input_value
+            return loc
+
+    page = Clearing({"email": {"tag": "input", "type": "email"}})
+    drv = submit_mod.GreenhouseDriver(page, plan(ats="greenhouse", fields=[field()]))
+    drv.fill()
+    assert drv.filled == ["Email"], drv.missed
+    assert page.typed["email"] == "hello@krishraja.com"
+
+
+def test_a_field_that_stays_empty_after_the_second_pass_is_reported_missed():
+    class Dead(FormPage):
+        def locator(self, sel):
+            loc = super().locator(sel)
+            loc.input_value = lambda: ""
+            return loc
+
+    page = Dead({"email": {"tag": "input", "type": "email"}})
+    drv = submit_mod.GreenhouseDriver(page, plan(ats="greenhouse", fields=[field()]))
+    drv.fill()
+    assert drv.missed == ["Email"]
+
+
+def test_a_form_that_shows_no_filename_did_not_take_the_document():
+    """Greenhouse refuses silently: the bytes sit on a visually-hidden input its
+    own React never reads, the Attach button still reads Attach, the filename
+    appears nowhere, and the application would go out with no CV. set_input_files
+    returning without raising is not the form having the document."""
+    page = FormPage({'type="file"': {"tag": "input", "type": "file"}})
+    out = submit_mod.preview(_upload_plan(), attachments={"file_resume": b"%PDF"},
+                             names={"file_resume": "KrishRaja_CV.pdf"},
+                             browser_factory=factory_for(page))
+    assert "Resume" in out["missed"]
+    assert "Resume" not in out["filled"]
+    assert "appears nowhere" in out["notes"][0]
+
+
+def test_a_form_that_shows_the_filename_kept_the_document():
+    class Showing(FormPage):
+        def content(self):
+            return ("<div>KrishRaja_CV.pdf</div>" if self.uploaded
+                    else "<form></form>")
+
+    page = Showing({'type="file"': {"tag": "input", "type": "file"}})
+    out = submit_mod.preview(_upload_plan(), attachments={"file_resume": b"%PDF"},
+                             names={"file_resume": "KrishRaja_CV.pdf"},
+                             browser_factory=factory_for(page))
+    assert out["filled"] == ["Resume"]
+    assert out["notes"] == []
+
+
+def test_a_page_with_two_file_inputs_still_gets_the_document():
+    """Ashby's page carries two file inputs. Requiring a file selector to resolve
+    to exactly one meant the CV was never uploaded at all, while the run reported
+    thirteen fields filled and mailed a picture of a form with an empty slot."""
+    class TwoSlots(FormPage):
+        def locator(self, sel):
+            loc = super().locator(sel)
+            if 'type="file"' in sel:
+                loc.count = lambda: 2
+            return loc
+
+        def content(self):
+            return ("<div>KrishRaja_CV.pdf</div>" if self.uploaded
+                    else "<form></form>")
+
+    page = TwoSlots({'type="file"': {"tag": "input", "type": "file"}})
+    out = submit_mod.preview(_upload_plan(), attachments={"file_resume": b"%PDF"},
+                             names={"file_resume": "KrishRaja_CV.pdf"},
+                             browser_factory=factory_for(page))
+    assert out["filled"] == ["Resume"], out["missed"]
+
+
+def test_ashby_puts_the_cv_in_the_application_slot_not_the_autofill_box():
+    """Ashby's page carries a second file input: the "Autofill from resume" box
+    above the form. It is first in document order, so a generic selector put the
+    CV there and left the application's own required Resume slot empty. The
+    autofill box then copied the file into the visible slot, so the picture
+    looked right while the required input held nothing."""
+    class TwoSlots(FormPage):
+        def locator(self, sel):
+            loc = super().locator(sel)
+            if sel == 'input[type="file"]':
+                loc.count = lambda: 2   # the autofill box and the real slot
+            return loc
+
+        def content(self):
+            return ("<div>KrishRaja_CV.pdf</div>" if self.uploaded
+                    else "<form></form>")
+
+    page = TwoSlots({'#_systemfield_resume': {"tag": "input", "type": "file"},
+                     'type="file"': {"tag": "input", "type": "file"}})
+    fields = [FilledField(key="_systemfield_resume", label="Resume",
+                          kind="file_resume", required=True,
+                          value="the built PDF", source="package")]
+    out = submit_mod.preview(plan(fields=fields),
+                             attachments={"file_resume": b"%PDF"},
+                             names={"file_resume": "KrishRaja_CV.pdf"},
+                             browser_factory=factory_for(page))
+    assert out["filled"] == ["Resume"], out["missed"]
+    assert "_systemfield_resume" in page.upload_selectors[0], page.upload_selectors

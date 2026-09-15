@@ -124,8 +124,58 @@ class Driver:
     def apply_url(self) -> str:
         raise NotImplementedError
 
-    def fill(self) -> None:
+    def file_selectors(self, field) -> list[str]:
+        """Where this file field's control is. One slot on most forms."""
+        return ['input[type="file"]']
+
+    def choice_selectors(self, field) -> list[str]:
         raise NotImplementedError
+
+    def text_selectors(self, field) -> list[str]:
+        raise NotImplementedError
+
+    def _answerable(self):
+        return [f for f in self.plan.fields
+                if f.kind not in ("file_resume", "file_cover") and f.value]
+
+    def _put(self, field) -> bool:
+        if field.kind in CHOICE_KINDS or field.kind in TYPEAHEAD_KINDS:
+            return _choose_one(self.page, self.choice_selectors(field),
+                               field.value, notes=self.notes, label=field.label)
+        return _fill_one(self.page, self.text_selectors(field), field.value)
+
+    def fill(self) -> None:
+        """One pass, then a second at anything a vendor emptied behind us.
+
+        Greenhouse parses the uploaded CV and writes its own answers into the
+        name and email boxes, and that write lands after the upload rather than
+        with it: the first pass filled all four, the parser blanked all four, and
+        the form went to the picture with no name on it. Waiting longer is not a
+        fix, because the race is with a request whose timing is the vendor's.
+        Filling again over the top is.
+        """
+        results = {id(f): self._put(f) for f in self._answerable()}
+        for f in self._answerable():
+            # Whatever reads empty now, whether the first pass thought it had
+            # succeeded or not: the vendor's write can land during our own
+            # read-back just as easily as after it.
+            if self._emptied(f):
+                results[id(f)] = self._put(f)
+        for f in self._answerable():
+            (self.filled if results[id(f)] else self.missed).append(f.label)
+
+    def _emptied(self, field) -> bool:
+        """Did something blank a text box we just filled?
+
+        Only text: a chosen option reads back through its own control and the
+        verification already happened in _choose_one.
+        """
+        if field.kind in CHOICE_KINDS or field.kind in TYPEAHEAD_KINDS:
+            return False
+        el = _resolve(self.page, self.text_selectors(field))
+        if el is None:
+            return False
+        return not _reads_back(el, field.value)
 
     def press_submit(self) -> None:
         raise NotImplementedError
@@ -149,16 +199,22 @@ def _norm(text: str | None) -> str:
     return re.sub(r"\s+", " ", (text or "").strip()).lower()
 
 
-def _resolve(page, selectors: list[str]):
-    """The first selector that resolves to exactly one control, or None.
+def _resolve(page, selectors: list[str], *, exact: bool = True):
+    """The first selector that resolves to a control, or None.
 
-    Exactly one, not at least one, because a selector matching three elements is
-    a selector that does not know which field it means.
+    Exactly one by default, not at least one, because a selector matching three
+    elements is a selector that does not know which field it means.
+
+    exact=False is for the file slots, where the driver's list is ordered from
+    the specific to the general and the general one is deliberately broad. Ashby
+    has TWO file inputs on its page, so demanding exactly one meant the CV was
+    never uploaded at all while the run reported thirteen fields filled.
     """
     for sel in selectors:
         try:
             loc = page.locator(sel)
-            if loc.count() == 1:
+            n = loc.count()
+            if n == 1 or (not exact and n >= 1):
                 return loc.first
         except Exception:
             continue
@@ -232,8 +288,9 @@ def _typeahead(page, el, value: str, notes: list[str], label: str) -> bool:
     for term in _typeahead_terms(value):
         try:
             el.click(timeout=5000)
-            el.fill("", timeout=5000)
-            el.type(term, delay=20, timeout=10000)
+            _open_menu(page, el)
+            if not _type_until_it_reads(page, el, term):
+                continue
         except Exception:
             continue
         try:
@@ -242,17 +299,175 @@ def _typeahead(page, el, value: str, notes: list[str], label: str) -> bool:
             continue
         texts = _option_texts(page)
         offered = offered or texts
-        for i, text in enumerate(texts):
-            if _norm(text) == want or want in _norm(text):
-                try:
-                    page.get_by_role("option").nth(i).click(timeout=5000)
-                except Exception:
-                    return False
-                return bool(_norm(el.input_value()))
+        hit = _best_option(texts, want)
+        if hit is not None:
+            try:
+                page.get_by_role("option").nth(hit).click(timeout=5000)
+            except Exception:
+                return False
+            return bool(_norm(_combo_value(el)))
+    # Leave nothing half typed behind. An unconfirmed combobox holding "Brooklyn"
+    # reads on the approval picture as an answer, and is not one.
+    try:
+        el.fill("", timeout=5000)
+    except Exception:
+        pass
     if offered:
         notes.append(f"{label}: no option matched {value!r}. The form offers: "
                      + "; ".join(offered[:6]))
     return False
+
+
+def _clear(page, el) -> None:
+    """Empty a combobox without closing it.
+
+    el.fill("") does close it: on Greenhouse it left aria-expanded false and no
+    menu, so the second attempt of a two-term search always found nothing. Select
+    all and delete keeps the focus and the menu where a real person would.
+    """
+    try:
+        if not _norm(el.input_value()):
+            return
+    except Exception:
+        pass
+    keyboard = getattr(page, "keyboard", None)
+    if keyboard is None:
+        try:
+            el.fill("", timeout=5000)
+        except Exception:
+            pass
+        return
+    try:
+        keyboard.press("ControlOrMeta+a")
+        keyboard.press("Backspace")
+    except Exception:
+        pass
+
+
+MENU_OPEN_POLLS = 12
+
+# Where a combobox keeps its answer once one is chosen. react-select CLEARS its
+# search input on selection and renders the value as a label beside it, so
+# input_value() reads empty on a control that is correctly filled: Greenhouse's
+# country and city both picked the right option, then reported themselves missed.
+_COMBO_VALUE_JS = """e => {
+  let n = e;
+  for (let i = 0; i < 5 && n; i++, n = n.parentElement) {
+    const v = n.querySelector('[class*="single-value"], [class*="singleValue"]');
+    if (v && v.textContent.trim()) return v.textContent.trim();
+    const d = n.getAttribute ? n.getAttribute('data-value') : '';
+    if (d) return d;
+  }
+  return '';
+}"""
+
+
+def _combo_value(el) -> str:
+    """What a combobox is holding, whether in its input or in its label."""
+    try:
+        typed = el.input_value()
+    except Exception:
+        typed = ""
+    if _norm(typed):
+        return typed
+    try:
+        return el.evaluate(_COMBO_VALUE_JS) or ""
+    except Exception:
+        return ""
+
+
+def _open_menu(page, el) -> bool:
+    """Get the menu open with a throwaway keystroke before typing the answer.
+
+    Measured on Greenhouse across three runs: react-select opens its menu as a
+    CONSEQUENCE of the first keystroke, and remounts its input while doing so, so
+    the characters typed during that remount are lost. Typing the answer straight
+    in gave "k, United States" once, "ed States" the next time and the whole
+    string with the menu still shut the third, which is three different wrong
+    answers from one sequence. Spending one key on opening it makes the remount
+    happen before anything that matters is typed, and the next three runs filled
+    both required comboboxes correctly.
+    """
+    keyboard = getattr(page, "keyboard", None)
+    if keyboard is None:
+        return True
+    for _ in range(MENU_OPEN_POLLS):
+        try:
+            if _norm(el.get_attribute("aria-expanded")) == "true":
+                return True
+            keyboard.type("a", delay=30)
+            page.wait_for_timeout(300)
+        except Exception:
+            return False
+    try:
+        return _norm(el.get_attribute("aria-expanded")) == "true"
+    except Exception:
+        return False
+
+
+def _type_until_it_reads(page, el, term: str, attempts: int = 3) -> bool:
+    """Type the whole term, and keep typing until the box actually holds it.
+
+    Greenhouse's react-select remounts its input the moment the menu opens, and
+    the characters typed during that remount are lost: "New York, United States"
+    arrived as ", United States", which then searched for United and offered
+    United States Air Force Academy, Colorado. Opening the menu is also the only
+    way to get any options at all, so the remount cannot be avoided, only typed
+    through.
+    """
+    for _ in range(attempts):
+        _clear(page, el)
+        _type(page, el, term)
+        try:
+            got = el.input_value()
+        except AttributeError:
+            return True
+        except Exception:
+            return False
+        if _norm(got) == _norm(term):
+            return True
+    return False
+
+
+def _type(page, el, text: str) -> None:
+    keyboard = getattr(page, "keyboard", None)
+    if keyboard is not None:
+        keyboard.type(text, delay=30)
+        return
+    el.type(text, delay=20, timeout=10000)
+
+
+def _best_option(texts: list[str], want: str) -> int | None:
+    """The index of the option that is the stored answer, or None.
+
+    Plain containment is not enough in either direction. "London, United Kingdom"
+    is offered as "London, Greater London, England, United Kingdom", which does
+    not contain it; and the same search offers "London, Ontario, Canada", which
+    must never be taken. So an option matches when every comma-segment of the
+    answer appears in it, in order: London then United Kingdom rules the Ontario
+    one out, and "Brooklyn, New York, United States" still matches nothing on a
+    geocoder that has no Brooklyn.
+
+    An exact option anywhere in the list beats a segment match earlier in it.
+    """
+    lowered = [_norm(t) for t in texts]
+    for i, text in enumerate(lowered):
+        if text == want:
+            return i
+    segments = [seg.strip() for seg in want.split(",") if seg.strip()]
+    if not segments:
+        return None
+    for i, text in enumerate(lowered):
+        at, ok = 0, True
+        for seg in segments:
+            found = text.find(seg, at)
+            if found < 0:
+                ok = False
+                break
+            at = found + len(seg)
+        if ok:
+            return i
+    return None
 
 
 def _typeahead_terms(value: str) -> list[str]:
@@ -364,16 +579,27 @@ def _fill_one(page, selectors: list[str], value: str) -> bool:
     input, and guessing once then failing the whole submission is the wrong
     trade.
     """
-    for sel in selectors:
-        try:
-            loc = page.locator(sel)
-            if loc.count() != 1:
-                continue
-            loc.first.fill(value, timeout=5000)
-            return True
-        except Exception:
-            continue
-    return False
+    el = _resolve(page, selectors)
+    if el is None:
+        return False
+    try:
+        el.fill(value, timeout=5000)
+    except Exception:
+        return False
+    # Read it back. Greenhouse's own resume parser autofills the name and email
+    # boxes after an upload and blanked every one of them, while this returned
+    # True because .fill() had not raised.
+    return _reads_back(el, value)
+
+
+def _reads_back(el, value: str) -> bool:
+    try:
+        got = el.input_value()
+    except AttributeError:
+        return True
+    except Exception:
+        return False
+    return _norm(got) == _norm(value)
 
 
 ASHBY_ENTRY = ".ashby-application-form-field-entry"
@@ -386,32 +612,42 @@ class AshbyDriver(Driver):
         return (f"https://jobs.ashbyhq.com/{self.plan.slug}/"
                 f"{self.plan.posting_id}/application")
 
-    def fill(self) -> None:
-        for f in self.plan.fields:
-            if f.kind in ("file_resume", "file_cover") or not f.value:
-                continue
-            label = f.label.replace('"', '\\"')
-            if f.kind in CHOICE_KINDS or f.kind in TYPEAHEAD_KINDS:
-                ok = _choose_one(self.page, [
-                    f'select[name="{f.key}"]',
-                    f'[name="{f.key}"]',
-                    f'[aria-label="{label}"]',
-                    f'[data-testid="{f.key}"]',
-                    # Ashby wraps every field in a .ashby-application-form-field-entry
-                    # carrying its own label, which is the only handle on a control
-                    # that has no name, id or aria-label of its own.
-                    f'{ASHBY_ENTRY}:has(label:text-is("{label}")) '
-                    f'input[role="combobox"]',
-                    f'{ASHBY_ENTRY}:has(label:text-is("{label}")) select',
-                ], f.value, notes=self.notes, label=f.label)
-            else:
-                ok = _fill_one(self.page, [
-                    f'input[name="{f.key}"]',
-                    f'textarea[name="{f.key}"]',
-                    f'input[aria-label="{label}"]',
-                    f'textarea[aria-label="{label}"]',
-                ], f.value)
-            (self.filled if ok else self.missed).append(f.label)
+    def _label(self, field) -> str:
+        return field.label.replace('"', '\\"')
+
+    def choice_selectors(self, field) -> list[str]:
+        label = self._label(field)
+        return [
+            f'select[name="{field.key}"]',
+            f'[name="{field.key}"]',
+            f'[aria-label="{label}"]',
+            f'[data-testid="{field.key}"]',
+            # Ashby wraps every field in a .ashby-application-form-field-entry
+            # carrying its own label, which is the only handle on a control that
+            # has no name, id or aria-label of its own.
+            f'{ASHBY_ENTRY}:has(label:text-is("{label}")) input[role="combobox"]',
+            f'{ASHBY_ENTRY}:has(label:text-is("{label}")) select',
+        ]
+
+    def text_selectors(self, field) -> list[str]:
+        label = self._label(field)
+        return [
+            f'input[name="{field.key}"]',
+            f'textarea[name="{field.key}"]',
+            f'input[aria-label="{label}"]',
+            f'textarea[aria-label="{label}"]',
+        ]
+
+    def file_selectors(self, field) -> list[str]:
+        # By key, because Ashby's page carries a SECOND file input: the "Autofill
+        # from resume" box above the form. It is first in document order, so the
+        # generic selector put the CV there and left the application's own
+        # required Resume slot empty, which the page-level check caught and the
+        # driver did not.
+        return [f'input[type="file"]#{field.key}',
+                f'input[type="file"][name="{field.key}"]',
+                f'#{field.key}',
+                'input[type="file"]']
 
     def press_submit(self) -> None:
         self.page.get_by_role("button", name="Submit Application").click(timeout=15000)
@@ -421,25 +657,30 @@ class GreenhouseDriver(Driver):
     ats = "greenhouse"
 
     def apply_url(self) -> str:
-        return (f"https://boards.greenhouse.io/{self.plan.slug}/jobs/"
-                f"{self.plan.posting_id}#app")
+        # job-boards, not boards. Greenhouse moved, and the old host answers a
+        # live posting with a redirect to the board carrying ?error=true, so
+        # every Greenhouse run would have loaded a search box and filled nothing.
+        return (f"https://job-boards.greenhouse.io/{self.plan.slug}/jobs/"
+                f"{self.plan.posting_id}")
 
-    def fill(self) -> None:
-        for f in self.plan.fields:
-            if f.kind in ("file_resume", "file_cover") or not f.value:
-                continue
-            if f.kind in CHOICE_KINDS or f.kind in TYPEAHEAD_KINDS:
-                ok = _choose_one(self.page, [
-                    f'select#{f.key}', f'#{f.key}', f'[name="{f.key}"]',
-                ], f.value, notes=self.notes, label=f.label)
-            else:
-                ok = _fill_one(self.page, [
-                    f'#{f.key}', f'input[name="{f.key}"]', f'textarea[name="{f.key}"]',
-                ], f.value)
-            (self.filled if ok else self.missed).append(f.label)
+    def choice_selectors(self, field) -> list[str]:
+        return [f'select#{field.key}', f'#{field.key}',
+                f'[name="{field.key}"]']
+
+    def text_selectors(self, field) -> list[str]:
+        return [f'#{field.key}', f'input[name="{field.key}"]',
+                f'textarea[name="{field.key}"]']
+
+    def file_selectors(self, field) -> list[str]:
+        # Greenhouse gives the resume and the cover letter their own inputs, so
+        # `input[type=file]`.first put both documents in the resume slot and left
+        # the cover letter empty.
+        return [f'input[type="file"]#{field.key}',
+                f'#{field.key}',
+                'input[type="file"]']
 
     def press_submit(self) -> None:
-        self.page.get_by_role("button", name="Submit Application").click(timeout=15000)
+        self.page.get_by_role("button", name="Submit application").click(timeout=15000)
 
 
 DRIVERS = {d.ats: d for d in (AshbyDriver, GreenhouseDriver)}
@@ -492,7 +733,18 @@ SETTLE_MS = 25000
 
 
 def _settle(page) -> None:
-    """Wait for an upload's side effects to finish, bounded."""
+    """Wait for an upload's side effects to finish, bounded.
+
+    Two waits, because vendors announce themselves differently. Ashby prints
+    "Parsing your resume"; Greenhouse prints nothing and simply issues the
+    request, so only the network says it is done. Neither is sufficient alone and
+    neither is reliable, which is why Driver.fill also fills a second time over
+    anything emptied behind it.
+    """
+    try:
+        page.wait_for_load_state("networkidle", timeout=SETTLE_MS)
+    except Exception:
+        pass
     deadline = time.monotonic() + SETTLE_MS / 1000
     while time.monotonic() < deadline:
         try:
@@ -578,11 +830,76 @@ def _open_and_fill(pw, plan: FillPlan, attachments: dict, cls, names=None):
         return browser, page, driver, blocker, _png(page)
     paths = _attach(page, plan, attachments or {}, driver, names)
     _settle(page)
-    _check_upload(page, driver, plan)
     driver.fill()
+    # After the fill, not before it: Ashby renders the filename only once its own
+    # resume parse has finished, and checking straight after the upload called a
+    # document it did accept missing.
+    _check_upload(page, driver, plan, names)
+    # What the page itself still calls empty and required, named in the email so
+    # Krish sees a Greenhouse country box he was never told about.
+    for name in empty_required(page):
+        if name not in driver.missed:
+            driver.missed.append(name)
     png = _png(page)
     _drop(paths)
     return browser, page, driver, "", png
+
+
+# Reads the page itself rather than the plan. Greenhouse's board API omits the
+# country and city controls entirely, so a plan built from it says every required
+# field has an answer while the live form has two empty ones. A gate that trusts
+# the vendor's own description of its form is not a gate.
+_EMPTY_REQUIRED_JS = """() => {
+  const out = [];
+  const seen = new Set();
+  document.querySelectorAll('input, textarea, select').forEach(e => {
+    if (e.type === 'hidden' || e.disabled) return;
+    const label = (e.labels && e.labels[0]) ? e.labels[0].textContent.trim() : '';
+    const required = e.required || e.getAttribute('aria-required') === 'true'
+                     || label.includes('*');
+    if (!required) return;
+    if (e.offsetParent === null && e.type !== 'file') return;
+    let empty;
+    if (e.type === 'checkbox' || e.type === 'radio') {
+      const group = e.name
+        ? document.querySelectorAll(`[name="${e.name}"]`) : [e];
+      empty = ![...group].some(x => x.checked);
+    } else if (e.type === 'file') {
+      empty = !(e.files && e.files.length);
+    } else if (e.getAttribute('role') === 'combobox'
+               || e.getAttribute('aria-autocomplete') === 'list') {
+      // react-select clears its search input on selection and renders the
+      // answer as a label, so e.value reads empty on a filled control.
+      let n = e, held = '';
+      for (let i = 0; i < 5 && n && !held; i++, n = n.parentElement) {
+        const v = n.querySelector('[class*="single-value"], [class*="singleValue"]');
+        if (v && v.textContent.trim()) { held = v.textContent.trim(); break; }
+        const d = n.getAttribute ? n.getAttribute('data-value') : '';
+        if (d) { held = d; break; }
+      }
+      empty = !(held || (e.value || '').trim());
+    } else {
+      empty = !(e.value || '').trim();
+    }
+    if (!empty) return;
+    const name = (label.replace('*', '').trim() || e.id || e.name || 'a field');
+    if (seen.has(name)) return;
+    seen.add(name);
+    out.push(name);
+  });
+  return out;
+}"""
+
+
+def empty_required(page) -> list[str]:
+    """Required controls the page still shows empty, named as a human reads them."""
+    try:
+        return list(page.evaluate(_EMPTY_REQUIRED_JS) or [])
+    except Exception:
+        # A page that cannot be questioned is not evidence of a complete form,
+        # but it is not evidence of an incomplete one either, and the plan-level
+        # required check still stands.
+        return []
 
 
 def _png(page) -> bytes:
@@ -674,8 +991,8 @@ def submit(cfg: Config, token: str, plan: FillPlan, *,
             # other order lets that parser overwrite the approved answers.
             paths = _attach(page, plan, attachments or {}, driver, names)
             _settle(page)
-            _check_upload(page, driver, plan)
             driver.fill()
+            _check_upload(page, driver, plan, names)
             _drop(paths)
             result["filled"], result["missed"] = driver.filled, driver.missed
             result["notes"] = list(driver.notes)
@@ -684,6 +1001,12 @@ def submit(cfg: Config, token: str, plan: FillPlan, *,
             # Required and missing is a refusal to press, not a warning.
             required_missed = [f.label for f in plan.fields
                                if f.required and f.label in driver.missed]
+            # And whatever the PAGE says is still required and empty, which is
+            # the only check that sees a control the vendor's API never
+            # mentioned.
+            for name in empty_required(page):
+                if name not in required_missed:
+                    required_missed.append(name)
             if required_missed:
                 shot = _shoot(page, token, shot_sink)
                 reason = "field not found: " + ", ".join(required_missed[:3])
@@ -761,8 +1084,12 @@ def _attach(page, plan: FillPlan, attachments: dict[str, bytes], driver,
         with open(path, "wb") as fh:
             fh.write(blob)
         paths.append(path)
+        target = _resolve(page, driver.file_selectors(f), exact=False)
+        if target is None:
+            driver.missed.append(f.label)
+            continue
         try:
-            page.locator('input[type="file"]').first.set_input_files(path, timeout=15000)
+            target.set_input_files(path, timeout=15000)
             driver.filled.append(f.label)
         except Exception:
             driver.missed.append(f.label)
@@ -798,16 +1125,60 @@ def _upload_failed(page) -> bool:
     return any(m in html for m in UPLOAD_ERROR_MARKS)
 
 
-def _check_upload(page, driver, plan: FillPlan) -> None:
-    """Move every file field from filled to missed when the form rejected it."""
-    if not _upload_failed(page):
-        return
+# Polls, not a wall-clock deadline: page.wait_for_timeout is what makes a poll
+# cost anything, and a page that does not wait should finish the loop at once
+# rather than spin for twelve seconds doing nothing.
+UPLOAD_SHOWN_POLLS = 24
+
+
+def _wait_for_names(page, wanted: list[str]) -> str:
+    """The page's HTML, once it shows every filename or the wait runs out."""
+    html = ""
+    for _ in range(UPLOAD_SHOWN_POLLS):
+        try:
+            html = page.content() or ""
+        except Exception:
+            return html
+        if not wanted or all(w in html for w in wanted):
+            return html
+        try:
+            page.wait_for_timeout(500)
+        except Exception:
+            return html
+    return html
+
+
+def _check_upload(page, driver, plan: FillPlan, names=None) -> None:
+    """Move a file field from filled to missed unless the form really took it.
+
+    Two ways a form can refuse a document while set_input_files succeeds, and
+    both were live. Ashby says so out loud ("Oops! Failed to fetch"). Greenhouse
+    says nothing at all: the bytes sit on a visually-hidden input its own React
+    never reads, the Attach button still reads Attach, the filename appears
+    nowhere on the page, and the application would be submitted with no CV.
+
+    So the test is the vendor's own acknowledgement: the filename, on the page.
+    A form that has the document shows it, and one that shows nothing does not
+    have it.
+    """
+    names = names or {}
+    wanted = [names.get(f.kind) or names.get("file_resume") or ""
+              for f in plan.fields
+              if f.kind in ("file_resume", "file_cover") and f.label in driver.filled]
+    html = _wait_for_names(page, [w for w in wanted if w])
+    rejected = any(m in html.lower() for m in UPLOAD_ERROR_MARKS)
     for f in plan.fields:
-        if f.kind in ("file_resume", "file_cover") and f.label in driver.filled:
-            driver.filled.remove(f.label)
-            driver.missed.append(f.label)
-    driver.notes.append("the form rejected the upload: it answers "
-                        "'failed to fetch' and the resume slot is empty")
+        if f.kind not in ("file_resume", "file_cover") or f.label not in driver.filled:
+            continue
+        shown = names.get(f.kind) or names.get("file_resume") or ""
+        if not rejected and (not shown or shown in html):
+            continue
+        driver.filled.remove(f.label)
+        driver.missed.append(f.label)
+        driver.notes.append(
+            f"{f.label}: the form did not take the upload. "
+            + ("it answers 'failed to fetch'" if rejected
+               else f"{shown} appears nowhere on the page after attaching it"))
 
 
 def _shoot(page, token: str, sink) -> str:
