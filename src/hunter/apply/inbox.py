@@ -197,6 +197,12 @@ def classify(reply: dict, row: dict) -> tuple[str, str]:
         return "skip", "this is hunter's own outbound email, not a reply"
     if not is_from_krish(reply.get("from", "")):
         return "reject", f"reply is not from Krish: {reply.get('from', '')!r}"
+    if not row.get("token"):
+        # No approval row means no application behind this token: an early wiring
+        # test, or a thread whose row was deleted. A live drain read one such
+        # message as "amend" and would have rebuilt a package for a token nothing
+        # was ever sent under.
+        return "skip", "no approval row for this token"
     state = row.get("state")
     if state in (approval.SUBMITTED, approval.CANCELLED):
         return "skip", f"token is already {state}"

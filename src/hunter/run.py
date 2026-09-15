@@ -2400,6 +2400,57 @@ def write_warm_paths(cfg: Config, sheet: Sheet, canon: Canon,
     return sheet.update_warm_paths(mapping)
 
 
+APPLIED_NOT = re.compile(r"^\s*(not applied|n/?a|no|-|)\s*$", re.I)
+
+
+def sync_applied_state(cfg: Config, sheet: Sheet, canon: Canon) -> dict:
+    """Mirror application state onto hunter_seen_roles. Never authored here.
+
+    Krish 2026-09-15: the Hunt lane on his People tab shows the roles he said Yes to
+    and the person who can get him in, and could not say which ones he had applied
+    to. It reads hunter_seen_roles; the two places that know were the Pipeline
+    sheet's own Application Status cell, which is his to set and which sheet.py is
+    explicit that hunter never writes, and hunter_application_approvals.state, which
+    hunter sets when a submission lands.
+
+    Both are read, the approval ledger wins where they disagree, because a recorded
+    submission is a fact and a cell is a note. Nothing is ever written BACK to his
+    cell.
+    """
+    out = {"from_sheet": 0, "from_ledger": 0, "written": 0}
+    state: dict[str, tuple[str, str]] = {}
+
+    grid = sheet.read_pipeline(canon.sheet_headers)
+    db_rows = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,url,job_url,status,application_state,applied_at",
+        "limit": "5000"})
+    pairs, _us, _ud, _amb = match_rows(grid, db_rows)
+    for srow, row in pairs:
+        cell = (srow.cell("Application Status") or "").strip()
+        if cell and not APPLIED_NOT.match(cell):
+            when = (srow.cell("Applied Date") or "").strip()
+            state[row["job_id"]] = (cell, "" if when.lower() in ("", "n/a") else when)
+            out["from_sheet"] += 1
+
+    for a in db_get(cfg, "hunter_application_approvals", {
+            "select": "job_id,state,submitted_at", "state": "eq.submitted",
+            "limit": "1000"}):
+        state[a["job_id"]] = ("Applied", a.get("submitted_at") or "")
+        out["from_ledger"] += 1
+
+    by_id = {r["job_id"]: r for r in db_rows}
+    for job_id, (label, when) in state.items():
+        row = by_id.get(job_id) or {}
+        if (row.get("application_state") or "") == label:
+            continue
+        patch = {"application_state": label}
+        if when:
+            patch["applied_at"] = when
+        db_patch(cfg, "hunter_seen_roles", {"job_id": job_id}, patch)
+        out["written"] += 1
+    return out
+
+
 def yes_db_rows(cfg: Config, sheet: Sheet, canon: Canon) -> list[dict]:
     """The DB rows behind every Yes on Pipeline, whatever their package
     state. The warm path pass covers all of them, built or not."""
@@ -2454,6 +2505,15 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
     summary.extend(ledger.lines())
     counts["reconciled"] = len(ledger.matched)
     counts["g12_blocked"] = len(ledger.company_blocked)
+
+    try:
+        applied = sync_applied_state(cfg, sheet, canon)
+        counts["applied_synced"] = applied["written"]
+        summary.append(f"applied state: {applied['from_sheet']} from your sheet, "
+                       f"{applied['from_ledger']} from the approval ledger, "
+                       f"{applied['written']} row(s) updated")
+    except Exception as e:
+        summary.append(f"applied state sync skipped: {e.__class__.__name__}: {e}")
 
     out = {}
     try:
@@ -2963,6 +3023,86 @@ def cmd_approvals(apply: bool = False, job_id: str = "") -> int:
     return 0
 
 
+def cmd_approvals_drain(apply: bool = False) -> int:
+    """Read Krish's replies and act on each one. Dry run by default.
+
+    Three outcomes, and every reply gets exactly one:
+      approve  the token moves to approved, and submit is the next command
+      amend    the old token is superseded so a stale APPROVE cannot land later,
+               the package is rebuilt with his words passed through verbatim, and
+               a fresh approval email goes out with a new token
+      skip     already processed, hunter's own outbound, or no row behind the token
+
+    An amend that fails to rebuild leaves the old token superseded and says so
+    loudly, rather than quietly leaving him with a live token for a package that no
+    longer matches.
+    """
+    from .apply import approval, inbox
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    try:
+        replies = inbox.fetch_replies(cfg)
+    except inbox.InboxError as e:
+        print(str(e))
+        return 1
+    print(f"{len(replies)} message(s) carrying a token"
+          f"{'' if apply else ' (dry run, pass --apply to act)'}\n")
+    acted = 0
+    for r in replies:
+        row = approval.get_row(cfg, r["token"]) or {}
+        action, detail = inbox.classify(r, row)
+        print(f"{action.upper():<8} {r['token']}")
+        if detail:
+            print(f"         {detail[:300]}")
+        if action == "skip":
+            continue
+        if action == "reject":
+            if apply:
+                approval.mark_processed(cfg, r["token"], r["message_id"],
+                                        row.get("processed_message_ids"))
+            continue
+        if not apply:
+            continue
+
+        if action == "approve":
+            approval.set_state(cfg, r["token"], approval.APPROVED,
+                               decided_at=NOW())
+            approval.mark_processed(cfg, r["token"], r["message_id"],
+                                    row.get("processed_message_ids"))
+            print(f"         approved. next: python -m hunter.run submit "
+                  f"--token {r['token']}")
+            acted += 1
+            continue
+
+        # amend. The old token dies first: if the rebuild fails, the worst case is
+        # no live token, never a live token for the wrong package.
+        approval.supersede(cfg, r["token"])
+        approval.mark_processed(cfg, r["token"], r["message_id"],
+                                row.get("processed_message_ids"))
+        db_patch(cfg, approval.TABLE, {"token": r["token"]}, {"feedback": detail})
+        job_id = row.get("job_id") or ""
+        rows = db_get(cfg, "hunter_seen_roles",
+                      {"select": "*", "job_id": f"eq.{job_id}", "limit": "1"})
+        if not rows:
+            print(f"         SUPERSEDED but cannot rebuild: no role row for {job_id}")
+            continue
+        summary: list[str] = []
+        ok = build_one(cfg, canon, sheet, rows[0], summary, feedback=detail)
+        for line in summary:
+            print("         " + line)
+        if not ok:
+            print("         SUPERSEDED and the rebuild failed. No live token; "
+                  "fix the build and re-run approvals.")
+            continue
+        rc = cmd_approvals(apply=True, job_id=job_id)
+        acted += 1
+        if rc:
+            print("         rebuilt, but the new approval email did not send")
+    if apply:
+        print(f"\n{acted} reply(ies) acted on")
+    return 0
+
+
 def cmd_gtm_seed(apply: bool = False) -> int:
     """Write the AI-native GTM evidence key. Dry run by default.
 
@@ -3096,6 +3236,8 @@ def main(argv: list[str]) -> int:
         return cmd_bank_seed(apply="--apply" in argv)
     if cmd == "gtm-seed":
         return cmd_gtm_seed(apply="--apply" in argv)
+    if cmd == "approvals-drain":
+        return cmd_approvals_drain(apply="--apply" in argv)
     if cmd == "approvals":
         jid = ""
         if "--job-id" in argv:
@@ -3133,6 +3275,7 @@ def main(argv: list[str]) -> int:
           f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
           f"bank-check, audit-forms [--apply] [--limit N], simulate [--send], bank-seed [--apply], "
           "gtm-seed [--apply], approvals [--apply] [--job-id X], "
+          "approvals-drain [--apply], "
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2

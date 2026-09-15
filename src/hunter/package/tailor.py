@@ -172,18 +172,24 @@ JD_OVERLAP_THRESHOLD = 0.5
 # to a second page, which canon 9.12 forbids.
 SUMMARY_MIN_CHARS = 350
 SUMMARY_MAX_CHARS = 1100
-HOOK_MIN_CHARS = 150
-# Measured, not inferred. Rendering the live master letter with three proof bullets
-# and hooks of increasing length on 2026-09-15: 321 characters is one page, 331 is
-# two. So the headroom is about 325, and 300 leaves a little for a longer hiring
-# lead or a fourth line of address.
+HOOK_MIN_CHARS = 110
+# Measured, not inferred, and re-measured every time the master changes. Rendering
+# the live master letter with three proof bullets and hooks of increasing length:
+# 321 characters was one page and 331 was two, until Krish's feedback of 2026-09-15
+# put his own answer to "why are you looking" into the master and the closing block
+# grew by 100 characters. Re-measured on the new master: 201 is one page, 221 is two.
+# So 190, leaving a little for a longer hiring lead or a fourth line of address.
+#
+# This number is not a style preference, it is the space his letter has left. If it
+# gets uncomfortably small, the master is too long for one page and that is his call
+# to make, not something to fix by shrinking the hook forever.
 #
 # This was 650 when the first live package spilled onto a second page with a
 # 477-character hook, then 380, which was still over: the five approved blocks run
 # 271 to 330 BEFORE their [[JD_MIRROR]] slot is filled, and a twelve-word mirror can
 # add 70. build.py still measures the rendered PDF, because a character budget is a
 # proxy and the master letter can move again.
-HOOK_MAX_CHARS = 300
+HOOK_MAX_CHARS = 190
 
 
 class TailorError(RuntimeError):
