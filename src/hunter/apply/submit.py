@@ -958,7 +958,8 @@ def submit(cfg: Config, token: str, plan: FillPlan, *,
     Returns a result dict; raises only for a refusal by the gate.
     """
     result: dict = {"token": token, "state": "", "reason": "", "pressed": False,
-                    "filled": [], "missed": [], "screenshot": "", "notes": []}
+                    "filled": [], "missed": [], "screenshot": "", "notes": [],
+                    "confirmation": "", "after_png": b""}
     check_gate(cfg, token, plan)
     cls = driver_for(plan)
 
@@ -1028,10 +1029,25 @@ def submit(cfg: Config, token: str, plan: FillPlan, *,
                 browser.close()
                 return result
 
+            before_url = ""
+            try:
+                before_url = page.url
+            except Exception:
+                pass
             driver.press_submit()
             result["pressed"] = True
-            record_outcome(cfg, token, approval.SUBMITTED, screenshot_url=shot)
-            result.update(state=approval.SUBMITTED)
+            # Look at the page before believing anything. The state stays
+            # SUBMITTED either way, because the button WAS pressed and a retry on
+            # an application that did land is the one unrecoverable mistake here.
+            # What changes is what Krish is told: an unconfirmed press is reported
+            # as an unconfirmed press, with a picture of whatever the form showed.
+            confirmation = submission_confirmed(page, before_url)
+            result["confirmation"] = confirmation
+            result["after_png"] = _png(page)
+            after = _shoot(page, token, shot_sink) or shot
+            record_outcome(cfg, token, approval.SUBMITTED, screenshot_url=after,
+                           reason=confirmation or "pressed, no confirmation seen")
+            result.update(state=approval.SUBMITTED, screenshot=after)
             browser.close()
             return result
     except SubmitError:
@@ -1123,6 +1139,46 @@ def _upload_failed(page) -> bool:
 # cost anything, and a page that does not wait should finish the loop at once
 # rather than spin for twelve seconds doing nothing.
 UPLOAD_SHOWN_POLLS = 24
+
+# What a form says once it has the application. Checked AFTER the button is
+# pressed, because "the click did not raise" is not evidence that anything was
+# received: press_submit() returned and the very next line recorded SUBMITTED,
+# which is the same reporting-success-without-checking that this module spent a
+# whole session removing from every other step.
+SUBMITTED_MARKS = ("application submitted", "thanks for applying",
+                   "thank you for applying", "application received",
+                   "we have received your application",
+                   "we've received your application",
+                   "your application has been submitted",
+                   "successfully submitted", "application complete")
+CONFIRM_POLLS = 20
+
+
+def submission_confirmed(page, before_url: str = "") -> str:
+    """The form's own acknowledgement, or "" when it never gave one.
+
+    Two signals, because vendors differ: the words a human would read, and
+    leaving the application form behind. Returns what was seen, so the receipt
+    can quote it rather than assert success.
+    """
+    for _ in range(CONFIRM_POLLS):
+        try:
+            html = (page.content() or "").lower()
+        except Exception:
+            return ""
+        for mark in SUBMITTED_MARKS:
+            if mark in html:
+                return mark
+        try:
+            if before_url and page.url and page.url != before_url:
+                return f"navigated to {page.url}"
+        except Exception:
+            pass
+        try:
+            page.wait_for_timeout(500)
+        except Exception:
+            return ""
+    return ""
 
 
 def _wait_for_names(page, wanted: list[str]) -> str:
