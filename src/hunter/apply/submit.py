@@ -125,6 +125,69 @@ class Driver:
         raise NotImplementedError
 
 
+# A text box takes typing. A dropdown, a radio group and a checkbox do not, and
+# treating them all as text is how a driver silently fills 12 of 15 fields. Harvey's
+# form alone carries a boolean and two single_selects, all three required, so a
+# text-only driver could never have completed a single real application.
+CHOICE_KINDS = frozenset({"single_select", "multi_select", "boolean", "consent",
+                          "demographic"})
+
+
+def _choose_one(page, selectors: list[str], value: str) -> bool:
+    """Pick `value` on a dropdown, a radio group or a checkbox.
+
+    Four shapes, tried in order, because the same question is a <select> on one
+    board, a radio group on another and a listbox div on a third:
+
+      1. a real <select>, chosen by visible label
+      2. a radio or checkbox whose own label matches
+      3. a checkbox for a yes/no where the value is the affirmative
+      4. a combobox: click to open, then click the option by name
+
+    Matching is on the LABEL a human reads, not the vendor's value, because
+    resolve.py already fitted the answer to the form's own option text.
+    """
+    want = (value or "").strip()
+    if not want:
+        return False
+    for sel in selectors:
+        try:
+            loc = page.locator(sel)
+            if loc.count() < 1:
+                continue
+            el = loc.first
+            tag = (el.evaluate("e => e.tagName") or "").lower()
+            if tag == "select":
+                el.select_option(label=want, timeout=5000)
+                return True
+            kind = (el.get_attribute("type") or "").lower()
+            if kind in ("radio", "checkbox"):
+                # A checkbox is on for an affirmative answer and off otherwise.
+                if kind == "checkbox" and want.lower() in ("yes", "true", "i agree",
+                                                           "i consent"):
+                    el.check(timeout=5000)
+                    return True
+                el.check(timeout=5000)
+                return True
+            # A combobox: open it, then take the option by its visible name.
+            el.click(timeout=5000)
+            page.get_by_role("option", name=want, exact=False).first.click(timeout=5000)
+            return True
+        except Exception:
+            continue
+    # Last resort: a radio or option anywhere on the page carrying that exact label.
+    try:
+        page.get_by_role("radio", name=want, exact=False).first.check(timeout=4000)
+        return True
+    except Exception:
+        pass
+    try:
+        page.get_by_label(want, exact=False).first.check(timeout=4000)
+        return True
+    except Exception:
+        return False
+
+
 def _fill_one(page, selectors: list[str], value: str) -> bool:
     """First selector that resolves to exactly one visible control wins.
 
@@ -157,12 +220,20 @@ class AshbyDriver(Driver):
             if f.kind in ("file_resume", "file_cover") or not f.value:
                 continue
             label = f.label.replace('"', '\\"')
-            ok = _fill_one(self.page, [
-                f'input[name="{f.key}"]',
-                f'textarea[name="{f.key}"]',
-                f'input[aria-label="{label}"]',
-                f'textarea[aria-label="{label}"]',
-            ], f.value)
+            if f.kind in CHOICE_KINDS:
+                ok = _choose_one(self.page, [
+                    f'select[name="{f.key}"]',
+                    f'[name="{f.key}"]',
+                    f'[aria-label="{label}"]',
+                    f'[data-testid="{f.key}"]',
+                ], f.value)
+            else:
+                ok = _fill_one(self.page, [
+                    f'input[name="{f.key}"]',
+                    f'textarea[name="{f.key}"]',
+                    f'input[aria-label="{label}"]',
+                    f'textarea[aria-label="{label}"]',
+                ], f.value)
             (self.filled if ok else self.missed).append(f.label)
 
     def press_submit(self) -> None:
@@ -180,9 +251,14 @@ class GreenhouseDriver(Driver):
         for f in self.plan.fields:
             if f.kind in ("file_resume", "file_cover") or not f.value:
                 continue
-            ok = _fill_one(self.page, [
-                f'#{f.key}', f'input[name="{f.key}"]', f'textarea[name="{f.key}"]',
-            ], f.value)
+            if f.kind in CHOICE_KINDS:
+                ok = _choose_one(self.page, [
+                    f'select#{f.key}', f'#{f.key}', f'[name="{f.key}"]',
+                ], f.value)
+            else:
+                ok = _fill_one(self.page, [
+                    f'#{f.key}', f'input[name="{f.key}"]', f'textarea[name="{f.key}"]',
+                ], f.value)
             (self.filled if ok else self.missed).append(f.label)
 
     def press_submit(self) -> None:

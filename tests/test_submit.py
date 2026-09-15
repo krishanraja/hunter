@@ -244,3 +244,159 @@ def test_a_captcha_that_appears_only_after_filling_still_stops_the_press(approve
     assert out["reason"] == "captcha"
     assert page.clicked == []
     assert approved["writes"][0][0] == approval.QUEUED
+
+
+# ---------- a form is not all text boxes ----------
+
+class FormPage:
+    """A page whose controls have types, because the first drivers assumed every
+    field was a text box.
+
+    Harvey's real form carries a boolean and two single_selects, all three
+    required, so a text-only driver fills 12 of 15 fields, refuses to press, and
+    could never complete a single application. The fake used until now had no
+    notion of a control type at all, so it could not have caught that.
+
+    `controls` maps a selector fragment to its tag/type.
+    """
+
+    def __init__(self, controls: dict, role_names=()):
+        self.controls = controls
+        # Labels a last-resort get_by_role/get_by_label lookup would actually find.
+        self.role_names = set(role_names)
+        self.selected: dict[str, str] = {}
+        self.checked: list[str] = []
+        self.typed: dict[str, str] = {}
+        self.clicked: list[str] = []
+
+    def content(self): return "<form></form>"
+    def goto(self, url, **kw): self.url = url
+    def screenshot(self, **kw): return b"\x89PNG"
+
+    def _spec(self, sel):
+        for frag, spec in self.controls.items():
+            if frag in sel:
+                return frag, spec
+        return None, None
+
+    def locator(self, sel):
+        page, frag, spec = self, *self._spec(sel)
+
+        class L:
+            first = None
+            def count(self): return 1 if spec else 0
+            def evaluate(self, expr): return spec["tag"].upper()
+            def get_attribute(self, name):
+                return spec.get("type") if name == "type" else None
+            def select_option(self, label=None, **kw): page.selected[frag] = label
+            def check(self, **kw): page.checked.append(frag)
+            def click(self, **kw): page.clicked.append(frag)
+            def fill(self, v, **kw): page.typed[frag] = v
+            def set_input_files(self, p, **kw): pass
+        l = L(); l.first = l
+        return l
+
+    def get_by_role(self, role, name="", exact=True):
+        """Raises when the page has no such control, the way Playwright times out.
+
+        The first version returned a happy object for any name, so _choose_one's
+        last-resort lookups "succeeded" on a page with no control at all and a
+        field that could not be filled was reported as filled. That is the same
+        class of lie the selector fake told earlier: a test harness that cannot
+        fail cannot catch anything.
+        """
+        page = self
+        # An option only exists once a combobox has been opened; a submit button
+        # always does; anything else has to be declared by the test.
+        ok = (role == "option" and page.clicked) or name in page.role_names \
+            or name == "Submit Application"
+        if not ok:
+            raise RuntimeError(f"no {role} named {name!r} on this page")
+
+        class R:
+            first = None
+            def click(self, **kw): page.clicked.append(f"{role}:{name}")
+            def check(self, **kw): page.checked.append(f"{role}:{name}")
+        r = R(); r.first = r
+        return r
+
+    def get_by_label(self, name, exact=True):
+        return self.get_by_role("label", name)
+
+
+def _choice_plan():
+    return plan(fields=[
+        FilledField(key="email", label="Email", kind="email", required=True,
+                    value="hello@krishraja.com", source="Info Bank"),
+        FilledField(key="auth", label="Are you legally authorized to work?",
+                    kind="boolean", required=True, value="Yes", source="Info Bank"),
+        FilledField(key="sponsor", label="Will you require sponsorship?",
+                    kind="single_select", required=True,
+                    value="No, I do not require sponsorship", source="Info Bank"),
+    ])
+
+
+@pytest.fixture
+def approved_choices(monkeypatch):
+    state = {"writes": []}
+    p = _choice_plan()
+    row = {"token": "t1", "state": approval.APPROVED,
+           "plan_hash": approval.plan_hash(p.as_dict()), "job_id": "harvey:x"}
+    monkeypatch.setattr(approval, "get_row", lambda cfg, token: row)
+    monkeypatch.setattr(approval, "set_state",
+                        lambda cfg, token, st, **kw: state["writes"].append((st, kw)))
+    state["plan"] = p
+    return state
+
+
+def test_a_dropdown_is_selected_and_a_checkbox_is_ticked(approved_choices):
+    page = FormPage({
+        "email": {"tag": "input", "type": "text"},
+        "auth": {"tag": "input", "type": "checkbox"},
+        "sponsor": {"tag": "select"},
+    })
+    out = submit(Cfg(), "t1", approved_choices["plan"], confirm=True,
+                 browser_factory=factory_for(page))
+    assert out["missed"] == []
+    assert page.typed["email"] == "hello@krishraja.com"
+    assert page.checked == ["auth"]
+    # Chosen by the label a human reads, which is what resolve.py fitted it to.
+    assert page.selected["sponsor"] == "No, I do not require sponsorship"
+    assert out["state"] == approval.SUBMITTED
+
+
+def test_a_radio_group_is_chosen_by_its_label(approved_choices):
+    page = FormPage({
+        "email": {"tag": "input", "type": "text"},
+        "auth": {"tag": "input", "type": "radio"},
+        "sponsor": {"tag": "input", "type": "radio"},
+    })
+    out = submit(Cfg(), "t1", approved_choices["plan"], confirm=True,
+                 browser_factory=factory_for(page))
+    assert out["missed"] == []
+    assert set(page.checked) == {"auth", "sponsor"}
+
+
+def test_a_combobox_is_opened_then_the_option_clicked(approved_choices):
+    page = FormPage({
+        "email": {"tag": "input", "type": "text"},
+        "auth": {"tag": "div"},
+        "sponsor": {"tag": "div"},
+    })
+    out = submit(Cfg(), "t1", approved_choices["plan"], confirm=True,
+                 browser_factory=factory_for(page))
+    assert out["missed"] == []
+    # Opened the control, then took the option by its visible name.
+    assert "auth" in page.clicked
+    assert any(c.startswith("option:") for c in page.clicked)
+
+
+def test_a_choice_field_the_driver_cannot_work_still_refuses_to_press(approved_choices):
+    """The safe failure, and the one that would have happened on Harvey before
+    the drivers learned anything but typing."""
+    page = FormPage({"email": {"tag": "input", "type": "text"}})
+    out = submit(Cfg(), "t1", approved_choices["plan"], confirm=True,
+                 browser_factory=factory_for(page))
+    assert out["state"] == approval.QUEUED
+    assert "field not found" in out["reason"]
+    assert page.clicked == [] or "Submit Application" not in page.clicked
