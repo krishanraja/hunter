@@ -1270,3 +1270,97 @@ def test_an_unconfirmed_press_on_a_scored_form_explains_itself(approved):
                  browser_factory=factory_for(page))
     assert out["confirmation"] == ""
     assert "invisible bot check" in approved["writes"][-1][1]["failure_reason"]
+
+
+# ---------- the form, left on screen for him to press ----------
+
+class LocalBrowser:
+    """A Chrome that was already running, attached to rather than launched."""
+
+    def __init__(self, page):
+        self.page, self.closed, self.contexts = page, False, []
+
+    def close(self):
+        self.closed = True
+
+
+class LocalCtx:
+    def __init__(self, page): self.page = page
+    def new_page(self): return self.page
+
+
+def connector_for(page, seen=None):
+    class PW:
+        def __init__(self):
+            self.chromium = self
+        def connect_over_cdp(self, url):
+            if seen is not None:
+                seen.append(url)
+            b = LocalBrowser(page)
+            b.contexts = [LocalCtx(page)]
+            return b
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    return PW
+
+
+def test_the_local_form_is_filled_and_left_open(tmp_path):
+    page = FormPage({"email": {"tag": "input", "type": "email"},
+                     'type="file"': {"tag": "input", "type": "file"}})
+    page.content = lambda: "<div>KrishRaja_CV.pdf</div>" if page.uploaded else "<form></form>"
+    out = submit_mod.open_for_human(
+        _upload_plan(), attachments={"file_resume": b"%PDF"},
+        names={"file_resume": "KrishRaja_CV.pdf"},
+        cdp_url="http://127.0.0.1:9222", keep_dir=str(tmp_path),
+        connector=connector_for(page))
+    assert out["error"] == "" and out["blocker"] == ""
+    assert "Resume" in out["filled"]
+    assert page.clicked == [], "nothing may be pressed"
+
+
+def test_the_local_flow_holds_no_way_to_press_submit():
+    """Same guarantee preview() carries, and for the same reason: the last click
+    on a job application is Krish's. Read off the bytecode rather than the
+    docstring, which a comment could otherwise satisfy."""
+    names = submit_mod.open_for_human.__code__.co_names
+    assert "press_submit" not in names
+    assert "_open_and_fill" not in names
+
+
+def test_the_attached_file_outlives_the_process(tmp_path):
+    """hunter exits while the browser is still holding the form open, and the
+    file is read when he presses submit, not when it was attached. Deleting it on
+    the way out is how the upload becomes "failed to fetch" minutes later."""
+    import os
+    page = FormPage({"email": {"tag": "input", "type": "email"},
+                     'type="file"': {"tag": "input", "type": "file"}})
+    page.content = lambda: "<div>KrishRaja_CV.pdf</div>" if page.uploaded else "<form></form>"
+    out = submit_mod.open_for_human(
+        _upload_plan(), attachments={"file_resume": b"%PDF"},
+        names={"file_resume": "KrishRaja_CV.pdf"},
+        cdp_url="http://x", keep_dir=str(tmp_path),
+        connector=connector_for(page))
+    assert out["files"] and all(os.path.exists(f) for f in out["files"])
+    assert out["files"][0].endswith("KrishRaja_CV.pdf")
+
+
+def test_an_existing_browser_is_attached_to_not_launched(tmp_path):
+    """Attaching is the whole point: a browser Playwright LAUNCHES reports
+    navigator.webdriver true, which is what an invisible bot check scores and
+    refuses. One started normally does not."""
+    seen = []
+    page = FormPage({"email": {"tag": "input", "type": "email"}})
+    submit_mod.open_for_human(plan(fields=[field()]), cdp_url="http://127.0.0.1:9222",
+                              keep_dir=str(tmp_path),
+                              connector=connector_for(page, seen))
+    assert seen == ["http://127.0.0.1:9222"]
+
+
+def test_a_blocked_page_is_reported_rather_than_filled(tmp_path):
+    page = FormPage({"email": {"tag": "input", "type": "email"}})
+    page.content = lambda: "<div class='h-captcha'></div>"
+    page.locator = lambda sel: FakePage(html="<div class='h-captcha'></div>").locator(sel)
+    out = submit_mod.open_for_human(plan(fields=[field()]), cdp_url="http://x",
+                                    keep_dir=str(tmp_path),
+                                    connector=connector_for(page))
+    assert out["blocker"] == "captcha"

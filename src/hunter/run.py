@@ -3447,6 +3447,113 @@ def send_send_failed(cfg: Config, *, company: str, role: str, token: str,
                       to=notify.mailbox(cfg), text=text)
 
 
+def cmd_apply_local(token: str = "", cdp_url: str = "", profile_dir: str = "") -> int:
+    """Open the next approved application, filled, in Krish's own browser.
+
+    His answer to the thing that actually blocks this: "have the approve button
+    take me to a filled-out form, ready to press submit myself, with the uploads
+    attached". A link in an email cannot do that, because a page may not put a
+    file into a file input, which is the one part of an application that matters
+    most. A browser being driven can, and this one is his.
+
+    It also removes the reason the first submission never arrived. Harvey's form
+    scores its visitor with invisible reCAPTCHA v3, and a headless Chromium in a
+    datacentre fails that score, so the press was refused with nothing shown.
+    Attaching to a normally started Chrome reads navigator.webdriver false, not
+    because anything is masked but because it genuinely was not started by
+    automation, and the person pressing the button really is a person.
+
+    Nothing here can submit: open_for_human never calls press_submit and holds no
+    reference to it. The last click is his.
+    """
+    from .apply import approval, merge, submit as submit_mod
+    from .apply.audit import ATT_CV
+    from .docbuild import DocBuild
+
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    if token:
+        row = approval.get_row(cfg, token)
+        rows = [row] if row else []
+    else:
+        rows = db_get(cfg, approval.TABLE,
+                      {"select": "*", "state": f"eq.{approval.APPROVED}",
+                       "order": "decided_at.desc", "limit": "1"})
+    if not rows or not rows[0]:
+        print("nothing approved and waiting. Reply APPROVE to an application "
+              "email first, or pass --token")
+        return 1
+    row = rows[0]
+    if row["state"] != approval.APPROVED:
+        print(f"token is {row['state']!r}, not {approval.APPROVED!r}")
+        return 1
+
+    roles = db_get(cfg, "hunter_seen_roles",
+                   {"select": "*", "job_id": f"eq.{row['job_id']}", "limit": "1"})
+    if not roles:
+        print(f"no role row for {row['job_id']}")
+        return 1
+    plan, au, role = build_fill_plan(cfg, sheet, roles[0])
+    db = DocBuild(GoogleOAuth(cfg).access_token())
+    cv_id = (roles[0].get("package_cv_url") or "").split("/d/")[-1].split("/")[0]
+    letter_id = (roles[0].get("package_letter_url") or "").split("/d/")[-1].split("/")[0]
+    attachments: dict[str, bytes] = {}
+    names: dict[str, str] = {}
+    if cv_id and letter_id:
+        cv_pdf, letter_pdf = db.export_pdf(cv_id), db.export_pdf(letter_id)
+        if au.attachment_style == ATT_CV:
+            attachments["file_resume"] = merge.merge_pdfs(letter_pdf, cv_pdf)
+            names["file_resume"] = merge.merged_name(role.company)
+        else:
+            attachments["file_resume"], attachments["file_cover"] = cv_pdf, letter_pdf
+            names["file_resume"] = "KrishRaja_CV.pdf"
+            names["file_cover"] = "KrishRaja_CoverLetter.pdf"
+
+    print(f"{role.company} {role.title}\n  opening the form in your browser")
+    out = submit_mod.open_for_human(plan, attachments=attachments, names=names,
+                                    cdp_url=cdp_url, profile_dir=profile_dir)
+    if out["error"] or out["blocker"]:
+        print(f"  could not open it: {out['blocker'] or out['error']}")
+        return 1
+    print(f"  filled {len(out['filled'])} field(s)")
+    if out["missed"]:
+        print(f"  NOT filled, do these yourself: {', '.join(out['missed'])}")
+    for n in out["notes"]:
+        print(f"  {n}")
+    if out["files"]:
+        print(f"  attached: {', '.join(p.split('/')[-1] for p in out['files'])}")
+    print(f"\n  {out['url']}\n"
+          f"  Read it, press Submit, then tell hunter it went:\n"
+          f"    python -m hunter.run applied --token {row['token']}")
+    return 0
+
+
+def cmd_applied(token: str) -> int:
+    """Record an application Krish pressed himself.
+
+    The other half of apply-local. Hunter cannot see his click, so he says so
+    once and everything that would have happened after an automated submit
+    happens now: the ledger, the sheet, the role row, the move to the Applied tab.
+    """
+    from .apply import approval
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    row = approval.get_row(cfg, token)
+    if not row:
+        print(f"no approval row for token {token!r}")
+        return 1
+    if row["state"] == approval.SUBMITTED:
+        print("already recorded as submitted")
+        return 0
+    approval.set_state(cfg, token, approval.SUBMITTED, submitted_at=NOW(),
+                       failure_reason="pressed by Krish in his own browser")
+    record_applied(cfg, canon, sheet, row["job_id"],
+                   company=row.get("company") or "", role=row.get("role") or "",
+                   confirmation="pressed by Krish in his own browser")
+    print(f"recorded: {row.get('company')} {row.get('role')}")
+    return 0
+
+
 def cmd_gtm_seed(apply: bool = False) -> int:
     """Write the AI-native GTM evidence key. Dry run by default.
 
@@ -3598,6 +3705,23 @@ def main(argv: list[str]) -> int:
             print("usage: python -m hunter.run submit --token X [--confirm]")
             return 2
         return cmd_submit(tok, confirm="--confirm" in argv)
+    def _flag(name: str, default: str = "") -> str:
+        if name in argv:
+            i = argv.index(name)
+            if i + 1 < len(argv):
+                return argv[i + 1]
+        return default
+
+    if cmd == "apply-local":
+        return cmd_apply_local(token=_flag("--token"),
+                               cdp_url=_flag("--cdp"),
+                               profile_dir=_flag("--profile"))
+    if cmd == "applied":
+        tok = _flag("--token")
+        if not tok:
+            print("usage: python -m hunter.run applied --token X")
+            return 2
+        return cmd_applied(tok)
     if cmd == "approvals-drain":
         return cmd_approvals_drain(apply="--apply" in argv,
                                    send="--send" in argv)

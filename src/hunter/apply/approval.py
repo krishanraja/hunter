@@ -33,6 +33,12 @@ FAILED = "failed"
 CANCELLED = "cancelled"
 STATES = (AWAITING, APPROVED, AMENDING, SUBMITTED, QUEUED, FAILED, CANCELLED)
 
+# The last click on a job application is Krish's. An invisible bot check refuses
+# a headless run in a datacentre with nothing shown, which is how the first
+# pressed application disappeared; this opens the same filled form in his own
+# browser, where the score is genuinely his.
+LOCAL_CMD = "python -m hunter.run apply-local"
+
 SUBJECT_MARK = "[hunter #"
 APPROVE_WORD = "APPROVE"
 
@@ -161,8 +167,10 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
     A("</div>")
     A("<p style='color:#666;font-size:13px;margin:0 0 22px'>The first two buttons "
       "open a reply. Press send. Only the word "
-      f"<code>{APPROVE_WORD}</code> on its own line submits; anything else is "
-      "treated as feedback and comes back to you for approval again."
+      f"<code>{APPROVE_WORD}</code> on its own line approves; anything else is "
+      "treated as feedback and comes back to you for approval again. Then run "
+      f"<code>{LOCAL_CMD}</code> and this form opens in your own browser, filled, "
+      "with the documents attached, for you to press Submit yourself."
       + (" The third opens this role in Control Center, where the same send button "
          "lives. It is a link to the app, not a link that sends: a mail scanner "
          "following it can do nothing." if hunt_url else "") + "</p>")
@@ -254,8 +262,10 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
         T += [f"  {l.label}: no answer. {l.source}" for l in needs_you]
         T += [f"  {l.label}: {l.value} ({l.source})" for l in flagged]
         T += [f"  {n}" for n in notes]
-    T += ["", f"Reply {APPROVE_WORD} on its own line to submit.",
-          "Reply with anything else and it is treated as feedback.", ""]
+    T += ["", f"Reply {APPROVE_WORD} on its own line to approve.",
+          "Reply with anything else and it is treated as feedback.",
+          f"Then run {LOCAL_CMD} to open this form in your own browser, filled, "
+          f"with the documents attached, and press Submit yourself.", ""]
     if form_shot:
         T.append(f"The form, already filled: see {form_shot} attached. "
                  f"{form_filled} field(s) filled, nothing submitted.")
