@@ -2400,37 +2400,47 @@ def write_warm_paths(cfg: Config, sheet: Sheet, canon: Canon,
     return sheet.update_warm_paths(mapping)
 
 
-APPLIED_NOT = re.compile(r"^\s*(not applied|n/?a|no|-|)\s*$", re.I)
-
-
 def sync_applied_state(cfg: Config, sheet: Sheet, canon: Canon) -> dict:
     """Mirror application state onto hunter_seen_roles. Never authored here.
 
     Krish 2026-09-15: the Hunt lane on his People tab shows the roles he said Yes to
     and the person who can get him in, and could not say which ones he had applied
-    to. It reads hunter_seen_roles; the two places that know were the Pipeline
-    sheet's own Application Status cell, which is his to set and which sheet.py is
-    explicit that hunter never writes, and hunter_application_approvals.state, which
-    hunter sets when a submission lands.
+    to, because nothing recorded it.
 
-    Both are read, the approval ledger wins where they disagree, because a recorded
-    submission is a fact and a cell is a note. Nothing is ever written BACK to his
-    cell.
+    Two sources, and the first attempt read the wrong one. The sheet's own
+    "Application Status" column reads "Not applied" on all 29 rows of his Applied
+    tab: it was backfilled with the canon 9.13 default and never updated. What he
+    actually maintains is COLUMN A, where the verdict reads "Applied", "Already
+    applied" or a decline in his own words, and verdicts.parse already classifies it.
+
+    Both tabs are read, because a row moves from Pipeline to Applied once decided,
+    and the applied ones are almost all on Applied. hunter_application_approvals wins
+    where they disagree, because a recorded submission is a fact and a cell is a note.
+    Nothing is ever written back to his sheet.
     """
+    from .verdicts import parse as parse_verdict
     out = {"from_sheet": 0, "from_ledger": 0, "written": 0}
     state: dict[str, tuple[str, str]] = {}
 
-    grid = sheet.read_pipeline(canon.sheet_headers)
     db_rows = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,url,job_url,status,application_state,applied_at",
         "limit": "5000"})
+    # config.ARCHIVE_TAB is literally "Applied", and read_archive reads it: a role
+    # moves there once decided, which is where almost every applied row actually is.
+    grid = list(sheet.read_pipeline(canon.sheet_headers))
+    try:
+        grid += list(sheet.read_archive())
+    except Exception:
+        pass
     pairs, _us, _ud, _amb = match_rows(grid, db_rows)
     for srow, row in pairs:
-        cell = (srow.cell("Application Status") or "").strip()
-        if cell and not APPLIED_NOT.match(cell):
-            when = (srow.cell("Applied Date") or "").strip()
-            state[row["job_id"]] = (cell, "" if when.lower() in ("", "n/a") else when)
-            out["from_sheet"] += 1
+        verdict, _reason = parse_verdict(srow.cell("Verdict") or "")
+        if verdict != "applied":
+            continue
+        when = (srow.cell("Applied Date") or "").strip()
+        state[row["job_id"]] = ((srow.cell("Verdict") or "Applied").strip(),
+                                "" if when.lower() in ("", "n/a") else when)
+        out["from_sheet"] += 1
 
     for a in db_get(cfg, "hunter_application_approvals", {
             "select": "job_id,state,submitted_at", "state": "eq.submitted",

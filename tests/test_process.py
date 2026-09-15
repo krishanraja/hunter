@@ -408,3 +408,55 @@ def test_a_closed_linkedin_posting_is_dead_not_unverified(monkeypatch):
                "url": "https://www.linkedin.com/jobs/view/cro-9"}, {})
     assert role.liveness == "checked" and not role.live
     assert any("no longer accepting" in f for f in flags)
+
+
+# ---------- applied state ----------
+
+def test_applied_state_reads_column_a_not_the_application_status_cell(monkeypatch):
+    """The first version read the sheet's "Application Status" column, which says
+    "Not applied" on all 29 rows of his Applied tab: it was backfilled with the canon
+    9.13 default and never updated. What he maintains is column A.
+    """
+    from hunter import run as run_mod
+    from hunter import sheet as sheet_mod
+
+    def srow(verdict, company, role):
+        cells = [""] * len(sheet_mod.HEADERS)
+        cells[sheet_mod.COLS["Verdict"]] = verdict
+        cells[sheet_mod.COLS["Business"]] = company
+        cells[sheet_mod.COLS["Role"]] = role
+        cells[sheet_mod.COLS["Application Status"]] = "Not applied"
+        cells[sheet_mod.COLS["Applied Date"]] = "n/a"
+        return sheet_mod.SheetRow(row_number=3, cells=cells, verdict=verdict,
+                                  company=company, role=role, jd_url=None)
+
+    pipeline = [srow("Yes", "Harvey", "Head of GTM")]
+    archive = [srow("Applied", "Anthropic", "Head of Enterprise Sales"),
+               srow("Declined, not interested", "Salesforce", "RVP Analytics")]
+    db_rows = [{"job_id": "harvey:x", "company": "Harvey", "title": "Head of GTM",
+                "url": None, "job_url": None, "status": "staging",
+                "application_state": None, "applied_at": None},
+               {"job_id": "anthropic:y", "company": "Anthropic",
+                "title": "Head of Enterprise Sales", "url": None, "job_url": None,
+                "status": "staging", "application_state": None, "applied_at": None},
+               {"job_id": "salesforce:z", "company": "Salesforce",
+                "title": "RVP Analytics", "url": None, "job_url": None,
+                "status": "staging", "application_state": None, "applied_at": None}]
+    patches = []
+
+    class FakeSheet:
+        def read_pipeline(self, headers): return pipeline
+        def read_archive(self): return archive
+
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params:
+                        db_rows if table == "hunter_seen_roles" else [])
+    monkeypatch.setattr(run_mod, "db_patch", lambda cfg, table, match, values:
+                        patches.append((match["job_id"], values)))
+
+    class FakeCanon:
+        sheet_headers = list(sheet_mod.HEADERS)
+
+    out = run_mod.sync_applied_state(None, FakeSheet(), FakeCanon())
+    assert out["from_sheet"] == 1 and out["written"] == 1
+    assert [j for j, _ in patches] == ["anthropic:y"]
+    assert patches[0][1]["application_state"] == "Applied"
