@@ -23,6 +23,20 @@ from .submit import CHOICE_KINDS, TYPEAHEAD_KINDS, driver_for
 # quietly leaving it blank.
 FILLABLE = ("text", "choice", "typeahead", "file")
 
+# The oldest extension build that can fill everything this payload carries.
+#
+# Chrome does not update an unpacked extension, so the copy in Krish's folder is
+# frozen at whatever he last downloaded while this code moves on. That cost a
+# real round: the demographics block shipped here, his extension predated the
+# code that reads it, and the form came up with the equal opportunity section
+# empty under a green banner saying every field was filled. A version he cannot
+# see is a silent failure, so the payload states the floor and the extension
+# says out loud when it is below it.
+#
+# Raise this whenever the extension gains an ability a payload depends on, and
+# raise extension/manifest.json to match.
+MIN_EXTENSION = "1.1.0"
+
 # Playwright's own pseudo-classes. Real to Playwright, a syntax error to
 # document.querySelectorAll, so they are dead weight in a payload a browser has
 # to read. The extension finds those controls by their label instead.
@@ -31,6 +45,61 @@ PLAYWRIGHT_ONLY = (":text-is(", ":has-text(", ":text(", ">>")
 
 def css_only(selectors: list[str]) -> list[str]:
     return [s for s in selectors if not any(p in s for p in PLAYWRIGHT_ONLY)]
+
+
+# The questions every EEOC section asks and no board API reports. Krish's answers
+# live in his own info bank and he asked for them to be filled; the phrases are
+# the wordings those questions actually use, and the extension does the matching
+# because only it can see the real labels.
+#
+# Each entry is (bank field, label, {bank answer: accepted label phrases}). An
+# answer with no mapping is never guessed at.
+DEMOGRAPHIC_MAP: tuple[tuple[str, str, dict[str, tuple[str, ...]]], ...] = (
+    ("Gender", "Gender", {
+        "male": ("male",),
+        "female": ("female",),
+        "decline to self-identify": ("decline to self-identify",),
+    }),
+    ("Race / ethnicity", "Race or ethnicity", {
+        "two or more races": ("two or more races",),
+        "asian": ("asian",),
+        "white": ("white",),
+        "black or african american": ("black or african american",),
+        "hispanic or latino": ("hispanic or latino",),
+        "decline to self-identify": ("decline to self-identify",),
+    }),
+    ("Veteran status", "Veteran status", {
+        "not a veteran": ("i am not a protected veteran", "not a protected veteran",
+                          "i am not a veteran", "not a veteran"),
+        "veteran": ("i identify as one or more of the classifications",),
+    }),
+    ("Disability status", "Disability status", {
+        "no disability": ("no, i do not have a disability and have not had one "
+                          "in the past",
+                          "no, i do not have a disability",
+                          "i do not have a disability"),
+        "disability": ("yes, i have a disability",),
+    }),
+)
+
+
+def demographics(bank) -> list[dict]:
+    """His recorded answers, with the label phrasings a form might use.
+
+    Never a guess. A bank row with no value, or a value this does not have a
+    mapping for, is simply not sent and the question stays his.
+    """
+    out: list[dict] = []
+    for field_name, label, mapping in DEMOGRAPHIC_MAP:
+        entry = bank.get(field_name) if bank else None
+        value = (getattr(entry, "value", "") or "").strip()
+        if not value or not getattr(entry, "usable", False):
+            continue
+        phrases = mapping.get(value.lower())
+        if not phrases:
+            continue
+        out.append({"label": label, "answer": value, "phrases": list(phrases)})
+    return out
 
 
 def new_key() -> str:
@@ -53,7 +122,7 @@ def kind_for(field) -> str:
 
 
 def build(plan: FillPlan, *, attachments: dict[str, bytes] | None = None,
-          names: dict[str, str] | None = None) -> dict:
+          names: dict[str, str] | None = None, bank=None) -> dict:
     """One JSON document: where the form is, what goes in it, and the documents."""
     attachments, names = attachments or {}, names or {}
     driver_cls = driver_for(plan)
@@ -82,11 +151,13 @@ def build(plan: FillPlan, *, attachments: dict[str, bytes] | None = None,
                        "selectors": selectors, "required": bool(f.required)})
     return {
         "version": 1,
+        "needs_extension": MIN_EXTENSION,
         "url": driver.apply_url(),
         "company": plan.company,
         "role": plan.role,
         "fields": fields,
         "files": files,
+        "demographics": demographics(bank),
     }
 
 

@@ -13,6 +13,21 @@ filled and your CV attached, for you to read and press Submit.
 
 That is all. There is nothing to configure.
 
+## Update it, when the bar tells you to
+
+Chrome never updates an extension loaded this way, so this folder stays exactly
+as you downloaded it while hunter moves on. When an application needs something
+newer than the copy you have, the bar at the top turns red and says so by
+version number. Then:
+
+1. Download <https://github.com/krishanraja/hunter/archive/refs/heads/main.zip>
+2. Extract it over your `hunter` folder, replacing the files.
+3. At `chrome://extensions`, press the **reload** arrow on the Hunter card.
+4. Reopen the link from the email.
+
+You will not have to guess. An out of date copy says so instead of quietly
+leaving part of the form empty.
+
 ## What it does
 
 When you open a link that carries a hunter capability, it fetches that one
@@ -37,7 +52,8 @@ two job boards listed in its manifest. It cannot see the rest of your browsing.
 
 - **green** everything went in, read it and press Submit
 - **grey** something optional was left, named, and you can ignore it or fill it
-- **red** something REQUIRED could not be filled and is named. Do those first.
+- **red** either something REQUIRED could not be filled, and it is named, or
+  this copy of the extension is out of date and needs the reload above
 
 ## If nothing happens
 

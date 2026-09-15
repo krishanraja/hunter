@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hunter form filler",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Opens a job application with every field filled and your CV attached, for you to read and submit yourself.",
   "permissions": ["storage"],
   "host_permissions": [

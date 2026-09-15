@@ -85,3 +85,123 @@ def test_an_unmatched_typeahead_leaves_the_box_empty():
 def test_a_required_field_it_could_not_fill_is_reported_loudly():
     assert "required_missed" in FILL and "required_missed" in RUN
     assert "DO THESE YOURSELF" in RUN
+
+
+def test_a_no_answer_on_a_yes_no_control_reads_as_answered():
+    """A segmented Yes/No answers "No" by pressing the No button, which
+    correctly leaves the mirror checkbox FALSE. Reading only the checkbox called
+    the OpenAI sponsorship question unfilled and told him to do it himself."""
+    body = code_only(FILL)
+    where = body[body.index("function holdsChoice"):]
+    where = where[:where.index("function holdsFile")]
+    assert "aria-pressed" in where, "the pressed button is the answer, not the mirror"
+
+
+def test_a_document_never_lands_in_a_slot_another_already_took():
+    """The cover letter's own selector missed, fell through to the generic
+    input[type=file], and landed on top of the CV: the Resume box held
+    KrishRaja_CoverLetter.pdf and the Cover letter box was empty."""
+    body = code_only(FILL)
+    assert "usedInputs" in body
+    where = body[body.index("function actFile"):]
+    where = where[:where.index("function ") + where[where.index("function ") + 8:].index("function ")]
+    assert "usedInputs.has(el)" in where
+
+
+def test_demographics_match_on_word_boundaries():
+    """"male" is inside "female"."""
+    body = code_only(FILL)
+    assert "function wordMatch" in body
+    assert "actDemographic" in body
+    where = body[body.index("function wordMatch"):body.index("function actDemographic")]
+    assert "/[a-z0-9]/" in where, "a substring test picks Female for Male"
+
+
+def test_an_ambiguous_demographic_is_left_for_him():
+    body = code_only(FILL)
+    where = body[body.index("function actDemographic"):]
+    assert "hits.length !== 1" in where, "none, or more than one, is not an answer"
+
+
+def test_a_superseded_link_explains_itself():
+    """Krish opened an older email and got "the server said 404"."""
+    assert "410" in RUN and "replaced by a newer one" in RUN
+
+
+def test_the_extension_watches_for_the_submit():
+    """Krish: "can you confirm that when I click the submit button, the extension
+    can read that I successfully submitted, and make the appropriate changes in
+    the google sheet?" It could not: it filled the form and stopped, so the sheet
+    kept saying "Not applied" on a role that was applied for."""
+    body = code_only(RUN)
+    assert "SUBMITTED_MARKS" in body
+    assert "/submitted" in body
+    assert "location.href !== startedAt" in body, "leaving the form counts too"
+
+
+def test_it_watches_without_pressing_anything():
+    """Watching for his click must not become clicking for him."""
+    body = code_only(RUN).lower()
+    assert ".click(" not in body
+
+
+def test_it_gives_up_watching_rather_than_running_for_ever():
+    assert "deadline" in RUN and "30 * 60 * 1000" in RUN
+
+
+def test_a_failure_to_report_is_told_to_him():
+    """Silently failing to record it is the same silence in a new place."""
+    assert "could not be told" in RUN
+
+
+def test_the_manifest_version_matches_the_payload_floor():
+    """The two numbers that decide whether Krish is told his copy is stale.
+
+    payload.MIN_EXTENSION is the oldest build that can fill what hunter now
+    sends. If the shipped manifest were below it, every freshly downloaded
+    extension would open every application under an out-of-date warning; if the
+    manifest were raised without the floor, a stale copy would stay silent. They
+    move together.
+    """
+    from hunter.apply import payload as P
+    shipped = json.loads((EXT / "manifest.json").read_text())["version"]
+    assert shipped == P.MIN_EXTENSION
+
+
+def test_a_stale_extension_says_so_rather_than_claiming_success():
+    """The failure this exists to stop: Krish opened an application whose payload
+    carried his equal opportunity answers, his extension predated the code that
+    reads them, the section came up empty, and the banner said every field was
+    filled. A version he cannot see is a silent failure."""
+    body = code_only(RUN)
+    assert "getManifest()" in body            # it knows its own version
+    assert "needs_extension" in body          # and what the payload requires
+    assert "older(MINE" in body               # and compares them
+    # The warning has to reach him before the reassurance does.
+    stale = body.index("older(MINE, payload.needs_extension)")
+    green = body.index("Filled all ")
+    assert stale < green
+    # And it must say what to do, not merely that something is wrong.
+    assert "main.zip" in RUN
+    assert "chrome://extensions" in RUN
+    assert "reload" in RUN.lower()
+
+
+def test_the_version_compare_gets_the_awkward_cases_right():
+    """1.10.0 is newer than 1.9.0, and a missing segment is a zero. Run the real
+    function rather than a description of it, offline, through node."""
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    fn = re.search(r"function older\(mine, need\) \{.*?\n  \}", RUN, re.S)
+    assert fn, "older() is no longer in run.js"
+    cases = [("1.0.0", "1.1.0", True), ("1.1.0", "1.1.0", False),
+             ("1.2.0", "1.1.0", False), ("1.9.0", "1.10.0", True),
+             ("1.10.0", "1.9.0", False), ("1.1", "1.1.0", False),
+             ("1", "1.1.0", True), ("", "1.1.0", True)]
+    script = fn.group(0).replace("\n  ", "\n") + "\n" + "\n".join(
+        f"if (older({m!r}, {n!r}) !== {str(w).lower()}) "
+        f"throw new Error({m!r} + ' vs ' + {n!r});" for m, n, w in cases)
+    subprocess.run([node, "-e", script], check=True, timeout=30)

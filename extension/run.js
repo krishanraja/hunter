@@ -12,6 +12,15 @@
 
   const DEFAULT_API = 'https://controlcenter.krishraja.com/api/hunter/payload';
 
+  // What a form says once it has the application. The same list hunter uses on
+  // its own side, so both halves agree on what "submitted" looks like.
+  const SUBMITTED_MARKS = [
+    'application submitted', 'thanks for applying', 'thank you for applying',
+    'application received', 'we have received your application',
+    "we've received your application", 'your application has been submitted',
+    'successfully submitted', 'application complete',
+  ];
+
   function capability() {
     const m = /(?:^|[#&])hunter=([^&]+)/.exec(location.hash || '');
     if (!m) return null;
@@ -34,6 +43,29 @@
     return el;
   }
 
+  // Chrome never updates an unpacked extension, so this folder is frozen at
+  // whatever Krish last downloaded while hunter moves on. The payload states the
+  // oldest build that can fill it; below that, a green "filled everything"
+  // banner is a lie, which is the exact failure that left an equal opportunity
+  // section empty and looked like success.
+  function older(mine, need) {
+    const a = String(mine || '0').split('.').map(Number);
+    const b = String(need || '0').split('.').map(Number);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const x = a[i] || 0, y = b[i] || 0;
+      if (x !== y) return x < y;
+    }
+    return false;
+  }
+
+  const MINE = (chrome.runtime.getManifest() || {}).version || '0';
+  const STALE =
+    'Your Hunter extension is version ' + MINE + ' and this application needs ' +
+    '%NEED%. It has filled what it can, and parts of this form are probably ' +
+    'empty. Download https://github.com/krishanraja/hunter/archive/refs/heads/' +
+    'main.zip, extract it over your hunter folder, then press the reload arrow ' +
+    'on the Hunter card at chrome://extensions and reopen this link.';
+
   const cap = capability();
   if (!cap) return;
 
@@ -46,6 +78,12 @@
     const res = await fetch(
       api + '?token=' + encodeURIComponent(cap.token) + '&key=' + encodeURIComponent(cap.key),
       { method: 'GET', credentials: 'omit' });
+    if (res.status === 410) {
+      const said = await res.json().catch(() => ({}));
+      banner(said.message || 'This application was replaced by a newer one. '
+        + 'Open the most recent email for this role.', 'bad');
+      return;
+    }
     if (!res.ok) throw new Error('the server said ' + res.status);
     payload = await res.json();
   } catch (e) {
@@ -63,7 +101,10 @@
 
   const out = await window.__hunterFill(payload);
   const done = out.filled.length + out.files.length;
-  if (out.required_missed.length) {
+  const stale = older(MINE, payload.needs_extension);
+  if (stale) {
+    banner(STALE.replace('%NEED%', payload.needs_extension), 'bad');
+  } else if (out.required_missed.length) {
     banner('Filled ' + done + '. DO THESE YOURSELF before submitting: ' +
            out.required_missed.join('; '), 'bad');
   } else if (out.missed.length) {
@@ -72,5 +113,40 @@
   } else {
     banner('Filled all ' + done + ' fields and attached your documents. ' +
            'Read it and press Submit.', 'good');
+  }
+
+  // Then watch for him pressing it. Hunter cannot see the click from anywhere
+  // else: it runs in the cloud and the click happens here. Without this the
+  // sheet keeps saying "Not applied" on a role that is applied for, which is
+  // exactly the silence this whole system was built to stop.
+  const startedAt = location.href;
+  const deadline = Date.now() + 30 * 60 * 1000;
+  const seen = () => {
+    const body = (document.body ? document.body.innerText : '').toLowerCase();
+    if (SUBMITTED_MARKS.some((m) => body.includes(m))) return 'the form said so';
+    if (location.href !== startedAt && !location.href.includes('/application')) {
+      return 'the form closed and moved to ' + location.href;
+    }
+    return '';
+  };
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const why = seen();
+    if (!why) continue;
+    try {
+      await fetch(api.replace(/\/payload$/, '/submitted'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'omit',
+        body: JSON.stringify({ token: cap.token, key: cap.key, evidence: why }),
+      });
+      banner('Submitted. Hunter has it: the sheet will move this role to '
+             + 'Applied.', 'good');
+    } catch (e) {
+      banner('Submitted, but hunter could not be told (' + e.message +
+             '). Tell Claude so the sheet gets updated.', 'bad');
+    }
+    return;
   }
 })();
