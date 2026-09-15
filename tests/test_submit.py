@@ -1173,3 +1173,17 @@ def test_ashby_puts_the_cv_in_the_application_slot_not_the_autofill_box():
                              browser_factory=factory_for(page))
     assert out["filled"] == ["Resume"], out["missed"]
     assert "_systemfield_resume" in page.upload_selectors[0], page.upload_selectors
+
+
+def test_submit_waits_for_the_form_like_preview_does(approved):
+    """submit() used to re-implement the open-and-fill flow instead of calling
+    it, and the copy had drifted: it never waited for the form to render. On
+    Ashby the resume slot did not exist yet when the file was attached, the CV
+    went nowhere, and the gate refused the send with "field not found: Resume"
+    on a form it could have filled. One idea of what filling means.
+    """
+    page = FormPage({"email": {"tag": "input", "type": "email"}}, ready=False)
+    out = submit(Cfg(), "t1", approved["plan"], confirm=True,
+                 browser_factory=factory_for(page))
+    assert page.waited
+    assert out["pressed"] is True, out.get("reason")

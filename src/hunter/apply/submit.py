@@ -973,12 +973,14 @@ def submit(cfg: Config, token: str, plan: FillPlan, *,
 
     try:
         with browser_factory() as pw:
-            browser = _launch(pw)
-            page = browser.new_page()
-            driver = cls(page, plan)
-            page.goto(driver.apply_url(), timeout=60000)
-
-            blocker = page_blocker(page)
+            # The SHARED open-and-fill, not a second copy of it. This block used
+            # to re-implement the flow and had drifted: it never waited for the
+            # form to render, so on Ashby the resume slot did not exist yet when
+            # the file was attached, the CV went nowhere, and the gate refused
+            # the send with "field not found: Resume" on a form it could have
+            # filled. One idea of what filling means, or the two diverge again.
+            browser, page, driver, blocker = _open_and_fill(
+                pw, plan, attachments or {}, cls, names)[:4]
             if blocker:
                 shot = _shoot(page, token, shot_sink)
                 record_outcome(cfg, token, approval.QUEUED, reason=blocker,
@@ -986,14 +988,6 @@ def submit(cfg: Config, token: str, plan: FillPlan, *,
                 result.update(state=approval.QUEUED, reason=blocker, screenshot=shot)
                 browser.close()
                 return result
-
-            # Attach, let the vendor's resume parser finish, then fill: the
-            # other order lets that parser overwrite the approved answers.
-            paths = _attach(page, plan, attachments or {}, driver, names)
-            _settle(page)
-            driver.fill()
-            _check_upload(page, driver, plan, names)
-            _drop(paths)
             result["filled"], result["missed"] = driver.filled, driver.missed
             result["notes"] = list(driver.notes)
 
