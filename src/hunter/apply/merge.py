@@ -31,6 +31,31 @@ def merged_name(company: str) -> str:
     return f"KrishRaja_Application_{safe}.pdf"
 
 
+def page_count(pdf: bytes) -> int:
+    """How many pages a rendered PDF actually has.
+
+    Canon 9.12 says the cover letter is one page. Until 2026-09-15 nothing
+    measured it, and the first live package went out at two, with page two
+    carrying only the contact footer. A word count is a proxy for page count and
+    the proxy is what failed, so the artifact is measured instead.
+
+    Lives here because merge.py is already the one module that reads PDFs.
+    """
+    try:
+        from pypdf import PdfReader
+    except ImportError as e:  # pragma: no cover - dependency is declared
+        raise MergeError(
+            "pypdf is not installed; it is declared in pyproject dependencies"
+        ) from e
+    if not pdf:
+        raise MergeError("no PDF bytes to measure")
+    try:
+        reader = PdfReader(io.BytesIO(pdf))
+    except Exception as e:
+        raise MergeError(f"the PDF could not be read: {e.__class__.__name__}") from e
+    return len(reader.pages)
+
+
 def merge_pdfs(letter_pdf: bytes, cv_pdf: bytes) -> bytes:
     """One PDF, letter pages then CV pages. Raises rather than returning a
     partial file, so a caller can never attach half an application."""
@@ -69,7 +94,3 @@ def merge_pdfs(letter_pdf: bytes, cv_pdf: bytes) -> bytes:
                          f"{pages}")
     return blob
 
-
-def page_count(pdf: bytes) -> int:
-    from pypdf import PdfReader
-    return len(PdfReader(io.BytesIO(pdf)).pages)

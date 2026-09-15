@@ -143,3 +143,39 @@ def test_allow_names_lets_the_target_company_through():
     assert vg.check("Higgsfield is scaling entertainment GTM.",
                     evidence=EVIDENCE,
                     allow_names=frozenset({"Higgsfield"})).ok
+
+
+# ---------- sentence-initial capitals ----------
+
+def test_an_ordinary_word_opening_a_sentence_is_not_a_company():
+    """Two real packages lost their tailored prose to this: a summary rejected for
+    "Underneath" and a hook for "Designing". A rejection drops back to a generic
+    block, so the cost was customisation, for no factual reason."""
+    hay = vg.build_evidence("captify apac went from $0 to $12m arr")
+    for text in ("Underneath that sits one operating model.",
+                 "Designing those models is my practice.",
+                 "Scaling it was the easy part. Winning the first deal was not."):
+        verdict = vg.check(text, evidence=hay)
+        assert verdict.ok, (text, verdict.failures)
+
+
+def test_a_fabricated_employer_still_fails_wherever_it_sits():
+    hay = vg.build_evidence("captify apac went from $0 to $12m arr")
+    for text in ("Salesforce is where I built it.",
+                 "I built it at Salesforce.",
+                 "Underneath Salesforce sat a partner engine."):
+        verdict = vg.check(text, evidence=hay)
+        assert not verdict.ok, text
+        assert any("Salesforce" in f for f in verdict.failures), verdict.failures
+
+
+def test_the_exemption_is_one_token_only():
+    """A multi-word capitalised run is not sentence case, so the employer in it
+    still has to trace."""
+    hay = vg.build_evidence("captify apac")
+    verdict = vg.check("Underneath Captify sat a partner engine.", evidence=hay)
+    assert verdict.ok, verdict.failures
+    verdict = vg.check("Underneath Nine Entertainment sat a data business.",
+                              evidence=hay)
+    assert not verdict.ok
+    assert any("Nine" in f or "Entertainment" in f for f in verdict.failures)

@@ -769,3 +769,18 @@ def test_a_resolved_answer_never_carries_an_em_dash():
     got = Resolver(bank).resolve(
         field("University or School Attended", kind="short_text"))
     assert isinstance(got, Answer) and em not in got.value
+
+
+def test_the_employer_field_obeys_the_naming_law():
+    """00_NORTH_STAR.md: the business is Mindmake, never Mindmaker. This resolver
+    answered "Mindmaker" until 2026-09-15, and that value went into the employer
+    field of real application forms.
+    """
+    from hunter.apply.gtmseed import NAME_VARIANTS_BANNED
+
+    got = Resolver(build_bank()).resolve(field("Current or Most Recent Employer"))
+    assert isinstance(got, Answer)
+    assert got.value == "Mindmake"
+    for variant in NAME_VARIANTS_BANNED:
+        assert variant.lower() != got.value.lower()
+    assert "mindmaker" not in got.value.lower()

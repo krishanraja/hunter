@@ -42,7 +42,43 @@ _NAME_ALLOWED = frozenset({
     "Commercial", "Sixteen", "With", "For", "And", "In", "It", "They", "We",
 })
 
+# Ordinary English words that can open a sentence, exempt ONLY in that position.
+#
+# Capitalisation at the start of a sentence carries no information, so a single
+# capitalised word there is not evidence of an employer. This cost two real
+# packages: a summary was rejected for the word "Underneath" and a hook for
+# "Designing", and a rejection drops the tailored prose back to a generic block, so
+# the customisation is lost for a reason that has nothing to do with fabrication.
+#
+# It is a whitelist rather than a rule about position, deliberately. Exempting every
+# sentence-initial token would let "Salesforce is where I built it." through, and
+# catching an invented employer is the entire job of this function. The cost of a
+# whitelist is that it needs occasional additions; each one is a visible commit, and
+# a miss costs customisation rather than correctness.
+_SENTENCE_OPENERS = frozenset({
+    "Across", "After", "Against", "All", "Along", "Alongside", "Although",
+    "Applying", "Around", "As", "At", "Backed", "Because", "Before", "Behind",
+    "Beneath", "Between", "Beyond", "Both", "Building", "Built", "But", "By",
+    "Called", "Closing", "Creating", "Currently", "Designing", "Doing", "Driving",
+    "During", "Each", "Either", "Every", "Everything", "Few", "First", "Five",
+    "Following", "From", "Getting", "Given", "Growing", "Having", "He", "Her",
+    "Here", "His", "How", "However", "If", "Inside", "Into", "Its", "Just",
+    "Keeping", "Last", "Leading", "Led", "Making", "Many", "More", "Most", "Much",
+    "Neither", "Next", "No", "None", "Nor", "Not", "Nothing", "Now", "Of", "On",
+    "Once", "One", "Only", "Or", "Other", "Our", "Out", "Outside", "Over", "Owning",
+    "Putting", "Rather", "Running", "Scaling", "Selling", "Setting", "Several",
+    "She", "Since", "So", "Some", "Something", "Starting", "Still", "Taking",
+    "Talking", "Ten", "That", "Their", "Them", "Then", "There", "These", "They",
+    "This", "Those", "Three", "Through", "Throughout", "Today", "Together", "Turning",
+    "Twice", "Two", "Under", "Underneath", "Unlike", "Until", "Up", "Using",
+    "Was", "What", "When", "Where", "Whether", "Which", "While", "Who", "Why",
+    "Winning", "Within", "Without", "Working", "Writing", "Yet", "You", "Your",
+})
+
 _NAME = re.compile(r"\b([A-Z][A-Za-z0-9&/.\-]{1,}(?:\s+[A-Z][A-Za-z0-9&/.\-]+)*)\b")
+
+# A capitalised token that follows a sentence end, or opens the text.
+_SENTENCE_START = re.compile(r"(?:^|[.!?]['\")\]]?\s+)$")
 
 
 class VoiceGateError(RuntimeError):
@@ -80,12 +116,19 @@ def numbers_in(text: str) -> set[str]:
 
 
 def names_in(text: str) -> set[str]:
+    """Company-shaped names in the text. A single ordinary English word opening a
+    sentence is not one; see _SENTENCE_OPENERS for why that is a whitelist."""
+    body = text or ""
     out = set()
-    for m in _NAME.finditer(text or ""):
+    for m in _NAME.finditer(body):
         name = m.group(1).strip()
         if name in _NAME_ALLOWED or len(name) < 3:
             continue
-        # A sentence-initial ordinary word is not a company name.
+        # Only a SINGLE token gets the exemption. "Underneath Captify" keeps
+        # "Captify", because a multi-word capitalised run is not sentence case.
+        if " " not in name and name in _SENTENCE_OPENERS \
+                and _SENTENCE_START.search(body[:m.start()]):
+            continue
         out.add(name)
     return out
 
@@ -139,7 +182,11 @@ def check(text: str, *, evidence: str, banned_phrases: tuple[str, ...] = (),
         for token in re.split(r"[\s/]+", name):
             token = token.strip(".,&-")
             if not token or len(token) < 3 or token in _NAME_ALLOWED \
-                    or token in allow_names:
+                    or token in allow_names or token in _SENTENCE_OPENERS:
+                # A sentence opener swept into a multi-word match, as in
+                # "Underneath Captify sat a partner engine": "Captify" still has to
+                # trace, "Underneath" never did. Safe because no fabricated employer
+                # is a word on that list.
                 continue
             if token.lower() not in evidence:
                 failures.append(

@@ -210,14 +210,23 @@ def test_bridge_tiers_rank_and_warm_path(monkeypatch):
                      history=[{"companyName": "Cresta", "title": "Director"}]),
         make_contact("weak-tie", "Weak Tie", "Cresta", 10),
     ]
-    calls = {"insert": [], "patch": []}
+    # A proposed bridge from an earlier, looser run: the same role, a contact this
+    # pass no longer derives. It has to be retired, not left naming a stranger.
+    existing_bridges = [{"bridge_id": "b-stale-rule", "job_id": "cresta:vp-partnerships",
+                         "contact_key": "wrong-person", "path_tier": "current_employee"}]
+    calls = {"insert": [], "patch": [], "delete": []}
     monkeypatch.setattr(bridges_mod, "target_roles", lambda cfg, limit=60: roles)
+    # Table-aware, because build_bridges reads two tables and handing contact rows
+    # back for a bridge_candidates query is not a useful stand-in for either.
     monkeypatch.setattr(bridges_mod, "db_get",
-                        lambda cfg, table, params: contacts)
+                        lambda cfg, table, params:
+                        existing_bridges if table == "bridge_candidates" else contacts)
     monkeypatch.setattr(bridges_mod, "db_insert",
                         lambda cfg, table, rows, **kw: calls["insert"].extend(rows))
     monkeypatch.setattr(bridges_mod, "db_patch",
                         lambda cfg, table, match, values: calls["patch"].append((match, values)))
+    monkeypatch.setattr(bridges_mod, "db_delete",
+                        lambda cfg, table, params: calls["delete"].append((table, params)))
     monkeypatch.setattr(bridges_mod, "load_headhunters", lambda sheet: [])
 
     stats = bridges_mod.build_bridges(None, sheet=None)
@@ -236,6 +245,11 @@ def test_bridge_tiers_rank_and_warm_path(monkeypatch):
                and v["warm_path_tier"] == "current_employee" for m, v in warm)
     assert not any(m == {"job_id": "lonely:cro"} for m, _ in warm)
     assert stats["warm_paths_set"] == 1
+    # The bridge this pass no longer derives is gone, and only proposed rows go.
+    assert stats["superseded"] == 1
+    dels = [p for t, p in calls["delete"] if t == "bridge_candidates"
+            and "b-stale-rule" in p.get("bridge_id", "")]
+    assert dels and dels[0]["state"] == "eq.proposed"
 
 
 def test_headhunter_needs_three_covered_roles(monkeypatch):
@@ -322,3 +336,98 @@ def test_db_delete_refuses_to_run_unfiltered():
     from hunter.config import db_delete
     with pytest.raises(ValueError):
         db_delete(None, "bridge_candidates", {})
+
+
+# ---------- eligibility is not ranking ----------
+
+def test_a_linkedin_connection_is_in_network():
+    """Krish's ruling 2026-09-15. min_strength=25 was applied to the tier WEIGHTS,
+    where 4_owned_network is 15, so his 4,693 LinkedIn connections were discarded
+    before anything considered them. Measured on the live pipeline that day: 55
+    contacts at his staging companies, 8 surviving. 108 of 131 rows read
+    "None found" with OpenAI's CRO sitting in the graph.
+    """
+    from hunter.people.bridges import in_network
+    for tier in ("1_reciprocated", "2_core_network", "3_known_network",
+                 "4_owned_network"):
+        assert in_network({"network_tier": tier, "strength_score": 15}, 25), tier
+
+
+def test_a_scraped_lead_is_not_a_warm_path():
+    from hunter.people.bridges import in_network
+    assert not in_network({"network_tier": "5_cold_lead", "strength_score": 5}, 25)
+
+
+def test_the_score_still_decides_on_the_graph_that_computes_one():
+    """Two graphs, two tests. A network_contacts row's strength_score comes from
+    strength.py and real signal, so min_strength means something there."""
+    from hunter.people.bridges import in_network
+    assert in_network({"strength_score": 60}, 25)
+    assert not in_network({"strength_score": 10}, 25)
+
+
+def test_the_tier_is_named_in_words_so_a_weak_tie_reads_as_one():
+    from hunter.people.bridges import tier_words
+    assert tier_words({"network_tier": "4_owned_network"}) == (
+        "a LinkedIn connection, no recorded contact")
+    assert tier_words({"strength_score": 50}) == ""
+
+
+# ---------- no invented URLs ----------
+
+def test_a_contact_key_is_not_a_linkedin_slug():
+    """bridges.py built https://www.linkedin.com/in/<contact_key> and validated it
+    with li_slug, which accepted anything without a slash. Eight rows of the live
+    sheet carried linkedin.com/in/cold:chad-gerhardstein, every one a 404."""
+    assert li_slug("https://www.linkedin.com/in/cold:chad-gerhardstein") is None
+    assert li_slug("https://www.linkedin.com/in/contact:8f2a-41bd") is None
+    # A real slug still resolves, hyphens, digits and dots included.
+    assert li_slug("https://www.linkedin.com/in/krish-raja") == "krish-raja"
+    assert li_slug("https://linkedin.com/in/tommytop") == "tommytop"
+
+
+def test_a_contact_with_no_stored_url_gets_no_url(monkeypatch):
+    from hunter.people import bridges as br
+    rows = [{"contact_key": "cold:abhi-arora", "full_name": "Abhi Arora",
+             "current_title": "CEO", "current_company": "Fleek",
+             "linkedin_url": None}]
+
+    def fake_get(cfg, table, params):
+        return rows if table == "network_contacts" else []
+
+    monkeypatch.setattr(br, "db_get", fake_get)
+    got = br._person_lookup(None, ["cold:abhi-arora"])
+    assert got["cold:abhi-arora"]["linkedin_url"] == ""
+    assert got["cold:abhi-arora"]["name"] == "Abhi Arora"
+
+
+# ---------- a false warm path is worse than none ----------
+
+def test_a_shared_generic_word_is_not_a_shared_employer():
+    """The live pass offered Harpreet Singh, whose company is "Accel-Digital Ad
+    Operations", as the inside contact at Notion, LangChain AND Render, because
+    those three role rows carry a company field like "Notion - Head of GTM
+    Operations" and "operations" survives distinctive_tokens as though it named an
+    employer. Krish would have emailed a stranger on hunter's word.
+    """
+    from hunter.people.bridges import same_employer
+    from hunter.sources import distinctive_tokens as d
+    for role, contact in (("Notion - Head of GTM Operations", "Accel-Digital Ad Operations"),
+                          ("Render - Head of Revenue Operations", "Accel-Digital Ad Operations"),
+                          ("MongoDB - Head of Post Sales Technology", "Sales Impact Academy")):
+        assert not same_employer(d(role), d(contact)), (role, contact)
+
+
+def test_the_case_the_fallback_was_built_for_still_matches():
+    from hunter.people.bridges import same_employer
+    from hunter.sources import distinctive_tokens as d
+    assert same_employer(d("Google"), d("Google (YouTube Partnerships)"))
+    assert same_employer(d("Captify"), d("Captify APAC"))
+    assert same_employer(d("Omnicom Media"), d("Omnicom Media Group"))
+
+
+def test_a_different_firm_sharing_a_prefix_is_not_the_same_employer():
+    from hunter.people.bridges import same_employer
+    from hunter.sources import distinctive_tokens as d
+    assert not same_employer(d("EY"), d("EY-Parthenon"))
+    assert not same_employer(frozenset(), d("Anything"))

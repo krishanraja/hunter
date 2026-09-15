@@ -346,3 +346,18 @@ def test_the_send_records_its_own_message_id_as_processed():
     finally:
         mod.db_insert = real
     assert captured["rows"][0]["processed_message_ids"] == ["1a0a17d599a016b5"]
+
+
+def test_a_token_with_no_approval_row_is_skipped_not_amended():
+    """A live drain on 2026-09-15 read an early wiring-test email as "amend": the
+    token had no row, so state was None, and the quoted body looked like feedback.
+    It would have rebuilt a package for an application nothing was sent under."""
+    from hunter.apply import inbox
+    reply = {"message_id": "m1", "from": "Krish Raja <krish@themindmaker.ai>",
+             "body": "Change the closing line, it does not sound like me."}
+    action, detail = inbox.classify(reply, {})
+    assert action == "skip"
+    assert "no approval row" in detail
+    # With a row, the same reply is feedback.
+    action, _ = inbox.classify(reply, {"token": "t", "state": "awaiting"})
+    assert action == "amend"

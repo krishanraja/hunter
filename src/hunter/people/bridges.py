@@ -30,11 +30,111 @@ from .strength import EVIDENCE_KEYS  # noqa: F401  (re-export for the guard test
 TIER_BASE = {"current_employee": 40, "newsletter_move": 30, "ex_employee": 25,
              "headhunter": 20, "cold_target": 15, "peer_transition": 10}
 
-# Control Center's graph (contacts + contact_intelligence) scores relationship
-# by tier, not by message counts. Mapped onto the same 0..100 strength scale
-# network_contacts uses, so one min_strength cut applies to both.
+# Control Center's graph (contacts + contact_intelligence) scores relationship by
+# tier, not by message counts. These numbers are the RANKING WEIGHT: they decide
+# which of two people at the same company is offered first.
 CC_TIER_STRENGTH = {"1_reciprocated": 70, "2_core_network": 50,
                     "3_known_network": 30, "4_owned_network": 15, "5_cold_lead": 5}
+
+# Eligibility is a separate question from ranking, and until 2026-09-15 one number
+# answered both: min_strength=25 was applied to the weights above, so tier 4 at 15
+# and tier 5 at 5 were discarded before anything looked at them. Tier 4 is
+# 4_owned_network, which is Krish's own LinkedIn connections: 4,693 people, the
+# bulk of his graph. Measured on the live pipeline the day it was found: 104
+# companies at staging, 21 with a contact at that exact company, 55 such contacts,
+# and 8 surviving the cut. 108 of 131 Pipeline rows read "None found" while OpenAI's
+# CRO, ElevenLabs' GTM Director and Legora's VP Product sat in the graph.
+#
+# Krish's ruling 2026-09-15: tiers 1 to 4 are his network, a connection is a real
+# path even when weak. Tier 5 is scraped and never met, so it is not a warm path,
+# though it can still be a bridge to build.
+IN_NETWORK_TIERS = frozenset({"1_reciprocated", "2_core_network",
+                              "3_known_network", "4_owned_network"})
+
+# What Path Evidence calls each tier, so a weak connection reads as one and Krish
+# can judge it rather than trusting a bare number.
+TIER_WORDS = {
+    "1_reciprocated": "a two-way relationship on record",
+    "2_core_network": "core network",
+    "3_known_network": "known network",
+    "4_owned_network": "a LinkedIn connection, no recorded contact",
+    "5_cold_lead": "scraped, never met",
+}
+
+
+def same_employer(role_tokens: frozenset, contact_tokens: frozenset) -> bool:
+    """Are these two company names the same employer?
+
+    The exact slug is matched first by the caller; this is the fallback, and it
+    exists for one narrow case: "Google" against "Google (YouTube Partnerships)".
+    It used to accept ANY shared distinctive token, and that produced false warm
+    paths, which are worse than none because Krish would email a stranger on
+    hunter's word. Measured on the live pass: Harpreet Singh, whose company is
+    "Accel-Digital Ad Operations", was offered as the inside contact at Notion,
+    LangChain AND Render, because three role rows carry a company field of the form
+    "Notion - Head of GTM Operations" and "operations" survives
+    distinctive_tokens as though it named an employer.
+
+    So the test is containment or a shared lead token, not overlap. One name's
+    tokens being a subset of the other's covers the parenthetical case; a shared
+    first token covers "Captify" against "Captify APAC". "Accel-Digital Ad
+    Operations" and "Notion Head of GTM Operations" satisfy neither.
+    """
+    if not role_tokens or not contact_tokens:
+        return False
+    if role_tokens <= contact_tokens or contact_tokens <= role_tokens:
+        return True
+    return bool(role_tokens & contact_tokens) and (
+        min(role_tokens) == min(contact_tokens))
+
+
+def contact_tier(contact: dict) -> str:
+    """The Control Center network tier, whichever graph the contact came through.
+
+    load_cc_graph puts it in `network_tier`. A network_contacts row carries the same
+    value inside `strength_evidence.ci_tier`, written by ingest.py from the same
+    source. Reading only the first one hid the tier for exactly the people who
+    matter: load_cc_graph skips anyone network_contacts already holds, so a
+    connection who IS in the export has no `network_tier` and was judged on score
+    alone.
+    """
+    tier = contact.get("network_tier")
+    if tier:
+        return tier
+    ev = contact.get("strength_evidence") or {}
+    return (ev.get("ci_tier") or "") if isinstance(ev, dict) else ""
+
+
+def in_network(contact: dict, min_strength: int) -> bool:
+    """Is this person someone Krish can actually ask?
+
+    Three ways to qualify, because a connection with no recorded interaction is
+    still a connection. strength.py scores such a person around 3: there are no
+    messages, no endorsements and no recommendation to score, and that is a measure
+    of INTERACTION, not of whether the path exists. Adrian Parlow at Legora scored
+    3, Michael Costa at ElevenLabs 3, Tyrone Millard at OpenAI 3, and all three are
+    in his LinkedIn connections.
+
+      - a Control Center tier inside IN_NETWORK_TIERS, from either graph
+      - a connected_on date, which is LinkedIn's own record that they connected
+      - failing both, the computed strength_score clearing min_strength, which is
+        the only test available for a contact the export never saw
+    """
+    tier = contact_tier(contact)
+    if tier:
+        return tier in IN_NETWORK_TIERS
+    if (contact.get("connected_on") or "").strip():
+        return True
+    return (contact.get("strength_score") or 0) >= min_strength
+
+
+def tier_words(contact: dict) -> str:
+    return TIER_WORDS.get(contact_tier(contact), "")
+# The tiers build_bridges derives from the graph on every run, so a proposed row in
+# one of them that this run did not derive is stale. cold_target is not here: the
+# cold_targets() command writes it on its own schedule and this pass must not eat it.
+DERIVED_TIERS = ("current_employee", "ex_employee", "newsletter_move",
+                 "headhunter", "peer_transition")
 COLD_KEY = "hunter_cold_targets_max_per_run"
 NEWSLETTER_WINDOW_DAYS = 120
 PRIORITY_BONUS = {"A": 15, "B": 8, "C": 3}
@@ -209,6 +309,10 @@ def load_cc_graph(cfg: Config, known_keys: set[str]) -> list[dict]:
         out.append({"contact_key": key, "full_name": r["full_name"],
                     "current_company": r["company"], "current_title": r.get("title") or "",
                     "strength_score": strength,
+                    # The tier travels with the contact rather than being collapsed
+                    # into the score, so eligibility and ranking can ask different
+                    # questions of it. See in_network().
+                    "network_tier": tier,
                     "strength_evidence": {"cc_tier": tier} if tier else {},
                     "employment_history": [], "linkedin_url": r.get("linkedin_url"),
                     "graph": "contacts"})
@@ -219,8 +323,10 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
     roles = target_roles(cfg)
     retired = retire_stale(cfg, roles)
     contacts = db_get(cfg, "network_contacts", {
+        # connected_on is selected because in_network() treats it as proof of a
+        # first-degree connection, which it could not do when it was not fetched.
         "select": "contact_key,full_name,current_company,current_title,"
-                  "strength_score,strength_evidence,employment_history",
+                  "strength_score,strength_evidence,employment_history,connected_on",
         "order": "strength_score.desc", "limit": "5000"})
     contacts = list(contacts) + load_cc_graph(
         cfg, {c.get("contact_key") for c in contacts})
@@ -242,6 +348,11 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
             hh_role_hits[hh.get("Firm", "")] = hits
 
     upserts, warm_patches = [], {}
+    # Counted because the two defects this pass shipped with were both silent
+    # discards: a tier floor that dropped 47 of 55 candidates and said nothing, and
+    # a company match that found nobody and read the same as a company with nobody
+    # to find. A pass that throws work away reports how much.
+    considered = dropped = no_contact = 0
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     for role in roles:
         cslug = slugify(role["company"])
@@ -252,19 +363,25 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
         rtoks = distinctive_tokens(role["company"])
         pool = list(by_company.get(cslug, []))
         for key, toks in company_tokens.items():
-            if key != cslug and rtoks and toks & rtoks:
+            if key != cslug and same_employer(rtoks, toks):
                 pool.extend(by_company.get(key, []))
         pool.sort(key=lambda c: -(c.get("strength_score") or 0))
+        if not pool:
+            no_contact += 1
         for c in pool[:3]:
-            if c["strength_score"] < min_strength:
+            considered += 1
+            if not in_network(c, min_strength):
+                dropped += 1
                 continue
             found_in_network = True
             score = (TIER_BASE["current_employee"] + c["strength_score"] * 0.5
                      + _recency_bonus(c.get("strength_evidence") or {}))
+            words = tier_words(c)
             upserts.append(_candidate(
                 role, c["contact_key"], "current_employee",
                 f"{c['full_name']} is {c.get('current_title') or 'at'} "
-                f"{role['company']} now; strength {c['strength_score']}",
+                f"{role['company']} now; strength {c['strength_score']}"
+                + (f", {words}" if words else ""),
                 "works there now", score,
                 DRAFTS["current_employee"].format(company=role["company"],
                                                   role=role["title"]), now))
@@ -272,16 +389,20 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
                 warm_patches[role["job_id"]] = (score, c, "current_employee")
 
         for c in contacts:
-            if c["strength_score"] < min_strength or slugify(c.get("current_company") or "") == cslug:
+            if slugify(c.get("current_company") or "") == cslug:
+                continue
+            if not in_network(c, min_strength):
                 continue
             if cslug in _employment_companies(c.get("employment_history")):
                 found_in_network = True
                 score = (TIER_BASE["ex_employee"] + c["strength_score"] * 0.5
                          + _recency_bonus(c.get("strength_evidence") or {}))
+                words = tier_words(c)
                 upserts.append(_candidate(
                     role, c["contact_key"], "ex_employee",
                     f"{c['full_name']} previously worked at {role['company']} "
-                    f"per profile history; strength {c['strength_score']}",
+                    f"per profile history; strength {c['strength_score']}"
+                    + (f", {words}" if words else ""),
                     "worked there, knows the terrain", score,
                     DRAFTS["ex_employee"].format(company=role["company"],
                                                  role=role["title"]), now))
@@ -340,6 +461,33 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
         db_insert(cfg, "bridge_candidates", upserts[i:i + 100],
                   on_conflict="job_id,contact_key,path_tier", merge=True)
 
+    # A bridge that stopped qualifying has to go, not just a bridge into a role that
+    # died. This pass only ever upserted, so a candidate derived by an older and
+    # looser rule survived forever: tightening the employer match dropped four false
+    # paths from the current run and all four would have stayed on the board,
+    # naming a stranger as the way into a company.
+    #
+    # Only rows hunter derives from the graph every run, only state=proposed, and
+    # only for roles still targeted. cold_target is excluded because a different
+    # command writes it, and anything Krish touched is his history.
+    derived = {(u["job_id"], u["contact_key"], u["path_tier"]) for u in upserts}
+    superseded = 0
+    target_ids = [r["job_id"] for r in roles]
+    for i in range(0, len(target_ids), 100):
+        chunk = target_ids[i:i + 100]
+        existing = db_get(cfg, "bridge_candidates", {
+            "select": "bridge_id,job_id,contact_key,path_tier",
+            "job_id": "in.(" + ",".join(f'"{j}"' for j in chunk) + ")",
+            "path_tier": "in.(" + ",".join(DERIVED_TIERS) + ")",
+            "state": "eq.proposed", "limit": "2000"})
+        stale = [str(r["bridge_id"]) for r in existing
+                 if (r["job_id"], r["contact_key"], r["path_tier"]) not in derived]
+        for j in range(0, len(stale), 100):
+            db_delete(cfg, "bridge_candidates", {
+                "bridge_id": "in.(" + ",".join(stale[j:j + 100]) + ")",
+                "state": "eq.proposed"})
+        superseded += len(stale)
+
     for job_id, (score, c, tier) in warm_patches.items():
         db_patch(cfg, "hunter_seen_roles", {"job_id": job_id}, {
             "warm_path_person": c["full_name"],
@@ -348,7 +496,10 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
                                   f"bridge score {round(score, 1)}"})
     return {"roles": len(roles), "bridges": len(upserts), "retired": retired,
             "warm_paths_set": len(warm_patches),
-            "headhunter_firms_surfaced": len(hh_role_hits)}
+            "headhunter_firms_surfaced": len(hh_role_hits),
+            "considered": considered, "dropped_out_of_network": dropped,
+            "roles_with_no_contact_at_company": no_contact,
+            "superseded": superseded}
 
 
 def _candidate(role, contact_key, tier, evidence, proximity, score, draft, now):
@@ -396,12 +547,16 @@ def _person_lookup(cfg: Config, keys: list[str]) -> dict[str, dict]:
             "contact_key": "in.(" + ",".join(f'"{k}"' for k in chunk) + ")",
             "limit": "500"})
         for r in rows:
+            # No stored URL means no URL. This used to synthesise
+            # https://www.linkedin.com/in/<contact_key>, which put eight dead links
+            # into Krish's sheet: a cold target's key is "cold:<name>", and the
+            # li_slug guard accepted it. warm_path_cells already renders a plain
+            # name when there is no URL, so a missing link costs nothing and an
+            # invented one costs trust.
             out[r["contact_key"]] = {
                 "name": r.get("full_name") or "", "title": r.get("current_title") or "",
                 "company": r.get("current_company") or "",
-                "linkedin_url": r.get("linkedin_url") or
-                (f"https://www.linkedin.com/in/{r['contact_key']}"
-                 if li_slug(f"https://www.linkedin.com/in/{r['contact_key']}") else "")}
+                "linkedin_url": r.get("linkedin_url") or ""}
     missing = [k for k in keys if k not in out]
     ids = [k.split(":", 1)[1] for k in missing if k.startswith("contact:")]
     slugs = [k for k in missing if not k.startswith("contact:")]
@@ -421,6 +576,9 @@ def _person_lookup(cfg: Config, keys: list[str]) -> dict[str, dict]:
                 "linkedin_url_norm": f"ilike.*/in/{slug}*", "limit": "1"})
             if rows:
                 r = rows[0]
+                # The slug came OUT of a real LinkedIn URL here (it is what the
+                # ilike matched on), so rebuilding it is sound. li_slug now refuses
+                # a slug carrying a colon, so a contact_key cannot reach this path.
                 out[slug] = {"name": r.get("full_name") or "",
                              "title": r.get("title") or "",
                              "company": r.get("company") or "",

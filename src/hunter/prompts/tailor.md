@@ -19,9 +19,13 @@ answers this JD's actual problem, and let the rest fall away. A partnerships rol
 should open on partner economics. A corp dev role should open on build-buy-partner
 judgement. Do not write a generic summary and sprinkle the company name in.
 
+[[ANGLE]]
+
 Every sentence must be something a senior peer who knows him would recognise as
 true and specific. Ground each claim in a number or a named company from the
 evidence below.
+
+[[KEEP_VERBATIM]]
 
 ### 2. hook
 

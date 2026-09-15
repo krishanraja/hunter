@@ -65,7 +65,9 @@ Write four short pieces, as JSON:
 - risk: the one thing that might make him decline, stated plainly. One
   sentence. If there is no real risk, say what would need to be true.
 - archetype: one of gm_market_builder, commercial_strategy, corp_dev_strategy,
-  ai_transformation, partnerships_alliances.
+  ai_transformation, partnerships_alliances, ai_native_gtm. Use ai_native_gtm for
+  a commercial or GTM seat at a company whose product is AI, and ai_transformation
+  for putting AI inside a company that sells something else.
 - snippet: two short sentences for the sheet's JD Snippet column, under
   {snippet_chars} characters: first what the business does and sells, then what
   this role is for. Written so Krish understands the business in one glance.

@@ -250,12 +250,22 @@ class DocBuild:
                              f"0..{len(anchors) - 1}, got {order}")
         doc = self.get(doc_id)
         paras = self.paragraphs(doc)
-        found = []
+        # Resolve each anchor AFTER the previous one, not from the top. The anchors
+        # arrive in document order and the highlights are the last block that
+        # carries them, but since the PROFESSIONAL SUMMARY became generated prose it
+        # can legitimately repeat a highlight's opening words: a real build on
+        # 2026-09-15 matched anchor 2 to the summary paragraph and failed here with
+        # "paragraphs are not contiguous: [9, 7, ...]". A forward scan cannot match
+        # backwards into text that only looks like the anchor.
+        found, cursor = [], 0
         for a in anchors:
-            hit = next((p for p in paras if a.lower() in p["text"].lower()), None)
+            hit = next((i for i in range(cursor, len(paras))
+                        if a.lower() in paras[i]["text"].lower()), None)
             if hit is None:
-                raise LookupError(f"paragraph not found: {a[:40]!r}")
-            found.append(hit)
+                raise LookupError(f"paragraph not found at or after index "
+                                  f"{cursor}: {a[:40]!r}")
+            found.append(paras[hit])
+            cursor = hit + 1
         # Must be contiguous, or a reorder would move unrelated content.
         positions = [paras.index(p) for p in found]
         if positions != list(range(positions[0], positions[0] + len(positions))):

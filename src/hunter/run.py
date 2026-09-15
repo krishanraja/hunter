@@ -1746,7 +1746,7 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
               feedback: str = "") -> bool:
     """feedback carries Krish's own words from an amend reply, verbatim, so a
     rebuild acts on what he actually asked for rather than a paraphrase."""
-    from .package.build import build_package, read_master_facts
+    from .package.build import build_package, doc_url, read_master_facts
     from .package.tailor import load_blocks, tailor
 
     if cache is None:
@@ -1799,10 +1799,22 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     # it, and passing it empty disables generation rather than allowing ungated
     # text. The haystack is the master's own words plus Krish's recorded proof
     # points and long-form answers from the workbook, plus the JD.
+    from .apply import gtmseed
     from .apply.infobank import load_bank
     from .package.voicegate import build_evidence
     bank = None
-    evidence, banned = "", ()
+    evidence = ""
+    # The mindmake engagement records and the two named programs. Without this key
+    # the gate rejects any AI-native GTM claim, because it can trace none of it:
+    # that is why the first real package never mentioned the work Krish is most
+    # experienced in. optional(), not require(): a missing key costs that one story
+    # and must not cost the application. See apply/gtmseed.py.
+    # The naming law applies whether or not the workbook tabs load.
+    banned = gtmseed.NAME_VARIANTS_BANNED
+    gtm_evidence = cfg.optional("hunter_ai_gtm_evidence")
+    if not gtm_evidence:
+        rflags.append("hunter_ai_gtm_evidence missing, AI-native GTM claims "
+                      "cannot be traced and will be rejected; run gtm-seed")
     try:
         bank = load_bank(lambda tab: sheet.read_tab_formulas(f"{tab}!A1:Z400"))
         evidence = build_evidence(
@@ -1810,8 +1822,9 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
             "\n".join(bank.profile.values()),
             "\n".join(bank.interview.values()),
             "\n".join(e.value for e in bank.entries.values()),
+            gtm_evidence,
             role.jd_text)
-        banned = bank.banned_phrases
+        banned = tuple(bank.banned_phrases) + gtmseed.NAME_VARIANTS_BANNED
     except Exception as e:
         summary.append(f"note {row['job_id']}: answer tabs unreadable "
                        f"({e.__class__.__name__}), generated prose disabled")
@@ -1819,7 +1832,8 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
                 jd_text=role.jd_text, master_competencies=facts.cv_competencies,
                 letter_blocks=letter_blocks, highlights=facts.cv_highlights,
                 evidence=evidence, banned_phrases=banned,
-                feedback=feedback)
+                feedback=feedback,
+                keep_verbatim=tuple(facts.cv_summary_bold))
     result = build_package(db, tr, company=role.company, title=role.title,
                            letter_blocks=letter_blocks, cv_blocks=cv_blocks,
                            facts=facts)
@@ -1842,6 +1856,17 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
                  {"package_status": "blocked",
                   "rejection_reason": f"package verification failed: {fails}"})
+        # Said out loud, not only written to the row. This branch printed nothing at
+        # all until 2026-09-15, so a build that correctly refused to ship a two-page
+        # letter looked exactly like a build that did nothing.
+        summary.append(f"BLOCKED {row['job_id']} at verification: "
+                       + "; ".join(fails))
+        for note in result.notes:
+            summary.append(f"  note: {note}")
+        if result.letter_doc_id:
+            summary.append(f"  CL {doc_url(result.letter_doc_id)} (left for review)")
+        if result.cv_doc_id:
+            summary.append(f"  CV {doc_url(result.cv_doc_id)} (left for review)")
         return False
 
     db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]}, {
@@ -1856,7 +1881,9 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
             letter_url=result.letter_url, cv_pdf_url=result.cv_pdf_url,
             letter_pdf_url=result.letter_pdf_url, package_status=status,
             built_date=TODAY())
-    flags = "; ".join(tr.flags + result.notes + rflags) or "clean"
+    # build_package already copies tr.flags into result.notes, so adding tr.flags
+    # here printed every tailoring flag twice in the run summary.
+    flags = "; ".join(result.notes + rflags) or "clean"
     summary.append(f"BUILT {row['job_id']} block={tr.block_key} "
                    f"words={result.letter_report.body_word_count} flags={flags}")
     summary.append(f"  CV {result.cv_url}")
@@ -2373,6 +2400,67 @@ def write_warm_paths(cfg: Config, sheet: Sheet, canon: Canon,
     return sheet.update_warm_paths(mapping)
 
 
+def sync_applied_state(cfg: Config, sheet: Sheet, canon: Canon) -> dict:
+    """Mirror application state onto hunter_seen_roles. Never authored here.
+
+    Krish 2026-09-15: the Hunt lane on his People tab shows the roles he said Yes to
+    and the person who can get him in, and could not say which ones he had applied
+    to, because nothing recorded it.
+
+    Two sources, and the first attempt read the wrong one. The sheet's own
+    "Application Status" column reads "Not applied" on all 29 rows of his Applied
+    tab: it was backfilled with the canon 9.13 default and never updated. What he
+    actually maintains is COLUMN A, where the verdict reads "Applied", "Already
+    applied" or a decline in his own words, and verdicts.parse already classifies it.
+
+    Both tabs are read, because a row moves from Pipeline to Applied once decided,
+    and the applied ones are almost all on Applied. hunter_application_approvals wins
+    where they disagree, because a recorded submission is a fact and a cell is a note.
+    Nothing is ever written back to his sheet.
+    """
+    from .verdicts import parse as parse_verdict
+    out = {"from_sheet": 0, "from_ledger": 0, "written": 0}
+    state: dict[str, tuple[str, str]] = {}
+
+    db_rows = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,url,job_url,status,application_state,applied_at",
+        "limit": "5000"})
+    # config.ARCHIVE_TAB is literally "Applied", and read_archive reads it: a role
+    # moves there once decided, which is where almost every applied row actually is.
+    grid = list(sheet.read_pipeline(canon.sheet_headers))
+    try:
+        grid += list(sheet.read_archive())
+    except Exception:
+        pass
+    pairs, _us, _ud, _amb = match_rows(grid, db_rows)
+    for srow, row in pairs:
+        verdict, _reason = parse_verdict(srow.cell("Verdict") or "")
+        if verdict != "applied":
+            continue
+        when = (srow.cell("Applied Date") or "").strip()
+        state[row["job_id"]] = ((srow.cell("Verdict") or "Applied").strip(),
+                                "" if when.lower() in ("", "n/a") else when)
+        out["from_sheet"] += 1
+
+    for a in db_get(cfg, "hunter_application_approvals", {
+            "select": "job_id,state,submitted_at", "state": "eq.submitted",
+            "limit": "1000"}):
+        state[a["job_id"]] = ("Applied", a.get("submitted_at") or "")
+        out["from_ledger"] += 1
+
+    by_id = {r["job_id"]: r for r in db_rows}
+    for job_id, (label, when) in state.items():
+        row = by_id.get(job_id) or {}
+        if (row.get("application_state") or "") == label:
+            continue
+        patch = {"application_state": label}
+        if when:
+            patch["applied_at"] = when
+        db_patch(cfg, "hunter_seen_roles", {"job_id": job_id}, patch)
+        out["written"] += 1
+    return out
+
+
 def yes_db_rows(cfg: Config, sheet: Sheet, canon: Canon) -> list[dict]:
     """The DB rows behind every Yes on Pipeline, whatever their package
     state. The warm path pass covers all of them, built or not."""
@@ -2427,6 +2515,15 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
     summary.extend(ledger.lines())
     counts["reconciled"] = len(ledger.matched)
     counts["g12_blocked"] = len(ledger.company_blocked)
+
+    try:
+        applied = sync_applied_state(cfg, sheet, canon)
+        counts["applied_synced"] = applied["written"]
+        summary.append(f"applied state: {applied['from_sheet']} from your sheet, "
+                       f"{applied['from_ledger']} from the approval ledger, "
+                       f"{applied['written']} row(s) updated")
+    except Exception as e:
+        summary.append(f"applied state sync skipped: {e.__class__.__name__}: {e}")
 
     out = {}
     try:
@@ -2821,6 +2918,236 @@ def cmd_bank_seed(apply: bool = False) -> int:
     return 0
 
 
+def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
+                    bank=None, summary: str = "", hook: str = ""):
+    """(FillPlan, Audit) for one approved role. No network writes, no mail.
+
+    Shared by approvals and, later, submit, so the plan the email shows and the
+    plan the browser fills are produced by the same code. A second implementation
+    is how the plan hash stops meaning anything.
+    """
+    from .apply import audit as audit_mod
+    from .apply import fetch, fill
+    from .ats import discover as disc
+    role, _relink, _flags = resolve_for_build(cfg, row, disc.load_cache(cfg))
+    bank = bank if bank is not None else _answer_bank(sheet)
+    spec = fetch.form_for(role.jd_url, ats_key)
+    au = audit_mod.audit(spec, bank, role_location=role.location)
+    plan = fill.build_payload(spec, bank, company=role.company, role=role.title,
+                              jd_url=role.jd_url, role_location=role.location,
+                              summary=summary, hook=hook,
+                              attachment_style=au.attachment_style)
+    return plan, au, role
+
+
+def cmd_approvals(apply: bool = False, job_id: str = "") -> int:
+    """Build and, with --apply, send one approval email per built package.
+
+    Dry run by default: it prints the whole application as the email will show it,
+    and mints no token, so nothing can be approved by accident. A token is recorded
+    only when the mail is actually sent, because a token with no email behind it is
+    a live approval Krish never saw.
+    """
+    from . import notify
+    from .apply import approval, merge
+    from .docbuild import DocBuild
+    from .package.build import doc_url
+
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    params = {"select": "*", "package_status": "eq.built",
+              "order": "package_built_at.desc", "limit": "50"}
+    if job_id:
+        params["job_id"] = f"eq.{job_id}"
+    rows = db_get(cfg, "hunter_seen_roles", params)
+    if not rows:
+        print("no built packages to send" + (f" for {job_id}" if job_id else ""))
+        return 1
+
+    to = notify.mailbox(cfg)
+    bank = _answer_bank(sheet)
+    oauth = GoogleOAuth(cfg)
+    db = DocBuild(oauth.access_token())
+    sent = 0
+    for row in rows:
+        live = [r for r in db_get(cfg, approval.TABLE,
+                                 {"select": "token,state",
+                                  "job_id": f"eq.{row['job_id']}"})
+                if r["state"] in (approval.AWAITING, approval.APPROVED,
+                                  approval.SUBMITTED)]
+        if live:
+            print(f"skip {row['job_id']}: {live[0]['state']} token already "
+                  f"{live[0]['token']}")
+            continue
+        plan, au, role = build_fill_plan(cfg, sheet, row, bank=bank)
+        token = approval.new_token(row["job_id"])
+        attachments: list[tuple[str, bytes]] = []
+        merged_name = ""
+        cv_id = (row.get("package_cv_url") or "").split("/d/")[-1].split("/")[0]
+        letter_id = (row.get("package_letter_url") or "").split("/d/")[-1].split("/")[0]
+        from .apply.audit import ATT_CV
+        if au.attachment_style == ATT_CV and cv_id and letter_id:
+            # One upload slot on the form, so one file: canon's merge order is the
+            # letter first, then the CV.
+            merged_name = merge.merged_name(role.company)
+            attachments.append((merged_name,
+                                merge.merge_pdfs(db.export_pdf(letter_id),
+                                                 db.export_pdf(cv_id))))
+        email = approval.render(
+            company=role.company, role=role.title, jd_url=role.jd_url,
+            autonomy=au.autonomy_score, token=token, to=to,
+            lines=plan.field_lines(), essays=plan.essays,
+            summary=plan.summary, hook=plan.hook,
+            cv_url=row.get("package_cv_url") or "",
+            letter_url=row.get("package_letter_url") or "",
+            cv_pdf_url=row.get("package_cv_pdf_url") or "",
+            letter_pdf_url=row.get("package_letter_pdf_url") or "",
+            merged_attachment=merged_name,
+            notes=plan.notes + list(au.unresolved) + list(au.flagged))
+
+        print(f"\n{'=' * 72}\n{email.subject}\n{'=' * 72}")
+        print(email.text)
+        print(f"  fields: {len(plan.fields)}, blocking: {len(plan.blocking)}, "
+              f"flagged: {len(plan.flagged)}, attachments: "
+              f"{merged_name or 'two links'}")
+        if not apply:
+            print("  (dry run, no token minted. pass --apply to send)")
+            continue
+        if not plan.ready:
+            print(f"  REFUSING to send: {len(plan.blocking)} required field(s) "
+                  f"have no answer: "
+                  + ", ".join(f.label for f in plan.blocking))
+            continue
+        out = notify.send_email(cfg, email.subject, email.html, to=to,
+                               text=email.text,
+                               attachments=attachments or None)
+        approval.record_sent(cfg, token=token, job_id=row["job_id"],
+                             company=role.company, role=role.title,
+                             fill_plan=plan.as_dict(),
+                             message_id=out.get("id", ""))
+        sent += 1
+        print(f"  sent to {to}, token {token}, "
+              f"plan_hash {approval.plan_hash(plan.as_dict())}")
+    if apply:
+        print(f"\n{sent} approval email(s) sent")
+    return 0
+
+
+def cmd_approvals_drain(apply: bool = False) -> int:
+    """Read Krish's replies and act on each one. Dry run by default.
+
+    Three outcomes, and every reply gets exactly one:
+      approve  the token moves to approved, and submit is the next command
+      amend    the old token is superseded so a stale APPROVE cannot land later,
+               the package is rebuilt with his words passed through verbatim, and
+               a fresh approval email goes out with a new token
+      skip     already processed, hunter's own outbound, or no row behind the token
+
+    An amend that fails to rebuild leaves the old token superseded and says so
+    loudly, rather than quietly leaving him with a live token for a package that no
+    longer matches.
+    """
+    from .apply import approval, inbox
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    try:
+        replies = inbox.fetch_replies(cfg)
+    except inbox.InboxError as e:
+        print(str(e))
+        return 1
+    print(f"{len(replies)} message(s) carrying a token"
+          f"{'' if apply else ' (dry run, pass --apply to act)'}\n")
+    acted = 0
+    for r in replies:
+        row = approval.get_row(cfg, r["token"]) or {}
+        action, detail = inbox.classify(r, row)
+        print(f"{action.upper():<8} {r['token']}")
+        if detail:
+            print(f"         {detail[:300]}")
+        if action == "skip":
+            continue
+        if action == "reject":
+            if apply:
+                approval.mark_processed(cfg, r["token"], r["message_id"],
+                                        row.get("processed_message_ids"))
+            continue
+        if not apply:
+            continue
+
+        if action == "approve":
+            approval.set_state(cfg, r["token"], approval.APPROVED,
+                               decided_at=NOW())
+            approval.mark_processed(cfg, r["token"], r["message_id"],
+                                    row.get("processed_message_ids"))
+            print(f"         approved. next: python -m hunter.run submit "
+                  f"--token {r['token']}")
+            acted += 1
+            continue
+
+        # amend. The old token dies first: if the rebuild fails, the worst case is
+        # no live token, never a live token for the wrong package.
+        approval.supersede(cfg, r["token"])
+        approval.mark_processed(cfg, r["token"], r["message_id"],
+                                row.get("processed_message_ids"))
+        db_patch(cfg, approval.TABLE, {"token": r["token"]}, {"feedback": detail})
+        job_id = row.get("job_id") or ""
+        rows = db_get(cfg, "hunter_seen_roles",
+                      {"select": "*", "job_id": f"eq.{job_id}", "limit": "1"})
+        if not rows:
+            print(f"         SUPERSEDED but cannot rebuild: no role row for {job_id}")
+            continue
+        summary: list[str] = []
+        ok = build_one(cfg, canon, sheet, rows[0], summary, feedback=detail)
+        for line in summary:
+            print("         " + line)
+        if not ok:
+            print("         SUPERSEDED and the rebuild failed. No live token; "
+                  "fix the build and re-run approvals.")
+            continue
+        rc = cmd_approvals(apply=True, job_id=job_id)
+        acted += 1
+        if rc:
+            print("         rebuilt, but the new approval email did not send")
+    if apply:
+        print(f"\n{acted} reply(ies) acted on")
+    return 0
+
+
+def cmd_gtm_seed(apply: bool = False) -> int:
+    """Write the AI-native GTM evidence key. Dry run by default.
+
+    Krish 2026-09-15: the first package said nothing about the AI-native GTM work
+    he is most experienced in. It could not: the voice gate traces every generated
+    number and name back to the evidence haystack, and none of that work was in
+    it. This command puts it there, printed in full first, because hunter does not
+    write its own evidence unreviewed.
+    """
+    from .apply import gtmseed
+    cfg, _canon = build_context()
+
+    # The blocks come first. tailor.load_blocks raises when a key in BLOCK_KEYS has
+    # no approved block, and ai_native_gtm is in BLOCK_KEYS, so until these two
+    # rows exist every build fails.
+    print("approved blocks for the sixth family, ai_native_gtm:\n")
+    for cfg_key, block_key, text, present in gtmseed.block_plan(cfg):
+        state = "already present, will be REPLACED" if present else "new"
+        print(f"  {cfg_key}[{block_key}] ({state}, {len(text)} chars)")
+        print(f"    {text}\n")
+
+    key, value, exists = gtmseed.plan(cfg)
+    print(f"system_config.{key}: {len(value)} chars, "
+          f"{'UPDATE existing key' if exists else 'INSERT new key'}"
+          f"{'' if apply else ' (dry run, pass --apply to write)'}\n")
+    print(value)
+    if apply:
+        n_blocks = gtmseed.write_blocks(cfg)
+        print(f"\nwrote and read back {n_blocks} block map(s)")
+        n = gtmseed.write(cfg)
+        print(f"wrote and read back {n} chars of evidence")
+        print("re-run: python -m hunter.run build <job_id>")
+    return 0
+
+
 def cmd_simulate(send: bool = False) -> int:
     """A dummy rehearsal of the whole application loop. Touches no company, no
     Drive document and no Pipeline row; the posting is a literal, not a fetch.
@@ -2917,6 +3244,17 @@ def main(argv: list[str]) -> int:
         return cmd_decline(pairs_in, apply="--apply" in argv)
     if cmd == "bank-seed":
         return cmd_bank_seed(apply="--apply" in argv)
+    if cmd == "gtm-seed":
+        return cmd_gtm_seed(apply="--apply" in argv)
+    if cmd == "approvals-drain":
+        return cmd_approvals_drain(apply="--apply" in argv)
+    if cmd == "approvals":
+        jid = ""
+        if "--job-id" in argv:
+            i = argv.index("--job-id")
+            if i + 1 < len(argv):
+                jid = argv[i + 1]
+        return cmd_approvals(apply="--apply" in argv, job_id=jid)
     if cmd == "simulate":
         return cmd_simulate(send="--send" in argv)
     if cmd == "bank-check":
@@ -2946,6 +3284,8 @@ def main(argv: list[str]) -> int:
           f"run, reconcile, migrate-columns [--apply], migrate-sheet, "
           f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
           f"bank-check, audit-forms [--apply] [--limit N], simulate [--send], bank-seed [--apply], "
+          "gtm-seed [--apply], approvals [--apply] [--job-id X], "
+          "approvals-drain [--apply], "
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
     return 2

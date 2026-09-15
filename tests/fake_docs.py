@@ -11,6 +11,7 @@ astral-plane characters rather than miscounting them.
 from __future__ import annotations
 
 import copy
+import io
 import json
 from hunter.docbuild import DocBuild
 
@@ -159,14 +160,27 @@ class FakeDoc:
         self.chars[pos:pos] = [Char(ch, bold=bold, bg=bg) for ch in text]
 
     def _update_style(self, body):
+        """backgroundColor for clear_highlighting, bold for the bold_substrings
+        that replace_paragraph_block reapplies after a replacement. Bold was
+        NotImplementedError here until 2026-09-15, which meant the bold-carryover
+        path of replace_paragraph_block could not be exercised offline at all: the
+        CV fixture happens to have no money phrases, so `wanted` was always empty
+        and the emulator was never asked. The hook swap in build_letter asks.
+        """
         fields = body.get("fields", "")
-        if "backgroundColor" not in fields:
-            raise NotImplementedError("emulator only supports backgroundColor updates")
+        style = body.get("textStyle", {})
+        known = {"backgroundColor", "bold"}
+        unknown = {f.strip() for f in fields.split(",") if f.strip()} - known
+        if unknown:
+            raise NotImplementedError(
+                f"emulator supports {sorted(known)} updates, not {sorted(unknown)}")
         r = body["range"]
         s, e = r["startIndex"] - self.base, r["endIndex"] - self.base
-        new_bg = body.get("textStyle", {}).get("backgroundColor")
         for c in self.chars[s:e]:
-            c.bg = copy.deepcopy(new_bg)
+            if "backgroundColor" in fields:
+                c.bg = copy.deepcopy(style.get("backgroundColor"))
+            if "bold" in fields:
+                c.bold = bool(style.get("bold"))
 
 
 class FakeDocBuild(DocBuild):
@@ -178,6 +192,9 @@ class FakeDocBuild(DocBuild):
             doc_id: FakeDoc.from_fixture(j) for doc_id, j in fixtures.items()}
         self._copies = 0
         self.uploaded_pdfs: list[str] = []
+        # What export_pdf claims the rendered page count is. See export_pdf.
+        self.export_pages: int | list[int] = 1
+        self.exports: list[str] = []
 
     def get(self, doc_id):
         return self.docs[doc_id].to_json()
@@ -200,7 +217,27 @@ class FakeDocBuild(DocBuild):
         return []
 
     def export_pdf(self, doc_id):
-        return b"%PDF-1.4 fake export for tests"
+        """A real, parseable PDF, because build_letter now measures its pages to
+        hold canon 9.12's one-page rule and a fake blob cannot be measured.
+
+        `export_pages` controls what the renderer claims: an int for every call,
+        or a list consumed one entry per call with the last value repeating, which
+        is how a test drives the hook shrink ladder down a rung.
+        """
+        from pypdf import PdfWriter
+
+        plan = self.export_pages
+        if isinstance(plan, list):
+            n = plan.pop(0) if len(plan) > 1 else (plan[0] if plan else 1)
+        else:
+            n = plan
+        writer = PdfWriter()
+        for _ in range(max(1, int(n))):
+            writer.add_blank_page(width=612, height=792)
+        out = io.BytesIO()
+        writer.write(out)
+        self.exports.append(doc_id)
+        return out.getvalue()
 
     def upload_pdf(self, name, parent_id, data):
         self.uploaded_pdfs.append(name)

@@ -26,7 +26,16 @@ def li_slug(url: str | None) -> str | None:
     m = _IN_PATH.search(path)
     if not m:
         return None
-    return unquote(m.group(1)).strip().lower().rstrip("/") or None
+    slug = unquote(m.group(1)).strip().lower().rstrip("/")
+    # A real LinkedIn slug has no colon. This guard exists because bridges.py used
+    # to build a URL out of a contact_key and then validate it with THIS function,
+    # and keys like "cold:chad-gerhardstein" and "contact:<uuid>" sailed through as
+    # slugs. Eight rows of Krish's live sheet carried
+    # linkedin.com/in/cold:chad-gerhardstein as a result, every one a 404. The
+    # caller is fixed too; this closes the class rather than the instance.
+    if not slug or ":" in slug:
+        return None
+    return slug
 
 
 def norm_name(s: str | None) -> str:
