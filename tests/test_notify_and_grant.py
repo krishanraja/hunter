@@ -365,3 +365,25 @@ def test_the_consent_does_not_merge_previously_granted_scopes():
             mod.auth_url("cid", "http://localhost:9/", "st")).query)
         assert q["include_granted_scopes"] == ["false"], mod.__name__
         assert len(q["scope"][0].split()) == 5
+
+
+def test_a_screenshot_is_sent_as_a_png_not_a_pdf():
+    """The approval email now carries a picture of the filled form. build_message
+    hardcoded application/pdf, so the screenshot would have arrived as a file no
+    mail client would render."""
+    import base64
+    from hunter.notify import build_message
+    raw = build_message("krish@themindmaker.ai", "Apply: X", "<p>x</p>",
+                        attachments=[("form.png", b"\x89PNG\r\n"),
+                                     ("application.pdf", b"%PDF-1.4")])
+    mime = base64.urlsafe_b64decode(raw).decode("utf-8", "replace")
+    assert "image/png" in mime
+    assert "application/pdf" in mime
+
+
+def test_an_attachment_of_an_unknown_type_is_refused():
+    import pytest
+    from hunter.notify import NotifyError, build_message
+    with pytest.raises(NotifyError, match="neither a pdf nor a png"):
+        build_message("krish@themindmaker.ai", "x", "<p>x</p>",
+                      attachments=[("notes.txt", b"hello")])

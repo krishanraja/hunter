@@ -108,3 +108,39 @@ def test_reporting_never_raises_into_a_completed_run(monkeypatch, capsys):
     report_run(None, started_at=STARTED, ok=True, counts=good_counts(),
                spend_usd=0.0, summary_line="fine")   # must not raise
     assert "run reporting failed" in capsys.readouterr().out
+
+
+def test_the_workflow_only_offers_commands_main_can_run():
+    """source and packages sat on the dispatch menu from the day it was written
+    and run.main handled neither, so choosing either exited 2 with a usage line.
+    A menu that offers a dead option is a bug report waiting to be filed."""
+    import pathlib
+    import re
+    import yaml
+    from hunter import run as run_mod
+
+    wf = yaml.safe_load(
+        (pathlib.Path(__file__).parent.parent / ".github/workflows/hunter.yml").read_text())
+    # PyYAML parses the `on:` key as the boolean True.
+    options = wf[True]["workflow_dispatch"]["inputs"]["command"]["options"]
+    src = pathlib.Path(run_mod.__file__).read_text()
+    handled = set(re.findall(r'cmd == "([a-z-]+)"', src))
+    handled |= set(re.findall(r'cmd in \(([^)]+)\)', src)[0].replace('"', '').split(", ")
+                   ) if re.findall(r'cmd in \(([^)]+)\)', src) else set()
+    missing = [o for o in options if o not in handled]
+    assert not missing, f"dispatch offers commands main cannot run: {missing}"
+
+
+def test_the_hourly_job_reads_approval_replies():
+    """approvals-drain existed and was scheduled nowhere, so an APPROVE waited in
+    the inbox until someone ran it by hand."""
+    import pathlib
+    import yaml
+    wf = yaml.safe_load(
+        (pathlib.Path(__file__).parent.parent / ".github/workflows/hunter.yml").read_text())
+    steps = wf["jobs"]["hunter"]["steps"]
+    drain = [s for s in steps if "approvals-drain" in str(s.get("run", ""))]
+    assert drain, "nothing in the workflow reads his replies"
+    # Only on the hourly tick, and only after the main command succeeded, so a
+    # broken run never reaches the step that can submit an application.
+    assert "drain" in drain[0].get("if", "")

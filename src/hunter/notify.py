@@ -121,11 +121,22 @@ def build_message(to: str, subject: str, html: str, *,
     # A form with one upload slot gets the merged letter-plus-CV PDF as a real
     # attachment. ApprovalEmail carried an attachments field long before anything
     # could send one, so that case would have arrived with no file at all.
+    # The type comes from the name, because the approval email now carries a PNG
+    # of the filled form as well as the application PDF, and hardcoding pdf sent a
+    # screenshot that no mail client would show.
     for name, blob in (attachments or []):
         if not blob:
             raise NotifyError(f"attachment {name!r} is empty")
-        msg.add_attachment(blob, maintype="application", subtype="pdf",
-                           filename=name)
+        if name.lower().endswith(".png"):
+            msg.add_attachment(blob, maintype="image", subtype="png",
+                               filename=name)
+        elif name.lower().endswith(".pdf"):
+            msg.add_attachment(blob, maintype="application", subtype="pdf",
+                               filename=name)
+        else:
+            raise NotifyError(
+                f"attachment {name!r} is neither a pdf nor a png; add the type "
+                f"here deliberately rather than guessing at a call site")
     return base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
 
 

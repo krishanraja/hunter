@@ -17,7 +17,8 @@ on:
         description: "hunter command"
         type: choice
         default: process
-        options: [process, run, source, packages, drain, reconcile, recon, migrate-columns]
+        options: [process, run, source, packages, drain, approvals, approvals-drain, submit,
+                  bridges, reconcile, recon, migrate-columns]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string
@@ -40,6 +41,12 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e .
+      # The browser extra and Chromium, for the steps that can fill a form. Only
+      # submit and the approval prefill need them; installing once here is simpler
+      # than branching, and a sourcing run that never opens a browser pays about a
+      # minute for it.
+      - run: pip install -e ".[browser]"
+      - run: python -m playwright install --with-deps chromium
       - name: Pick the command
         id: cmd
         env:
@@ -61,3 +68,14 @@ jobs:
           echo "running: python -m hunter.run $ARGS"
       - name: Run hunter
         run: python -m hunter.run ${{ steps.cmd.outputs.args }}
+
+      # Krish's replies, read and acted on every hour. approvals-drain was written
+      # and never scheduled, so an APPROVE waited in the inbox until someone ran it
+      # by hand. --send is what makes one approval enough: he approved a picture of
+      # the completed form, and submit's own gate still refuses on a changed plan.
+      #
+      # Only on the hourly tick and only when the main command succeeded, so a
+      # broken run never reaches the step that can submit an application.
+      - name: Read approval replies
+        if: steps.cmd.outputs.args == 'drain'
+        run: python -m hunter.run approvals-drain --apply --send

@@ -8,6 +8,7 @@ import pytest
 
 from hunter.apply import approval
 from hunter.apply.fill import FillPlan, FilledField
+from hunter.apply import submit as submit_mod
 from hunter.apply.submit import (SubmitBlocked, check_gate, driver_for,
                                  page_blocker, submit)
 
@@ -114,15 +115,25 @@ class FakePage:
 
     def locator(self, sel):
         page = self
+        # A captcha widget selector is answered from the html, so the fake can
+        # say a challenge is NOT on the page. The version before this returned a
+        # match for every selector, which is why page_blocker could only be
+        # tested in one direction.
+        widget = sel in submit_mod.CAPTCHA_SELECTORS
+        mark = sel.strip('.[]').split('[')[0] if widget else ""
+
         class L:
             first = None
             def count(self):
+                if widget:
+                    return 1 if mark in page.html else 0
                 # Case insensitive: a field's selectors mix its key and its label,
                 # so `input[name="email"]` and `input[aria-label="Email"]` are the
                 # same field. Matching only the lowercase form let one selector
                 # through and the fake reported a fill that had not happened.
                 low = sel.lower()
                 return 0 if any(f.lower() in low for f in page.fails) else 1
+            def is_visible(self): return widget and mark in page.html
             def fill(self, v, **kw): page.filled[sel] = v
             def set_input_files(self, path, **kw): page.files.append(path)
         l = L(); l.first = l
@@ -173,7 +184,7 @@ def test_confirm_presses_once_and_records_submitted(approved):
 
 
 def test_a_captcha_queues_rather_than_clicking_into_it(approved):
-    page = FakePage(html="<div class='g-recaptcha'>recaptcha</div>")
+    page = FakePage(html="<div class='g-recaptcha'></div>")
     out = submit(Cfg(), "t1", approved["plan"], confirm=True,
                  browser_factory=factory_for(page))
     assert out["state"] == approval.QUEUED and out["reason"] == "captcha"
@@ -221,8 +232,22 @@ def test_a_crash_mid_run_records_queued_rather_than_leaving_it_approved(approved
 
 
 def test_page_blocker_names_what_it_found():
-    assert page_blocker(FakePage(html="<div>hcaptcha</div>")) == "captcha"
+    assert page_blocker(FakePage(html="<div class='h-captcha'></div>")) == "captcha"
+    assert page_blocker(FakePage(html="<p>are you human</p>")) == "captcha"
     assert page_blocker(FakePage(html="<p>ordinary form</p>")) == ""
+
+
+def test_an_invisible_recaptcha_v3_script_is_not_a_blocker():
+    """The regression that stopped every Harvey run before it typed anything.
+
+    Ashby loads recaptcha__en.js on every application page for a background v3
+    score. page_blocker matched the bare word "recaptcha" anywhere in the HTML,
+    called a perfectly workable form a captcha, refused to fill it, and mailed
+    Krish a photograph of a spinner. v3 asks a human for nothing.
+    """
+    html = ('<script src="https://www.gstatic.com/recaptcha/releases/'
+            'bnq/recaptcha__en.js"></script><form></form>')
+    assert page_blocker(FakePage(html=html)) == ""
 
 
 def test_a_captcha_that_appears_only_after_filling_still_stops_the_press(approved):
@@ -233,9 +258,15 @@ def test_a_captcha_that_appears_only_after_filling_still_stops_the_press(approve
     Mutation-tested: deleting the second check leaves every other test green.
     """
     class LateCaptcha(FakePage):
-        def content(self):
+        @property
+        def html(self):
             # Clean until something has been filled, then challenged.
-            return ("<div>recaptcha</div>" if self.filled else "<form></form>")
+            return ("<div class='g-recaptcha'></div>" if self.filled
+                    else "<form></form>")
+
+        @html.setter
+        def html(self, _value):
+            pass
 
     page = LateCaptcha()
     out = submit(Cfg(), "t1", approved["plan"], confirm=True,
@@ -260,20 +291,46 @@ class FormPage:
     `controls` maps a selector fragment to its tag/type.
     """
 
-    def __init__(self, controls: dict, role_names=()):
+    def __init__(self, controls: dict, role_names=(), ready=True):
         self.controls = controls
+        # A form that renders after the document loads, like Ashby's. Until
+        # wait_for_selector runs, the page has no controls at all.
+        self.ready, self.waited = ready, False
         # Labels a last-resort get_by_role/get_by_label lookup would actually find.
         self.role_names = set(role_names)
         self.selected: dict[str, str] = {}
         self.checked: list[str] = []
         self.typed: dict[str, str] = {}
         self.clicked: list[str] = []
+        # Every action in the order it happened, because the order is the
+        # correctness property once a vendor autofills from the upload.
+        self.order: list[str] = []
+        self.uploaded: list[str] = []
+        self.upload_paths: list[str] = []
+        self.upload_alive = True
 
     def content(self): return "<form></form>"
     def goto(self, url, **kw): self.url = url
-    def screenshot(self, **kw): return b"\x89PNG"
+
+    def screenshot(self, **kw):
+        # Playwright hands the browser a PATH and the browser reads that file
+        # when its upload request actually fires, which is around when the
+        # picture is taken, not at set_input_files. A caller that deletes it
+        # straight away gets Ashby's "Oops! Failed to fetch" and an empty resume
+        # slot, while the driver reports the field filled. Recorded rather than
+        # raised, because _png swallows every exception.
+        import os
+        self.upload_alive = all(os.path.exists(p) for p in self.upload_paths)
+        return b"\x89PNG"
+
+    def wait_for_selector(self, sel, **kw):
+        self.waited = True
+
+    def wait_for_timeout(self, ms): pass
 
     def _spec(self, sel):
+        if not (self.ready or self.waited):
+            return None, None
         for frag, spec in self.controls.items():
             if frag in sel:
                 return frag, spec
@@ -281,20 +338,74 @@ class FormPage:
 
     def locator(self, sel):
         page, frag, spec = self, *self._spec(sel)
-
+        # A control asked about its own siblings, which is how a segmented Yes/No
+        # is found behind its hidden mirror checkbox. Only a spec that declares
+        # `options` has any.
         class L:
             first = None
             def count(self): return 1 if spec else 0
             def evaluate(self, expr): return spec["tag"].upper()
             def get_attribute(self, name):
-                return spec.get("type") if name == "type" else None
-            def select_option(self, label=None, **kw): page.selected[frag] = label
-            def check(self, **kw): page.checked.append(frag)
+                return spec.get(name if name != "type" else "type")
+            def select_option(self, label=None, **kw):
+                # Playwright raises when no option carries that label, and the
+                # fake must too: a select that silently accepts anything cannot
+                # catch an answer the form does not offer.
+                allowed = spec.get("options")
+                if allowed is not None and label not in allowed:
+                    raise RuntimeError(f"no option {label!r}")
+                page.selected[frag] = label
+            def input_value(self): return page.selected.get(frag, "")
+            def check(self, **kw):
+                if not spec.get("checkable", True):
+                    raise RuntimeError("element is not visible")
+                page.checked.append(frag)
+            def is_checked(self):
+                # A React-controlled input accepts the click and reverts. The
+                # click not raising is not evidence the answer took.
+                if spec.get("reverts"):
+                    return False
+                return frag in page.checked
             def click(self, **kw): page.clicked.append(frag)
-            def fill(self, v, **kw): page.typed[frag] = v
-            def set_input_files(self, p, **kw): pass
+            def fill(self, v, **kw):
+                page.typed[frag] = v
+                page.order.append(f"fill:{frag}")
+            def type(self, v, **kw): page.typed[frag] = v
+            def set_input_files(self, p, **kw):
+                import os
+                page.order.append("attach")
+                page.uploaded.append(os.path.basename(p))
+                page.upload_paths.append(p)
+            def locator(self, subsel):
+                # A control asking about its own siblings, which is how a
+                # segmented Yes/No is found behind its hidden mirror checkbox.
+                return page._buttons(frag, spec)
         l = L(); l.first = l
         return l
+
+    def _buttons(self, frag, spec):
+        """The visible buttons of a segmented control, with their pressed state."""
+        page = self
+        opts = list((spec or {}).get("options_pressed") or [])
+
+        class Btns:
+            def count(self): return len(opts)
+            def nth(self, i):
+                name = opts[i]
+
+                class B:
+                    def inner_text(self): return name
+                    def get_attribute(self, a):
+                        if a == "data-option": return name.lower()
+                        if a == "aria-pressed":
+                            if spec.get("press_reverts"):
+                                return "false"
+                            return ("true" if f"{frag}:{name}" in page.clicked
+                                    else "false")
+                        return None
+                    def click(self, **kw): page.clicked.append(f"{frag}:{name}")
+                return B()
+        return Btns()
 
     def get_by_role(self, role, name="", exact=True):
         """Raises when the page has no such control, the way Playwright times out.
@@ -400,3 +511,383 @@ def test_a_choice_field_the_driver_cannot_work_still_refuses_to_press(approved_c
     assert out["state"] == approval.QUEUED
     assert "field not found" in out["reason"]
     assert page.clicked == [] or "Submit Application" not in page.clicked
+
+
+# ---------- preview cannot submit ----------
+
+def test_preview_fills_and_photographs_without_an_approval(monkeypatch):
+    """The approval email shows the real completed form, so approving the picture
+    is approving what gets sent. That only works if filling needs no approval, and
+    it is only safe if filling cannot possibly press."""
+    called = []
+    monkeypatch.setattr(approval, "get_row",
+                        lambda cfg, token: called.append("gate") or None)
+    page = FakePage()
+    out = submit_mod.preview(plan(fields=[field()]), browser_factory=factory_for(page))
+    assert out["filled"] == ["Email"]
+    assert out["png"] == b"\x89PNG"
+    assert page.clicked == []
+    # The gate was never consulted, because there is nothing to gate.
+    assert called == []
+
+
+def test_preview_holds_no_way_to_press_submit():
+    """Not a policy, a property of the compiled function.
+
+    Checking the source text was the first attempt and it read the docstring,
+    where both words appear precisely because the docstring explains why they are
+    absent from the code. co_names is what the function actually references.
+    """
+    names = set(submit_mod.preview.__code__.co_names)
+    assert "press_submit" not in names
+    assert "confirm" not in names
+    # And neither does the helper it delegates the page work to.
+    assert "press_submit" not in set(submit_mod._open_and_fill.__code__.co_names)
+
+
+def test_preview_reports_a_captcha_rather_than_pretending_it_filled():
+    page = FakePage(html="<div class='h-captcha'></div>")
+    out = submit_mod.preview(plan(fields=[field()]), browser_factory=factory_for(page))
+    assert out["blocker"] == "captcha"
+    assert out["filled"] == []
+
+
+def test_preview_survives_a_dead_page_and_says_so():
+    class Dead(FakePage):
+        def goto(self, url, **kw): raise RuntimeError("navigation died")
+    out = submit_mod.preview(plan(fields=[field()]),
+                             browser_factory=factory_for(Dead()))
+    assert "RuntimeError" in out["error"]
+    assert out["png"] == b""
+
+
+# ---------- a click is not an answer ----------
+
+def test_a_segmented_yes_no_is_pressed_on_its_button_not_its_mirror():
+    """Harvey's work-authorisation question, exactly as the live form renders it.
+
+    Ashby draws Yes/No as two <button aria-pressed> and keeps a display:none
+    checkbox behind them for serialisation. check() on that input fails
+    actionability, so the driver fell through to an unverified label lookup,
+    reported the field FILLED, and the approval picture went out with "are you
+    legally authorized to work" blank. Nothing in the suite could see it, because
+    the fake had no notion of a control that refuses to be checked.
+    """
+    page = FormPage({
+        "email": {"tag": "input", "type": "email"},
+        "auth": {"tag": "input", "type": "checkbox", "checkable": False,
+                 "options_pressed": ["Yes", "No"]},
+        "sponsor": {"tag": "select",
+                    "options": ["No, I do not require sponsorship"]},
+    })
+    drv = submit_mod.AshbyDriver(page, _choice_plan())
+    drv.fill()
+    assert drv.missed == []
+    assert "auth:Yes" in page.clicked
+    assert "auth:No" not in page.clicked
+
+
+def test_a_control_that_never_changes_is_reported_missed_not_filled():
+    """The class of bug, not the instance.
+
+    A checkbox that cannot be checked and has no buttons behind it has no way to
+    carry the answer, and saying so is the whole point: submit() refuses to press
+    on a required field it reports missed, and that refusal is worth nothing if
+    the driver calls a failed click a fill.
+    """
+    page = FormPage({
+        "email": {"tag": "input", "type": "email"},
+        "auth": {"tag": "input", "type": "checkbox", "checkable": False},
+        "sponsor": {"tag": "select",
+                    "options": ["No, I do not require sponsorship"]},
+    })
+    drv = submit_mod.AshbyDriver(page, _choice_plan())
+    drv.fill()
+    assert "Are you legally authorized to work?" in drv.missed
+
+
+def test_a_select_refuses_an_answer_the_form_does_not_offer():
+    page = FormPage({
+        "email": {"tag": "input", "type": "email"},
+        "auth": {"tag": "input", "type": "checkbox"},
+        "sponsor": {"tag": "select", "options": ["Something else entirely"]},
+    })
+    drv = submit_mod.AshbyDriver(page, _choice_plan())
+    drv.fill()
+    assert "Will you require sponsorship?" in drv.missed
+
+
+# ---------- the typeahead that would have moved him to Minnesota ----------
+
+class TypeaheadPage:
+    """A combobox backed by a geocoder, like Ashby's Location field.
+
+    `results` maps what is typed to the options offered back.
+    """
+
+    def __init__(self, results: dict):
+        self.results, self.typed, self.value = results, [], ""
+        self.clicked_option = ""
+        self.html = "<form></form>"
+
+    def content(self): return self.html
+    def goto(self, url, **kw): self.url = url
+    def screenshot(self, **kw): return b"\x89PNG"
+
+    def _options(self):
+        return self.results.get(self.typed[-1] if self.typed else "", [])
+
+    def locator(self, sel):
+        page = self
+
+        class L:
+            first = None
+            def count(self): return 1 if "combobox" in sel else 0
+            def evaluate(self, expr): return "INPUT"
+            def get_attribute(self, name):
+                return {"role": "combobox", "aria-autocomplete": "list"}.get(name)
+            def click(self, **kw): pass
+            def fill(self, v, **kw): page.value = v
+            def type(self, v, **kw): page.typed.append(v)
+            def input_value(self): return page.value
+        l = L(); l.first = l
+        return l
+
+    def get_by_role(self, role, name="", exact=True):
+        page = self
+        opts = page._options()
+
+        class Opt:
+            def __init__(self, i): self.i = i
+            def inner_text(self): return opts[self.i]
+            def wait_for(self, **kw):
+                if not opts:
+                    raise RuntimeError("no options")
+            def click(self, **kw):
+                page.clicked_option = opts[self.i]
+                page.value = opts[self.i]
+
+        class R:
+            first = Opt(0) if opts else Opt(-1)
+            def count(self): return len(opts)
+            def nth(self, i): return Opt(i)
+        r = R()
+        if not opts:
+            class Empty:
+                first = Opt(-1)
+                def count(self): return 0
+                def nth(self, i): raise IndexError
+            return Empty()
+        return r
+
+
+def _location_plan():
+    return plan(fields=[
+        FilledField(key="_systemfield_location", label="Location", kind="location",
+                    required=True, value="Brooklyn, New York, United States",
+                    source="residence rule"),
+    ])
+
+
+def test_the_typeahead_never_takes_an_option_that_does_not_match():
+    """The live near-miss that decided how strict this has to be.
+
+    Ashby's geocoder holds no "Brooklyn, New York". Typing the whole answer
+    offers New York City first; typing "brooklyn" alone offers BROOKLYN PARK,
+    MINNESOTA first. A driver that clicks the first option would have put the
+    wrong city on his application and reported the field filled.
+    """
+    page = TypeaheadPage({
+        "Brooklyn, New York, United States": [
+            "New York City, New York, United States", "New York, United States"],
+        "brooklyn": ["Brooklyn Park, Minnesota, United States",
+                     "Brooklyn Center, Minnesota, United States"],
+    })
+    drv = submit_mod.AshbyDriver(page, _location_plan())
+    drv.fill()
+    assert drv.missed == ["Location"]
+    assert page.clicked_option == ""
+    assert page.value == ""
+
+
+def test_the_typeahead_records_what_the_form_actually_offered():
+    """A field reported missed with no reason sends him back to the browser.
+
+    The offered options are the fix that compounds: he corrects the answer bank
+    once and every later run matches.
+    """
+    page = TypeaheadPage({
+        "Brooklyn, New York, United States": [
+            "New York City, New York, United States"],
+        "brooklyn": ["Brooklyn Park, Minnesota, United States"],
+    })
+    drv = submit_mod.AshbyDriver(page, _location_plan())
+    drv.fill()
+    assert drv.notes
+    assert "New York City, New York, United States" in drv.notes[0]
+    assert "Location" in drv.notes[0]
+
+
+def test_the_typeahead_takes_an_option_that_does_match():
+    page = TypeaheadPage({
+        "Brooklyn, New York, United States": [
+            "Brooklyn, New York, United States", "New York, United States"],
+    })
+    drv = submit_mod.AshbyDriver(page, _location_plan())
+    drv.fill()
+    assert drv.filled == ["Location"]
+    assert page.value == "Brooklyn, New York, United States"
+    assert drv.notes == []
+
+
+def test_a_checkbox_that_reverts_is_reported_missed():
+    """A click that does not raise is not an answer.
+
+    React-controlled inputs accept check() and revert on the next render, which
+    is indistinguishable from success unless the control is read back. Mutation:
+    returning True instead of _is_checked(el) leaves every other test green.
+    """
+    page = FormPage({
+        "email": {"tag": "input", "type": "email"},
+        "auth": {"tag": "input", "type": "checkbox", "reverts": True},
+        "sponsor": {"tag": "select",
+                    "options": ["No, I do not require sponsorship"]},
+    })
+    drv = submit_mod.AshbyDriver(page, _choice_plan())
+    drv.fill()
+    assert "Are you legally authorized to work?" in drv.missed
+
+
+def test_a_segmented_button_that_does_not_stay_pressed_is_reported_missed():
+    """Same rule one layer out: the button group is read back too.
+
+    Mutation: returning True from _press_group instead of reading aria-pressed
+    leaves every other test green.
+    """
+    page = FormPage({
+        "email": {"tag": "input", "type": "email"},
+        "auth": {"tag": "input", "type": "checkbox", "checkable": False,
+                 "options_pressed": ["Yes", "No"], "press_reverts": True},
+        "sponsor": {"tag": "select",
+                    "options": ["No, I do not require sponsorship"]},
+    })
+    drv = submit_mod.AshbyDriver(page, _choice_plan())
+    drv.fill()
+    assert "Are you legally authorized to work?" in drv.missed
+
+
+def test_the_form_is_waited_for_before_it_is_filled():
+    """Ashby fetches its form after the document loads.
+
+    Without the wait, goto returns a page showing "Fetching application form",
+    the driver finds zero controls, every field is missed, and the approval email
+    carries a photograph of a spinner. That is exactly what the first live run
+    produced. Mutation: deleting the wait_for_selector leaves every other test
+    green.
+    """
+    page = FormPage({
+        "email": {"tag": "input", "type": "email"},
+        "auth": {"tag": "input", "type": "checkbox",
+                 "options_pressed": ["Yes", "No"], "checkable": False},
+        "sponsor": {"tag": "select",
+                    "options": ["No, I do not require sponsorship"]},
+    }, ready=False)
+    out = submit_mod.preview(_choice_plan(), browser_factory=factory_for(page))
+    assert page.waited
+    assert out["missed"] == []
+
+
+def test_the_file_goes_on_before_the_fields_are_typed():
+    """Ashby parses the uploaded CV and autofills from it.
+
+    That parse lands after the upload, so filling first and attaching second let
+    the vendor's guesses overwrite the answers Krish approved, and photographed
+    the form mid-parse besides. Mutation: swapping _attach and driver.fill back
+    leaves every other test green.
+    """
+    page = FormPage({
+        "email": {"tag": "input", "type": "email"},
+        "auth": {"tag": "input", "type": "checkbox",
+                 "options_pressed": ["Yes", "No"], "checkable": False},
+        "sponsor": {"tag": "select",
+                    "options": ["No, I do not require sponsorship"]},
+        "resume": {"tag": "input", "type": "file"},
+    })
+    fields = list(_choice_plan().fields) + [
+        FilledField(key="resume", label="Resume", kind="file_resume",
+                    required=True, value="the built PDF", source="package")]
+    submit_mod.preview(plan(fields=fields), attachments={"file_resume": b"%PDF"},
+                       browser_factory=factory_for(page))
+    assert page.order[0] == "attach", page.order
+    assert "fill:email" in page.order
+
+
+def test_the_parse_is_waited_out_before_the_fields_are_typed():
+    """A form still announcing "Parsing your resume" is a form about to change."""
+    class Parsing(FormPage):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.polls = 0
+
+        def content(self):
+            self.polls += 1
+            return ("<div>Parsing your resume. Autofilling key fields...</div>"
+                    if self.polls < 3 else "<form></form>")
+
+    page = Parsing({"email": {"tag": "input", "type": "email"},
+                    "resume": {"tag": "input", "type": "file"}})
+    fields = [field(), FilledField(key="resume", label="Resume",
+                                   kind="file_resume", required=True,
+                                   value="the built PDF", source="package")]
+    submit_mod.preview(plan(fields=fields), attachments={"file_resume": b"%PDF"},
+                       browser_factory=factory_for(page))
+    assert page.polls >= 3
+
+
+def _upload_plan():
+    return plan(fields=[
+        field(),
+        FilledField(key="resume", label="Resume", kind="file_resume",
+                    required=True, value="the built PDF", source="package")])
+
+
+def _upload_page():
+    return FormPage({"email": {"tag": "input", "type": "email"},
+                     "resume": {"tag": "input", "type": "file"}})
+
+
+def test_the_employer_sees_the_document_named_as_canon_names_it():
+    """mkstemp produced hunter_9ugny06m.pdf and Ashby showed exactly that in the
+    resume slot. The filename is part of what the employer receives."""
+    page = _upload_page()
+    submit_mod.preview(_upload_plan(), attachments={"file_resume": b"%PDF"},
+                       names={"file_resume": "KrishRaja_Application_Harvey.pdf"},
+                       browser_factory=factory_for(page))
+    assert page.uploaded == ["KrishRaja_Application_Harvey.pdf"]
+    assert page.upload_alive, "the file was deleted before the browser read it"
+
+
+def test_an_unnamed_attachment_still_gets_a_readable_name():
+    page = _upload_page()
+    submit_mod.preview(_upload_plan(), attachments={"file_resume": b"%PDF"},
+                       browser_factory=factory_for(page))
+    assert page.uploaded == ["KrishRaja_CV.pdf"]
+    assert page.upload_alive, "the file was deleted before the browser read it"
+
+
+def test_a_rejected_upload_is_reported_missed_not_filled():
+    """set_input_files succeeding means the browser took the path, not that the
+    employer has the document. Ashby answered "Oops! Failed to fetch" and the
+    driver counted the resume filled."""
+    class Rejecting(FormPage):
+        def content(self):
+            return ("<div>Oops! Failed to fetch</div>" if self.uploaded
+                    else "<form></form>")
+
+    page = Rejecting({"email": {"tag": "input", "type": "email"},
+                      "resume": {"tag": "input", "type": "file"}})
+    out = submit_mod.preview(_upload_plan(), attachments={"file_resume": b"%PDF"},
+                             browser_factory=factory_for(page))
+    assert "Resume" in out["missed"]
+    assert "Resume" not in out["filled"]
+    assert out["notes"]
