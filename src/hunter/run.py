@@ -3800,6 +3800,50 @@ def retire_dead_posting(cfg: Config, canon, sheet: Sheet, job_id: str, *,
         print(f"    {line}")
 
 
+def cmd_close_submitted(apply: bool = False) -> int:
+    """Do the sheet work for applications Krish pressed Submit on himself.
+
+    His question: "can you confirm that when I click the submit button, the
+    extension can read that I successfully submitted, and make the appropriate
+    changes in the google sheet to move the role out of pipeline and into
+    applied?" It could not. The extension tells Control Center now, which marks
+    the row, and this is the half that touches the sheet, because the sheet needs
+    Google credentials that have no business being in a browser.
+
+    Idempotent by construction: a row whose role already reads submitted is
+    skipped, so running this hourly costs nothing and running it twice is safe.
+    """
+    from .apply import approval
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    rows = db_get(cfg, approval.TABLE,
+                  {"select": "token,job_id,company,role,submitted_at,failure_reason",
+                   "state": f"eq.{approval.SUBMITTED}",
+                   "order": "submitted_at.desc", "limit": "100"})
+    if not rows:
+        print("nothing newly submitted")
+        return 0
+    ids = sorted({r["job_id"] for r in rows if r.get("job_id")})
+    state = {r["job_id"]: r for r in db_get(
+        cfg, "hunter_seen_roles",
+        {"select": "job_id,application_state", "job_id": f"in.({','.join(ids)})",
+         "limit": "200"})}
+    open_ones = [r for r in rows
+                 if (state.get(r["job_id"], {}).get("application_state") or "")
+                 != "submitted"]
+    print(f"{len(rows)} submitted, {len(open_ones)} not yet written to the sheet"
+          f"{'' if apply else ' (dry run, pass --apply)'}")
+    for r in open_ones:
+        print(f"\n  {r['company']} {r['role'][:50]}")
+        print(f"    {r.get('failure_reason') or 'submitted'}")
+        if not apply:
+            continue
+        record_applied(cfg, canon, sheet, r["job_id"],
+                       company=r.get("company") or "", role=r.get("role") or "",
+                       confirmation=r.get("failure_reason") or "submitted")
+    return 0
+
+
 def cmd_confirmations(apply: bool = False) -> int:
     """Close the loop from the employer's own receipt. Dry run by default.
 
@@ -4029,6 +4073,8 @@ def main(argv: list[str]) -> int:
                          every=int(_flag("--every", "60")),
                          port=int(_flag("--port", "0")),
                          profile_dir=_flag("--profile"))
+    if cmd == "close-submitted":
+        return cmd_close_submitted(apply="--apply" in argv)
     if cmd == "confirmations":
         return cmd_confirmations(apply="--apply" in argv)
     if cmd == "applied":

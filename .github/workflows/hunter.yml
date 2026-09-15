@@ -85,3 +85,15 @@ jobs:
         # moves the token to approved and waits for `apply-local`, which opens the
         # filled form in Krish's own browser for him to press.
         run: python -m hunter.run approvals-drain --apply
+
+      # Krish presses Submit in his own browser; the extension tells Control
+      # Center and Control Center marks the row. This is the half that touches
+      # the sheet, because the sheet needs Google credentials that have no
+      # business being in a browser. Idempotent, so running it hourly is free.
+      - name: Write submitted applications to the sheet
+        if: steps.cmd.outputs.args == 'drain'
+        run: python -m hunter.run close-submitted --apply
+
+      - name: Close applications the employer has acknowledged
+        if: steps.cmd.outputs.args == 'drain'
+        run: python -m hunter.run confirmations --apply

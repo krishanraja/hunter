@@ -12,6 +12,15 @@
 
   const DEFAULT_API = 'https://controlcenter.krishraja.com/api/hunter/payload';
 
+  // What a form says once it has the application. The same list hunter uses on
+  // its own side, so both halves agree on what "submitted" looks like.
+  const SUBMITTED_MARKS = [
+    'application submitted', 'thanks for applying', 'thank you for applying',
+    'application received', 'we have received your application',
+    "we've received your application", 'your application has been submitted',
+    'successfully submitted', 'application complete',
+  ];
+
   function capability() {
     const m = /(?:^|[#&])hunter=([^&]+)/.exec(location.hash || '');
     if (!m) return null;
@@ -78,5 +87,40 @@
   } else {
     banner('Filled all ' + done + ' fields and attached your documents. ' +
            'Read it and press Submit.', 'good');
+  }
+
+  // Then watch for him pressing it. Hunter cannot see the click from anywhere
+  // else: it runs in the cloud and the click happens here. Without this the
+  // sheet keeps saying "Not applied" on a role that is applied for, which is
+  // exactly the silence this whole system was built to stop.
+  const startedAt = location.href;
+  const deadline = Date.now() + 30 * 60 * 1000;
+  const seen = () => {
+    const body = (document.body ? document.body.innerText : '').toLowerCase();
+    if (SUBMITTED_MARKS.some((m) => body.includes(m))) return 'the form said so';
+    if (location.href !== startedAt && !location.href.includes('/application')) {
+      return 'the form closed and moved to ' + location.href;
+    }
+    return '';
+  };
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const why = seen();
+    if (!why) continue;
+    try {
+      await fetch(api.replace(/\/payload$/, '/submitted'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'omit',
+        body: JSON.stringify({ token: cap.token, key: cap.key, evidence: why }),
+      });
+      banner('Submitted. Hunter has it: the sheet will move this role to '
+             + 'Applied.', 'good');
+    } catch (e) {
+      banner('Submitted, but hunter could not be told (' + e.message +
+             '). Tell Claude so the sheet gets updated.', 'bad');
+    }
+    return;
   }
 })();

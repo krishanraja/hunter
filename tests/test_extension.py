@@ -126,3 +126,29 @@ def test_an_ambiguous_demographic_is_left_for_him():
 def test_a_superseded_link_explains_itself():
     """Krish opened an older email and got "the server said 404"."""
     assert "410" in RUN and "replaced by a newer one" in RUN
+
+
+def test_the_extension_watches_for_the_submit():
+    """Krish: "can you confirm that when I click the submit button, the extension
+    can read that I successfully submitted, and make the appropriate changes in
+    the google sheet?" It could not: it filled the form and stopped, so the sheet
+    kept saying "Not applied" on a role that was applied for."""
+    body = code_only(RUN)
+    assert "SUBMITTED_MARKS" in body
+    assert "/submitted" in body
+    assert "location.href !== startedAt" in body, "leaving the form counts too"
+
+
+def test_it_watches_without_pressing_anything():
+    """Watching for his click must not become clicking for him."""
+    body = code_only(RUN).lower()
+    assert ".click(" not in body
+
+
+def test_it_gives_up_watching_rather_than_running_for_ever():
+    assert "deadline" in RUN and "30 * 60 * 1000" in RUN
+
+
+def test_a_failure_to_report_is_told_to_him():
+    """Silently failing to record it is the same silence in a new place."""
+    assert "could not be told" in RUN
