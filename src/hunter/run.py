@@ -4125,6 +4125,16 @@ def main(argv: list[str]) -> int:
     if cmd == "prune-sheet":
         return cmd_prune_sheet(apply="--apply" in argv,
                                include_ungated="--incumbent" in argv)
+    if cmd == "doctor":
+        # Does what is DEPLOYED agree with what is built. pytest cannot ask that:
+        # it checks this repository against itself, and the three drifts that cost
+        # a whole day (main behind the branch, the workflow on main missing a
+        # command, the control-center endpoint never pushed) all passed it.
+        from . import doctor
+        import inspect
+        cfg = load()
+        return doctor.report(doctor.run(cfg, inspect.getsource(main),
+                                        offline="--offline" in argv))
     if cmd == "bridges":
         ingest_dir = None
         if len(argv) >= 3 and argv[1] == "--ingest":
@@ -4137,7 +4147,8 @@ def main(argv: list[str]) -> int:
           "gtm-seed [--apply], approvals [--apply] [--job-id X], "
           "approvals-drain [--apply] [--send], submit --token X [--confirm], "
           "newsletter [--apply] [--limit N], "
-          "bridges [--ingest DIR], prune-sheet [--apply], regate, archive")
+          "bridges [--ingest DIR], prune-sheet [--apply], regate, archive, "
+          "doctor [--offline]")
     return 2
 
 
