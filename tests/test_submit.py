@@ -1257,3 +1257,16 @@ def test_leaving_the_form_behind_counts_as_acknowledgement(approved):
     out = submit(Cfg(), "t1", approved["plan"], confirm=True,
                  browser_factory=factory_for(page))
     assert "confirmation" in out["confirmation"]
+
+
+def test_an_unconfirmed_press_on_a_scored_form_explains_itself(approved):
+    """Harvey's form runs invisible reCAPTCHA v3, which scores the visitor rather
+    than asking anything. A headless run in a datacentre fails that score and is
+    refused server side with nothing shown, which is what the first pressed
+    application looked like from here. Say so rather than leaving a mystery."""
+    page = PressPage({"email": {"tag": "input", "type": "email"}},
+                     after="<form><script src='recaptcha__en.js'></script></form>")
+    out = submit(Cfg(), "t1", approved["plan"], confirm=True,
+                 browser_factory=factory_for(page))
+    assert out["confirmation"] == ""
+    assert "invisible bot check" in approved["writes"][-1][1]["failure_reason"]

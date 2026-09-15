@@ -1045,8 +1045,14 @@ def submit(cfg: Config, token: str, plan: FillPlan, *,
             result["confirmation"] = confirmation
             result["after_png"] = _png(page)
             after = _shoot(page, token, shot_sink) or shot
+            why = confirmation or "pressed, no confirmation seen"
+            if not confirmation and scored_by_bot_check(page):
+                why += (" (this form scores the visitor with an invisible bot "
+                        "check, which a headless run in a datacentre fails)")
             record_outcome(cfg, token, approval.SUBMITTED, screenshot_url=after,
-                           reason=confirmation or "pressed, no confirmation seen")
+                           reason=why)
+            result["confirmation"] = confirmation
+            result["why"] = why
             result.update(state=approval.SUBMITTED, screenshot=after)
             browser.close()
             return result
@@ -1152,6 +1158,28 @@ SUBMITTED_MARKS = ("application submitted", "thanks for applying",
                    "your application has been submitted",
                    "successfully submitted", "application complete")
 CONFIRM_POLLS = 20
+
+# Why a press can go unacknowledged. Harvey's Ashby form runs invisible reCAPTCHA
+# v3, which scores the visitor rather than asking anything, and this runner is a
+# headless Chromium in a datacentre behind a proxy: navigator.webdriver reads
+# true and the user agent says HeadlessChrome. A low score is refused server side
+# with nothing shown, which is exactly what the first pressed application looked
+# like from here, right down to the missing confirmation email.
+#
+# Deliberately NOT worked around. Masking those signals is circumventing the
+# gate the employer chose, it is an arms race, and being flagged as a bot by
+# Ashby would follow Krish across every employer that uses it. The honest fixes
+# are to run the press from his own browser on his own machine, where the score
+# is genuinely his, or to hand him a filled form and let him press it. Named
+# here so an unconfirmed press explains itself instead of looking like a mystery.
+SCORED_MARKS = ("recaptcha", "cf-turnstile", "hcaptcha")
+
+
+def scored_by_bot_check(page) -> bool:
+    try:
+        return any(m in (page.content() or "").lower() for m in SCORED_MARKS)
+    except Exception:
+        return False
 
 
 def submission_confirmed(page, before_url: str = "") -> str:
