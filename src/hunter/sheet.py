@@ -349,9 +349,16 @@ class Sheet:
         params = {"valueRenderOption": "FORMULA"} if formulas else {}
         return self._get(f"/values/{rng}", params).get("values", [])
 
-    def _write(self, blocks: list[tuple[str, list[list]]]) -> None:
+    def _write(self, blocks: list[tuple[str, list[list]]], *, raw: bool = False) -> None:
+        """USER_ENTERED by default, because most writes here are HYPERLINK formulas.
+
+        raw=True for a value that must survive as the text it is. Sheets parses
+        "2026-09-15" under USER_ENTERED into a date value, and a cell with no date
+        format then displays the serial number: the first application hunter ever
+        sent recorded its Applied Date as 46280.
+        """
         self._post("/values:batchUpdate", {
-            "valueInputOption": "USER_ENTERED",
+            "valueInputOption": "RAW" if raw else "USER_ENTERED",
             "data": [{"range": rng, "values": values} for rng, values in blocks]})
 
     # ---------- reading ----------
@@ -772,7 +779,7 @@ class Sheet:
         if not when:
             raise SheetError("refusing to mark a row applied with no date")
         self._write([(cell_range("Application Status", row_number), [[APPLIED_STATUS]]),
-                     (cell_range("Applied Date", row_number), [[when]])])
+                     (cell_range("Applied Date", row_number), [[when]])], raw=True)
         for header, expected in (("Application Status", APPLIED_STATUS),
                                  ("Applied Date", when)):
             back = self._values(cell_range(header, row_number), formulas=False) or [[""]]

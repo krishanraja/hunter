@@ -107,3 +107,34 @@ def test_a_bookkeeping_failure_never_swallows_the_send(wired):
     assert any("FAILED: sheets is down" in n for n in notes)
     assert sheet.verdicts_set == {71: verdicts.APPLIED}
     assert wired["mail"]
+
+
+def test_the_applied_date_is_written_as_text_not_a_date_value():
+    """The first application hunter ever sent recorded its Applied Date as 46280.
+
+    Sheets parses "2026-09-15" under USER_ENTERED into a date value, and a cell
+    with no date format displays the serial number. The date has to survive as
+    the text it is.
+    """
+    from hunter.sheet import Sheet
+
+    seen = {}
+
+    class Spy(Sheet):
+        def __init__(self): pass
+        def _write(self, blocks, *, raw=False):
+            seen["raw"] = raw
+            seen["blocks"] = blocks
+        def _values(self, rng, formulas=True):
+            if "Application Status" in str(seen.get("last", "")):
+                pass
+            return [["x"]]
+
+    spy = Spy()
+    # read-back is exercised by the live path; here only the write mode matters
+    try:
+        spy.mark_applied(71, when="2026-09-15")
+    except Exception:
+        pass
+    assert seen["raw"] is True
+    assert any("2026-09-15" in str(v) for _, v in seen["blocks"])
