@@ -3447,13 +3447,19 @@ def send_applied_receipt(cfg: Config, *, company: str, role: str, when: str,
     acknowledgement to quote.
     """
     from . import notify
-    lines = "".join(f"<li>{n}</li>" for n in (notes or []))
-    shot = (f"<p><a href=\"{screenshot}\">the form as it was submitted</a></p>"
+    from .apply.approval import _esc
+    lines = "".join(f"<li>{_esc(n)}</li>" for n in (notes or []))
+    shot = (f"<p><a href=\"{_esc(screenshot)}\">the form as it was submitted</a></p>"
             if screenshot else "")
     if confirmation:
+        # Escaped, because this is no longer hunter's own words. The browser
+        # extension sends what the employer's page said, so the bytes come from
+        # a page hunter does not control, and this receipt is an email Krish
+        # trusts as hunter's own. Unescaped, a page could put a link or a second
+        # Submit button inside it.
         proof = (f"<p style='border-left:3px solid #1a7f37;background:#f2fbf4;"
                  f"padding:10px 12px;margin:0 0 14px'>The form acknowledged it: "
-                 f"<strong>{confirmation}</strong></p>")
+                 f"<strong>{_esc(confirmation)}</strong></p>")
     else:
         proof = ("<p style='border-left:3px solid #c47f00;background:#fffbf0;"
                  "padding:10px 12px;margin:0 0 14px'><strong>Pressed, but the "
@@ -3835,12 +3841,18 @@ def cmd_close_submitted(apply: bool = False) -> int:
           f"{'' if apply else ' (dry run, pass --apply)'}")
     for r in open_ones:
         print(f"\n  {r['company']} {r['role'][:50]}")
-        print(f"    {r.get('failure_reason') or 'submitted'}")
+        print(f"    {r.get('failure_reason') or 'no confirmation recorded'}")
         if not apply:
             continue
+        # Passed through as it is, empty included. send_applied_receipt branches
+        # on it: something means "the form acknowledged it: <quote>", nothing
+        # means "Pressed, but the form showed no confirmation" and an UNCONFIRMED
+        # subject line. Substituting the word "submitted" for an empty value made
+        # every receipt claim an acknowledgement, which is the distinction
+        # submit.py keeps on purpose and the reason this receipt exists.
         record_applied(cfg, canon, sheet, r["job_id"],
                        company=r.get("company") or "", role=r.get("role") or "",
-                       confirmation=r.get("failure_reason") or "submitted")
+                       confirmation=(r.get("failure_reason") or "").strip())
     return 0
 
 

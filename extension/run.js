@@ -119,28 +119,49 @@
   // else: it runs in the cloud and the click happens here. Without this the
   // sheet keeps saying "Not applied" on a role that is applied for, which is
   // exactly the silence this whole system was built to stop.
-  const startedAt = location.href;
+  //
+  // What counts as pressed is ONLY the form saying so in its own words. An
+  // earlier version also treated any navigation off the /application path as a
+  // submission, which made clicking back to the job description record an
+  // application that was never sent: the sheet would move the role to Applied,
+  // the receipt email would claim the form acknowledged it, and hunter would
+  // then skip his real APPROVE for that role. A navigation is not evidence.
+  //
+  // Nothing is lost by dropping it. A real submission that only redirects is
+  // caught either when the new page carries one of these marks, since the check
+  // runs on every tick and reads the live body, or by hunter's own watcher on
+  // the employer's "thanks for applying" email, which is better evidence than
+  // anything this script can see because it comes from the employer.
   const deadline = Date.now() + 30 * 60 * 1000;
   const seen = () => {
     const body = (document.body ? document.body.innerText : '').toLowerCase();
-    if (SUBMITTED_MARKS.some((m) => body.includes(m))) return 'the form said so';
-    if (location.href !== startedAt && !location.href.includes('/application')) {
-      return 'the form closed and moved to ' + location.href;
-    }
-    return '';
+    const hit = SUBMITTED_MARKS.find((m) => body.includes(m));
+    // The words themselves, so the receipt email quotes something real rather
+    // than hunter asserting a press nobody observed.
+    return hit ? 'the form said "' + hit + '"' : '';
   };
 
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 1500));
     const why = seen();
     if (!why) continue;
+    // Read the answer. A 4xx or 5xx does not throw, so the previous version
+    // painted the green "Hunter has it" banner over a write that never happened,
+    // which is the same lie in the opposite direction.
     try {
-      await fetch(api.replace(/\/payload$/, '/submitted'), {
+      const res = await fetch(api.replace(/\/payload$/, '/submitted'), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'omit',
         body: JSON.stringify({ token: cap.token, key: cap.key, evidence: why }),
       });
+      if (res.status === 410) {
+        const said = await res.json().catch(() => ({}));
+        banner(said.message || 'This application was replaced, so submitting it '
+          + 'was not recorded. Open the most recent email for this role.', 'bad');
+        return;
+      }
+      if (!res.ok) throw new Error('the server said ' + res.status);
       banner('Submitted. Hunter has it: the sheet will move this role to '
              + 'Applied.', 'good');
     } catch (e) {

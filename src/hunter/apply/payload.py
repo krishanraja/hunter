@@ -35,7 +35,7 @@ FILLABLE = ("text", "choice", "typeahead", "file")
 #
 # Raise this whenever the extension gains an ability a payload depends on, and
 # raise extension/manifest.json to match.
-MIN_EXTENSION = "1.1.0"
+MIN_EXTENSION = "1.2.0"
 
 # Playwright's own pseudo-classes. Real to Playwright, a syntax error to
 # document.querySelectorAll, so they are dead weight in a payload a browser has
