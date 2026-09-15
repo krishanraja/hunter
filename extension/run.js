@@ -66,11 +66,65 @@
     'main.zip, extract it over your hunter folder, then press the reload arrow ' +
     'on the Hunter card at chrome://extensions and reopen this link.';
 
+  // ---- The watch, and why it lives in storage ------------------------------
+  //
+  // A content script dies with its document. Greenhouse posts the form and loads
+  // its own confirmation page, which destroys this script before the next tick,
+  // and the copy Chrome injects into the new document finds no #hunter= fragment
+  // in the new URL and gives up. So a fresh copy would never report the
+  // submission, the sheet would go on saying "Not applied", and the one thing
+  // that closes the loop would be the employer's own receipt email, which only
+  // some employers send.
+  //
+  // Extension storage survives the navigation. Local rather than session, because
+  // a content script cannot read session storage without a service worker to
+  // widen its access level, and this needs no service worker at all.
+  const WATCH = 'hunter_watch';
+  const basePath = () => location.pathname.replace(/\/application\/?$/, '');
+
+  function marksIn() {
+    const body = (document.body ? document.body.innerText : '').toLowerCase();
+    return SUBMITTED_MARKS.filter((m) => body.includes(m));
+  }
+
+  async function saveWatch(w) {
+    try { await chrome.storage.local.set({ [WATCH]: w }); } catch (e) { /* best effort */ }
+  }
+  async function clearWatch() {
+    try { await chrome.storage.local.remove(WATCH); } catch (e) { /* best effort */ }
+  }
+  async function loadWatch() {
+    try {
+      const got = await chrome.storage.local.get([WATCH]);
+      return (got && got[WATCH]) || null;
+    } catch (e) { return null; }
+  }
+
+  // A watch only resumes on the SAME job. Same origin and same path prefix, so a
+  // watch left over from one application cannot fire on a different job he opens
+  // on the same board within the half hour.
+  async function resumable() {
+    const w = await loadWatch();
+    if (!w || !w.token || !w.key) return null;
+    if (w.origin !== location.origin) return null;
+    if (!w.path || location.pathname.indexOf(w.path) !== 0) return null;
+    if (!w.until || Date.now() > w.until) { await clearWatch(); return null; }
+    return w;
+  }
+
   const cap = capability();
-  if (!cap) return;
+  const resumed = cap ? null : await resumable();
+  if (!cap && !resumed) return;
 
   const store = await chrome.storage.sync.get(['api']);
   const api = (store && store.api) || DEFAULT_API;
+
+  if (resumed) {
+    // The page after the submit. Nothing to fill, nothing to say unless a
+    // confirmation appears, and no payload is fetched: the capability is used
+    // only to report, which is all a confirmation page needs it for.
+    return watchFor(resumed);
+  }
 
   banner('Hunter is filling this form...', 'work');
   let payload;
@@ -115,45 +169,41 @@
            'Read it and press Submit.', 'good');
   }
 
-  // Then watch for him pressing it. Hunter cannot see the click from anywhere
-  // else: it runs in the cloud and the click happens here. Without this the
-  // sheet keeps saying "Not applied" on a role that is applied for, which is
-  // exactly the silence this whole system was built to stop.
+  // ---- Then watch for him pressing it -------------------------------------
   //
-  // What counts as pressed is ONLY the form saying so in its own words. An
-  // earlier version also treated any navigation off the /application path as a
-  // submission, which made clicking back to the job description record an
-  // application that was never sent: the sheet would move the role to Applied,
-  // the receipt email would claim the form acknowledged it, and hunter would
-  // then skip his real APPROVE for that role. A navigation is not evidence.
+  // Hunter cannot see the click from anywhere else: it runs in the cloud and the
+  // click happens here.
   //
-  // Nothing is lost by dropping it. A real submission that only redirects is
-  // caught either when the new page carries one of these marks, since the check
-  // runs on every tick and reads the live body, or by hunter's own watcher on
-  // the employer's "thanks for applying" email, which is better evidence than
-  // anything this script can see because it comes from the employer.
-  const deadline = Date.now() + 30 * 60 * 1000;
-  const seen = () => {
-    const body = (document.body ? document.body.innerText : '').toLowerCase();
-    const hit = SUBMITTED_MARKS.find((m) => body.includes(m));
-    // The words themselves, so the receipt email quotes something real rather
-    // than hunter asserting a press nobody observed.
-    return hit ? 'the form said "' + hit + '"' : '';
-  };
-
-  while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 1500));
-    const why = seen();
-    if (!why) continue;
-    // Read the answer. A 4xx or 5xx does not throw, so the previous version
-    // painted the green "Hunter has it" banner over a write that never happened,
-    // which is the same lie in the opposite direction.
+  // Two things this gets wrong if written the obvious way, both found by review
+  // before he hit either.
+  //
+  // ONE. What counts as pressed is only the form saying so in its OWN words, and
+  // only words that were not already there. An earlier version treated any
+  // navigation off the /application path as a submission, so clicking back to the
+  // job description recorded an application that was never sent. Dropping that
+  // left a subtler version of the same bug: "Application complete" is an ordinary
+  // step label on a multi step form, and matching the whole body meant the first
+  // tick, 1.5 seconds after filling, could report a submission before he had read
+  // anything. So the marks present at the start are the baseline and are ignored
+  // for ever after; only a mark that APPEARS counts.
+  //
+  // TWO. A content script dies with its document. Greenhouse posts the form and
+  // loads its own confirmation page, which destroys this script before the next
+  // tick, and the re-injected copy finds no #hunter= fragment in the new URL and
+  // gives up. So the watch is written to extension storage, which survives the
+  // navigation, and a fresh copy of this script on the same job path picks it up
+  // and looks for a new mark without filling anything.
+  // Tell hunter, and say honestly whether it heard. A 4xx or 5xx does not throw,
+  // so an earlier version painted the green "Hunter has it" banner over a write
+  // that never happened, which is the same lie in the opposite direction.
+  async function report(watch, why) {
+    await clearWatch();
     try {
-      const res = await fetch(api.replace(/\/payload$/, '/submitted'), {
+      const res = await fetch(watch.api.replace(/\/payload$/, '/submitted'), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'omit',
-        body: JSON.stringify({ token: cap.token, key: cap.key, evidence: why }),
+        body: JSON.stringify({ token: watch.token, key: watch.key, evidence: why }),
       });
       if (res.status === 410) {
         const said = await res.json().catch(() => ({}));
@@ -168,6 +218,36 @@
       banner('Submitted, but hunter could not be told (' + e.message +
              '). Tell Claude so the sheet gets updated.', 'bad');
     }
-    return;
   }
+
+  // A mark that was NOT on the page when the watch started.
+  function fresh(watch) {
+    const before = watch.baseline || [];
+    const hit = marksIn().find((m) => before.indexOf(m) < 0);
+    // The words themselves, so the receipt email quotes something real rather
+    // than hunter asserting a press nobody observed.
+    return hit ? 'the form said "' + hit + '"' : '';
+  }
+
+  async function watchFor(watch) {
+    while (Date.now() < watch.until) {
+      const why = fresh(watch);
+      if (why) return report(watch, why);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    // Out of time. Clear it so a stale watch cannot fire on some later page.
+    await clearWatch();
+  }
+
+  const watch = {
+    token: cap.token,
+    key: cap.key,
+    api: api,
+    origin: location.origin,
+    path: basePath(),
+    baseline: marksIn(),
+    until: Date.now() + 30 * 60 * 1000,
+  };
+  await saveWatch(watch);
+  return watchFor(watch);
 })();

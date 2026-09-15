@@ -3376,6 +3376,15 @@ def report_stalled_approvals(cfg: Config, *, apply: bool = False) -> list[str]:
     return stuck
 
 
+class _SheetNotWritten(Exception):
+    """The sheet write did not land, so nothing may record the role as done.
+
+    Not an error anyone handles: it exists so the ledger patch is skipped by the
+    same control flow that reports the failure, rather than by a second condition
+    that could drift away from the first one.
+    """
+
+
 def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
                    company: str, role: str, screenshot: str = "",
                    confirmation: str = "", after_png: bytes = b"",
@@ -3404,11 +3413,20 @@ def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
     hits = [r for r in rows
             if ((r.company or "").strip().lower(), (r.role or "").strip().lower()) == want]
     target = hits[0] if len(hits) == 1 else None
+    # Whether the sheet actually took it. Nothing below may latch on a write that
+    # did not happen: the ledger patch used to run either way, and
+    # cmd_close_submitted skips any row already carrying an applied state, so one
+    # failed match meant the Pipeline row read "Not applied" for ever on an
+    # application that was sent. That is the exact condition this function exists
+    # to remove, so a failure has to leave the work retriable.
+    wrote_sheet = False
     if target is None:
         note.append(f"{len(hits)} Pipeline rows match {company} / {role}; "
-                    f"sheet not updated, do it by hand")
+                    f"sheet NOT updated and the ledger left open so the next run "
+                    f"retries. Fix the company or role text, or do the row by hand")
     else:
         rn = target.row_number
+        failures = 0
         for what, fn in (
                 ("Application Status and Applied Date",
                  lambda: sheet.mark_applied(rn, when=today)),
@@ -3418,9 +3436,17 @@ def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
                 fn()
                 note.append(f"sheet row {rn}: wrote {what}")
             except Exception as e:
+                failures += 1
                 note.append(f"sheet row {rn}: {what} FAILED: {e}")
+        wrote_sheet = failures == 0
 
+    if not wrote_sheet:
+        # Say it once more, at the end, where he reads it.
+        note.append("NOT marked done in Supabase, so close-submitted will try "
+                    "this role again on the next hourly run")
     try:
+        if not wrote_sheet:
+            raise _SheetNotWritten()
         # "Applied", not "submitted". Two writers of this one column disagreed:
         # this one wrote "submitted" and sync_applied_state writes "Applied" from
         # the sheet's own Verdict vocabulary. cmd_close_submitted skips a row only
@@ -3433,6 +3459,8 @@ def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
         db_patch(cfg, "hunter_seen_roles", {"job_id": job_id},
                  {"application_state": APPLIED_STATE, "applied_at": NOW()})
         note.append(f"hunter_seen_roles: application_state {APPLIED_STATE}")
+    except _SheetNotWritten:
+        pass
     except Exception as e:
         note.append(f"hunter_seen_roles patch FAILED: {e}")
 

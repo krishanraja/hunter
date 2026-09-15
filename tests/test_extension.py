@@ -157,8 +157,13 @@ def test_only_the_form_saying_so_counts_as_a_submission():
     assert "startedAt" not in body, "the navigation test is gone, not commented out"
     # And the evidence quotes the words it matched, so the receipt email can quote
     # something real rather than asserting a press nobody observed.
-    assert "SUBMITTED_MARKS.find" in body
     assert "the form said" in body
+    # A phrase already on the page is the baseline and never counts. Without this,
+    # "Application complete" as a step label on a multi step form reports a
+    # submission 1.5 seconds after the fill, before he has read anything.
+    assert "baseline" in body
+    # What the baseline actually does is checked by running the file, in
+    # test_what_the_extension_decides_when_it_actually_runs.
 
 
 def test_a_refused_write_is_not_reported_as_success():
@@ -182,7 +187,12 @@ def test_it_watches_without_pressing_anything():
 
 
 def test_it_gives_up_watching_rather_than_running_for_ever():
-    assert "deadline" in RUN and "30 * 60 * 1000" in RUN
+    """And the watch it stored has to expire too, or one left behind could fire on
+    a page he opens days later."""
+    assert "30 * 60 * 1000" in RUN
+    body = code_only(RUN)
+    assert "Date.now() < watch.until" in body, "the loop has an end"
+    assert "Date.now() > w.until" in body, "and a stored watch is checked against it"
 
 
 def test_a_failure_to_report_is_told_to_him():
@@ -241,3 +251,42 @@ def test_the_version_compare_gets_the_awkward_cases_right():
         f"if (older({m!r}, {n!r}) !== {str(w).lower()}) "
         f"throw new Error({m!r} + ' vs ' + {n!r});" for m, n, w in cases)
     subprocess.run([node, "-e", script], check=True, timeout=30)
+
+
+def test_what_the_extension_decides_when_it_actually_runs():
+    """The six behaviours that decide whether a role is recorded as applied.
+
+    Reading the source for the right strings cannot answer any of them, so
+    tests/extension_behaviour.mjs builds a page, a chrome API and a fetch, runs the
+    real file, and checks what it does:
+
+      a confirmation phrase already on the page is the baseline, never a report.
+        "Application complete" is an ordinary step label on a multi step form, and
+        the first tick runs 1.5 seconds after the fill, before he has read anything
+
+      a mark that APPEARS is reported once, quoting the words it matched
+
+      a submission that navigates is still reported. A content script dies with its
+        document, Greenhouse loads its own confirmation page, and the re-injected
+        copy finds no capability in the new URL
+
+      a watch does not fire on a different job on the same board
+
+      an expired watch is dropped rather than fired
+
+      the watch is stored BEFORE the page can navigate, which is the half that
+        makes the resume reachable in a real browser rather than only in a harness
+        that pre-seeded storage
+    """
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    root = EXT.parent
+    out = subprocess.run(
+        [node, str(root / "tests" / "extension_behaviour.mjs"),
+         str(EXT / "run.js")],
+        capture_output=True, text=True, timeout=180, cwd=root)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "all six hold" in out.stdout, out.stdout

@@ -85,9 +85,16 @@ def test_two_matching_rows_stamp_neither(wired):
                      role="Head of GTM", summary=notes)
     assert sheet.applied == {}
     assert sheet.verdicts_set == {}
-    assert any("do it by hand" in n for n in notes)
-    # The ledger and the receipt still happen: the application IS sent.
-    assert wired["patch"] and wired["mail"]
+    assert any("do the row by hand" in n for n in notes)
+    # And nothing records the role as done, so the next hourly run tries again.
+    # The ledger patch used to run either way, and cmd_close_submitted skips any
+    # row already carrying an applied state, so one failed match meant the
+    # Pipeline row read "Not applied" for ever on an application that was sent.
+    assert not wired["patch"], "no ledger write when the sheet was not written"
+    assert any("close-submitted will try this role again" in n for n in notes)
+    # The receipt still goes out, because the application IS sent and he has to
+    # know the sheet needs a hand. Only the "this role is done" write is withheld.
+    assert wired["mail"]
 
 
 def test_no_matching_row_still_tells_him(wired):
