@@ -1943,10 +1943,13 @@ def cmd_dedupe_db() -> int:
                   "presented_at,status,url,job_url",
         "status": "neq.duplicate", "limit": "5000"})
     groups: dict = {}
+    exact: set = set()
     for r in rows:
         # one ATS posting is one posting whatever the incumbent called it;
         # without a key, the squashed company plus the title decides
         key = ats_key(r.get("url") or r.get("job_url"))
+        if key:
+            exact.add(key)
         groups.setdefault(
             key or (_squash(r.get("company") or ""), _norm_title(r.get("title") or "")),
             []).append(r)
@@ -1963,9 +1966,16 @@ def cmd_dedupe_db() -> int:
 
         ranked = sorted(group, key=rank, reverse=True)
         keeper, losers = ranked[0], ranked[1:]
-        protected = [r for r in losers
-                     if r.get("krish_verdict")
-                     or (r.get("package_status") or "none") != "none"]
+        # Standing protects a row whose identity was INFERRED from a company and
+        # a title, because that match can be wrong and discarding a role Krish
+        # judged would be worse than a duplicate. It protects nothing when both
+        # rows carry the same ATS posting URL: that is not an inference, it is
+        # the same application twice, and holding it is how one Harvey posting
+        # sent two approval emails.
+        protected = [] if ident in exact else [
+            r for r in losers
+            if r.get("krish_verdict")
+            or (r.get("package_status") or "none") != "none"]
         if protected:
             held += 1
             print(f"HELD {ident[0]}/{ident[1]}: more than one row has standing; "
@@ -2919,7 +2929,8 @@ def cmd_bank_seed(apply: bool = False) -> int:
 
 
 def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
-                    bank=None, summary: str = "", hook: str = ""):
+                    bank=None, summary: str = "", hook: str = "",
+                    draft_essays: bool = True):
     """(FillPlan, Audit) for one approved role. No network writes, no mail.
 
     Shared by approvals and, later, submit, so the plan the email shows and the
@@ -2937,7 +2948,60 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
                               jd_url=role.jd_url, role_location=role.location,
                               summary=summary, hook=hook,
                               attachment_style=au.attachment_style)
+    # The open questions. FillPlan has carried an `essays` slot since it was
+    # written and nothing ever filled it, so "What makes you excited about the
+    # ElevenLabs mission?" came back blank on every form since the first
+    # application. Drafted from the same evidence the cover letter is traced
+    # against and put through the same voice gate, then flagged, because these
+    # are the sentences most likely to need his judgement.
+    if draft_essays:
+        from .apply.resolve import NEEDS_ESSAY
+        questions = [f.label for f in plan.fields
+                     if f.unresolved
+                     and (f.reason or "").startswith(NEEDS_ESSAY)]
+        if questions:
+            notes: list[str] = []
+            drafted = _draft_essays(cfg, sheet, role, questions, notes)
+            for line in notes:
+                plan.notes.append(line)
+            if drafted:
+                plan = fill.build_payload(
+                    spec, bank, company=role.company, role=role.title,
+                    jd_url=role.jd_url, role_location=role.location,
+                    summary=summary, hook=hook, essays=drafted,
+                    attachment_style=au.attachment_style)
+                plan.notes.extend(notes)
     return plan, au, role
+
+
+def _draft_essays(cfg: Config, sheet: Sheet, role, questions: list[str],
+                  notes: list[str]) -> dict[str, str]:
+    """Answers to the open questions, or nothing and a reason for each."""
+    from .apply import essays as essays_mod, gtmseed
+    from .apply.infobank import load_bank
+    from .docbuild import DocBuild
+    from .package.build import read_master_facts
+    from .package.voicegate import build_evidence
+    try:
+        db = DocBuild(GoogleOAuth(cfg).access_token())
+        facts = read_master_facts(db)
+        bank = load_bank(lambda tab: sheet.read_tab_formulas(f"{tab}!A1:Z400"))
+        evidence = build_evidence(
+            facts.cv_master_text,
+            "\n".join(bank.profile.values()),
+            "\n".join(bank.interview.values()),
+            "\n".join(e.value for e in bank.entries.values()),
+            cfg.optional("hunter_ai_gtm_evidence") or "",
+            role.jd_text or "")
+        banned = tuple(bank.banned_phrases) + gtmseed.NAME_VARIANTS_BANNED
+    except Exception as e:
+        notes.append(f"NOT drafted: evidence unreadable "
+                     f"({e.__class__.__name__}: {str(e)[:120]})")
+        return {}
+    return essays_mod.draft_all(cfg, questions, company=role.company,
+                                role=role.title, jd_text=role.jd_text or "",
+                                evidence=evidence, banned_phrases=banned,
+                                notes=notes)
 
 
 def hunt_url_for(cfg: Config, job_id: str) -> str:
@@ -2953,6 +3017,41 @@ def hunt_url_for(cfg: Config, job_id: str) -> str:
         return ""
     from urllib.parse import quote
     return f"{base}/#/people?lane=bridges&job={quote(job_id)}"
+
+
+def posting_key(row: dict) -> str:
+    """One posting, however many role rows point at it.
+
+    The employer's form is what is being applied to, so its URL is the identity
+    that matters. job_id is not: the scheme changed between two sweeps and one
+    Harvey posting ended up under `harvey:head-gtm-strategy-ops-amer` and
+    `harvey:head-of-gtm-strategy-operations-amer`, which are two ids for one
+    application.
+    """
+    url = (row.get("job_url") or row.get("url") or "").strip().lower()
+    return url.split("#")[0].split("?")[0].rstrip("/")
+
+
+def live_postings(cfg: Config) -> dict[str, tuple[str, str]]:
+    """posting_key -> (token, state) for every approval still in play."""
+    from .apply import approval
+    states = (approval.AWAITING, approval.APPROVED, approval.SUBMITTED)
+    live = db_get(cfg, approval.TABLE,
+                  {"select": "token,state,job_id",
+                   "state": f"in.({','.join(states)})", "limit": "500"})
+    if not live:
+        return {}
+    ids = sorted({r["job_id"] for r in live if r.get("job_id")})
+    rows = db_get(cfg, "hunter_seen_roles",
+                  {"select": "job_id,job_url,url",
+                   "job_id": f"in.({','.join(ids)})", "limit": "500"})
+    by_id = {r["job_id"]: posting_key(r) for r in rows}
+    out: dict[str, tuple[str, str]] = {}
+    for r in live:
+        key = by_id.get(r.get("job_id") or "")
+        if key:
+            out.setdefault(key, (r["token"], r["state"]))
+    return out
 
 
 def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -> int:
@@ -2972,6 +3071,10 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     params = {"select": "*", "package_status": "eq.built",
+              # A row the dedupe already marked is not a second application, it
+              # is the same one twice. It was marked and then ignored here, so
+              # two Harvey emails went out for one posting.
+              "status": "neq.duplicate",
               "order": "package_built_at.desc", "limit": "50"}
     if job_id:
         params["job_id"] = f"eq.{job_id}"
@@ -2985,18 +3088,21 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
     oauth = GoogleOAuth(cfg)
     db = DocBuild(oauth.access_token())
     sent = 0
+    # One live approval per POSTING, not per row. The job_id scheme changed
+    # between two sweeps, so one Harvey posting arrived under two ids; each got
+    # its own token and Krish got the same application twice. The employer's form
+    # is the thing being applied to, so its URL is what has to be unique.
+    taken = live_postings(cfg)
     for row in rows:
-        live = [r for r in db_get(cfg, approval.TABLE,
-                                 {"select": "token,state",
-                                  "job_id": f"eq.{row['job_id']}"})
-                if r["state"] in (approval.AWAITING, approval.APPROVED,
-                                  approval.SUBMITTED)]
-        if live:
-            print(f"skip {row['job_id']}: {live[0]['state']} token already "
-                  f"{live[0]['token']}")
+        key = posting_key(row)
+        if key and key in taken:
+            print(f"skip {row['job_id']}: {taken[key][1]} token already "
+                  f"{taken[key][0]} for this same posting")
             continue
         plan, au, role = build_fill_plan(cfg, sheet, row, bank=bank)
         token = approval.new_token(row["job_id"])
+        if key:
+            taken[key] = (token, "awaiting")
         attachments: list[tuple[str, bytes]] = []
         attachments_by_kind: dict[str, bytes] = {}
         attachment_names: dict[str, str] = {}

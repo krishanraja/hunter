@@ -1,0 +1,134 @@
+"""Drafting an answer to an application's open question.
+
+Krish: "the two questions have no answer. I thought you had enough of a bank of
+information to draft these answers." The material did exist and nothing was using
+it: FillPlan carried an `essays` slot from the day it was written and nothing
+ever filled it, so every open question on every form came back blank.
+
+The risk in fixing that is the obvious one. A drafted answer goes out under his
+name, so it must be traceable to his own record and must fail closed.
+"""
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from hunter.apply import essays
+
+
+class Cfg:
+    def __init__(self, key="k"): self._key = key
+    def optional(self, name, default=None):
+        if name == "hunter_anthropic_api_key":
+            return self._key
+        return default or "claude-opus-5"
+
+
+from hunter.package import voicegate
+
+# Built the way the real caller builds it: one lowercased haystack. Passing raw
+# text instead would not loosen the gate, it would defeat it.
+EVIDENCE = voicegate.build_evidence(
+    "Krish Raja took Nine Entertainment's data and automation line from $9m to "
+    "$61m over three years. He ran a 14-agent fleet at Mindmake. He worked at "
+    "Microsoft. Nine was the employer.")
+
+
+def fake_model(answer, monkeypatch, *, raw=None):
+    class Block:
+        type = "text"
+        def __init__(self, t): self.text = t
+
+    class Resp:
+        def __init__(self, t): self.content = [Block(t)]
+
+    class Messages:
+        def create(self, **kw):
+            Messages.seen = kw
+            return Resp(raw if raw is not None else json.dumps({"answer": answer}))
+
+    class Client:
+        def __init__(self, **kw): self.messages = Messages()
+
+    import sys, types
+    mod = types.ModuleType("anthropic")
+    mod.Anthropic = Client
+    monkeypatch.setitem(sys.modules, "anthropic", mod)
+    return Messages
+
+
+def draft(answer, monkeypatch, evidence=EVIDENCE, **kw):
+    fake_model(answer, monkeypatch, **kw)
+    return essays.draft_one(Cfg(), question="Why us?", company="ElevenLabs",
+                            role="GM UK", jd_text="jd", evidence=evidence)
+
+
+def test_an_answer_traceable_to_his_record_is_kept(monkeypatch):
+    got, why = draft("I took Nine's data line from $9m to $61m, and I have run "
+                     "a 14-agent fleet in production since. That is the "
+                     "unglamorous half of this and it is the half I care about, "
+                     "which is why the enterprise side of your product reads as "
+                     "the serious one to me.", monkeypatch)
+    assert why == "" and "$61m" in got
+
+
+def test_an_invented_number_is_rejected_rather_than_sent(monkeypatch):
+    """The whole reason this goes through the voice gate. A number he never
+    earned, under his name, on an application he cannot recall."""
+    got, why = draft("I grew that business from $9m to $250m in eleven months "
+                     "and led a team of four hundred people across nine markets, "
+                     "which is the experience I would bring to this role here.",
+                     monkeypatch)
+    assert got == ""
+    assert "voice gate" in why
+
+
+def test_no_evidence_means_no_draft(monkeypatch):
+    """Passing an empty haystack would not loosen the gate, it would disable it."""
+    got, why = draft("anything at all", monkeypatch, evidence="   ")
+    assert got == "" and "no evidence" in why
+
+
+def test_a_draft_that_runs_long_is_refused(monkeypatch):
+    got, why = draft("I took Nine from $9m to $61m. " * 60, monkeypatch)
+    assert got == ""
+    assert "characters" in why
+
+
+def test_a_model_that_does_not_answer_in_json_fails_closed(monkeypatch):
+    got, why = draft("", monkeypatch, raw="here you go, mate")
+    assert got == "" and "JSON" in why
+
+
+def test_a_missing_key_is_named_rather_than_crashing(monkeypatch):
+    fake_model("x", monkeypatch)
+    got, why = essays.draft_one(Cfg(key=""), question="q", company="c", role="r",
+                                jd_text="", evidence=EVIDENCE)
+    assert got == "" and "hunter_anthropic_api_key" in why
+
+
+def test_every_question_gets_an_answer_or_a_reason(monkeypatch):
+    """A silent failure here is a blank box on a real application."""
+    fake_model("I took Nine's data and automation line from $9m to $61m, which "
+               "is the closest thing I have to the job you are describing and "
+               "the reason I am writing at all about this particular role.",
+               monkeypatch)
+    notes: list[str] = []
+    out = essays.draft_all(Cfg(), ["Why us?", "A hard problem?"],
+                           company="c", role="r", jd_text="", evidence=EVIDENCE,
+                           notes=notes)
+    assert len(out) == 2
+    assert len(notes) == 2 and all("drafted" in n for n in notes)
+
+
+def test_a_banned_phrase_is_refused(monkeypatch):
+    """The naming law applies to a drafted answer exactly as it does to the
+    letter."""
+    fake_model("I took Nine from $9m to $61m while at Mindmaker, which is the "
+               "work closest to what you are hiring for in this particular role.",
+               monkeypatch)
+    got, why = essays.draft_one(Cfg(), question="q", company="c", role="r",
+                                jd_text="", evidence=EVIDENCE,
+                                banned_phrases=("Mindmaker",))
+    assert got == "" and "voice gate" in why

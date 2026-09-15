@@ -154,10 +154,20 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
           "background:#1a7f37;color:#fff;text-decoration:none;border-radius:6px;"
           "font-weight:700;font-size:16px'>Open the filled form</a>")
         A("</div>")
-        A("<p style='color:#666;font-size:13px;margin:0 0 18px'>Opens the real "
+        A("<p style='color:#666;font-size:13px;margin:0 0 6px'>Opens the real "
           "application with every field already filled and your CV attached. Read "
           "it and press Submit yourself. Hunter never presses it, and this link "
           "cannot: it is a link to the employer's own form.</p>")
+        # Said plainly, because the first time this went out the form opened
+        # empty and nothing on the page explained why. A browser may not let a
+        # web page attach a file, so the extension is not a convenience, it is
+        # the only thing that can put the CV there.
+        A("<p style='color:#a4262c;font-size:13px;margin:0 0 18px'>"
+          "<strong>Needs the Hunter extension installed in Chrome.</strong> "
+          "Without it this button opens the employer's form empty, because a "
+          "web page is not allowed to attach a file and only an extension can. "
+          "Install: chrome://extensions, turn on Developer mode, Load unpacked, "
+          "choose the <code>extension</code> folder.</p>")
 
     A("<div style='margin:0 0 20px'>")
     A(f"<a href=\"{approve_link}\" style='display:inline-block;padding:11px 20px;"
@@ -274,7 +284,10 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
         T += [f"  {l.label}: {l.value} ({l.source})" for l in flagged]
         T += [f"  {n}" for n in notes]
     if open_url:
-        T += ["", "OPEN THE FILLED FORM (then press Submit yourself):", open_url]
+        T += ["", "OPEN THE FILLED FORM (then press Submit yourself):", open_url,
+              "Needs the Hunter extension installed in Chrome. Without it this "
+              "opens the form EMPTY, because a web page is not allowed to attach "
+              "a file and only an extension can."]
     T += ["", f"Reply {APPROVE_WORD} on its own line to approve.",
           "Reply with anything else and it is treated as feedback.",
           "A minute later this form opens in your own Chrome, filled in, with "
