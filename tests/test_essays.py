@@ -99,9 +99,10 @@ def test_a_draft_that_runs_long_is_refused(monkeypatch):
     assert "characters" in why
 
 
-def test_a_model_that_does_not_answer_in_json_fails_closed(monkeypatch):
+def test_a_reply_that_is_not_an_answer_fails_closed(monkeypatch):
+    """Whatever the model returns, a blank or a scrap never reaches the form."""
     got, why = draft("", monkeypatch, raw="here you go, mate")
-    assert got == "" and "JSON" in why
+    assert got == "" and why
 
 
 def test_a_missing_key_is_named_rather_than_crashing(monkeypatch):
@@ -187,3 +188,46 @@ def test_it_gives_up_rather_than_looping_for_ever(monkeypatch):
     got, why = essays.draft_one(Cfg(), question="q", company="c", role="r",
                                 jd_text="", evidence=EVIDENCE)
     assert got == "" and "characters" in why
+
+
+def test_the_banned_words_are_in_the_prompt_not_only_the_gate(monkeypatch):
+    """The OpenAI answer died three times on the word "solutions" because
+    nothing had ever told the model not to use it. Telling it only after it has
+    already used one wastes a retry, and sometimes all of them."""
+    seen = fake_model("I took Nine's data and automation line from $9m to $61m "
+                      "over three years and ran a 14-agent fleet at Mindmake "
+                      "after that, which is the operating half of this job and "
+                      "the part I would bring to you first.", monkeypatch)
+    essays.draft_one(Cfg(), question="q", company="c", role="r", jd_text="",
+                     evidence=EVIDENCE, banned_phrases=("solutions", "leverage"))
+    sent = str(seen.seen["messages"][0]["content"])
+    assert "solutions" in sent and "leverage" in sent
+    assert "NEVER use" in sent
+
+
+def test_an_answer_wrapped_in_chatter_is_still_used(monkeypatch):
+    """A strict json.loads of the whole reply threw away a good answer because
+    the model put a sentence in front of it."""
+    good = ("I took Nine's data and automation line from $9m to $61m over three "
+            "years and ran a 14-agent fleet at Mindmake after that, which is the "
+            "operating half of this job and the part I would bring first. The "
+            "commercial side of a new technology is where I have spent sixteen "
+            "years, and it is the half that usually goes missing.")
+    fake_model("", monkeypatch,
+               raw='Sure, here you go:\n{"answer": %s}\nHope that helps.'
+                   % json.dumps(good))
+    got, why = essays.draft_one(Cfg(), question="q", company="c", role="r",
+                                jd_text="", evidence=EVIDENCE)
+    assert why == "" and got == good
+
+
+def test_a_plain_text_answer_is_accepted(monkeypatch):
+    good = ("I took Nine's data and automation line from $9m to $61m over three "
+            "years and ran a 14-agent fleet at Mindmake after that, which is the "
+            "operating half of this job and the part I would bring first. The "
+            "commercial side of a new technology is where I have spent sixteen "
+            "years, and it is the half that usually goes missing.")
+    fake_model("", monkeypatch, raw=good)
+    got, why = essays.draft_one(Cfg(), question="q", company="c", role="r",
+                                jd_text="", evidence=EVIDENCE)
+    assert why == "" and got == good

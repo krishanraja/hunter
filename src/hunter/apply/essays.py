@@ -75,10 +75,19 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
     if not key:
         return "", "no hunter_anthropic_api_key in system_config"
     model = cfg.optional("hunter_anthropic_model", "claude-opus-5")
+    # His banned list, up front. Telling the model only after it has already
+    # used one of them wastes a retry and sometimes all three: the OpenAI answer
+    # died three times on the word "solutions" because nothing had ever said not
+    # to use it.
+    forbidden = ""
+    if banned_phrases:
+        forbidden = ("\n\nNEVER use any of these words or phrases, in any form:\n"
+                     + "\n".join(f"- {b}" for b in sorted(set(banned_phrases))))
     prompt = (f"COMPANY: {company}\nROLE: {role}\n\n"
               f"QUESTION:\n{question}\n\n"
               f"JOB DESCRIPTION:\n{jd_text[:6000]}\n\n"
-              f"EVIDENCE (everything you may draw on):\n{evidence[:120000]}")
+              f"EVIDENCE (everything you may draw on):\n{evidence[:120000]}"
+              f"{forbidden}")
     client = anthropic.Anthropic(api_key=key)
     try:
         resp = client.messages.create(
@@ -118,16 +127,29 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
 
 
 def _parse(resp) -> tuple[str, str]:
+    """The answer, however the model chose to wrap it.
+
+    A strict json.loads of the whole reply threw away a good answer because the
+    model put a sentence in front of it. The JSON asked for is a container, not
+    the point, so this looks for the object anywhere in the reply and falls back
+    to the plain text when there is no object at all.
+    """
     raw = _text(resp).strip()
     if raw.startswith("```"):
-        raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0]
-    try:
-        answer = (json.loads(raw).get("answer") or "").strip()
-    except Exception:
-        return "", "the model did not return the JSON it was asked for"
-    if not answer:
-        return "", "the model returned an empty answer"
-    return answer, ""
+        raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    start, end = raw.find("{"), raw.rfind("}")
+    if start >= 0 and end > start:
+        try:
+            answer = (json.loads(raw[start:end + 1]).get("answer") or "").strip()
+            if answer:
+                return answer, ""
+        except Exception:
+            pass
+    # No object, or an object without the key. If what came back reads as the
+    # answer itself, use it: the alternative is a blank box on his application.
+    if raw and "{" not in raw and "}" not in raw:
+        return raw, ""
+    return "", f"could not find an answer in the reply: {raw[:120]!r}"
 
 
 def _problem(answer: str, evidence: str,
