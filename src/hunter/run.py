@@ -2842,14 +2842,26 @@ def cmd_gtm_seed(apply: bool = False) -> int:
     """
     from .apply import gtmseed
     cfg, _canon = build_context()
+
+    # The blocks come first. tailor.load_blocks raises when a key in BLOCK_KEYS has
+    # no approved block, and ai_native_gtm is in BLOCK_KEYS, so until these two
+    # rows exist every build fails.
+    print("approved blocks for the sixth family, ai_native_gtm:\n")
+    for cfg_key, block_key, text, present in gtmseed.block_plan(cfg):
+        state = "already present, will be REPLACED" if present else "new"
+        print(f"  {cfg_key}[{block_key}] ({state}, {len(text)} chars)")
+        print(f"    {text}\n")
+
     key, value, exists = gtmseed.plan(cfg)
     print(f"system_config.{key}: {len(value)} chars, "
           f"{'UPDATE existing key' if exists else 'INSERT new key'}"
           f"{'' if apply else ' (dry run, pass --apply to write)'}\n")
     print(value)
     if apply:
+        n_blocks = gtmseed.write_blocks(cfg)
+        print(f"\nwrote and read back {n_blocks} block map(s)")
         n = gtmseed.write(cfg)
-        print(f"\nwrote and read back {n} chars")
+        print(f"wrote and read back {n} chars of evidence")
         print("re-run: python -m hunter.run build <job_id>")
     return 0
 

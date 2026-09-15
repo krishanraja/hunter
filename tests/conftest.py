@@ -6,6 +6,8 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))  # for fake_docs
 
+from hunter.package.tailor import BLOCK_KEYS
+
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 
@@ -45,8 +47,10 @@ TEST_LETTER_BLOCKS = {
         "default_mirror": "building its commercial engine",
         "approved_at": "2026-08-31",
     }
-    for key in ["gm_market_builder", "commercial_strategy", "corp_dev_strategy",
-                "ai_transformation", "partnerships_alliances"]
+    # Driven off BLOCK_KEYS, not a second copy of the list. When ai_native_gtm was
+    # added as the sixth family the hardcoded five here failed load_blocks with
+    # "missing blocks", which is the right error in the wrong place.
+    for key in BLOCK_KEYS
 }
 TEST_CV_BLOCKS = {
     key: {

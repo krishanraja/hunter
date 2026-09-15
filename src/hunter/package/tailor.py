@@ -41,10 +41,39 @@ BLOCK_KEYS = [
     "corp_dev_strategy",
     "ai_transformation",
     "partnerships_alliances",
+    # Krish's call 2026-09-15. Distinct from ai_transformation: that one is putting
+    # AI into a company that sells something else, this one is selling for a
+    # company whose product IS AI. See AI_NATIVE_BLOCK below.
+    "ai_native_gtm",
 ]
 FALLBACK_BLOCK = "commercial_strategy"
 
 # Precedence order for hybrid titles; first match supplies the lead candidate.
+AI_NATIVE_BLOCK = "ai_native_gtm"
+
+# Titles that carry their own AI signal. Ranked above commercial_strategy, whose
+# pattern catches a bare "gtm".
+AI_NATIVE_TITLE = re.compile(
+    r"\bai.native\b|\bai\b[^,]{0,20}\b(?:gtm|go.to.market|revenue|commercial)\b"
+    r"|\b(?:gtm|go.to.market|revenue|commercial)\b[^,]{0,20}\bai\b")
+
+# The seats where an AI-native company changes which block is right. A partnerships
+# or corp dev seat has its own block that already fits an AI company; a GTM or
+# market-building seat does not.
+AI_NATIVE_PROMOTES = frozenset({"commercial_strategy", "gm_market_builder"})
+
+# What makes a posting an AI-native COMPANY rather than a company that mentions AI.
+# Every JD in this pipeline says "AI" at least once, so a single keyword decides
+# nothing; the test is how many distinct signals the JD carries.
+AI_NATIVE_JD_TERMS = (
+    "ai-native", "ai native", "frontier model", "foundation model",
+    "large language model", "llm", "generative ai", "genai", "ai agents",
+    "agentic", "ai product", "ai platform", "ai research", "ai lab",
+    "ai company", "ai adoption", "our models", "our model", "inference",
+    "prompt", "fine-tun", "ai-powered", "ai powered", "copilot",
+)
+AI_NATIVE_JD_THRESHOLD = 4
+
 FAMILY_PATTERNS: list[tuple[str, str]] = [
     ("partnerships_alliances",
      r"\bpartnership|\balliances?\b|\bpartner\b|\bchannel\b|\becosystem\b"),
@@ -54,6 +83,7 @@ FAMILY_PATTERNS: list[tuple[str, str]] = [
      r"\bcorporate development\b|\bcorp dev\b|\bcorporate strategy\b|\bvp,? strategy\b|\bvp of strategy\b|\bhead of strategy\b|\bdirector of strategy\b|\bstrategy and corporate\b"),
     ("ai_transformation",
      r"\bai chief of staff\b|\bchief of staff\b|\bhead of ai\b|\bai operations\b|\bgtm ai\b|\bai transformation\b|\bai enablement\b"),
+    (AI_NATIVE_BLOCK, AI_NATIVE_TITLE.pattern),
     ("commercial_strategy",
      r"\bchief commercial\b|\bcco\b|\bchief strategy officer\b|\bhead of commercial\b|\brevenue strategy\b|\bcommercial strategy\b|\bhead of gtm\b|\bgtm\b|\bcustomer success\b|\brevenue\b|\bsales\b"),
 ]
@@ -178,11 +208,33 @@ def assemble_hook(letter_blocks: dict, block_key: str, company: str,
 
 # ---------- deterministic family selection ----------
 
+def ai_native_signals(jd_text: str) -> list[str]:
+    """The distinct AI-native terms a JD carries. A count, not a keyword match."""
+    low = (jd_text or "").lower()
+    return sorted({t for t in AI_NATIVE_JD_TERMS if t in low})
+
+
 def select_candidates(title: str, jd_text: str = "") -> tuple[list[str], list[str]]:
-    """Returns (candidate block keys in precedence order, flags)."""
+    """Returns (candidate block keys in precedence order, flags).
+
+    jd_text was accepted and ignored until 2026-09-15. It has to be read, because
+    the signal that decides the ai_native_gtm family is usually the COMPANY rather
+    than the title: Harvey's "Head of GTM Strategy & Operations" carries no AI word
+    at all, matched commercial_strategy on its bare "gtm", and got a letter opening
+    on Captify's pricing and forecasting model. Right for a media business, wrong
+    for an AI company.
+    """
     hay = title.lower()
     candidates = [fam for fam, pat in FAMILY_PATTERNS if re.search(pat, hay)]
     flags: list[str] = []
+    if candidates and AI_NATIVE_BLOCK not in candidates \
+            and set(candidates) & AI_NATIVE_PROMOTES:
+        signals = ai_native_signals(jd_text)
+        if len(signals) >= AI_NATIVE_JD_THRESHOLD:
+            candidates = [AI_NATIVE_BLOCK] + candidates
+            flags.append(
+                f"AI-native company on {len(signals)} JD signals "
+                f"({', '.join(signals[:4])}), ai_native_gtm offered first")
     if not candidates:
         candidates = [FALLBACK_BLOCK]
         flags.append("weak archetype match, review the hook before sending")

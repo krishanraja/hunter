@@ -40,6 +40,45 @@ from .. import config
 
 CONFIG_KEY = "hunter_ai_gtm_evidence"
 
+# The sixth block family, Krish's call 2026-09-15. The existing five were written
+# for the seats he had already held; none of them is the GTM seat AT an AI company,
+# which is what the pipeline is now full of. commercial_strategy's pattern catches
+# a bare "gtm", so Harvey's "Head of GTM Strategy & Operations" landed there and
+# the letter opened on Captify's pricing and forecasting model: right for a media
+# business, wrong for this one.
+#
+# Written in the register of the five approved blocks, which run 271 to 330
+# characters for the letter and 349 to 399 for the CV summary, and closing on the
+# Level 5 line all five CV blocks share. Every number and name traces: the $254K
+# POC and AdFixus are in the master CV, the programs and the sectors are in the
+# evidence above.
+BLOCK_KEY = "ai_native_gtm"
+
+LETTER_BLOCK = {
+    "text": (
+        "[[COMPANY]] is [[JD_MIRROR]], and an AI-native company cannot run a "
+        "go-to-market model borrowed from the last cycle. I design those models "
+        "for a living: AI-native GTM for a first-party identity business "
+        "including a $254K POC contracted at AdFixus, and a Build your AI GTM "
+        "program run across product, price, positioning and people."
+    ),
+    "default_mirror": "building its go-to-market for an AI-native market",
+    "approved_at": "2026-09-15",
+}
+
+CV_BLOCK = {
+    "text": (
+        "Sixteen years commercializing data and tech, the last 18 months "
+        "designing AI-native go-to-market models for companies whose old motion "
+        "stopped working. I run Build your AI GTM across product, price, "
+        "positioning and people in identity infrastructure, "
+        "publishing, broadcast and advisory. I apply Level 5 agency and "
+        "accountability to what is in front of me, and I connect dots in ways "
+        "others tend to follow."
+    ),
+    "approved_at": "2026-09-15",
+}
+
 EVIDENCE = """\
 ## AI-native GTM, the Mindmake practice
 
@@ -147,7 +186,8 @@ library, manual first and automated only once it worked end to end. Research-bac
 posts went from days to under an hour, and publishing from roughly monthly to most
 days.
 
-His own operating system. A 14-agent autonomous multi-agent operating system,
+His own operating system, run in production for the last 18 months. A 14-agent
+autonomous multi-agent operating system,
 built up from two agents, with a layered cognitive stack and strict boundaries
 between data, logic and reasoning. Supabase as the source of truth for agent
 identities, task queues and execution state. 37 deterministic workflows as the
@@ -166,22 +206,61 @@ attendance proof and are never described as clients.
 """
 
 
-def plan(cfg) -> tuple[str, str, bool]:
-    """(key, value, exists). Read-only: the caller prints before writing."""
+def _read(cfg, key: str) -> str | None:
     rows = config.db_get(cfg, "system_config",
-                         {"key": f"eq.{CONFIG_KEY}", "select": "key,value"})
-    return CONFIG_KEY, EVIDENCE, bool(rows)
+                         {"key": f"eq.{key}", "select": "key,value"})
+    return rows[0].get("value") if rows else None
+
+
+def _upsert(cfg, key: str, value: str) -> int:
+    """Write and read back. A write that does not read back raises, so a silent
+    half-write cannot leave the blocks and BLOCK_KEYS out of step."""
+    if _read(cfg, key) is None:
+        config.db_insert(cfg, "system_config", [{"key": key, "value": value}])
+    else:
+        config.db_patch(cfg, "system_config", {"key": key}, {"value": value})
+    back = _read(cfg, key)
+    if back != value:
+        raise RuntimeError(f"the write to system_config.{key} did not read back")
+    return len(back)
+
+
+def plan(cfg) -> tuple[str, str, bool]:
+    """(key, value, exists) for the evidence key. Read-only."""
+    return CONFIG_KEY, EVIDENCE, _read(cfg, CONFIG_KEY) is not None
+
+
+def block_plan(cfg) -> list[tuple[str, str, str, bool]]:
+    """(config key, block key, text, already present) for the sixth family's two
+    approved blocks. Read-only.
+
+    Ordering hazard, worth being explicit about: tailor.load_blocks raises when a
+    key in BLOCK_KEYS has no approved block, so the moment ai_native_gtm joins
+    BLOCK_KEYS every build breaks until these two rows exist. They are written
+    first, and tests/test_tailor.py holds that dependency.
+    """
+    out = []
+    for cfg_key, block in (("hunter_letter_blocks", LETTER_BLOCK),
+                           ("hunter_cv_summary_blocks", CV_BLOCK)):
+        existing = cfg.require_json(cfg_key)
+        out.append((cfg_key, BLOCK_KEY, block["text"],
+                    BLOCK_KEY in existing))
+    return out
+
+
+def write_blocks(cfg) -> int:
+    """Add the sixth family to both block maps, leaving the five alone."""
+    import json
+    written = 0
+    for cfg_key, block in (("hunter_letter_blocks", LETTER_BLOCK),
+                           ("hunter_cv_summary_blocks", CV_BLOCK)):
+        blocks = cfg.require_json(cfg_key)
+        blocks[BLOCK_KEY] = dict(block)
+        _upsert(cfg, cfg_key, json.dumps(blocks, indent=2, ensure_ascii=False))
+        written += 1
+    return written
 
 
 def write(cfg) -> int:
-    """Write the key and read it back. Returns the length that landed."""
-    key, value, exists = plan(cfg)
-    if exists:
-        config.db_patch(cfg, "system_config", {"key": key}, {"value": value})
-    else:
-        config.db_insert(cfg, "system_config", [{"key": key, "value": value}])
-    back = config.db_get(cfg, "system_config",
-                         {"key": f"eq.{key}", "select": "value"})
-    if not back or back[0].get("value") != value:
-        raise RuntimeError(f"the write to system_config.{key} did not read back")
-    return len(back[0]["value"])
+    """Write the evidence key and read it back. Returns the length that landed."""
+    return _upsert(cfg, CONFIG_KEY, EVIDENCE)
