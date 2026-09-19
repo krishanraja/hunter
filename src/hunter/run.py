@@ -393,6 +393,7 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet,
     # spelling of the company is not missing from the sheet.
     sheet_idents = {(_squash(s.company), _norm_title(s.role)) for s in sheet_rows}
     to_append = []
+    deleted_by_krish: list[dict] = []
     for d in db_only:
         if (_squash(d.get("company") or ""), _norm_title(d.get("title") or "")) in sheet_idents:
             ledger.skipped.append(
@@ -403,6 +404,20 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet,
         decided = bool(d.get("krish_verdict")) or (d.get("package_status") or "none") != "none"
         # hunter always writes sweep_date and why_it_fits; the incumbent never did
         hunter_judged = bool(d.get("sweep_date")) and bool(d.get("why_it_fits"))
+
+        # He deleted the row. presented_at means hunter put it on the sheet;
+        # the row is not on Pipeline and not in the archive, so it left by his
+        # hand. Re-appending it is the system telling him his delete key does
+        # not work, and it would do so every run forever. Read the deletion as
+        # what it plainly is, record it as his, and stop. `restore <job_id>`
+        # reverses it.
+        if d.get("presented_at") and not decided:
+            deleted_by_krish.append(d)
+            ledger.skipped.append(
+                f"{d['job_id']}: you removed this row from the sheet, so it is "
+                f"recorded declined rather than put back")
+            continue
+
         if not decided:
             hit = learn.declined_company(company_declines, d.get("company") or "")
             if hit:
@@ -433,6 +448,14 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet,
                                   f"a sheet row exists")
             continue
         to_append.append(d)
+
+    for d in deleted_by_krish:
+        db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]}, {
+            "status": "dropped", "package_status": "blocked",
+            "krish_verdict": f"{verdicts.DECLINE_PREFIX}removed from the sheet",
+            "rejection_reason": "removed from the Pipeline tab by Krish",
+            "verdict_source": "sheet deletion", "verdict_at": NOW()})
+
     if to_append:
         rows = [make_row(company=d.get("company") or "Unknown", role=d["title"],
                          jd_url=d.get("url") or d.get("job_url"),
@@ -2697,6 +2720,15 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
             except Exception as e:
                 summary.append(f"enrich failed, continuing: {e.__class__.__name__}: {e}")
         summary.append(f"warm paths: {bridges_mod.build_bridges(cfg, sheet)}")
+        # The Hunt lane shows people to contact about a live role. A bridge
+        # into a role he declined, applied to, or that no longer exists is a
+        # person he has no reason to write to, so it goes.
+        try:
+            purged = bridges_mod.purge_orphan_bridges(cfg)
+            counts["bridges_purged"] = purged["deleted"]
+            summary.append(f"bridge purge: {purged}")
+        except Exception as e:
+            summary.append(f"bridge purge skipped: {e.__class__.__name__}: {e}")
         cleared = bridges_mod.clear_junk_warm_paths(cfg)
         if cleared:
             summary.append(f"cleared {cleared} placeholder warm path(s)")

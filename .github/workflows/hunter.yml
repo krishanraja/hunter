@@ -1,13 +1,26 @@
 name: hunter
 
-# The runtime. Mon and Thu 08:27 UTC is the full run (process, then source).
+# The runtime.
+#
+# Sunday 13:00 London and Thursday 08:27 UTC are the full runs (process, then
+# source). Krish moved Monday to Sunday afternoon on 2026-09-19 so the batch is
+# waiting for him at the start of the week rather than during it.
+#
+# GitHub cron is UTC and has no notion of London, so 13:00 London is TWO
+# entries, 12:00 UTC for British Summer Time and 13:00 UTC for GMT, with a
+# guard below that reads the real London clock and stops the wrong one. A
+# single 12:00 UTC entry would quietly become a midday run every winter, which
+# is the sort of drift nobody notices for months.
+#
 # The hourly drain is the fallback for the Control Center buttons; a button
 # press normally arrives as a repository_dispatch and runs within a minute.
 # One job at a time: two hunters on the same sheet is how rows get duplicated.
 
 on:
   schedule:
-    - cron: "27 8 * * 1,4"
+    - cron: "0 12 * * 0"
+    - cron: "0 13 * * 0"
+    - cron: "27 8 * * 4"
     - cron: "13 * * * *"
   repository_dispatch:
     types: [hunter-process, hunter-source, hunter-packages]
@@ -57,16 +70,32 @@ jobs:
           INPUT_COMMAND: ${{ inputs.command }}
           INPUT_EXTRA: ${{ inputs.extra }}
         run: |
+          SKIP=""
           if [ "$EVENT" = "schedule" ]; then
-            if [ "$SCHEDULE" = "27 8 * * 1,4" ]; then ARGS="run"; else ARGS="drain"; fi
+            case "$SCHEDULE" in
+              "0 12 * * 0"|"0 13 * * 0")
+                # One of the pair is the wrong side of British Summer Time.
+                # Ask the London clock which, rather than assuming.
+                HOUR=$(python -c "import datetime, zoneinfo; print(datetime.datetime.now(zoneinfo.ZoneInfo('Europe/London')).hour)")
+                if [ "$HOUR" = "13" ]; then ARGS="run"; else SKIP="London local time is ${HOUR}:00, not 13:00"; ARGS="run"; fi
+                ;;
+              "27 8 * * 4") ARGS="run" ;;
+              *) ARGS="drain" ;;
+            esac
           elif [ "$EVENT" = "repository_dispatch" ]; then
             if [ -n "$COMMAND_ID" ]; then ARGS="drain --id $COMMAND_ID"; else ARGS="${ACTION#hunter-}"; fi
           else
             ARGS="$INPUT_COMMAND $INPUT_EXTRA"
           fi
           echo "args=$ARGS" >> "$GITHUB_OUTPUT"
-          echo "running: python -m hunter.run $ARGS"
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+          if [ -n "$SKIP" ]; then
+            echo "skipping: $SKIP"
+          else
+            echo "running: python -m hunter.run $ARGS"
+          fi
       - name: Run hunter
+        if: steps.cmd.outputs.skip == ''
         run: python -m hunter.run ${{ steps.cmd.outputs.args }}
 
       # Krish's replies, read and acted on every hour. approvals-drain was written
@@ -97,3 +126,10 @@ jobs:
       - name: Close applications the employer has acknowledged
         if: steps.cmd.outputs.args == 'drain'
         run: python -m hunter.run confirmations --apply
+
+      # Is the loop still turning. Reads only, and every condition is
+      # deduplicated on the condition rather than the moment, so running this
+      # every hour sends at most one mail per distinct problem.
+      - name: Tell him when the loop has stopped
+        if: steps.cmd.outputs.args == 'drain'
+        run: python -m hunter.run watchdog --send

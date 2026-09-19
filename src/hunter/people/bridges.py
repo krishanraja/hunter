@@ -17,6 +17,7 @@ import datetime
 import json
 import re
 
+from .. import verdicts
 from ..config import Config, db_delete, db_get, db_insert, db_patch
 from ..router import GO_WORDS
 from ..sheet import EVIDENCE_NONE, WARM_NONE, Sheet, hyperlink, plain_text
@@ -233,31 +234,97 @@ DRAFTS = {
 }
 
 
+ROLE_FIELDS = ("job_id,company,title,score,status,krish_verdict,"
+               "warm_path_person,application_state")
+
+
 def target_roles(cfg: Config, limit: int = 60) -> list[dict]:
-    """Roles worth a warm path: on Krish's sheet now, or ones he said go to.
+    """Roles worth a warm path: ones he said go to, then the best of what is
+    still on his sheet awaiting a verdict.
 
     presented_at is the test of "on his sheet". The retired incumbent left
     fifteen rows at status staging that it never wrote to the sheet, among
     them ElevenLabs GM seats in Brazil, Mexico and Saudi Arabia, and bridges
     were being built into roles he had never been shown.
+
+    EVERY approved role is a target, with no cap. The cap used to apply to
+    both halves, so with 163 rows on the sheet a Yes that scored below the
+    top sixty fell out of the window, retire_stale read that as the role
+    being gone, and its warm path was deleted and rebuilt on alternate runs.
+    A role he has approved is the one thing in this system that must never
+    churn.
     """
+    gos = db_get(cfg, "hunter_seen_roles", {
+        "select": ROLE_FIELDS,
+        "krish_verdict": "not.is.null", "status": "neq.duplicate",
+        "limit": "2000"})
+    approved = [g for g in gos
+                if (g.get("krish_verdict") or "").strip().lower() in GO_WORDS]
     rows = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,company,title,score,status,krish_verdict,warm_path_person,application_state",
+        "select": ROLE_FIELDS,
         "status": "in.(staging,presented)",
         "presented_at": "not.is.null",
         "order": "score.desc.nullslast",
         "limit": str(limit)})
-    gos = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,company,title,score,status,krish_verdict,warm_path_person,application_state",
-        "krish_verdict": "not.is.null", "status": "neq.duplicate",
-        "limit": str(limit)})
+    # status stays at presented after a row is archived, so the second half
+    # was carrying roles he had already declined or applied to. Only a row
+    # still awaiting his verdict earns a bridge it did not already have.
+    waiting = [r for r in rows
+               if verdicts.parse(r.get("krish_verdict") or "")[0] == "none"]
     seen, out = set(), []
-    for r in rows + [g for g in gos
-                     if (g.get("krish_verdict") or "").strip().lower() in GO_WORDS]:
+    for r in approved + waiting:
         if r["job_id"] not in seen:
             seen.add(r["job_id"])
             out.append(r)
     return out
+
+
+def purge_orphan_bridges(cfg: Config) -> dict:
+    """Drop proposed bridges that point at nothing he can act on.
+
+    Three kinds, all of which the Hunt lane was showing as live people to
+    contact about a live role:
+
+      a job_id that is not in hunter_seen_roles at all, left behind when the
+      role row was deleted rather than archived;
+
+      a role he has since declined or applied to, where the reason to reach
+      out has gone;
+
+      a posting recorded dead.
+
+    Only hunter's own untouched proposals go. Anything he marked reached out,
+    snoozed or not a path is his history and stays, whatever the role did.
+    """
+    proposed = db_get(cfg, "bridge_candidates", {
+        "select": "bridge_id,job_id", "state": "eq.proposed", "limit": "5000"})
+    ids = {p.get("job_id") for p in proposed if p.get("job_id")}
+    if not ids:
+        return {"checked": 0, "orphaned": 0, "decided": 0, "dead": 0, "deleted": 0}
+    known = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,krish_verdict,status", "limit": "5000"})
+    by_id = {r["job_id"]: r for r in known}
+
+    orphan, decided, dead = set(), set(), set()
+    for job_id in ids:
+        role = by_id.get(job_id)
+        if role is None:
+            orphan.add(job_id)
+            continue
+        kind = verdicts.parse(role.get("krish_verdict") or "")[0]
+        if kind in ("applied", "rejection"):
+            decided.add(job_id)
+        elif (role.get("status") or "") == "dead":
+            dead.add(job_id)
+    gone = orphan | decided | dead
+    stale = [p["bridge_id"] for p in proposed
+             if p.get("job_id") in gone and p.get("bridge_id")]
+    for i in range(0, len(stale), 100):
+        db_delete(cfg, "bridge_candidates", {
+            "bridge_id": "in.(" + ",".join(stale[i:i + 100]) + ")",
+            "state": "eq.proposed"})
+    return {"checked": len(ids), "orphaned": len(orphan), "decided": len(decided),
+            "dead": len(dead), "deleted": len(stale)}
 
 
 def load_headhunters(sheet: Sheet) -> list[dict]:
