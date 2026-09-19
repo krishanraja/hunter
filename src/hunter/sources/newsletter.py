@@ -25,7 +25,7 @@ import re
 
 import requests
 
-from ..config import Config, db_get, db_insert
+from ..config import ALL_ROWS, Config, db_get, db_insert
 from ..people.ingest import li_slug
 from ..sheet import plain_text
 
@@ -162,7 +162,7 @@ def fetch_feed(timeout: int = 60) -> list[dict]:
 
 def new_posts(cfg: Config, posts: list[dict]) -> list[dict]:
     """Posts not yet recorded, oldest first, so a backlog lands in order."""
-    seen = {r["link"] for r in db_get(cfg, TABLE, {"select": "link", "limit": "5000"})}
+    seen = {r["link"] for r in db_get(cfg, TABLE, {"select": "link", "limit": ALL_ROWS})}
     fresh = [p for p in posts if p["link"] not in seen]
     return list(reversed(fresh))
 

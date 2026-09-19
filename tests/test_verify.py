@@ -125,16 +125,69 @@ def test_a_read_larger_than_one_page_returns_everything(monkeypatch):
         def raise_for_status(self): pass
         def json(self): return self._p
 
+    seen_params = []
+
     def fake_get(url, headers=None, params=None, timeout=None):
         lo, hi = (int(x) for x in headers["Range"].split("-"))
         seen_ranges.append((lo, hi))
+        seen_params.append(dict(params or {}))
         return FakeResp(rows[lo:hi + 1])
 
     monkeypatch.setattr(C.requests, "get", fake_get)
     cfg = C.Config(supabase_url="https://x", supabase_key="k", raw={})
     got = C.db_get(cfg, "hunter_seen_roles", {"select": "job_id", "limit": "5000"})
     assert len(got) == 2350, "a read must not stop at the server's page size"
-    assert len(seen_ranges) == 3
+    # 4 requests, not 3: the first page was read with no ordering, so once a
+    # second page is needed it is discarded and the whole read restarts in
+    # order. See _paging_order. Offset paging over an unordered query can
+    # repeat a row on page 2 and omit another entirely.
+    assert len(seen_ranges) == 4
+    assert seen_ranges[0] == (0, 999) and seen_ranges[1] == (0, 999)
+    assert all(p.get("order") == "job_id.asc" for p in seen_params[1:])
+    assert len(got) == len({r["job_id"] for r in got}), "paging repeated a row"
 
+    seen_ranges.clear()
     capped = C.db_get(cfg, "hunter_seen_roles", {"select": "job_id", "limit": "7"})
     assert len(capped) == 7, "an explicit small limit is still honoured"
+    assert len(seen_ranges) == 1, "a single page read is not re-read"
+
+
+def test_a_single_page_read_is_left_exactly_as_the_caller_wrote_it(monkeypatch):
+    """The default ordering is only for paging. A read that fits in one page
+    keeps whatever the caller asked for, because some callers pass their own
+    order and some tables have no id column to fall back on."""
+    from hunter import config as C
+
+    seen = []
+
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self): return [{"key": "a"}]
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        seen.append(dict(params or {}))
+        return FakeResp()
+
+    monkeypatch.setattr(C.requests, "get", fake_get)
+    cfg = C.Config(supabase_url="https://x", supabase_key="k", raw={})
+    C.db_get(cfg, "system_config", {"select": "key,value"})
+    assert "order" not in seen[0]
+
+
+def test_the_reads_that_decide_identity_ask_for_every_row():
+    """hunter_seen_roles passed 5000 rows in September. Every read that
+    matches a sheet row to a database row, or guards an insert, asked for
+    exactly 5000, so the answer depended on which 5000 came back."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent / "src" / "hunter"
+    offenders = []
+    for path in list(root.glob("*.py")) + list(root.glob("*/*.py")):
+        text = path.read_text()
+        for i, line in enumerate(text.split("\n"), start=1):
+            if re.search(r'"limit":\s*"(2000|5000)"', line):
+                offenders.append(f"{path.name}:{i}")
+    assert not offenders, (
+        "a capped read of an identity table is a silent wrong answer once the "
+        f"table outgrows the cap; use ALL_ROWS: {offenders}")

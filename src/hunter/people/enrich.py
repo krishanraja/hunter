@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import datetime
 
-from ..config import Config, db_get, db_patch
+from ..config import ALL_ROWS, Config, db_get, db_patch
 from ..sources import slugify
 from ..sources.apify_linkedin import SpendTracker, run_actor
 
@@ -19,7 +19,7 @@ def eligible(cfg: Config, target_slugs: set[str], cap: int) -> list[dict]:
     rows = db_get(cfg, "network_contacts", {
         "select": "contact_key,linkedin_url,current_company,strength_score,enriched_at",
         "order": "strength_score.desc",
-        "limit": "5000"})
+        "limit": ALL_ROWS})
     cutoff = (datetime.date.today() - datetime.timedelta(days=REENRICH_DAYS)).isoformat()
     out = []
     for r in rows:

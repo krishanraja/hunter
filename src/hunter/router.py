@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 from . import verdicts
-from .config import Config, db_get
+from .config import ALL_ROWS, Config, db_get
 from .sheet import PKG_BUILT_BRIDGE, PKG_BUILT_DIRECT, PKG_DEAD
 
 GO_WORDS = {"go", "y", "yes", "build"}
@@ -69,7 +69,7 @@ def select_for_build(cfg: Config, sheet=None, headers=None, *,
         "select": "job_id,company,title,url,job_url,score,comp,location,"
                   "warm_path_person,warm_path_tier,package_status,krish_verdict,"
                   "rejection_reason,status,presented_at",
-        "limit": "5000"})
+        "limit": ALL_ROWS})
     pairs, _, _, ambiguous = match_rows(yes_rows, list(known))
     chosen = [d for _, d in pairs]
     # The incumbent recorded some postings twice under two job_ids with one

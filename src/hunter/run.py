@@ -29,7 +29,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import config as config_mod
 from .canon import Canon, CanonError, load_canon
-from .config import Config, GoogleOAuth, GoogleServiceAccount, db_get, db_insert, db_patch, load
+from .config import (ALL_ROWS, Config, GoogleOAuth, GoogleServiceAccount,
+                     db_get, db_insert, db_patch, load)
 from .docbuild import DocBuild
 from .archetype import archetype
 from .gates import FLOOR, names_foreign_geo, run_gates
@@ -306,7 +307,7 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet,
                   "rejection_reason,package_status,package_cv_url,package_letter_url,"
                   "presented_at,source,location,comp,why_it_fits,sweep_date",
         "status": "neq.duplicate",
-        "limit": "2000"})
+        "limit": ALL_ROWS})
     pairs, sheet_only, db_only, ambiguous = match_rows(sheet_rows, db_rows)
     ledger.matched = [(s.row_number, d["job_id"]) for s, d in pairs]
 
@@ -334,7 +335,7 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet,
     # direction 1: sheet-only rows insert into hunter_seen_roles
     # (the id guard includes duplicate-marked rows: their job_ids are taken)
     db_ids = {r["job_id"] for r in db_get(
-        cfg, "hunter_seen_roles", {"select": "job_id", "limit": "5000"})}
+        cfg, "hunter_seen_roles", {"select": "job_id", "limit": ALL_ROWS})}
     inserts = []
     for srow in sheet_only:
         dup_of = seen_idents.get(sheet_ident(srow))
@@ -522,7 +523,7 @@ def build_context():
 
 def cmd_recon() -> int:
     cfg, canon = build_context()
-    rows = db_get(cfg, "hunter_seen_roles", {"select": "status", "limit": "2000"})
+    rows = db_get(cfg, "hunter_seen_roles", {"select": "status", "limit": ALL_ROWS})
     by_status: dict[str, int] = {}
     for r in rows:
         by_status[r["status"] or "none"] = by_status.get(r["status"] or "none", 0) + 1
@@ -641,7 +642,7 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
     # The DB verdict is checked too, and a verdicted row is listed, not moved.
     known = db_get(cfg, "hunter_seen_roles",
                    {"select": "job_id,title,krish_verdict,url,job_url,company",
-                    "limit": "5000"})
+                    "limit": ALL_ROWS})
     # Pair rows to the DB the way reconcile does. Recomputing a job_id from
     # column C does not work: the sheet says "Chief of Staff to Chief
     # Strategy Officer" where the DB says cloudflare:cos-to-cso, and the
@@ -882,7 +883,7 @@ def cmd_decline(pairs_in: list[tuple[int, str]], apply: bool = False) -> int:
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     known = db_get(cfg, "hunter_seen_roles",
                    {"select": "job_id,title,krish_verdict,url,job_url,company,"
-                              "verdict_source", "limit": "5000"})
+                              "verdict_source", "limit": ALL_ROWS})
     all_rows = sheet.read_pipeline(canon.sheet_headers)
     by_number = {r.row_number: r for r in all_rows}
     matched, _, _, _ = match_rows(all_rows, list(known))
@@ -1014,7 +1015,7 @@ def cmd_verify(apply: bool = False) -> int:
     rows = sheet.read_pipeline(canon.sheet_headers)
     known = db_get(cfg, "hunter_seen_roles",
                    {"select": "job_id,title,company,url,job_url,krish_verdict,"
-                              "verdict_source", "limit": "5000"})
+                              "verdict_source", "limit": ALL_ROWS})
     pairs, _, _, _ = match_rows(rows, list(known))
     paired = {srow.row_number: d for srow, d in pairs}
     cache = disc.load_cache(cfg)
@@ -1072,6 +1073,25 @@ def cmd_verify(apply: bool = False) -> int:
     if relinked:
         sheet.relink_jd_urls(relinked)
         print(f"\nrelinked {len(relinked)} row(s) to their real ATS posting")
+        # And the database row with it. Relinking rewrote column E to the real
+        # ATS posting while hunter_seen_roles kept the LinkedIn URL it was
+        # sourced from, and the URL is the first thing match_rows keys on, so
+        # every relinked row stopped pairing with its own database row: no
+        # amendment detection, no warm path, and reconcile treating it as a
+        # sheet row it had never seen.
+        moved = 0
+        for row_number, url in relinked.items():
+            d = paired.get(row_number)
+            if not d or not d.get("job_id"):
+                continue
+            try:
+                db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]},
+                         {"url": url, "job_url": url})
+                moved += 1
+            except Exception as e:
+                print(f"  could not follow the relink in the database for "
+                      f"{d['job_id']}: {e.__class__.__name__}")
+        print(f"followed {moved} relink(s) into hunter_seen_roles")
     disc.save_cache(cfg, cache)
 
     movers = []
@@ -1151,7 +1171,7 @@ def cmd_prune_orphans(apply: bool = False) -> int:
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     live = sheet.read_pipeline(canon.sheet_headers)
     known = db_get(cfg, "hunter_seen_roles",
-                   {"select": "job_id,title,company,url,job_url", "limit": "5000"})
+                   {"select": "job_id,title,company,url,job_url", "limit": ALL_ROWS})
     _, unmatched, _, _ = match_rows(live, list(known))
     orphans = [r for r in unmatched if (r.verdict or "").strip() == "New"]
     held = [r for r in unmatched if (r.verdict or "").strip() != "New"]
@@ -1191,7 +1211,7 @@ def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False) -> int:
         "select": "job_id,company,title,url,job_url,score,status,krish_verdict,"
                   "rejection_reason,package_status,package_cv_url,package_letter_url,"
                   "presented_at,source,location,comp,why_it_fits,sweep_date",
-        "status": "neq.duplicate", "limit": "5000"})
+        "status": "neq.duplicate", "limit": ALL_ROWS})
     pairs, sheet_only, _, _ = match_rows(srows, db)
 
     def ident(s: SheetRow):
@@ -1290,7 +1310,7 @@ def learning_step(cfg: Config, *, apply: bool) -> dict:
         "select": "job_id,company,title,krish_verdict,verdict_source,verdict_at,"
                   "rejection_code,status,last_verified_at,presented_at,url,"
                   "job_url,location,why_it_fits",
-        "limit": "5000"})
+        "limit": ALL_ROWS})
     # His verdicts only. A row carrying hunter's own coded verdict is its
     # output, not his judgement.
     verdicted = [r for r in roles
@@ -1959,7 +1979,7 @@ def seen_identity_keys(cfg: Config) -> set:
     rows count too; a role once seen stays seen."""
     keys: set = set()
     rows = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,url,job_url,company,title,status", "limit": "5000"})
+        "select": "job_id,url,job_url,company,title,status", "limit": ALL_ROWS})
     for r in rows:
         # A row hunter could not resolve was never actually assessed. Counting
         # it as seen means it can never be reconsidered once resolution
@@ -1989,7 +2009,7 @@ def cmd_dedupe_db() -> int:
     rows = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,krish_verdict,package_status,"
                   "presented_at,status,url,job_url",
-        "status": "neq.duplicate", "limit": "5000"})
+        "status": "neq.duplicate", "limit": ALL_ROWS})
     groups: dict = {}
     exact: set = set()
     for r in rows:
@@ -2287,7 +2307,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
 
     never = cfg.require_json("hunter_never_apply")
     opens = learn.open_applications(db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,company,title,krish_verdict,verdict_at", "limit": "5000"}))
+        "select": "job_id,company,title,krish_verdict,verdict_at", "limit": ALL_ROWS}))
     inserts, staged_rows = [], []
     fetchers = {"greenhouse": greenhouse.fetch_posting,
                 "ashby": ashby.fetch_posting, "lever": lever.fetch_posting}
@@ -2482,7 +2502,7 @@ def sync_applied_state(cfg: Config, sheet: Sheet, canon: Canon) -> dict:
 
     db_rows = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,url,job_url,status,application_state,applied_at",
-        "limit": "5000"})
+        "limit": ALL_ROWS})
     # config.ARCHIVE_TAB is literally "Applied", and read_archive reads it: a role
     # moves there once decided, which is where almost every applied row actually is.
     grid = list(sheet.read_pipeline(canon.sheet_headers))
@@ -2529,7 +2549,7 @@ def yes_db_rows(cfg: Config, sheet: Sheet, canon: Canon) -> list[dict]:
     known = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,url,job_url,score,status,krish_verdict,"
                   "warm_path_person,warm_path_tier,package_status",
-        "limit": "5000"})
+        "limit": ALL_ROWS})
     pairs, _, _, _ = match_rows(yes_rows, list(known))
     return [d for _, d in pairs]
 
@@ -2540,7 +2560,7 @@ def _pair_sheet_to_db(cfg: Config, rows: list[SheetRow]) -> dict[int, dict]:
         return {}
     known = db_get(cfg, "hunter_seen_roles",
                    {"select": "job_id,company,title,url,job_url,score,status,"
-                              "krish_verdict,package_status", "limit": "5000"})
+                              "krish_verdict,package_status", "limit": ALL_ROWS})
     pairs, _, _, _ = match_rows(rows, list(known))
     return {srow.row_number: d for srow, d in pairs}
 

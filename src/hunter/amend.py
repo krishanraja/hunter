@@ -31,7 +31,7 @@ from __future__ import annotations
 import hashlib
 import re
 
-from .config import Config, db_get, db_insert, db_patch
+from .config import ALL_ROWS, Config, db_get, db_insert, db_patch
 
 TABLE = "hunter_amendments"
 STATE_TABLE = "hunter_row_state"
@@ -83,9 +83,11 @@ def save_fields(cfg: Config, job_id: str, fields: dict) -> None:
     in which hunter's own edit could be read back as his."""
     if not job_id:
         return
+    # merge, not insert: a row hunter has written to before already has a
+    # snapshot, and a plain insert answers 409 rather than replacing it.
     db_insert(cfg, STATE_TABLE,
               [{"job_id": job_id, "fields": fields, "written_at": _now()}],
-              on_conflict="job_id")
+              on_conflict="job_id", merge=True)
 
 
 def save_docs(cfg: Config, job_id: str, *, letter_text: str = "",
@@ -102,12 +104,12 @@ def save_docs(cfg: Config, job_id: str, *, letter_text: str = "",
         db_patch(cfg, STATE_TABLE, {"job_id": job_id}, patch)
     else:
         db_insert(cfg, STATE_TABLE, [dict(patch, job_id=job_id, fields={})],
-                  on_conflict="job_id")
+                  on_conflict="job_id", merge=True)
 
 
 def load_state(cfg: Config, job_ids: list[str] | None = None) -> dict[str, dict]:
     params = {"select": "job_id,fields,letter_text,cv_text,written_at",
-              "limit": "5000"}
+              "limit": ALL_ROWS}
     rows = db_get(cfg, STATE_TABLE, params)
     out = {r["job_id"]: r for r in rows if r.get("job_id")}
     if job_ids is None:
@@ -239,7 +241,8 @@ def sync_after(cfg: Config, rows, paired: dict) -> int:
     if not payload:
         return 0
     for i in range(0, len(payload), 500):
-        db_insert(cfg, STATE_TABLE, payload[i:i + 500], on_conflict="job_id")
+        db_insert(cfg, STATE_TABLE, payload[i:i + 500], on_conflict="job_id",
+                  merge=True)
     return len(payload)
 
 

@@ -96,9 +96,25 @@ def test_two_different_postings_are_not_duplicates():
     assert invariants.check_no_duplicate_postings(rows).state == OK
 
 
-def test_a_row_with_no_ats_key_never_counts_as_a_duplicate():
-    rows = [row(3, url="https://www.linkedin.com/jobs/view/1"),
-            row(4, url="https://www.linkedin.com/jobs/view/2")]
+def test_two_linkedin_rows_for_one_job_are_still_duplicates():
+    # Neither has an ATS key, and the URLs differ only by tracking parameters.
+    # 14 such rows were sitting on the sheet in pairs.
+    rows = [row(3, url="https://www.linkedin.com/jobs/view/vp-at-acme-1?position=3"),
+            row(4, url="https://www.linkedin.com/jobs/view/vp-at-acme-1?position=9")]
+    f = invariants.check_no_duplicate_postings(rows)
+    assert f.state == BROKEN and f.rows == [4]
+
+
+def test_two_different_roles_at_one_company_are_not_duplicates():
+    rows = [row(3, role="VP Strategy", url="https://www.linkedin.com/jobs/view/1"),
+            row(4, role="Head of Partnerships",
+                url="https://www.linkedin.com/jobs/view/2")]
+    assert invariants.check_no_duplicate_postings(rows).state == OK
+
+
+def test_the_same_title_at_two_companies_is_not_a_duplicate():
+    rows = [row(3, company="Acme", url="https://www.linkedin.com/jobs/view/1"),
+            row(4, company="Globex", url="https://www.linkedin.com/jobs/view/2")]
     assert invariants.check_no_duplicate_postings(rows).state == OK
 
 

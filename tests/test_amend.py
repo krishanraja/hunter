@@ -165,3 +165,25 @@ def test_a_repeated_correction_earns_a_question_and_nothing_more():
     assert props[0]["question"].startswith("You corrected Why It Fits on 3")
     # nothing here applies anything
     assert "apply" not in props[0]
+
+
+# ---------- writing the snapshot ----------
+
+def test_the_snapshot_replaces_rather_than_inserting(monkeypatch):
+    """A row hunter has written to before already has a snapshot. A plain
+    insert answers 409 and the whole amendment layer silently stops working,
+    which is exactly what happened on the first live pass."""
+    calls = []
+    monkeypatch.setattr(amend, "db_insert",
+                        lambda cfg, table, rows, **kw: calls.append(kw))
+    amend.save_fields(None, "acme:vp", {"Role": "VP Strategy"})
+    assert calls and calls[0].get("merge") is True
+    assert calls[0].get("on_conflict") == "job_id"
+
+
+def test_syncing_a_whole_pass_also_merges(monkeypatch):
+    calls = []
+    monkeypatch.setattr(amend, "db_insert",
+                        lambda cfg, table, rows, **kw: calls.append(kw))
+    amend.sync_after(None, [row(3)], PAIRED)
+    assert calls and all(c.get("merge") is True for c in calls)

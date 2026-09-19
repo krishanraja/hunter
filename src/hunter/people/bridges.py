@@ -18,7 +18,8 @@ import json
 import re
 
 from .. import verdicts
-from ..config import Config, db_delete, db_get, db_insert, db_patch
+from ..config import (ALL_ROWS, Config, db_delete, db_get, db_insert,
+                      db_patch)
 from ..router import GO_WORDS
 from ..sheet import EVIDENCE_NONE, WARM_NONE, Sheet, hyperlink, plain_text
 from ..sources import distinctive_tokens, slugify
@@ -257,7 +258,7 @@ def target_roles(cfg: Config, limit: int = 60) -> list[dict]:
     gos = db_get(cfg, "hunter_seen_roles", {
         "select": ROLE_FIELDS,
         "krish_verdict": "not.is.null", "status": "neq.duplicate",
-        "limit": "2000"})
+        "limit": ALL_ROWS})
     approved = [g for g in gos
                 if (g.get("krish_verdict") or "").strip().lower() in GO_WORDS]
     rows = db_get(cfg, "hunter_seen_roles", {
@@ -297,12 +298,12 @@ def purge_orphan_bridges(cfg: Config) -> dict:
     snoozed or not a path is his history and stays, whatever the role did.
     """
     proposed = db_get(cfg, "bridge_candidates", {
-        "select": "bridge_id,job_id", "state": "eq.proposed", "limit": "5000"})
+        "select": "bridge_id,job_id", "state": "eq.proposed", "limit": ALL_ROWS})
     ids = {p.get("job_id") for p in proposed if p.get("job_id")}
     if not ids:
         return {"checked": 0, "orphaned": 0, "decided": 0, "dead": 0, "deleted": 0}
     known = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,krish_verdict,status", "limit": "5000"})
+        "select": "job_id,krish_verdict,status", "limit": ALL_ROWS})
     by_id = {r["job_id"]: r for r in known}
 
     orphan, decided, dead = set(), set(), set()
@@ -386,7 +387,7 @@ def retire_stale(cfg: Config, roles: list[dict]) -> int:
     """
     live = {r["job_id"] for r in roles}
     proposed = db_get(cfg, "bridge_candidates", {
-        "select": "bridge_id,job_id", "state": "eq.proposed", "limit": "5000"})
+        "select": "bridge_id,job_id", "state": "eq.proposed", "limit": ALL_ROWS})
     stale = [p["bridge_id"] for p in proposed
              if p.get("bridge_id") and p.get("job_id") not in live]
     for i in range(0, len(stale), 100):
@@ -445,7 +446,7 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
         # first-degree connection, which it could not do when it was not fetched.
         "select": "contact_key,full_name,current_company,current_title,"
                   "strength_score,strength_evidence,employment_history,connected_on",
-        "order": "strength_score.desc", "limit": "5000"})
+        "order": "strength_score.desc", "limit": ALL_ROWS})
     contacts = list(contacts) + load_cc_graph(
         cfg, {c.get("contact_key") for c in contacts})
     by_company: dict[str, list[dict]] = {}
@@ -621,7 +622,7 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
             "select": "bridge_id,job_id,contact_key,path_tier",
             "job_id": "in.(" + ",".join(f'"{j}"' for j in chunk) + ")",
             "path_tier": "in.(" + ",".join(DERIVED_TIERS) + ")",
-            "state": "eq.proposed", "limit": "2000"})
+            "state": "eq.proposed", "limit": ALL_ROWS})
         stale = [str(r["bridge_id"]) for r in existing
                  if (r["job_id"], r["contact_key"], r["path_tier"]) not in derived]
         for j in range(0, len(stale), 100):
@@ -667,7 +668,7 @@ def clear_junk_warm_paths(cfg: Config) -> int:
     to bridge through."""
     rows = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,warm_path_person",
-        "warm_path_person": "ilike.none*", "limit": "5000"})
+        "warm_path_person": "ilike.none*", "limit": ALL_ROWS})
     for r in rows:
         db_patch(cfg, "hunter_seen_roles", {"job_id": r["job_id"]},
                  {"warm_path_person": None, "warm_path_tier": None,
@@ -749,7 +750,7 @@ def warm_path_cells(cfg: Config, job_ids: list[str]) -> dict[str, tuple[str, str
             "select": "job_id,contact_key,path_tier,path_evidence,bridge_score,draft_ask,state",
             "job_id": "in.(" + ",".join(f'"{j}"' for j in chunk) + ")",
             "state": "in.(proposed,reached_out)",
-            "order": "bridge_score.desc", "limit": "2000"}))
+            "order": "bridge_score.desc", "limit": ALL_ROWS}))
     best: dict[str, dict] = {}
     for c in cands:
         if (c.get("contact_key") or "").startswith("peer:"):
@@ -834,7 +835,7 @@ def cold_targets(cfg: Config, roles: list[dict], cap: int | None = None) -> dict
         for c in db_get(cfg, "bridge_candidates", {
                 "select": "job_id,contact_key,path_tier",
                 "job_id": "in.(" + ",".join(f'"{j}"' for j in chunk) + ")",
-                "limit": "2000"}):
+                "limit": ALL_ROWS}):
             if not (c.get("contact_key") or "").startswith("peer:"):
                 have.setdefault(c["job_id"], set()).add(c["path_tier"])
     todo = [r for r in roles if not have.get(r["job_id"])]

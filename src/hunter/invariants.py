@@ -198,18 +198,27 @@ def _standing(r) -> tuple:
 
 
 def check_no_duplicate_postings(rows) -> Finding:
-    """The same posting on two rows. Keyed on the ATS identity rather than the
-    URL string, so two spellings of one Ashby link collapse into one posting.
+    """The same posting on two rows.
 
-    Relinking creates these: two rows sourced under two company spellings
-    resolve to the same board and become visibly the same job.
+    Two identities, because one does not cover the sheet. The ATS key catches
+    two rows whose links resolve to the same board posting, which is what
+    relinking creates when two company spellings turn out to be one company.
+    Company plus title catches the rest: 14 rows were sitting on the sheet in
+    pairs with LinkedIn links that differ only in their tracking parameters,
+    invisible to the ATS test because a LinkedIn URL has no ATS key at all.
+
+    Company plus title is the identity the sourcing dedupe and reconcile both
+    already use. Two postings sharing both are one application target, so
+    treating them as one row here is the same rule, not a new one.
     """
-    from .run import ats_key
+    from .run import _norm_title, _squash, ats_key
     seen: dict[tuple, list] = {}
     for r in rows:
         key = ats_key(r.jd_url) if r.jd_url else None
         if not key:
-            continue
+            key = ("identity", _squash(r.company), _norm_title(r.role))
+            if not key[1] or not key[2]:
+                continue
         seen.setdefault(key, []).append(r)
     losers: list[int] = []
     groups = 0

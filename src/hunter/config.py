@@ -105,11 +105,42 @@ def load() -> Config:
 # incomplete. Page until the server stops giving.
 PAGE = 1000
 
+# For a read whose correctness depends on seeing every row: identity matching,
+# dedupe, the id guard before an insert. A numeric cap on one of those is a
+# silent wrong answer the day the table outgrows it, and hunter_seen_roles
+# outgrew 5000 in September while every one of those reads asked for 5000.
+# Write ALL_ROWS at the call site rather than a number, so the intent is
+# visible and a guard test can check for it.
+ALL_ROWS = "1000000"
+
+
+def _paging_order(params: dict[str, str]) -> str | None:
+    """A stable sort for a paged read, when the caller did not give one.
+
+    Offset paging over an unordered query is not a read of the table, it is a
+    read of whatever order the planner felt like. Postgres is free to return
+    rows differently on every request, so page 2 can repeat a row from page 1
+    and omit another entirely, and nothing errors. hunter_seen_roles passed
+    5000 rows in September and the symptom was exactly that: a sheet row
+    paired with its database row on one run and looked unmatched on the next,
+    because the row had simply not been in that read.
+
+    The first selected column is used because it is guaranteed to exist in the
+    projection, and the reads that page are keyed reads where it is the
+    identifier. A caller wanting a different order passes one.
+    """
+    select = (params.get("select") or "").strip()
+    if not select or select == "*" or "(" in select:
+        return "id.asc"
+    first = select.split(",")[0].strip()
+    return f"{first}.asc" if first else "id.asc"
+
 
 def db_get(cfg: Config, table: str, params: dict[str, str]) -> list[dict]:
     want = int(params.get("limit") or 0) or None
     out: list[dict] = []
     offset = 0
+    seen_ordered = False
     while True:
         page_size = PAGE if want is None else min(PAGE, want - len(out))
         if page_size <= 0:
@@ -117,10 +148,22 @@ def db_get(cfg: Config, table: str, params: dict[str, str]) -> list[dict]:
         headers = dict(_rest_headers(cfg))
         headers["Range-Unit"] = "items"
         headers["Range"] = f"{offset}-{offset + page_size - 1}"
+        query = {k: v for k, v in params.items() if k != "limit"}
+        # Only once a second page is needed, so a single-page read keeps
+        # whatever order the caller was relying on.
+        if offset and not params.get("order") and not seen_ordered:
+            order = _paging_order(params)
+            if order:
+                query["order"] = order
+                seen_ordered = True
+                # The first page was unordered, so it is not the first page of
+                # this ordering. Read the whole thing again, in order.
+                out, offset = [], 0
+                headers["Range"] = f"0-{page_size - 1}"
+        elif seen_ordered:
+            query["order"] = _paging_order(params)
         r = requests.get(f"{cfg.supabase_url}/rest/v1/{table}",
-                         headers=headers,
-                         params={k: v for k, v in params.items() if k != "limit"},
-                         timeout=60)
+                         headers=headers, params=query, timeout=60)
         r.raise_for_status()
         page = r.json()
         out.extend(page)

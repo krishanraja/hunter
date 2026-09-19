@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import re
 
-from .config import Config, db_get, db_insert, db_patch
+from .config import ALL_ROWS, Config, db_get, db_insert, db_patch
 from .sources import distinctive_tokens, norm_title, slugify
 from . import verdicts
 
@@ -147,7 +147,7 @@ def record(cfg: Config, rows: list[dict]) -> int:
 
 def load_events(cfg: Config) -> list[dict]:
     return db_get(cfg, "hunter_verdict_events",
-                  {"select": "*", "order": "recorded_at.asc", "limit": "2000"})
+                  {"select": "*", "order": "recorded_at.asc", "limit": ALL_ROWS})
 
 
 # ---------- system codes: bugs, fixed without asking ----------
