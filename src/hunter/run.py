@@ -33,7 +33,7 @@ from .config import Config, GoogleOAuth, GoogleServiceAccount, db_get, db_insert
 from .docbuild import DocBuild
 from .archetype import archetype
 from .gates import FLOOR, names_foreign_geo, run_gates
-from . import learn
+from . import alerts, amend, invariants, layout, learn, preflight
 from .report import report_run
 from . import verdicts
 from .router import classify_verdict, is_warm_path, route_status, select_for_build
@@ -1894,6 +1894,18 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
             letter_url=result.letter_url, cv_pdf_url=result.cv_pdf_url,
             letter_pdf_url=result.letter_pdf_url, package_status=status,
             built_date=TODAY())
+    # What hunter wrote into the two documents, recorded at the moment of the
+    # write. Any later difference is Krish editing the letter before he sends
+    # it, which amend.py reads back as a correction.
+    try:
+        docs = DocBuild(GoogleOAuth(cfg).access_token)
+        amend.save_docs(cfg, row["job_id"],
+                        letter_text=doc_plain_text(docs, result.letter_doc_id or ""),
+                        cv_text=doc_plain_text(docs, result.cv_doc_id or ""))
+    except Exception as e:
+        summary.append(f"  note: could not record the document text "
+                       f"({e.__class__.__name__}), so edits to it will not be read")
+
     # build_package already copies tr.flags into result.notes, so adding tr.flags
     # here printed every tailoring flag twice in the run summary.
     flags = "; ".join(result.notes + rflags) or "clean"
@@ -2499,6 +2511,82 @@ def yes_db_rows(cfg: Config, sheet: Sheet, canon: Canon) -> list[dict]:
     return [d for _, d in pairs]
 
 
+def _pair_sheet_to_db(cfg: Config, rows: list[SheetRow]) -> dict[int, dict]:
+    """row number -> the hunter_seen_roles row behind it."""
+    if not rows:
+        return {}
+    known = db_get(cfg, "hunter_seen_roles",
+                   {"select": "job_id,company,title,url,job_url,score,status,"
+                              "krish_verdict,package_status", "limit": "5000"})
+    pairs, _, _, _ = match_rows(rows, list(known))
+    return {srow.row_number: d for srow, d in pairs}
+
+
+def amendment_step(cfg: Config, canon: Canon, sheet: Sheet,
+                   summary: list[str]) -> int:
+    """Read what Krish changed since hunter last wrote, before hunter writes
+    again. Documents are compared too, because the cover letter he edits in
+    Docs before sending is the sharpest correction he ever gives.
+    """
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    paired = _pair_sheet_to_db(cfg, rows)
+    state = amend.load_state(cfg)
+    if not state:
+        summary.append("amendments: nothing recorded yet, this run sets the "
+                       "baseline")
+        return 0
+    found = amend.detect(rows, paired, state)
+
+    try:
+        docs = DocBuild(GoogleOAuth(cfg).access_token)
+
+        def read_doc(url: str) -> str:
+            return doc_plain_text(docs, url)
+
+        found += amend.detect_docs(cfg, read_doc, rows, paired, state)
+    except Exception as e:
+        summary.append(f"document amendments skipped: {e.__class__.__name__}: {e}")
+
+    n = amend.record(cfg, found)
+    if n:
+        summary.append(f"amendments read from your edits: {n}")
+        for a in found[:10]:
+            summary.append(f"  {a['company']} {a['field']}: "
+                           f"{(a['before_text'] or '')[:60]!r} became "
+                           f"{(a['after_text'] or '')[:60]!r}")
+        for p in amend.proposals(found):
+            summary.append(f"  PATTERN: {p['question']}")
+    else:
+        summary.append("amendments: nothing changed since the last run")
+    return n
+
+
+def _doc_id_from(url: str) -> str:
+    m = re.search(r"/document/d/([A-Za-z0-9_-]{20,})", url or "")
+    return m.group(1) if m else ""
+
+
+def doc_plain_text(docs: DocBuild, url_or_id: str) -> str:
+    """A document's text, or "" when it cannot be read. Never raises: an
+    unreadable document must not present as a rewritten one."""
+    doc_id = _doc_id_from(url_or_id) or (url_or_id if "/" not in (url_or_id or "")
+                                         else "")
+    if not doc_id:
+        return ""
+    try:
+        return "\n".join(p["text"] for p in DocBuild.paragraphs(docs.get(doc_id)))
+    except Exception:
+        return ""
+
+
+def snapshot_step(cfg: Config, canon: Canon, sheet: Sheet) -> int:
+    """Record what the sheet says now, so the next run can tell his edits from
+    hunter's own. Runs last, after every write this pass made."""
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    paired = _pair_sheet_to_db(cfg, rows)
+    return amend.sync_after(cfg, rows, paired)
+
+
 def archive_decided(sheet: Sheet, canon: Canon) -> tuple[int, list[str]]:
     """Move every Applied and Declined row to the Applied tab. Yes and New
     stay: Yes is work in flight, New is a decision not yet made."""
@@ -2530,7 +2618,15 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
 
     counts: dict = {"built": 0, "dead": 0, "unverified": 0, "blocked": 0,
                     "warm_paths": 0, "cold_targets": 0, "archived": 0,
-                    "sorted": 0, "g12_blocked": 0}
+                    "sorted": 0, "g12_blocked": 0, "amendments": 0}
+
+    # His edits are read BEFORE anything of hunter's is written, because the
+    # first build of the pass would overwrite the very cells that carry them.
+    try:
+        counts["amendments"] = amendment_step(cfg, canon, sheet, summary)
+    except Exception as e:
+        summary.append(f"amendment pass skipped: {e.__class__.__name__}: {e}")
+
     declines, notes = stored_company_declines(cfg)
     summary.extend(notes)
 
@@ -2615,6 +2711,16 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
     except Exception as e:
         summary.append(f"warm path pass failed: {e.__class__.__name__}: {e}")
 
+    # The invariants run BEFORE the archive, because the repair that stamps a
+    # duplicate row is what makes it a decided row the archive can then move.
+    try:
+        inv = invariants.enforce(sheet, canon.sheet_headers, apply=True)
+        counts["repairs"] = len(inv["repaired"])
+        counts["still_broken"] = len(inv["still_broken"])
+        summary.extend(inv["lines"])
+    except Exception as e:
+        summary.append(f"invariant pass failed: {e.__class__.__name__}: {e}")
+
     # decided rows leave, the rest sort
     try:
         moved, lines = archive_decided(sheet, canon)
@@ -2631,6 +2737,22 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
                        f"{srt['blank_rows_removed']} blank row(s) removed")
     except Exception as e:
         summary.append(f"sort failed: {e.__class__.__name__}: {e}")
+
+    # The shape he judges in, re-asserted every run so a dragged column or a
+    # newly appended block cannot put the scroll back.
+    try:
+        lay = layout.apply_layout(sheet, sheet_id=config_mod.PIPELINE_SHEET_ID)
+        summary.append(f"layout: {lay['visible']} columns visible, "
+                       f"{lay['hidden']} hidden, {lay['width_after']}px wide"
+                       + (" (unchanged)" if lay.get("noop") else ""))
+    except Exception as e:
+        summary.append(f"layout pass failed: {e.__class__.__name__}: {e}")
+
+    # From here on, any difference between the sheet and this record is his.
+    try:
+        counts["snapshotted"] = snapshot_step(cfg, canon, sheet)
+    except Exception as e:
+        summary.append(f"snapshot skipped: {e.__class__.__name__}: {e}")
 
     if out:
         summary.extend(learning_report_lines(out, g12_hits=ledger.company_blocked))
@@ -2652,6 +2774,10 @@ def cmd_process(max_packages: int = 0, retry_dead: bool = False) -> int:
     run_error: str | None = None
     try:
         cfg, canon = build_context()
+        may, lines = preflight.gate(preflight.run(cfg))
+        summary.extend(lines)
+        if not may:
+            raise RuntimeError("preflight failed; no credential work was attempted")
         sheet = Sheet(GoogleServiceAccount(cfg).access_token)
         counts = process_step(cfg, canon, sheet, summary,
                               max_packages=max_packages, retry_dead=retry_dead)
@@ -2711,6 +2837,10 @@ def cmd_run() -> int:
     run_error: str | None = None
     try:
         cfg, canon = build_context()
+        may, lines = preflight.gate(preflight.run(cfg, for_sourcing=True))
+        summary.extend(lines)
+        if not may:
+            raise RuntimeError("preflight failed; no paid call was attempted")
         sheet = Sheet(GoogleServiceAccount(cfg).access_token)
 
         # Krish's verdicts first: reconcile, learn, build every Yes, find
@@ -2743,6 +2873,28 @@ def cmd_run() -> int:
 
         summary.append(f"packages built this run: {pcounts.get('built', 0)}")
         counts["built"] = pcounts.get("built", 0)
+
+        # The one human step in the loop, and the only thing that makes it a
+        # loop: tell him there is something to review. Nothing said this until
+        # 2026-09-19, so roles sat unjudged because nobody knew they existed.
+        try:
+            fresh = sheet.read_pipeline(canon.sheet_headers)
+            notes = []
+            if pcounts.get("still_broken"):
+                notes.append(f"{pcounts['still_broken']} sheet problem(s) hunter "
+                             f"could not repair on its own; see the run log.")
+            if pcounts.get("amendments"):
+                notes.append(f"{pcounts['amendments']} edit(s) of yours were read "
+                             f"as corrections and fed back into the scorer.")
+            out = alerts.send_review_ready(cfg, fresh, counts.get("staged", 0),
+                                           notes=notes)
+            summary.append(f"review email: {out}")
+        except Exception as e:
+            summary.append(f"review email failed: {e.__class__.__name__}: {e}")
+        try:
+            summary.append(f"watchdog: {alerts.send_trouble(cfg)}")
+        except Exception as e:
+            summary.append(f"watchdog failed: {e.__class__.__name__}: {e}")
     except Exception as e:
         summary.append(f"RUN ABORTED: {e.__class__.__name__}: {e}")
         run_error = f"{e.__class__.__name__}: {e}"
@@ -4175,6 +4327,66 @@ def main(argv: list[str]) -> int:
     if cmd == "prune-sheet":
         return cmd_prune_sheet(apply="--apply" in argv,
                                include_ungated="--incumbent" in argv)
+    if cmd == "layout":
+        cfg = load()
+        sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        out = layout.apply_layout(sheet, sheet_id=config_mod.PIPELINE_SHEET_ID)
+        print(out)
+        for line in layout.describe():
+            print(f"  {line}")
+        return 0
+    if cmd == "invariants":
+        cfg, canon = build_context()
+        sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        out = invariants.enforce(sheet, canon.sheet_headers,
+                                 apply="--apply" in argv)
+        print("\n".join(out["lines"]))
+        if out["repaired"]:
+            print("\nrepaired:")
+            for note in out["repaired"]:
+                print(f"  {note}")
+        if not out["ok"]:
+            print(f"\nstill broken: {', '.join(out['still_broken'])}")
+        if "--apply" not in argv:
+            print("\ndry run. add --apply to repair what has a safe repair.")
+        return 0 if out["ok"] else 1
+    if cmd == "amendments":
+        cfg = load()
+        for line in amend.report_lines(cfg, limit=25):
+            print(line)
+        return 0
+    if cmd == "preflight":
+        cfg = load()
+        ok, lines = preflight.gate(preflight.run(cfg, for_sourcing=True))
+        print("\n".join(lines))
+        return 0 if ok else 1
+    if cmd == "watchdog":
+        cfg = load()
+        problems = alerts.trouble_checks(cfg)
+        for p in problems:
+            print(f"  {p['kind']}: {p['detail']}")
+        if not problems:
+            print("  nothing wrong; the loop is turning")
+            return 0
+        if "--send" in argv:
+            print(alerts.send_trouble(cfg, force="--force" in argv))
+        else:
+            print("\ndry run. add --send to mail these.")
+        return 0
+    if cmd == "review-email":
+        cfg, canon = build_context()
+        sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        rows = sheet.read_pipeline(canon.sheet_headers)
+        state = alerts.batch_state(rows)
+        subject, _html, text = alerts.review_email(rows, state["to_review"],
+                                                   state=state)
+        print(f"subject: {subject}\n\n{text}")
+        if "--send" in argv:
+            print("\n" + str(alerts.send_review_ready(
+                cfg, rows, state["to_review"], force=True)))
+        else:
+            print("\ndry run. add --send to mail it.")
+        return 0
     if cmd == "doctor":
         # Does what is DEPLOYED agree with what is built. pytest cannot ask that:
         # it checks this repository against itself, and the three drifts that cost
@@ -4198,7 +4410,8 @@ def main(argv: list[str]) -> int:
           "approvals-drain [--apply] [--send], submit --token X [--confirm], "
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive, "
-          "doctor [--offline]")
+          "layout, invariants [--apply], amendments, preflight, "
+          "watchdog [--send], review-email [--send], doctor [--offline]")
     return 2
 
 
