@@ -255,6 +255,37 @@ def refresh(cfg) -> tuple[int, list[str]]:
     return len(out), notes
 
 
+# A portfolio changes slowly, and a firm's board is one request per page.
+# Weekly keeps the facts current without spending a Sunday morning on it.
+REFRESH_DAYS = 7
+
+
+def refresh_if_stale(cfg, *, days: int = REFRESH_DAYS) -> list[str]:
+    """Sweep the boards only when what hunter holds has aged out.
+
+    Returns lines for the run summary, empty when nothing was needed. Never
+    raises: a firm being down is a reason to use last week's facts, not a
+    reason to lose the sourcing run.
+    """
+    from datetime import datetime, timedelta, timezone
+    from ..config import ALL_ROWS, db_get
+    try:
+        rows = db_get(cfg, TABLE, {"select": "last_seen", "limit": ALL_ROWS})
+    except Exception as e:
+        return [f"portfolio cache unreadable: {e.__class__.__name__}"]
+    newest = max((r.get("last_seen") or "" for r in rows), default="")
+    if newest:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        if newest > cutoff:
+            return []
+    try:
+        n, notes = refresh(cfg)
+    except Exception as e:
+        return [f"portfolio refresh failed, using what hunter already holds: "
+                f"{e.__class__.__name__}"]
+    return notes + [f"portfolio facts refreshed: {n} companies"]
+
+
 def load(cfg) -> dict[str, dict]:
     """key -> portfolio row, for the scorer to read before it fetches anything."""
     from ..config import ALL_ROWS, db_get

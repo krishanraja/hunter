@@ -120,3 +120,38 @@ def test_a_firm_whose_board_fails_is_named_rather_than_silently_absent(monkeypat
     rows, notes = portfolio.fetch_all()
     assert rows == []
     assert all("unavailable" in n for n in notes) and len(notes) == len(portfolio.FIRMS)
+
+
+# ---------- staying current without spending the run on it ----------
+
+def test_a_fresh_cache_is_not_swept_again(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    recent = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    monkeypatch.setattr(portfolio, "refresh",
+                        lambda cfg: pytest.fail("swept a cache that was current"))
+    import hunter.config as C
+    monkeypatch.setattr(C, "db_get", lambda *a, **k: [{"last_seen": recent}])
+    assert portfolio.refresh_if_stale(object()) == []
+
+
+def test_a_stale_cache_is_swept(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    old = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    called = {}
+    monkeypatch.setattr(portfolio, "refresh",
+                        lambda cfg: (called.setdefault("yes", True), (7, ["Accel: 7"]))[1])
+    import hunter.config as C
+    monkeypatch.setattr(C, "db_get", lambda *a, **k: [{"last_seen": old}])
+    lines = portfolio.refresh_if_stale(object())
+    assert called.get("yes") and any("7 companies" in x for x in lines)
+
+
+def test_a_firm_being_down_does_not_take_the_sourcing_run_with_it(monkeypatch):
+    """Last week's facts are worth more than a failed run."""
+    def boom(cfg):
+        raise ConnectionError("down")
+    monkeypatch.setattr(portfolio, "refresh", boom)
+    import hunter.config as C
+    monkeypatch.setattr(C, "db_get", lambda *a, **k: [])
+    lines = portfolio.refresh_if_stale(object())
+    assert lines and "using what hunter already holds" in lines[0]

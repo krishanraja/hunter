@@ -2467,6 +2467,11 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     universe = live_universe(cfg, canon, sheet, summary)
     if cfg.optional("hunter_company_discovery", "1") != "0":
         try:
+            from .sources import portfolio as _pf
+            summary.extend(_pf.refresh_if_stale(cfg))
+        except Exception as e:
+            summary.append(f"portfolio refresh skipped: {e.__class__.__name__}")
+        try:
             found = discover_companies(cfg, sheet, summary)
         except Exception as e:
             summary.append(f"company discovery failed: {e.__class__.__name__}: {e}")
