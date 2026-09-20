@@ -92,11 +92,11 @@ jobs:
           if [ -n "$SKIP" ]; then
             echo "skipping: $SKIP"
           else
-            echo "running: python -m hunter.run $ARGS"
+            echo "running: python -u -m hunter.run $ARGS"
           fi
       - name: Run hunter
         if: steps.cmd.outputs.skip == ''
-        run: python -m hunter.run ${{ steps.cmd.outputs.args }}
+        run: python -u -m hunter.run ${{ steps.cmd.outputs.args }}
 
       # Krish's replies, read and acted on every hour. approvals-drain was written
       # and never scheduled, so an APPROVE waited in the inbox until someone ran it
@@ -113,7 +113,7 @@ jobs:
         # recorded as submitted and never reached the employer. An APPROVE now
         # moves the token to approved and waits for `apply-local`, which opens the
         # filled form in Krish's own browser for him to press.
-        run: python -m hunter.run approvals-drain --apply
+        run: python -u -m hunter.run approvals-drain --apply
 
       # Krish presses Submit in his own browser; the extension tells Control
       # Center and Control Center marks the row. This is the half that touches
@@ -121,15 +121,15 @@ jobs:
       # business being in a browser. Idempotent, so running it hourly is free.
       - name: Write submitted applications to the sheet
         if: steps.cmd.outputs.args == 'drain'
-        run: python -m hunter.run close-submitted --apply
+        run: python -u -m hunter.run close-submitted --apply
 
       - name: Close applications the employer has acknowledged
         if: steps.cmd.outputs.args == 'drain'
-        run: python -m hunter.run confirmations --apply
+        run: python -u -m hunter.run confirmations --apply
 
       # Is the loop still turning. Reads only, and every condition is
       # deduplicated on the condition rather than the moment, so running this
       # every hour sends at most one mail per distinct problem.
       - name: Tell him when the loop has stopped
         if: steps.cmd.outputs.args == 'drain'
-        run: python -m hunter.run watchdog --send
+        run: python -u -m hunter.run watchdog --send
