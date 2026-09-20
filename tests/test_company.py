@@ -280,3 +280,34 @@ def test_no_component_can_score_more_than_its_declared_weight():
             f"{c.name} scored {c.points} against a declared weight of {c.weight}")
         assert c.points == c.weight, (
             f"{c.name} cannot reach its own declared weight of {c.weight}")
+
+
+# ---------- a company hunter could not read is not a permanent verdict ----------
+
+def test_a_company_it_could_not_read_is_asked_about_again():
+    """Without a retry, a page that was down for one afternoon becomes a
+    permanent exclusion, which turns a temporary failure into a policy."""
+    from datetime import datetime, timedelta, timezone
+    from hunter import companyintel as intel
+
+    old = (datetime.now(timezone.utc) - timedelta(days=20)).isoformat()
+    assert intel.is_stale({"status": NEEDS_EVIDENCE, "scored_at": old})
+    recent = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    assert not intel.is_stale({"status": NEEDS_EVIDENCE, "scored_at": recent})
+
+
+def test_a_score_that_stands_is_refreshed_more_slowly():
+    """A company raises, hires a CRO, or changes what it sells, and none of
+    that happens weekly."""
+    from datetime import datetime, timedelta, timezone
+    from hunter import companyintel as intel
+
+    month_old = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    assert not intel.is_stale({"status": "", "scored_at": month_old})
+    ancient = (datetime.now(timezone.utc) - timedelta(days=200)).isoformat()
+    assert intel.is_stale({"status": "", "scored_at": ancient})
+
+
+def test_a_row_with_no_timestamp_is_always_worth_asking_about_again():
+    from hunter import companyintel as intel
+    assert intel.is_stale({"status": "", "scored_at": ""})

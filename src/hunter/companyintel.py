@@ -507,6 +507,28 @@ def save(cfg: Config, scores: list) -> None:
         db_insert(cfg, TABLE, rows, on_conflict="slug", merge=True)
 
 
+# When a score is worth establishing again.
+#
+# A company hunter could not read is not a permanent verdict, it is a page
+# that was down, a site that refused a bot, or a description that had not
+# been written yet. Without a retry those companies were frozen out for
+# good, which quietly turns a temporary failure into a policy.
+RETRY_UNSCORED_DAYS = 14
+# A score that stands goes stale more slowly: a company raises, hires a CRO,
+# or changes what it sells, and none of that happens weekly.
+RESCORE_DAYS = 90
+
+
+def is_stale(row: dict, *, now=None) -> bool:
+    from datetime import datetime, timedelta, timezone
+    now = now or datetime.now(timezone.utc)
+    scored_at = row.get("scored_at") or ""
+    if not scored_at:
+        return True
+    days = RETRY_UNSCORED_DAYS if (row.get("status") or "") else RESCORE_DAYS
+    return scored_at < (now - timedelta(days=days)).isoformat()
+
+
 def load(cfg: Config) -> dict[str, dict]:
     return {r["slug"]: r for r in db_get(cfg, TABLE,
             {"select": "slug,name,total,tier,status,evidenced,why,components,"

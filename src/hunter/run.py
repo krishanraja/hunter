@@ -2811,7 +2811,11 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
         known = intel.load(cfg)
     except Exception:
         known = {}
-    fresh = [k for k in keys if k not in known]
+    # Never scored, or scored long enough ago to be worth asking again. A
+    # company hunter could not read a fortnight ago may simply have had a
+    # page down, and without a retry that becomes a permanent exclusion.
+    fresh = [k for k in keys
+             if k not in known or intel.is_stale(known[k])]
     budget = int(cfg.optional("hunter_max_company_evidence_per_run", "60"))
     careers = targets_careers_urls(cfg, sheet) if sheet is not None else {}
     a16z_rows = {}
@@ -2921,6 +2925,11 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
         if k in out:
             continue
         out[k] = intel.restore(row)
+    if summary is not None:
+        retried = sum(1 for k in batch if k in known)
+        if retried:
+            summary.append(f"{retried} company(ies) re-scored because what "
+                           f"hunter knew about them had gone stale")
     if summary is not None and scored_now:
         summary.append(f"scored {len(scored_now)} company(ies) this run; "
                        f"{max(0, len(fresh) - len(batch))} left for next run")
