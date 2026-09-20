@@ -298,7 +298,14 @@ class Resolver:
                 label, "relocat", "office", "based", "reside", "locat", "country",
                 "time zone", "remote", "days per week", "days a week",
                 "in person", "primary locations", "zip code", "tri state",
-                "commuting distance"):
+                "commuting distance",
+                # The gate and the residence test below disagreed: this list
+                # rejected "Where are you currently living (City &
+                # State/Province)?" before the residence check, which knows
+                # that exact phrase, ever ran. Trulioo asked it and the
+                # application was refused for having no answer.
+                "currently living", "where are you currently", "current location",
+                "anticipated work location", "intended working location"):
             return None
         if _any(label, "zip code", "postcode", "post code"):
             entry = self.bank.get("ZIP")
@@ -470,6 +477,79 @@ class Resolver:
     CONSENT_FIELD = ("Consent to recruiting privacy policies and "
                      "acknowledgements")
 
+    # The same questions, asked as plain text boxes rather than as the kinds
+    # hunter keys off. Anaplan asks for Legal First Name, Legal Last Name,
+    # Address Line 1, Zip/Postal Code and State/Province as five short_text
+    # fields, and the application was refused for having no answer to any of
+    # them while every one sat in his Info Bank. Each rule here names the
+    # bank row it reads, so a wrong answer can be traced to a wrong row.
+    _POSTAL = (
+        (("address line 1", "address line1", "street address", "address 1"),
+         "Street address"),
+        (("zip", "postal code", "postcode", "post code"), "ZIP"),
+        (("state/province", "state / province", "state or province",
+          " state ", "province"), "State"),
+        (("country",), "Country"),
+    )
+
+    def _postal(self, field: FormField) -> Resolution | None:
+        label = _padded(field.label)
+        # "Email address" and "LinkedIn address" are not postal addresses.
+        if _any(label, "email", "linkedin", "url", "website", "ip address"):
+            return None
+        for needles, row in self._POSTAL:
+            if _any(label, *needles):
+                entry = self.bank.get(row)
+                if entry and entry.value.strip():
+                    return Answer(entry.value, f"Info Bank: {entry.field_name}")
+                return Unanswered(NEEDS_KRISH, f"no stored {row}")
+        # City on its own. "City, State" and "City & State/Province" are
+        # location questions and _location has already had its turn.
+        if _any(label, " city ", "city:") and not _any(label, "state", "province",
+                                                       "country", "which city"):
+            entry = self.bank.get("City")
+            if entry and entry.value.strip():
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        return None
+
+    def _name_parts(self, field: FormField) -> Resolution | None:
+        """First and last name asked separately, as text rather than a name."""
+        label = _padded(field.label)
+        # "Legal First and Last Name" is one box wanting the whole name, and
+        # it contains the words "last name". _direct already carves these out
+        # for kind "name"; the same carve-out has to hold here.
+        if _any(label, "first and last", "full name", "full legal name",
+                "first & last"):
+            return None
+        if not _any(label, "first name", "last name", "surname", "family name",
+                    "given name", "forename"):
+            return None
+        preferred = _any(label, "preferred", "nickname", "goes by")
+        legal = self.bank.value("Full legal name") or ""
+        parts = [p for p in legal.split() if p]
+        if not parts:
+            return Unanswered(NEEDS_KRISH, "no stored legal name")
+        if _any(label, "last name", "surname", "family name"):
+            if len(parts) < 2:
+                return Unanswered(NEEDS_KRISH, "the stored legal name has no surname")
+            return Answer(" ".join(parts[1:]),
+                          "Info Bank: Full legal name (surname)")
+        if preferred:
+            entry = self.bank.get("Preferred name")
+            if entry and entry.value.strip():
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        return Answer(parts[0], "Info Bank: Full legal name (first name)")
+
+    def _how_did_you_hear(self, field: FormField) -> Resolution | None:
+        if not _any(_padded(field.label), "how did you hear", "how did you find",
+                    "where did you hear", "how were you referred",
+                    "how did you learn about"):
+            return None
+        entry = self.bank.get("How did you hear about us (default)")
+        if entry and entry.value.strip():
+            return Answer(entry.value, f"Info Bank: {entry.field_name}")
+        return None
+
     def _consent(self) -> Resolution:
         entry = self.bank.get(self.CONSENT_FIELD)
         if entry and entry.usable:
@@ -516,7 +596,8 @@ class Resolver:
         label = _padded(field.label)
         result: Resolution | None = None
         for attempt in (self._authorisation(label), self._location(field),
-                        self._direct(field)):
+                        self._name_parts(field), self._postal(field),
+                        self._how_did_you_hear(field), self._direct(field)):
             if attempt is not None:
                 result = attempt
                 break
