@@ -150,16 +150,41 @@ def write_hunter_columns(sheet: Sheet, rows: dict[int, list],
     return [f"wrote hunter columns for {len(rows)} company row(s)"]
 
 
+def proposal_anchor(sheet: Sheet) -> int:
+    """The row the proposal block starts on, without landing on anything.
+
+    This was "two rows under his list", and his list ends at row 55 while
+    his TIER LEGEND sits at 57. The first live run wrote straight over the
+    legend, which is content he wrote, and the read back could not catch it
+    because the write itself succeeded: it checked that hunter's rows landed,
+    not that nothing else was lost.
+
+    So: reuse the block if it already exists, and otherwise start below
+    EVERYTHING on the tab, not below his list.
+    """
+    rows = sheet.read_tab_values(f"{TAB}!A1:A400")
+    for i, r in enumerate(rows, start=1):
+        cell = (r[0] if r else "") or ""
+        if str(cell).strip().upper().startswith("PROPOSED"):
+            return i
+    last = 0
+    for i, r in enumerate(rows, start=1):
+        if r and any(str(c).strip() for c in r):
+            last = i
+    return max(last + 2, FIRST_ROW + 1)
+
+
 def write_proposals(sheet: Sheet, proposals: list[tuple[str, float, str, str]],
-                    *, after_row: int, apply: bool = True) -> list[str]:
-    """Companies hunter found that he has not named, below his list.
+                    *, after_row: int | None = None, apply: bool = True,
+                    start_row: int | None = None) -> list[str]:
+    """Companies hunter found that he has not named, below everything of his.
 
     Each is (name, score, category, evidence line with its source). Capped,
     because a proposal list he does not read is worth less than none: it
     becomes another tab competing for the attention the Pipeline needs.
     """
     proposals = proposals[:MAX_PROPOSED]
-    start = after_row + 2
+    start = start_row if start_row is not None else proposal_anchor(sheet)
     values = [[PROPOSED_HEADING]]
     values += [[name, category, "", "", "", evidence, "", "", score]
                for name, score, category, evidence in proposals]
@@ -172,7 +197,7 @@ def write_proposals(sheet: Sheet, proposals: list[tuple[str, float, str, str]],
     sheet._write([(rng, values + blank)], raw=True)
     back = sheet.read_tab_values(f"{TAB}!A{start}:A{start}")
     got = (back[0][0] if back and back[0] else "")
-    if not got.startswith("PROPOSED"):
+    if not str(got).startswith("PROPOSED"):
         raise SheetError(
             f"the proposal heading did not land at {TAB}!A{start}; read back "
             f"{got!r}")

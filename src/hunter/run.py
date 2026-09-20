@@ -2709,9 +2709,7 @@ def discover_companies(cfg: Config, sheet: Sheet, summary: list[str], *,
     summary.append(prospect.summary_line(cands, len(batch), len(rows)))
     if rows:
         try:
-            last_row = max((t_.row for t_ in named), default=targets.FIRST_ROW)
-            for line in targets.write_proposals(sheet, rows, after_row=last_row,
-                                                apply=apply):
+            for line in targets.write_proposals(sheet, rows, apply=apply):
                 summary.append(line)
         except Exception as e:
             summary.append(f"proposals not written: {e.__class__.__name__}: {e}")

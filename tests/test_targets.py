@@ -187,3 +187,35 @@ def test_discovery_prefers_the_careers_page_over_guessing_a_slug(monkeypatch):
                         careers_url="https://sphere.example/careers")
     assert got == ("ashby", "sphere-labs")
     assert not probed, "the careers page answered, so nothing should be guessed"
+
+
+def test_the_proposal_block_never_lands_on_anything_he_wrote():
+    """His list ends at row 55 and his TIER LEGEND sits at 57. "Two rows
+    under his list" wrote straight over the legend on the first live run,
+    and the read back could not catch it: it checked that hunter's own rows
+    landed, not that nothing else was lost."""
+    grid = [list(r) for r in HIS_TAB]
+    sheet = FakeSheet(grid)
+    legend_before = [list(r) for r in sheet.grid[6:]]
+    targets.write_proposals(sheet, [("Mercor", 9.1, "cat", "evidence")])
+    names = [str(r[0]) if r else "" for r in sheet.grid]
+    assert "TIER LEGEND" in names, "his legend was overwritten"
+    start = next(i for i, n in enumerate(names) if n.startswith("PROPOSED"))
+    assert start > names.index("TIER LEGEND"), (
+        "the proposal block sits above content he wrote")
+    for row in legend_before:
+        assert row in [list(r) for r in sheet.grid], f"lost {row}"
+
+
+def test_the_proposal_block_is_rewritten_in_place_rather_than_stacked():
+    """Otherwise every run pushes a new block further down the tab and the
+    old ones sit there looking current."""
+    sheet = FakeSheet(HIS_TAB)
+    targets.write_proposals(sheet, [("Mercor", 9.1, "cat", "e")])
+    first = targets.proposal_anchor(sheet)
+    targets.write_proposals(sheet, [("Baseten", 8.4, "cat", "e")])
+    assert targets.proposal_anchor(sheet) == first
+    headings = [r for r in sheet.grid if r and str(r[0]).startswith("PROPOSED")]
+    assert len(headings) == 1
+    names = [str(r[0]) for r in sheet.grid if r and r[0]]
+    assert "Baseten" in names and "Mercor" not in names, "last week's tail survived"
