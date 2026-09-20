@@ -672,6 +672,17 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
                 return cand
         return None
 
+    declines, _notes = stored_company_declines(cfg)
+    try:
+        employer_index = employer.build_index(cfg, declines=declines)
+        print(f"employer index: {len(employer_index.portfolio)} portfolio "
+              f"entries, {len(employer_index.approved)} companies you have "
+              f"approved, {len(employer_index.declined)} you have declined\n")
+    except Exception as e:
+        employer_index = None
+        print(f"employer index unavailable ({e.__class__.__name__}); "
+              f"re-gating without the company dimension\n")
+
     rows, held = [], []
     for r in all_rows:
         if r.row_number < from_row or (r.verdict or "").strip() != "New":
@@ -730,8 +741,14 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
         # Judge the posting's own title, not the sheet's shorthand. "GM, UK"
         # in column C failed the seniority gate while the real title,
         # "General Manager - UK", passes it.
-        report = run_gates(role, never_apply=never)
-        result = score_role(role, universe=canon.universe)
+        # The restored bar: the employer on record, and the band read out of
+        # the posting body when the source left the field empty.
+        role.comp = comp_mod.best(role.comp, role.jd_text)
+        report = run_gates(role, never_apply=never,
+                           company_declines=declines,
+                           employer_index=employer_index)
+        result = score_role(role, universe=canon.universe,
+                            employer_index=employer_index)
         if decided_row:
             # His verdict outranks the rubric. The row keeps the score it has
             # and only gains the rationale it was missing.

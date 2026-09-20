@@ -41,7 +41,49 @@ than checking it.
 
 ---
 
-## 2. What Krish downloads is `main`
+## 2. A green test suite does not mean the output is good
+
+Every test in this repository checks that the code does what the code says.
+On 2026-09-20 there were 848 of them, all green, and Krish opened his sheet to
+find SiriusXM, Citi, Omnicom, a $140,000 "Founding GTM Lead" scored 10, and
+enough banks and health systems to write: "the drift has increased 100X".
+
+Nothing was broken in the sense those 848 tests could see. The sourcing had
+drifted to a LinkedIn keyword sweep, which structurally returns whoever posts
+the most jobs. The domain gate that blocks banking was exempting anything whose
+text said "artificial intelligence", which is every AI role at every bank. The
+scorer had no view of the employer and paid a point for being listed on the
+NYSE. Pay was invisible on 92 percent of roles, so the $200,000 floor never
+fired.
+
+**`tests/fixtures/krish_verdicts.json` is the answer, and it is ground truth.**
+148 roles he personally ruled on, 44 yes and 104 no. `tests/test_taste.py`
+measures the bar against them and prints the two numbers that matter: how many
+of his approvals the bar blocks, and how many of his declines. Today that is 0
+and 7.
+
+The rules that follow from it:
+
+- **Measure before you write the rule.** Two obvious fixes died on contact with
+  his data. A sector blocklist for healthcare would have killed BioSpace,
+  Recursion and Talkspace; one for consultancies would have killed Harvey. A
+  junior-title rule for "Lead" and "Manager" seats would have killed Harvey at
+  $240K to $360K, Writer at $205K to $259K, and every General Manager seat he
+  has ever approved. Both were deleted, and the files say why so nobody writes
+  them again.
+- **Never block on no evidence.** A company hunter has no record of scores
+  neutral and reaches him. Refusing a role needs a reason his verdicts support.
+  Ranking does not.
+- **One sector is a gate, and only one.** Banks, insurers and asset managers:
+  7 of his declines, 0 of his approvals. Everything else about company quality
+  is carried by the score.
+- **Refresh the fixture when he verdicts a batch**, and keep the old rows. It
+  only becomes more useful. A change that makes those numbers worse is a
+  regression however good it looks.
+
+---
+
+## 3. What Krish downloads is `main`
 
 `extension/` is loaded unpacked in his Chrome. **Chrome never updates an unpacked
 extension.** His folder is frozen at whatever ZIP he last downloaded, and the ZIP
@@ -72,7 +114,7 @@ The steps to give him, every time:
 
 ---
 
-## 3. Scheduled work runs from the default branch
+## 4. Scheduled work runs from the default branch
 
 GitHub Actions reads `.github/workflows/` from `main`, not from your branch. His
 APPROVE reply sat unread for hours because `approvals-drain` existed only on a
@@ -80,7 +122,7 @@ branch. If a change needs to run on a schedule, it has to be merged.
 
 ---
 
-## 4. Both halves ship, or neither works
+## 5. Both halves ship, or neither works
 
 The loop crosses two repositories:
 
@@ -95,7 +137,7 @@ doctor` does exactly that and is the fastest way to be sure.
 
 ---
 
-## 5. The last click is his
+## 6. The last click is his
 
 Nothing in this repository may press Submit on a job application. `submit.py`
 presses only with `confirm=True`, `open_for_human` is asserted not to contain a
@@ -110,7 +152,7 @@ what he asked for.
 
 ---
 
-## 6. House rules
+## 7. House rules
 
 - **Secrets live in Supabase `system_config`** and are read at runtime. The
   environment carries exactly two values, `SUPABASE_URL` and
@@ -130,7 +172,7 @@ what he asked for.
 
 ---
 
-## 7. Talking to him
+## 8. Talking to him
 
 He is a senior operator and he is paying for this in hours of his life.
 
@@ -146,7 +188,7 @@ He is a senior operator and he is paying for this in hours of his life.
 
 ---
 
-## 8. Where things are
+## 9. Where things are
 
 ```
 src/hunter/
@@ -159,10 +201,17 @@ src/hunter/
     essays.py         drafts the open questions
     approval.py       tokens, states, the plan hash
     infobank.py       his recorded answers
+  employer.py       what kind of company, on evidence not on a taxonomy
+  comp.py           reading pay out of a posting that had no pay field
+  invariants.py     what must always be true of the sheet, and the repairs
+  amend.py          learning from what he changed, not only what he rejected
+  alerts.py         the two emails he gets, deduplicated on the condition
   package/
-    build.py          CV and letter, from the masters
-    tailor.py         block selection, the hook
-    voicegate.py      every generated string passes this
+    build.py        CV and letter, from the masters
+    tailor.py       block selection, the hook
+    voicegate.py    every generated string passes this
 extension/            loaded unpacked in his Chrome. main is what he downloads
-tests/                743 tests, offline
+tests/                905 tests, offline
+  test_taste.py       the bar, measured against his own verdicts
+  fixtures/krish_verdicts.json   148 roles he ruled on. Ground truth
 ```
