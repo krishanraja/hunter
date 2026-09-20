@@ -74,9 +74,18 @@ The rules that follow from it:
 - **Never block on no evidence.** A company hunter has no record of scores
   neutral and reaches him. Refusing a role needs a reason his verdicts support.
   Ranking does not.
-- **One sector is a gate, and only one.** Banks, insurers and asset managers:
-  7 of his declines, 0 of his approvals. Everything else about company quality
-  is carried by the score.
+- **One sector is a gate, and only one.** Banks, insurers and asset managers.
+  Everything else about company quality is carried by the score.
+- **No company gate is absolute.** His words, 2026-09-20: "citi is an example
+  where I'd reject that company unless the role was ideal, which that one was".
+  G12 and G13 open for a role scoring 9 or more on MERIT, which is its score
+  with the employer component and penalty removed. Judging it on the ordinary
+  score is circular: the penalty is what stops it clearing.
+- **A verdict he gave must survive a pairing failure.** 89 of his declines had
+  never become learning events, because an event was only written when
+  reconcile had matched the sheet row to a database row. G12 was running on 11
+  companies when it should have been running on 36. `learn.from_sheet_rows`
+  reads his verdicts off the sheet itself, which is the actual record.
 - **Refresh the fixture when he verdicts a batch**, and keep the old rows. It
   only becomes more useful. A change that makes those numbers worse is a
   regression however good it looks.
