@@ -1815,6 +1815,15 @@ def run_command(cfg: Config, command: str) -> str:
             sheet.sort_by_score()
         except Exception as e:
             summary.append(f"sort skipped: {e.__class__.__name__}: {e}")
+        # Tell him the batch is there. Only cmd_run did this, so the Control
+        # Center's "Find roles" button sourced roles and said nothing at all:
+        # the one human step in the loop had nothing telling him it was his
+        # turn, which is the whole failure the alert exists to prevent.
+        try:
+            fresh = sheet.read_pipeline(canon.sheet_headers)
+            summary.append(f"review email: {alerts.send_review_ready(cfg, fresh, counts.get('staged', 0))}")
+        except Exception as e:
+            summary.append(f"review email failed: {e.__class__.__name__}: {e}")
         line = (f"{counts['discovered']} found, {counts['recorded']} recorded, "
                 f"{counts['staged']} staged, ${counts['spend_usd']:.2f} spent")
     elif command == "process":

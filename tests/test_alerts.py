@@ -230,3 +230,22 @@ def test_the_trouble_email_names_every_problem():
     for p in problems:
         assert p["kind"] in html and p["kind"] in text
     assert EM_DASH not in subject + html + text
+
+
+# ---------- every path that stages roles tells him ----------
+
+def test_the_source_path_emails_him_too():
+    """Only cmd_run sent the review email, so the Control Center "Find roles"
+    button sourced roles and said nothing. The one human step in the loop had
+    nothing telling him it was his turn."""
+    import inspect
+    from hunter import run
+    src = inspect.getsource(run.run_command)
+    assert "send_review_ready" in src
+
+
+def test_every_staging_path_is_covered():
+    import inspect
+    from hunter import run
+    for fn in (run.run_command, run.cmd_run):
+        assert "send_review_ready" in inspect.getsource(fn), fn.__name__
