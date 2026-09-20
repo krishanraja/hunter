@@ -2771,6 +2771,41 @@ def funnel_batches(cfg: Config, sheet: Sheet | None = None,
         return []
 
 
+def company_outcomes(cfg: Config) -> dict[str, dict]:
+    """key -> {seen, yes, no} from what actually happened at each company.
+
+    This is the half of the Target Companies tab that makes it a record
+    rather than a wish list: next to hunter's score sits how many roles it
+    has put in front of him from that company and how he ruled on them.
+    """
+    out: dict[str, dict] = {}
+
+    def row(key: str) -> dict:
+        return out.setdefault(key, {"seen": 0, "yes": 0, "no": 0})
+
+    try:
+        for r in db_get(cfg, "hunter_seen_roles",
+                        {"select": "company,presented_at", "limit": ALL_ROWS}):
+            if r.get("presented_at") and r.get("company"):
+                row(company_key(r["company"]))["seen"] += 1
+    except Exception:
+        return out
+    try:
+        for e in db_get(cfg, "hunter_verdict_events",
+                        {"select": "company,verdict,source", "limit": ALL_ROWS}):
+            src = (e.get("source") or "").lower()
+            if not e.get("company") or ("krish" not in src and "column a" not in src):
+                continue
+            r = row(company_key(e["company"]))
+            if (e.get("verdict") or "").lower() in ("go", "yes", "approved"):
+                r["yes"] += 1
+            else:
+                r["no"] += 1
+    except Exception:
+        pass
+    return out
+
+
 def known_company_keys(cfg: Config) -> set[str]:
     """Companies that have already reached his sheet at least once.
 
@@ -5231,17 +5266,33 @@ def main(argv: list[str]) -> int:
         scores = company_scores(cfg, [t.name for t in named], sheet, summary)
         for line in summary:
             print(line)
+        from .ats import discover as disc
+        outcomes = company_outcomes(cfg)
+        boards = disc.load_cache(cfg)
         print(f"\n{'score':>5} {'tier':>4} {'his':>3}  company")
         rows = {}
         for t_ in named:
-            s = scores.get(company_key(t_.name) or slugify(t_.name))
+            key = company_key(t_.name) or slugify(t_.name)
+            s = scores.get(key)
             if not s:
                 continue
             tier = s.tier if s.tier else "-"
             print(f"{s.total:5.1f} {str(tier):>4} {str(t_.tier_number or '-'):>3}  "
                   f"{t_.name[:24]:25} {(s.status or s.why(2))[:80]}")
-            rows[t_.row] = [s.total, s.tier or "", "", targets.today(),
-                            "", "", "", (s.status or s.why(2))[:400]]
+            hit = boards.get(slugify(t_.name)) or {}
+            board = f"{hit['ats']}:{hit['slug']}" if hit else ""
+            if not board:
+                # A company in the seed map never goes through discovery, so
+                # its board is not in the cache. Reading blank there made it
+                # look unreachable when it is the one hunter has always had.
+                from .sources import ats_for
+                mapped = ats_for(t_.name)
+                if mapped:
+                    board = f"{mapped[0]}:{mapped[1]}"
+            o = outcomes.get(key) or {}
+            rows[t_.row] = [s.total, s.tier or "", board, targets.today(),
+                            o.get("seen") or "", o.get("yes") or "",
+                            o.get("no") or "", (s.status or s.why(2))[:400]]
         if "--apply" in argv and rows:
             for line in targets.write_hunter_columns(sheet, rows):
                 print(line)
