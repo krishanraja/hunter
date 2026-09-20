@@ -48,6 +48,8 @@ class Candidate:
     senior_seen: int = 0          # of those, ones matching a senior title
     in_contacts: int = 0          # people he knows there
     a16z: bool = False
+    backed_by: str = ""
+    hiring: int = 0
     has_board: bool = False
     reasons: list[str] = field(default_factory=list)
 
@@ -61,6 +63,8 @@ class Candidate:
         facts about before one seen once in a keyword sweep.
         """
         return (4.0 * self.a16z
+                + 3.5 * bool(self.backed_by)
+                + 1.0 * min(self.hiring, 20) / 20
                 + 3.0 * self.has_board
                 + 2.0 * min(self.in_contacts, 5) / 5
                 + 1.5 * min(self.senior_seen, 4) / 4
@@ -71,6 +75,10 @@ class Candidate:
         bits = []
         if self.a16z:
             bits.append("a16z portfolio")
+        if self.backed_by:
+            bits.append(f"{self.backed_by} portfolio")
+        if self.hiring:
+            bits.append(f"{self.hiring} open role(s)")
         if self.in_contacts:
             bits.append(f"{self.in_contacts} contact(s) of yours there")
         if self.senior_seen:
@@ -177,6 +185,21 @@ def candidates(cfg: Config, *, exclude: set[str] | None = None,
         c = add(r.get("name") or "")
         if c is not None:
             c.a16z = True
+
+    # Other firms' portfolios, which carry the description, stage and
+    # locations as well as the backing, so a company from here can be scored
+    # without fetching anything at all.
+    try:
+        from .sources import portfolio
+        backed = portfolio.load(cfg)
+    except Exception:
+        backed = {}
+    for key, r in backed.items():
+        c = add(r.get("name") or "")
+        if c is not None:
+            c.backed_by = r.get("firm") or ""
+            if r.get("active_jobs_count"):
+                c.hiring = int(r["active_jobs_count"])
 
     if boards:
         from .sources import slugify

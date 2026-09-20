@@ -2799,6 +2799,16 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
         pass
     cache = disc.load_cache(cfg)
     fns = {"greenhouse": greenhouse.board, "ashby": ashby.board, "lever": lever.board}
+    # A firm's own portfolio board answers, in one request for the whole
+    # portfolio, the component the scorer can least often establish: who is
+    # behind the company. It also carries a description, a stage and a
+    # location set, which is four of the five components for a company whose
+    # own site refuses hunter.
+    try:
+        from .sources import portfolio
+        portfolio_rows = portfolio.load(cfg)
+    except Exception:
+        portfolio, portfolio_rows = None, {}
 
     def gather(k: str):
         """Evidence for one company. Every call is a network read of a
@@ -2809,7 +2819,11 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
         a16 = a16z_rows.get(k)
         if a16:
             got.update(intel.from_a16z(a16))
-        domain = (a16 or {}).get("domain") or ""
+        pf = portfolio_rows.get(k)
+        if pf and portfolio is not None:
+            for a, fact in portfolio.row_to_facts(pf).items():
+                got.setdefault(a, fact)
+        domain = (a16 or {}).get("domain") or (pf or {}).get("domain") or ""
         # The ROOT of his careers link, not the careers page itself. A
         # careers page says "Careers at TollBit" and nothing about the
         # business, so reading it left 25 of his 52 named companies with no
@@ -5125,6 +5139,16 @@ def main(argv: list[str]) -> int:
         print(out)
         for line in layout.describe():
             print(f"  {line}")
+        return 0
+    if cmd == "portfolios":
+        # Refresh the VC portfolio boards. Read only against the boards; the
+        # only write is hunter's own cache of what they said.
+        from .sources import portfolio
+        cfg = load()
+        n, notes = portfolio.refresh(cfg)
+        for line in notes:
+            print(line)
+        print(f"stored {n} portfolio companies with their facts")
         return 0
     if cmd == "discover":
         # Companies he has never named, scored and proposed. Read only
