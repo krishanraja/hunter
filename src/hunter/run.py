@@ -2720,8 +2720,16 @@ def discover_companies(cfg: Config, sheet: Sheet, summary: list[str], *,
             if not s.status and s.total >= comp_score.SWEEP_FLOOR]
 
 
+def funnel_batches_measure(cfg: Config, sheet: Sheet | None = None) -> list:
+    """The batches, measured but not written. What `stats` prints."""
+    out: list = []
+    funnel_batches(cfg, sheet, None, save=False, into=out)
+    return out
+
+
 def funnel_batches(cfg: Config, sheet: Sheet | None = None,
-                   summary: list[str] | None = None) -> list:
+                   summary: list[str] | None = None, *, save: bool = True,
+                   into: list | None = None) -> list:
     """Accept rate per batch, measured and written down.
 
     Never fatal. If this cannot be computed the run still runs; it just
@@ -2730,16 +2738,30 @@ def funnel_batches(cfg: Config, sheet: Sheet | None = None,
     to single figures.
     """
     try:
-        from . import batchstats, targets
-        tiers = {}
+        from . import batchstats, companyintel, targets
+        # Hunter's own computed tier first, because it covers every company
+        # it has scored rather than only the 53 he named. His stated tier
+        # wins where he has given one: the split is meant to tell him which
+        # kind of company is worth his review time, and his own label is the
+        # one he will recognise.
+        tiers: dict = {}
+        try:
+            for k, row in companyintel.load(cfg).items():
+                if row.get("tier"):
+                    tiers[k] = int(row["tier"])
+        except Exception:
+            pass
         if sheet is not None:
             try:
-                tiers = {company_key(k) or k: v
-                         for k, v in targets.stated_tiers(sheet).items()}
+                for k, v in targets.stated_tiers(sheet).items():
+                    tiers[company_key(k) or k] = v
             except Exception:
-                tiers = {}
+                pass
         batches = batchstats.measure(cfg, tiers)
-        batchstats.save(cfg, batches)
+        if save:
+            batchstats.save(cfg, batches)
+        if into is not None:
+            into.extend(batches)
         if summary is not None:
             summary.extend(batchstats.lines(batches))
         return batches
@@ -5173,15 +5195,10 @@ def main(argv: list[str]) -> int:
     if cmd == "stats":
         # The funnel's own report card, on demand. Nothing here writes to the
         # sheet or sends anything; it reads what he decided and divides.
-        from . import batchstats, targets
+        from . import batchstats
         cfg = load()
         sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-        try:
-            tiers = {company_key(k) or k: v
-                     for k, v in targets.stated_tiers(sheet).items()}
-        except Exception:
-            tiers = {}
-        batches = batchstats.measure(cfg, tiers)
+        batches = funnel_batches_measure(cfg, sheet)
         print(f"{'batch':12} {'staged':>7} {'ruled':>6} {'yes':>4} {'rate':>6}")
         for b in batches:
             rate = f"{round(100 * b.rate)}%" if b.rate is not None else "-"
