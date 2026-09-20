@@ -14,6 +14,7 @@ himself. Nothing here sends anything.
 from __future__ import annotations
 
 import datetime
+import time
 import json
 import re
 
@@ -828,6 +829,14 @@ def cold_targets(cfg: Config, roles: list[dict], cap: int | None = None) -> dict
     stats = {"eligible": 0, "searched": 0, "found": 0, "skipped": []}
     if not roles or cap <= 0:
         return stats
+    # A wall clock budget as well as a count. Each of these is one model call
+    # with web search and takes the better part of a minute, so a cap of 30
+    # is half an hour of a run that Actions kills at 120 minutes, and the
+    # steps AFTER this one are the ones that put roles in front of him.
+    # Measured 2026-09-20: eighteen of them ran for eighteen minutes while
+    # sourcing had not started.
+    budget_s = int(cfg.optional("hunter_cold_targets_seconds", "420")) if cfg is not None else 420
+    started = time.monotonic()
     jids = [r["job_id"] for r in roles]
     have: dict[str, set[str]] = {}
     for i in range(0, len(jids), 100):
@@ -847,6 +856,9 @@ def cold_targets(cfg: Config, roles: list[dict], cap: int | None = None) -> dict
     model = cfg.optional("hunter_anthropic_model", "claude-opus-5")
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     for r in todo[:cap]:
+        if budget_s and time.monotonic() - started > budget_s:
+            stats["out_of_time"] = len(todo[:cap]) - stats["searched"]
+            break
         stats["searched"] += 1
         loc = f" ({r['location']})" if r.get("location") else ""
         try:

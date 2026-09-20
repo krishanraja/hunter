@@ -648,3 +648,40 @@ def test_the_company_floor_opens_for_an_exceptional_role(monkeypatch):
     assert not counts["g14_blocked"], (
         "an exceptional role must survive a company he would usually skip")
     assert inserted[0]["status"] == "staging"
+
+
+def test_cold_targets_stops_when_it_runs_out_of_time(monkeypatch):
+    """Each of these is one model call with web search and takes the better
+    part of a minute. Measured on 2026-09-20: eighteen of them ran for
+    eighteen minutes while sourcing, the step that actually puts roles in
+    front of him, had not started. Actions kills the run at 120 minutes."""
+    import hunter.people.bridges as bridges_mod
+
+    roles = [{"job_id": f"c{i}:role", "company": f"C{i}", "title": "GM",
+              "location": "London"} for i in range(10)]
+    monkeypatch.setattr(bridges_mod, "db_get", lambda *a, **k: [])
+    clock = {"t": 0.0}
+    monkeypatch.setattr(bridges_mod.time, "monotonic", lambda: clock["t"])
+
+    class Msgs:
+        def create(self, **kw):
+            clock["t"] += 60.0
+            raise RuntimeError("no network in tests")
+
+    class Client:
+        def __init__(self, **kw): self.messages = Msgs()
+
+    import sys, types
+    mod = types.ModuleType("anthropic")
+    mod.Anthropic = Client
+    monkeypatch.setitem(sys.modules, "anthropic", mod)
+
+    class Cfg:
+        def optional(self, key, default=""):
+            return {"hunter_cold_targets_seconds": "180"}.get(key, default)
+        def require(self, key):
+            return "key"
+
+    stats = bridges_mod.cold_targets(Cfg(), roles, cap=10)
+    assert stats["searched"] < 10, "it spent the whole run on cold targets"
+    assert stats.get("out_of_time"), "it stopped without saying why"
