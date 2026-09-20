@@ -69,17 +69,35 @@ def _to_int(raw: str) -> int | None:
         return None
 
 
-def amounts_near_salary_words(text: str) -> list[int]:
-    """Every plausible salary figure that sits in a pay sentence."""
+SYMBOL = {"$": "$", "usd": "$", "£": "£", "gbp": "£",
+          "€": "€", "eur": "€"}
+
+# The two halves of a stated range, close together: "$250,000 - $300,000",
+# "250K to 300K", "$250,000-$300,000".
+JOINER = re.compile(r"^\s*(?:-|\u2013|\u2014|to|through|up to)\s*$", re.I)
+JOIN_GAP = 24
+
+
+def _currency(body: str, start: int) -> str:
+    """The symbol immediately before an amount, defaulting to dollars."""
+    lead = body[max(0, start - 6):start + 6].lower()
+    for token, sym in SYMBOL.items():
+        if token in lead:
+            return sym
+    return "$"
+
+
+def _hits(text: str) -> list[tuple[int, int, int, str]]:
+    """(value, start, end, symbol) for every plausible salary figure that
+    sits in a pay sentence."""
     body = text or ""
-    out: list[int] = []
+    out = []
     for m in AMOUNT.finditer(body):
         raw = m.group(1) or m.group(2)
         value = _to_int(raw)
         if value is None or not (MIN_PLAUSIBLE <= value <= MAX_PLAUSIBLE):
             continue
-        lo = max(0, m.start() - WINDOW)
-        window = body[lo:m.end() + WINDOW]
+        window = body[max(0, m.start() - WINDOW):m.end() + WINDOW]
         if not SALARY_CONTEXT.search(window):
             continue
         # The nearest disqualifying word wins only when it is closer than the
@@ -88,23 +106,61 @@ def amounts_near_salary_words(text: str) -> list[int]:
         near = body[max(0, m.start() - 90):m.end() + 90]
         if NOT_SALARY.search(near) and not SALARY_CONTEXT.search(near):
             continue
-        out.append(value)
+        out.append((value, m.start(), m.end(), _currency(body, m.start())))
     return out
+
+
+def stated_range(text: str) -> tuple[int, int, str] | None:
+    """The two halves of a range the posting actually writes as a range.
+
+    This is preferred over collecting every figure in the paragraph, because
+    collecting swept up a signing bonus: "A signing bonus of $50,000 is
+    available. The base pay range is $230,000 - $270,000" produced
+    "$50,000 - $270,000". A range is two amounts with a dash or the word "to"
+    between them and nothing else.
+    """
+    body = text or ""
+    hits = _hits(body)
+    best = None
+    for (lo_v, _ls, lo_e, lo_sym), (hi_v, hi_s, _he, hi_sym) in zip(hits, hits[1:]):
+        if hi_s - lo_e > JOIN_GAP:
+            continue
+        if not JOINER.match(body[lo_e:hi_s]):
+            continue
+        if hi_v < lo_v:
+            continue
+        sym = lo_sym if lo_sym == hi_sym else lo_sym
+        if best is None or (hi_v - lo_v) > (best[1] - best[0]):
+            best = (lo_v, hi_v, sym)
+    return best
 
 
 def extract(text: str) -> str:
     """A comp string in the shape the sheet already uses, or "".
 
-    Returns a range when the posting states one and a single figure when it
-    states one figure. Never guesses: no pay sentence means no string.
+    A range the posting states as a range wins. Failing that, the figures in
+    its pay sentences. Never guesses: no pay sentence means no string, and
+    the currency is preserved rather than assumed, because rendering
+    "£180,000 - £220,000" as dollars is a different number.
     """
-    values = amounts_near_salary_words(text)
-    if not values:
+    band = stated_range(text)
+    if band:
+        lo, hi, sym = band
+        return f"{sym}{lo:,} - {sym}{hi:,}"
+    hits = _hits(text)
+    if not hits:
         return ""
+    values = [h[0] for h in hits]
+    sym = hits[0][3]
     lo, hi = min(values), max(values)
     if lo == hi:
-        return f"${lo:,}"
-    return f"${lo:,} - ${hi:,}"
+        return f"{sym}{lo:,}"
+    return f"{sym}{lo:,} - {sym}{hi:,}"
+
+
+def amounts_near_salary_words(text: str) -> list[int]:
+    """Kept for callers that only want the figures."""
+    return [h[0] for h in _hits(text)]
 
 
 def best(structured: str | None, jd_text: str | None) -> str:
