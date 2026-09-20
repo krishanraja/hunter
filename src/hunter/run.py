@@ -2465,6 +2465,14 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     board_cache = disc.load_cache(cfg)
     careers = targets_careers_urls(cfg, sheet)
     universe = live_universe(cfg, canon, sheet, summary)
+    if cfg.optional("hunter_company_discovery", "1") != "0":
+        try:
+            found = discover_companies(cfg, sheet, summary)
+        except Exception as e:
+            summary.append(f"company discovery failed: {e.__class__.__name__}: {e}")
+            found = []
+        known = {slugify(c) for c in universe}
+        universe = universe + [f for f in found if slugify(f) not in known]
     swept, gaps, learned = [], [], 0
     for company in universe:
         mapping = ats_for(company)
@@ -2652,6 +2660,63 @@ def posting_text(p) -> str:
     return text if len(text) >= 200 else ""
 
 
+def discover_companies(cfg: Config, sheet: Sheet, summary: list[str], *,
+                       apply: bool = True) -> list[str]:
+    """Score companies he has never named, and propose the best of them.
+
+    Returns the names that cleared the sweep floor, so this run can sweep
+    their boards as well as his own list. Nothing here writes to his own
+    columns and nothing is contacted: a good company becomes a row he can
+    adopt by typing a tier.
+    """
+    from . import company as comp_score
+    from . import prospect, targets
+    from .ats import discover as disc
+
+    try:
+        named = targets.read(sheet)
+    except Exception as e:
+        summary.append(f"company discovery skipped, tab unreadable: "
+                       f"{e.__class__.__name__}")
+        return []
+    exclude = {company_key(t_.name) for t_ in named}
+    # A company he has already ruled on is not a discovery.
+    try:
+        for r in db_get(cfg, "hunter_verdict_events",
+                        {"select": "company", "limit": ALL_ROWS}):
+            if r.get("company"):
+                exclude.add(company_key(r["company"]))
+    except Exception:
+        pass
+    boards = disc.load_cache(cfg)
+    cands = prospect.candidates(cfg, exclude=exclude, boards=boards)
+    budget = int(cfg.optional("hunter_max_new_companies_per_run", "60"))
+    batch = cands[:budget]
+    all_scores = company_scores(cfg, [c.name for c in batch], sheet, summary)
+    # company_scores returns everything hunter has ever scored, because the
+    # cache is shared with staging. A proposal must come from THIS batch, or
+    # the tab fills up with the companies he already named.
+    wanted = {c.key for c in batch}
+    scores = {k: s for k, s in all_scores.items() if k in wanted}
+    rows = prospect.proposals(scores, batch,
+                              floor=comp_score.DISCOVERY_FLOOR,
+                              limit=targets.MAX_PROPOSED)
+    summary.append(prospect.summary_line(cands, len(batch), len(rows)))
+    if rows:
+        try:
+            last_row = max((t_.row for t_ in named), default=targets.FIRST_ROW)
+            for line in targets.write_proposals(sheet, rows, after_row=last_row,
+                                                apply=apply):
+                summary.append(line)
+        except Exception as e:
+            summary.append(f"proposals not written: {e.__class__.__name__}: {e}")
+    # Anything at or above the sweep floor is worth sweeping now, adopted or
+    # not. Waiting for him to type a tier would mean the discovery only ever
+    # pays off next week.
+    return [s.name for s in scores.values()
+            if not s.status and s.total >= comp_score.SWEEP_FLOOR]
+
+
 def funnel_batches(cfg: Config, sheet: Sheet | None = None,
                    summary: list[str] | None = None) -> list:
     """Accept rate per batch, measured and written down.
@@ -2734,8 +2799,11 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
         pass
     cache = disc.load_cache(cfg)
     fns = {"greenhouse": greenhouse.board, "ashby": ashby.board, "lever": lever.board}
-    scored_now = []
-    for k in fresh[:budget]:
+
+    def gather(k: str):
+        """Evidence for one company. Every call is a network read of a
+        public page, so they run side by side: serially, a budget of 60 was
+        three minutes of a Sunday morning spent waiting on DNS."""
         name = keys[k]
         got: dict = {}
         a16 = a16z_rows.get(k)
@@ -2786,7 +2854,22 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
         a16z_member = bool(got.pop("a16z_portfolio", False))
         facts = comp_score.Facts(slug=k, name=name, a16z_portfolio=a16z_member,
                                  **got)
-        scored_now.append(comp_score.score_company(facts))
+        return comp_score.score_company(facts)
+
+    scored_now = []
+    batch = fresh[:budget]
+    if batch:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        workers = int(cfg.optional("hunter_company_evidence_workers", "8"))
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            futures = [pool.submit(gather, k) for k in batch]
+            for fu in as_completed(futures):
+                try:
+                    scored_now.append(fu.result())
+                except Exception as e:
+                    if summary is not None:
+                        summary.append(
+                            f"company evidence failed: {e.__class__.__name__}")
     if scored_now:
         try:
             intel.save(cfg, scored_now)
@@ -2801,7 +2884,7 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
         out[k] = intel.restore(row)
     if summary is not None and scored_now:
         summary.append(f"scored {len(scored_now)} company(ies) this run; "
-                       f"{len(fresh) - len(scored_now)} left for next run")
+                       f"{max(0, len(fresh) - len(batch))} left for next run")
     return out
 
 
@@ -5042,6 +5125,23 @@ def main(argv: list[str]) -> int:
         print(out)
         for line in layout.describe():
             print(f"  {line}")
+        return 0
+    if cmd == "discover":
+        # Companies he has never named, scored and proposed. Read only
+        # unless --apply, and nothing is ever contacted.
+        cfg = load()
+        sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        summary: list[str] = []
+        found = discover_companies(cfg, sheet, summary, apply="--apply" in argv)
+        for line in summary:
+            print(line)
+        if found:
+            print(f"\n{len(found)} company(ies) cleared the sweep floor and "
+                  f"would be swept this run:")
+            for name in sorted(found):
+                print(f"  {name}")
+        if "--apply" not in argv:
+            print("\ndry run. add --apply to write the proposals onto the tab.")
         return 0
     if cmd == "stats":
         # The funnel's own report card, on demand. Nothing here writes to the

@@ -92,7 +92,100 @@ The rules that follow from it:
 
 ---
 
-## 3. What Krish downloads is `main`
+## 3. Two scores, and the company one comes first
+
+Until 2026-09-20 hunter had one score, on the role. Nothing anywhere asked
+whether the COMPANY was one he would join. Measured from his own column A,
+accept rate fell 77 percent to 15 percent over six weeks, and 28 of the last
+batch's 33 declines carried a company-level reason code. He was not rejecting
+the seat. He was rejecting the business.
+
+```
+  SUPPLY                    COMPANY SCORE             ROLE SCORE
+  where companies      ->   is this a business   ->   is this seat
+  come from                 worth his time            his shape
+  (5,540 candidates)        (company.py, 0 to 10)     (score.py + gates)
+```
+
+- **`company.py` scores the business**, out of 10, from five weighted
+  components (`WEIGHTS`) and two penalties that are not averaged away. The
+  points come from `WEIGHTS`, never from a literal, because gutting the
+  declared category weight to 0.1 once left every calibration number
+  unchanged while the functions handed out hardcoded fours.
+- **`companyintel.py` gathers the evidence, free**: the company's own
+  homepage, its about page, the opening of its own job postings, its job
+  board, the a16z index. `llm.py` is behind it when a model is needed.
+- **G14 applies it at staging.** A role stages only if its company clears
+  `SWEEP_FLOOR`, unless the role scores `EXCEPTIONAL_MERIT`.
+- **`prospect.py` finds companies he has never named** in what hunter
+  already discards, and proposes the best of them under his own list on the
+  Target Companies tab. It never bounds the funnel to his list: his words,
+  "There are so many companies I am not thinking about".
+
+The rules this layer must keep:
+
+- **A Fact refuses to exist without a source URL.** Not filtered later,
+  refused at construction, so there is no path that stores an uncited claim.
+- **Unknown and zero are different answers.** A component with no evidence
+  scores nothing AND is marked unknown, and the score is normalised over
+  what was actually observed. Scoring out of a fixed 10 with unknowns worth
+  zero admitted 11 percent of his own 53 named targets, because a homepage
+  does not say who led the Series B.
+- **One observation is not a judgement.** `MIN_DENOMINATOR` divides by at
+  least the weight of category plus one more, so a company known by a single
+  lucky match lands at Tier 3 rather than a perfect 10. Before it, a company
+  whose board mentioned London scored 10 on that alone.
+- **Nothing is scored without knowing what the business does.** Category is
+  the prerequisite, not one consideration among five.
+- **Never block on no evidence.** G14 blocks a company hunter has READ and
+  found wanting. A company it could not read is ranked lower and still
+  reaches him.
+- **A guessed domain carries its doubt onto the sheet.** Guessing resolved
+  Perplexity to a domain registrar, Gamma to a security vendor and Krea to a
+  Slovak IT consultancy, and all three were scored. The resolved host must be
+  the company's own, and a name-matched site says so in its evidence line.
+- **`tests/test_company_taste.py` is the ground truth**, the sibling of
+  `test_taste.py`. 138 labelled companies, his 52 named targets against the
+  49 he declined. Today the bar sweeps 42 of his 52 and blocks 43 of his 49,
+  and the mean score by the tier HE assigned comes out 8.2, 7.7, 6.1. The
+  labels are his and the facts are the companies' own words, kept apart on
+  purpose: if the tab supplied both, the test would measure his enthusiasm
+  reflected back.
+
+## 4. The Target Companies tab is his, and it is policy
+
+53 companies, five categories, a tier each, and a TIER LEGEND in his own
+words saying what each tier means for sweeping. No code read any of it while
+canon 9.1 held a second copy that had already drifted by three names.
+
+- `targets.py` reads it every run and it wins over canon 9.1. The drift is
+  filed as a `workflow_proposals` row; canon is never edited from code.
+- **Columns A to H are his.** Hunter writes Score, Computed Tier, Board, Last
+  Swept, Roles Seen, Yes, No and Evidence to the right of them, and reads
+  them back.
+- Proposals go in a capped block BELOW his list. He adopts one by typing a
+  tier.
+
+## 5. Watch the accept rate, or the drift comes back
+
+`batchstats.py`, and `python -m hunter.run stats`. Every batch was recorded
+while the rate fell 77 to 6 percent; the rate itself was not, so nothing
+could see the line going down.
+
+- The batch is `presented_at`, never `status`: a row's status keeps moving
+  after he sees it, and filtering on "staging" reported the 6 August batch at
+  100 percent because its declines had moved on.
+- The verdict comes from `hunter_verdict_events`, never
+  `hunter_seen_roles.krish_verdict`. That column is only written when
+  reconcile pairs a sheet row to a database row, which is the same failure
+  that left 89 declines out of the learning loop.
+- A batch he has barely judged has NO rate, not a rate of zero.
+- The invariants check for it has no repair, deliberately. What to change
+  when the funnel drifts is a judgement, and it is his.
+
+---
+
+## 6. What Krish downloads is `main`
 
 `extension/` is loaded unpacked in his Chrome. **Chrome never updates an unpacked
 extension.** His folder is frozen at whatever ZIP he last downloaded, and the ZIP
@@ -123,7 +216,7 @@ The steps to give him, every time:
 
 ---
 
-## 4. Scheduled work runs from the default branch
+## 7. Scheduled work runs from the default branch
 
 GitHub Actions reads `.github/workflows/` from `main`, not from your branch. His
 APPROVE reply sat unread for hours because `approvals-drain` existed only on a
@@ -131,7 +224,7 @@ branch. If a change needs to run on a schedule, it has to be merged.
 
 ---
 
-## 5. Both halves ship, or neither works
+## 8. Both halves ship, or neither works
 
 The loop crosses two repositories:
 
@@ -146,7 +239,7 @@ doctor` does exactly that and is the fastest way to be sure.
 
 ---
 
-## 6. The last click is his
+## 9. The last click is his
 
 Nothing in this repository may press Submit on a job application. `submit.py`
 presses only with `confirm=True`, `open_for_human` is asserted not to contain a
@@ -161,7 +254,7 @@ what he asked for.
 
 ---
 
-## 7. House rules
+## 10. House rules
 
 - **Secrets live in Supabase `system_config`** and are read at runtime. The
   environment carries exactly two values, `SUPABASE_URL` and
@@ -181,7 +274,7 @@ what he asked for.
 
 ---
 
-## 8. Talking to him
+## 11. Talking to him
 
 He is a senior operator and he is paying for this in hours of his life.
 
@@ -197,7 +290,7 @@ He is a senior operator and he is paying for this in hours of his life.
 
 ---
 
-## 9. Where things are
+## 12. Where things are
 
 ```
 src/hunter/
@@ -210,6 +303,12 @@ src/hunter/
     essays.py         drafts the open questions
     approval.py       tokens, states, the plan hash
     infobank.py       his recorded answers
+  company.py        is the BUSINESS worth his time. Five components, evidenced
+  companyintel.py   where those facts come from, free, and always cited
+  prospect.py       companies he has not named, found in what hunter discards
+  targets.py        his Target Companies tab, read as policy and written back
+  batchstats.py     accept rate per batch. The number nobody was watching
+  llm.py            one door to a model, with a second provider behind it
   employer.py       what kind of company, on evidence not on a taxonomy
   comp.py           reading pay out of a posting that had no pay field
   invariants.py     what must always be true of the sheet, and the repairs
@@ -220,7 +319,9 @@ src/hunter/
     tailor.py       block selection, the hook
     voicegate.py    every generated string passes this
 extension/            loaded unpacked in his Chrome. main is what he downloads
-tests/                905 tests, offline
+tests/                1041 tests, offline
   test_taste.py       the bar, measured against his own verdicts
-  fixtures/krish_verdicts.json   148 roles he ruled on. Ground truth
+  test_company_taste.py          the company bar, against the companies he chose
+  fixtures/krish_verdicts.json   154 roles he ruled on. Ground truth
+  fixtures/krish_companies.json  138 companies he named or declined. Ground truth
 ```
