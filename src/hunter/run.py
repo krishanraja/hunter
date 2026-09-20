@@ -2898,8 +2898,16 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
         name = keys[k]
         got: dict = {}
         a16 = a16z_rows.get(k)
+        # The a16z index contributes membership, stage and band. Its
+        # "markets" line ("a16z lists its markets as AI, Enterprise") is NOT
+        # a description of the business and was winning over the company's
+        # own site, because it was merged first and everything after it used
+        # setdefault. Held back to the end, where it is a last resort.
+        a16z_markets = None
         if a16:
-            got.update(intel.from_a16z(a16))
+            a16_facts = intel.from_a16z(a16)
+            a16z_markets = a16_facts.pop("what_it_does", None)
+            got.update(a16_facts)
         pf = portfolio_rows.get(k)
         if pf and portfolio is not None:
             for a, fact in portfolio.row_to_facts(pf).items():
@@ -2946,6 +2954,8 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
                             break
             except Exception:
                 pass
+        if "what_it_does" not in got and a16z_markets is not None:
+            got["what_it_does"] = a16z_markets
         a16z_member = bool(got.pop("a16z_portfolio", False))
         facts = comp_score.Facts(slug=k, name=name, a16z_portfolio=a16z_member,
                                  **got)

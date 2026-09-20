@@ -231,6 +231,13 @@ BAND = re.compile(r"\b(\d+)\s*(k?)\s*(?:to|-|–)\s*(\d+)\s*(k?)\b", re.I)
 # homepages clear it.
 MIN_DESCRIPTION = 80
 
+# Appended by companyintel when the site was found by guessing the name
+# rather than from a link Krish or a16z gave. It is hunter's own words, so
+# it is stripped before the description is measured: with it attached, a
+# sixty six character slogan cleared the eighty character threshold and was
+# read as a verdict about the business.
+GUESS_CAVEAT = " (site matched by name only, worth checking)"
+
 MIN_EVIDENCED = 1
 SWEEP_FLOOR = 6.0
 DISCOVERY_FLOOR = 8.0
@@ -422,7 +429,7 @@ def category_fit(f: Facts) -> Component:
     # blocked an AI infrastructure company on sixty characters of marketing.
     # Too little to tell is unknown, which costs the company nothing and
     # comes back on the fortnightly retry.
-    if len(text) < MIN_DESCRIPTION:
+    if len(text.replace(GUESS_CAVEAT, "").strip()) < MIN_DESCRIPTION:
         return _unknown("category", f"what the business does ({text[:40]}...) is")
     return Component("category", 0.0, True,
                      "outside his five categories", f.what_it_does.source)

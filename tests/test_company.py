@@ -331,3 +331,14 @@ def test_a_real_description_that_is_outside_is_still_called_outside():
         "Acme operates a nationwide chain of dental practices, providing "
         "routine and cosmetic dentistry to families across the midwest.", WEB)))
     assert c.evidenced and c.points == 0 and "outside" in c.evidence
+
+
+def test_hunters_own_caveat_never_counts_as_the_company_describing_itself():
+    """The "site matched by name only" note is hunter's words. Attached to
+    Lightning AI's sixty six character slogan it cleared the eighty
+    character threshold, and a slogan was read as a verdict again."""
+    from hunter.company import GUESS_CAVEAT
+    slogan = "Lightning AI From the PyTorch Lightning creators. Own your AI."
+    assert len(slogan) < 80 and len(slogan + GUESS_CAVEAT) > 80
+    c = category_fit(f(what_it_does=Fact(slogan + GUESS_CAVEAT, WEB)))
+    assert c.unknown, "hunter's own note was counted as the company's description"

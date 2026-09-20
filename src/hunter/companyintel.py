@@ -27,7 +27,7 @@ import re
 import requests
 from datetime import datetime, timezone
 
-from .company import Fact, Facts
+from .company import Fact, Facts, GUESS_CAVEAT
 from .config import Config, db_get, db_insert, ALL_ROWS
 from .sources import slugify
 
@@ -409,7 +409,7 @@ def resolve_domain(name: str, timeout: int = 6) -> tuple[str, str]:
 # apart from the real thing by string matching, so the answer is not to
 # pretend otherwise but to carry the doubt all the way to the sheet, where
 # Krish can settle it in one edit.
-GUESS_CAVEAT = " (site matched by name only, worth checking)"
+
 
 
 def mark_guessed(facts: dict) -> dict:
