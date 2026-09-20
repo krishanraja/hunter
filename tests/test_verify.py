@@ -241,3 +241,57 @@ def test_a_failed_batch_says_which_one_and_how_big(monkeypatch):
     msg = str(e.value)
     assert "hunter_seen_roles" in msg and "statement timeout" in msg
     assert "KB" in msg
+
+
+def test_an_upsert_batch_never_names_the_same_key_twice(monkeypatch):
+    """Postgres refuses an upsert whose batch names the same conflict key
+    twice: "ON CONFLICT DO UPDATE command cannot affect row a second time".
+    The a16z portfolio sweep hit it on every run, because its board lists a
+    few companies under one slug, and the whole leg was skipped with the
+    error printed as a summary line nobody read."""
+    from hunter import config as C
+
+    sent = []
+
+    class FakeResp:
+        status_code = 201
+        text = ""
+        def raise_for_status(self): pass
+
+    def fake_post(url, headers=None, params=None, json=None, timeout=None):
+        sent.extend(json)
+        return FakeResp()
+
+    monkeypatch.setattr(C.requests, "post", fake_post)
+    cfg = C.Config(supabase_url="https://x", supabase_key="k", raw={})
+    C.db_insert(cfg, "hunter_a16z_companies", [
+        {"slug": "acme", "name": "Acme"},
+        {"slug": "other", "name": "Other"},
+        {"slug": "acme", "name": "Acme Corporation"},
+    ], on_conflict="slug", merge=True)
+    slugs = [r["slug"] for r in sent]
+    assert len(slugs) == len(set(slugs)), f"the batch repeated a key: {slugs}"
+    assert len(sent) == 2
+    acme = next(r for r in sent if r["slug"] == "acme")
+    assert acme["name"] == "Acme Corporation", "the later row should win"
+
+
+def test_a_plain_insert_keeps_every_row_it_was_given(monkeypatch):
+    """Deduping is only safe where a conflict key says two rows are the same
+    row. Without one, two identical-looking rows are two rows."""
+    from hunter import config as C
+
+    sent = []
+
+    class FakeResp:
+        status_code = 201
+        text = ""
+        def raise_for_status(self): pass
+
+    monkeypatch.setattr(C.requests, "post",
+                        lambda url, headers=None, params=None, json=None,
+                        timeout=None: (sent.extend(json), FakeResp())[1])
+    cfg = C.Config(supabase_url="https://x", supabase_key="k", raw={})
+    C.db_insert(cfg, "hunter_verdict_events",
+                [{"company": "Acme"}, {"company": "Acme"}])
+    assert len(sent) == 2

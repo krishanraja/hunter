@@ -192,6 +192,21 @@ def db_insert(cfg: Config, table: str, rows: list[dict], *,
     # absent, so column defaults still apply.
     all_keys = sorted({k for row in rows for k in row})
     rows = [{k: row.get(k) for k in all_keys} for row in rows]
+    if on_conflict:
+        # Postgres refuses an upsert whose batch names the same conflict key
+        # twice: "ON CONFLICT DO UPDATE command cannot affect row a second
+        # time". The a16z portfolio sweep hit it on every run, because the
+        # board lists a handful of companies under one slug, and the whole
+        # leg was being skipped with the error printed as a summary line
+        # nobody read. The last one wins, which matches what a second upsert of the
+        # same key would have done anyway.
+        cols = [c.strip() for c in on_conflict.split(",") if c.strip()]
+        if cols:
+            deduped: dict[tuple, dict] = {}
+            for row in rows:
+                deduped[tuple(row.get(c) for c in cols)] = row
+            if len(deduped) != len(rows):
+                rows = list(deduped.values())
     headers = dict(_rest_headers(cfg))
     prefer = ["return=minimal"]
     if merge:
