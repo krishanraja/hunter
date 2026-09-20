@@ -43,6 +43,28 @@ this file.
 | 1.17 | He pastes a role he found himself, with just a link | `reconcile` direction 1 | Inserted into `hunter_seen_roles`, then scored, gated and built like any other. **repaired** |
 | 1.18 | Sheets returns 429 or 500 mid-write | `requests` raises, the phase is caught, later phases still run | The run finishes what it can and says what failed. Next run picks it up. **repaired** |
 
+## 1a. The quality bar
+
+Added 2026-09-20, after Krish opened the sheet to SiriusXM, Citi, Omnicom and a
+$140,000 Lead seat scored 10. Every case here was measured against
+`tests/fixtures/krish_verdicts.json`, 148 roles he ruled on, before it was
+written.
+
+| # | What happens | What notices | What it does |
+|---|---|---|---|
+| 1a.1 | Sourcing drifts to whoever posts the most jobs | the source mix in `workflow_runs` | The a16z portfolio index is probed directly for readable boards and swept in full, so the primary source is 859 AI-native companies rather than a keyword search. **repaired** |
+| 1a.2 | A bank hiring for AI passes the gate that blocks banks | G7 asks about the employer, not the posting text | "Artificial intelligence" in a JD is no longer an exemption. Citi, BNY, TIAA, New York Life all fail now. **repaired** |
+| 1a.3 | A megacap scores higher for being a megacap | `STAGE_OK` no longer matches public, nasdaq, nyse, ipo | Being listed earns nothing. **repaired** |
+| 1a.4 | A $140,000 seat looks like a $350,000 seat | 92 percent of roles arrived with no pay at all | `comp.py` reads the band out of the posting body, where US transparency law puts it. **repaired** |
+| 1a.5 | A revenue or funding figure is read as pay | `comp.NOT_SALARY`, plus a plausibility band | Left alone. A wrong number auto-rejects a role he wants, which is worse than reading nothing. **repaired** |
+| 1a.6 | A band whose bottom dips under the floor | G2 reads the ceiling, not the bottom | Phantom at $165K to $280K passes; AKASA at $150K to $185K fails. **repaired** |
+| 1a.7 | A base band with variable stacked on top | `band_tops_out_at` returns None | Flagged for review rather than failed. Talkspace at $170K to $190K base plus variable is a role he approved. **repaired** |
+| 1a.8 | A sector rule blocks roles he wants | the measurement, before the rule ships | Healthcare, consultancy and agency blocklists were all written and deleted: they would have killed BioSpace, Recursion, Talkspace, Harvey and Razorfish. Only banks and insurers are a gate. **repaired** |
+| 1a.9 | A title rule blocks seats he wants | the measurement, before the rule ships | A junior-seat rule for Lead and Manager was written and deleted: he approved three Lead seats at $205K to $360K and every General Manager seat on the sheet. **repaired** |
+| 1a.10 | A company hunter knows nothing about | `employer.UNKNOWN`, worth zero | Reaches him. Refusing needs evidence; ranking does not. **repaired** |
+| 1a.11 | The bar drifts again | `tests/test_taste.py` | Prints how many of his approvals and declines the bar blocks, and fails when it blocks an approval. **repaired** |
+| 1a.12 | His taste changes | the fixture goes stale | Nothing notices yet. Refresh it when he verdicts a batch. **open** |
+
 ## 2. Sourcing
 
 | # | What happens | What notices | What it does |
@@ -134,3 +156,15 @@ Named here rather than pretended away.
   is years away, and 1.14 warns before it matters.
 - **Nothing watches the Apify balance directly.** 2.4 sees a missing token, not
   an empty account; an empty account presents as 2.2 a week later.
+- **The labelled set is a snapshot.** 148 roles from 2026-09-20. If his taste
+  moves, the tests keep enforcing the old taste and nothing says so. Refreshing
+  the fixture after each batch of verdicts is currently a manual step.
+- **The job description is still not stored.** `hunter_seen_roles` keeps the
+  score and the rationale but not the text they came from, so a role cannot be
+  replayed through the full scorer offline and `test_taste.py` can only measure
+  the employer, the seat and the band. Storing it would make the whole scorer
+  testable against his verdicts.
+- **About 30 percent of the a16z portfolio boards somewhere hunter cannot
+  read.** Ashby, Greenhouse and Lever are covered; Workday, Rippling, Gem and
+  in-house boards are not. Those companies are in the index and invisible to
+  the sweep.
