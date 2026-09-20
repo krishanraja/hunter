@@ -164,6 +164,37 @@ def to_posting(job: dict) -> RolePosting:
         posted_at=job.get("posted_at") or None, raw=job)
 
 
+def board_probe_plan(companies: list[dict], cache: dict, *,
+                     cap: int = 120) -> list[dict]:
+    """Portfolio companies that are hiring and whose board hunter has not
+    found yet, hardest-working first.
+
+    Why this exists. The module docstring calls the board "a strong ATS
+    finder", and it is, but it only ever finds the ATS of the 25 relevance
+    sorted postings each family query returns. Measured 2026-09-20: of 859
+    portfolio companies, 415 hiring, hunter had a readable board for EIGHT.
+    So the a16z portfolio supplied 4 of the 233 roles that have ever reached
+    Krish's sheet, and a LinkedIn keyword sweep supplied 149, which is why he
+    was being shown SiriusXM, Citi and Omnicom.
+
+    Probing the index directly closes that. A 40 company sample found a
+    readable board for 23 of them with 518 open postings behind those 23.
+    """
+    out = []
+    for c in companies:
+        slug = (c.get("slug") or "").strip().lower()
+        # `in`, not `.get()`. A remembered miss is stored as None, which is
+        # falsy, so a get-based test would re-probe the same seventeen
+        # companies every single run and never reach the rest of the index.
+        if not slug or slug in cache:
+            continue
+        if not (c.get("job_count") or 0):
+            continue
+        out.append(c)
+    out.sort(key=lambda c: c.get("job_count") or 0, reverse=True)
+    return out[:cap]
+
+
 def family_sweep(queries: list[str] | None = None) -> tuple[list[RolePosting], list[str]]:
     """Postings from every family query, and the queries that failed."""
     postings: list[RolePosting] = []

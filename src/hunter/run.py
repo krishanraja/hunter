@@ -34,7 +34,7 @@ from .config import (ALL_ROWS, Config, GoogleOAuth, GoogleServiceAccount,
 from .docbuild import DocBuild
 from .archetype import archetype
 from .gates import FLOOR, names_foreign_geo, run_gates
-from . import alerts, amend, invariants, layout, learn, preflight
+from . import alerts, amend, comp as comp_mod, employer, invariants, layout, learn, preflight
 from .report import report_run
 from . import verdicts
 from .router import classify_verdict, is_warm_path, route_status, select_for_build
@@ -2175,8 +2175,38 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                 "band": c.get("band"), "job_count": c.get("job_count"),
                 "last_seen": NOW()} for c in kept],
                 on_conflict="slug", merge=True)
-        board_posts, failed = a16z.family_sweep()
         cache = disc.load_cache(cfg)
+
+        # Find the boards of the portfolio itself, not only of the 25
+        # relevance sorted postings each family query returns. Without this
+        # the a16z leg contributed 4 of the 233 roles that have ever reached
+        # his sheet, and a LinkedIn keyword sweep contributed 149.
+        probed = learned_boards = 0
+        budget = int(cfg.optional("hunter_max_board_probes_per_run", "120"))
+        for c in a16z.board_probe_plan(kept, cache, cap=budget):
+            probed += 1
+            hit = None
+            for slug in disc.slug_candidates(c["name"]):
+                hit = disc.probe(slug)
+                if hit:
+                    cache[c["slug"]] = {"ats": hit[0], "slug": slug}
+                    learned_boards += 1
+                    break
+            if not hit:
+                # Remember the miss so the next run spends its budget on
+                # companies it has not tried, not on the same 17 every week.
+                cache[c["slug"]] = None
+        if probed:
+            disc.save_cache(cfg, cache)
+            db_insert(cfg, "hunter_a16z_companies",
+                      [{"slug": s, "ats": (cache[s] or {}).get("ats"),
+                        "ats_slug": (cache[s] or {}).get("slug")}
+                       for s in {c["slug"] for c in kept} if s in cache],
+                      on_conflict="slug", merge=True)
+        summary.append(f"a16z boards: probed {probed} portfolio companies, "
+                       f"found {learned_boards} readable board(s)")
+
+        board_posts, failed = a16z.family_sweep()
         learned = 0
         for bp in board_posts:
             key = ats_key(bp.url)
@@ -2274,8 +2304,16 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
 
     counts = {"discovered": 0, "senior": 0, "fresh": 0, "resolved": 0,
               "recorded": 0, "staged": 0, "unresolved": 0, "spend_usd": 0.0,
-              "boards_found": 0, "g12_blocked": [], "from_description": 0}
+              "boards_found": 0, "g12_blocked": [], "from_description": 0,
+              "comp_from_text": 0}
     counts["discovered"] = len(postings)
+    # Who the employers are, read once rather than per posting.
+    try:
+        employer_index = employer.build_index(cfg, declines=company_declines)
+    except Exception as e:
+        summary.append(f"employer index unavailable, scoring without it: "
+                       f"{e.__class__.__name__}")
+        employer_index = None
     cache = disc.load_cache(cfg)
     boards = {"greenhouse": greenhouse.board, "ashby": ashby.board,
               "lever": lever.board}
@@ -2384,12 +2422,20 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                             "location": p.location or "", "comp": p.comp_text or ""})
             continue
         counts["resolved"] += 1
+        # Pay, read from the body when the source left the field empty. Only
+        # Ashby ever filled it, so 92 percent of roles reached him with no
+        # band at all and the $200,000 floor could not fire on any of them.
+        band = comp_mod.best(p.comp_text, jd)
+        if band and not (p.comp_text or "").strip():
+            counts["comp_from_text"] = counts.get("comp_from_text", 0) + 1
         role = ResolvedRole(company=p.company, title=p.title, url=jd_url,
                             jd_url=jd_url, jd_text=jd, live=live,
                             source=p.source, location=p.location or "",
-                            comp=p.comp_text or "", liveness=liveness)
-        report = run_gates(role, never_apply=never, company_declines=company_declines)
-        result = score_role(role, universe=canon.universe)
+                            comp=band, liveness=liveness)
+        report = run_gates(role, never_apply=never, company_declines=company_declines,
+                           employer_index=employer_index)
+        result = score_role(role, universe=canon.universe,
+                            employer_index=employer_index)
         status, reason = "scanned", None
         if result.auto_rejected:
             status, reason = "dropped", result.rejection_reason

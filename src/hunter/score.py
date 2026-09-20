@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .gates import FLOOR, parse_comp_bottom
+from .gates import FLOOR, band_tops_out_at, parse_comp_band, parse_comp_bottom
 from .sources import ResolvedRole
 
 BAR = 8  # canon 9.2
@@ -55,7 +55,26 @@ MANDATE_KEYWORDS = re.compile(
     r"corp(?:orate)? dev", re.I)
 STRATEGIC_SCOPE = re.compile(r"strategy|strategic|architect|design", re.I)
 AI_SIGNALS = re.compile(r"\bai\b|agentic|genai|generative|machine learning|llm", re.I)
-STAGE_OK = re.compile(r"series [b-z]|late.stage|public|nasdaq|nyse|ipo", re.I)
+# Being listed is not the stage canon 9.1 asks about. "public|nasdaq|nyse|ipo"
+# used to be here and handed a free point to every megacap, which is half of
+# why Citi scored 9 and Foundry scored 6.
+STAGE_OK = re.compile(r"series [b-z]|late.stage|venture.backed|"
+                      r"newly funded|recently raised", re.I)
+
+# There is deliberately no junior-seat title rule here.
+#
+# One was written on 2026-09-20 because "Founding GTM Lead" at $140,000 scored
+# 10, and the measurement against his 148 verdicts killed it immediately: he
+# approved Harvey "Business Development Lead" at $240K to $360K, Writer
+# "Strategic AI Transformation Lead" at $205K to $259K and LangChain
+# "Monetization Programs and Operations Lead", and any rule matching "manager"
+# also matched the General Manager seats at ElevenLabs, Foundry and Suno that
+# he approved. Lead is not a junior word to him.
+#
+# The ThoughtSpot role was junior because it paid $140,000, and the reason that
+# did not stop it is that the posting's band never reached hunter: the sheet
+# read "Not disclosed". Canon 9.3 already auto-rejects a band bottom below the
+# floor. The defect is comp capture, not the title, and it is fixed there.
 GEO_POINT = re.compile(r"london|\buk\b|new york|\bnyc\b|remote", re.I)
 REVOPS = re.compile(r"revenue operations|revops|sales operations|salesops|fp&a", re.I)
 IC_SEAT = re.compile(r"individual contributor|personally close", re.I)
@@ -77,23 +96,33 @@ def _hits(patterns: list[str], text: str) -> int:
 
 # What each component is worth when it can be determined at all.
 WEIGHTS = {"engine_builder": 3, "title": 1, "comp_250k": 1, "geography": 1,
-           "stage": 1, "ai": 1, "mandate": 1, "strategic_scope": 1}
+           "stage": 1, "ai": 1, "mandate": 1, "strategic_scope": 1,
+           "employer": 2}
 
 
 def score_role(role: ResolvedRole, *, floor: int = FLOOR,
                equity_override: bool = False,
-               universe: tuple | list = ()) -> ScoreResult:
+               universe: tuple | list = (),
+               employer_index=None) -> ScoreResult:
     hay = f"{role.title}\n{role.jd_text}"
     engine = _hits(ENGINE_SIGNALS, hay)
     quota = _hits(QUOTA_SIGNALS, hay)
 
-    # canon 9.3 auto-reject 1: posted band bottom below the floor, no override
-    bottom = parse_comp_bottom(role.comp)
-    if bottom is not None and bottom < floor and not equity_override:
+    # canon 9.3 auto-reject 1: the posted band below the floor, no override.
+    #
+    # Measured against his own verdicts 2026-09-20: reading the BOTTOM alone
+    # rejects Phantom at $165,000 to $280,000 and Cloudflare at $220,000 to
+    # $280,000, both of which he approved. A band whose top clears the floor
+    # is negotiable. A band whose top does not is a cheap seat, which is what
+    # AKASA "Sales Director, $150,000 to $185,000" is.
+    bottom, top = parse_comp_band(role.comp)
+    ceiling = band_tops_out_at(role.comp)
+    if ceiling is not None and ceiling < floor and not equity_override:
         return ScoreResult(
             score=1, auto_rejected=True,
-            rejection_reason=f"band bottom ${bottom:,} below the ${floor:,} floor "
-                             f"with no approved equity override (canon 9.3)")
+            rejection_reason=f"the whole band tops out at ${ceiling:,}, below the "
+                             f"${floor:,} floor, with no approved equity "
+                             f"override (canon 9.3)")
 
     # canon 9.3 auto-reject 2: pure quota carrying with no build mandate.
     #
@@ -141,7 +170,21 @@ def score_role(role: ResolvedRole, *, floor: int = FLOOR,
     # denominator, and the score is expressed out of ten.
     in_universe = any((role.company or "").lower().strip() == str(c).lower().strip()
                       for c in universe)
+    # STAGE_OK used to match "public", "nasdaq", "nyse" and "ipo", so a listed
+    # bank earned this point for being a listed bank. Krish 2026-09-20 on
+    # exactly those roles: "legacy businesses like SiriusXM, Citi, Omnicom".
+    # Being publicly traded is not evidence of the stage canon 9.1 wants, so
+    # it is no longer read as such; the employer component below is what
+    # carries company quality now.
     stage_stated = bool(STAGE_OK.search(f"{role.stage} {role.jd_text}"))
+
+    # Who the employer is, on record rather than on a taxonomy. See
+    # employer.py: a sector blocklist was measured against his 148 verdicts
+    # first and would have killed BioSpace, Recursion, Talkspace, Harvey and
+    # Razorfish, all of which he approved.
+    from . import employer as employer_mod
+    emp = employer_mod.classify(role.company or "", employer_index)
+
     components: dict[str, int | None] = {
         "engine_builder": min(3, engine),
         "title": 1 if SENIOR_TITLE.search(role.title) else 0,
@@ -151,6 +194,7 @@ def score_role(role: ResolvedRole, *, floor: int = FLOOR,
         "ai": 1 if AI_SIGNALS.search(f"{role.company} {hay}") else 0,
         "mandate": 1 if MANDATE_KEYWORDS.search(hay) else 0,
         "strategic_scope": 1 if STRATEGIC_SCOPE.search(hay) else 0,
+        "employer": max(0, emp.points),
     }
     penalties = 0
     if REVOPS.search(role.title):
@@ -159,6 +203,8 @@ def score_role(role: ResolvedRole, *, floor: int = FLOOR,
         penalties -= 1
     if ADTECH.search(hay) and not AI_SIGNALS.search(hay):
         penalties -= 1
+    if emp.points < 0:
+        penalties += emp.points
     components["penalties"] = penalties
 
     known = {k: v for k, v in components.items()
@@ -169,6 +215,7 @@ def score_role(role: ResolvedRole, *, floor: int = FLOOR,
     unknown = sorted(k for k in WEIGHTS if components.get(k) is None)
     why = (f"Engine-Builder signals {engine}, mandate "
            f"{'present' if components['mandate'] else 'absent'}, "
+           f"employer {emp.kind} ({emp.evidence}), "
            f"band bottom {'$' + format(bottom, ',') if bottom else 'not posted'}"
            + (f"; not determinable from the posting: {', '.join(unknown)}"
               if unknown else "") + ".")

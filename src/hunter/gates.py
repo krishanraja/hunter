@@ -112,10 +112,70 @@ def parse_comp_bottom(text: str | None) -> int | None:
     return int(value)
 
 
+# A band stated as base pay with variable on top is not the whole package.
+# Talkspace "Head of Commercial Sales, $170K-$190K base + variable" is a role
+# he approved; read as a total band it tops out below the floor and would have
+# been auto-rejected.
+VARIABLE_ON_TOP = re.compile(
+    r"\bbase\b.{0,40}?\b(variable|bonus|commission|incentive|\bote\b|equity)\b|"
+    r"\b(variable|bonus|commission|incentive|\bote\b|equity)\b.{0,40}?\bbase\b|"
+    r"\+\s*(variable|bonus|commission|equity)", re.I | re.S)
+
+
+def band_tops_out_at(text: str | None) -> int | None:
+    """The most this role can pay, as far as the posting says, or None when
+    the posting does not settle it.
+
+    None means "do not judge on pay", which is what an absent band already
+    means to G2. A base band with variable stacked on top is one of those:
+    the number is real and it is not the ceiling.
+    """
+    bottom, top = parse_comp_band(text)
+    ceiling = top if top is not None else bottom
+    if ceiling is None:
+        return None
+    if VARIABLE_ON_TOP.search(text or ""):
+        return None
+    return ceiling
+
+
+def parse_comp_band(text: str | None) -> tuple[int | None, int | None]:
+    """(bottom, top) of a posted band. Top is None when only one figure.
+
+    The top matters because canon 9.3 rejects on the bottom alone, and his
+    own approvals contradict that reading: Phantom "Head of Business and
+    Corporate Development" at $165,000 to $280,000 and Cloudflare "Head of
+    GTM, AI Inference" at $220,000 to $280,000 are both roles he said yes to
+    with a bottom at or under the floor. A band whose TOP clears the floor
+    comfortably is a negotiable band, not a cheap seat. A band whose top is
+    below the floor is a cheap seat.
+    """
+    if not text:
+        return None, None
+    found: list[int] = []
+    for m in re.finditer(r"\$?\s*([\d][\d,\.]*)\s*([kK])?", text):
+        raw = m.group(1).replace(",", "")
+        if not raw or raw.count(".") > 1:
+            continue
+        try:
+            value = float(raw)
+        except ValueError:
+            continue
+        if m.group(2):
+            value *= 1000
+        value = int(value)
+        if 1_000 <= value <= 5_000_000:
+            found.append(value)
+    if not found:
+        return None, None
+    return min(found), (max(found) if len(found) > 1 else None)
+
+
 def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
               equity_override: bool = False,
               package_texts: tuple[str, str] | None = None,
-              company_declines: dict | None = None) -> GateReport:
+              company_declines: dict | None = None,
+              employer_index=None) -> GateReport:
     results: list[GateResult] = []
     hay = f"{role.title}\n{role.jd_text}"
 
@@ -139,15 +199,17 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
             "posting live on the board" if role.live else
             "posting is dead per the direct ATS check"))
 
-    bottom = parse_comp_bottom(role.comp)
-    if bottom is None:
-        results.append(GateResult("G2", True, "no posted band; flag for review"))
-    elif bottom >= FLOOR or equity_override:
-        results.append(GateResult("G2", True, f"band bottom ${bottom:,}"))
+    bottom, top = parse_comp_band(role.comp)
+    ceiling = band_tops_out_at(role.comp)
+    if bottom is None or ceiling is None:
+        results.append(GateResult("G2", True, "no settled band; flag for review"))
+    elif ceiling >= FLOOR or equity_override:
+        results.append(GateResult(
+            "G2", True, f"band ${bottom:,}" + (f" to ${top:,}" if top else "")))
     else:
         results.append(GateResult(
-            "G2", False, f"band bottom ${bottom:,} is below the ${FLOOR:,} floor "
-                         f"with no approved equity override"))
+            "G2", False, f"the whole band tops out at ${ceiling:,}, below the "
+                         f"${FLOOR:,} floor, with no approved equity override"))
 
     title_senior = bool(SENIOR_TITLE.search(role.title))
     ic = bool(IC_SIGNALS.search(role.jd_text)) and not LEADERSHIP_SIGNALS.search(role.jd_text)
@@ -206,12 +268,51 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
         f"company declined by Krish on {hit['date']} ({hit['code']})" if hit
         else "no company-level decline on record"))
 
+    # G7, and the escape hatch that switched it off.
+    #
+    # This used to read: blocked unless the posting text matches
+    # AI_TRANSFORMATION, which fires on "artificial intelligence", "genai" and
+    # "agentic". Every AI role at every bank contains those words, so the gate
+    # whose whole purpose is to block banking and insurance was disabled by
+    # the job title. Citi "Head of AI-First Development", BNY, TIAA, New York
+    # Life, Janus Henderson, Pfizer and Wolters Kluwer all walked through it
+    # and reached Krish scored 9 and 10. He declined every one.
+    #
+    # The escape now asks about the EMPLOYER, not the wording: a company in
+    # the a16z portfolio, or one he has already approved a role at, is an
+    # AI-native business and the domain words in its posting are what it does.
+    # A company hunter has no record of keeps the old text escape, because
+    # blocking on no evidence would be a worse error than the one being fixed.
+    from . import employer as employer_mod
+    emp = employer_mod.classify(role.company or "", employer_index)
     domain_hit = DOMAIN_FAIL.search(hay)
-    if domain_hit and not AI_TRANSFORMATION.search(hay):
+    if not domain_hit:
+        results.append(GateResult("G7", True, "internet-native or AI mandate"))
+    elif emp.is_ai_native:
+        results.append(GateResult(
+            "G7", True, f"domain words present but the employer is AI-native: "
+                        f"{emp.evidence}"))
+    elif emp.kind == employer_mod.INSTITUTION:
+        results.append(GateResult(
+            "G7", False, f"{domain_hit.group(0)!r} at {role.company}, which is "
+                         f"{emp.evidence}"))
+    elif AI_TRANSFORMATION.search(hay):
+        results.append(GateResult(
+            "G7", True, f"domain words present, AI mandate stated, and hunter "
+                        f"has no record of {role.company} either way"))
+    else:
         results.append(GateResult(
             "G7", False, f"domain fails canon 9.4: {domain_hit.group(0)!r}"))
-    else:
-        results.append(GateResult("G7", True, "internet-native or AI mandate"))
+
+    # G13: the employer itself, where there is evidence about it. A bank,
+    # insurer or asset manager is the one sector his verdicts establish
+    # without a counterexample: 7 declines, 0 approvals, measured before this
+    # gate was written. Every other sector he declines also contains a role he
+    # approved, which is why no other sector is here and why the score, not a
+    # gate, carries the rest of company quality.
+    results.append(GateResult(
+        "G13", emp.kind != employer_mod.INSTITUTION,
+        f"employer {emp.kind}: {emp.evidence}"))
 
     if package_texts is None:
         for g in ("G8", "G9", "G10"):

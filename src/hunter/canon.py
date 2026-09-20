@@ -162,10 +162,11 @@ def load_canon(cfg: Config) -> Canon:
     # G12, the company-decline gate, on 2026-09-07; a canon body from either
     # side of those edits loads.
     required = {f"G{i}" for i in range(1, 11)}
-    allowed = required | {"G11", "G12"}
+    allowed = required | {"G11", "G12", "G13"}
     if not required <= set(gates) or not set(gates) <= allowed:
-        raise CanonError(f"canon 9.4 must define G1..G10 (G11, G12 optional), "
-                         f"found {sorted(gates, key=lambda g: int(g[1:]))}")
+        raise CanonError(f"canon 9.4 must define G1..G10 (G11, G12, G13 "
+                         f"optional), found "
+                         f"{sorted(gates, key=lambda g: int(g[1:]))}")
 
     # The 9.9 registry must agree with the verified constants. On mismatch,
     # abort and tell Krish which side moved. hunter never picks a winner.

@@ -202,7 +202,7 @@ def test_g2_unposted_band_passes_with_note():
     from hunter.gates import run_gates
     report = run_gates(make_role(comp="not posted"))
     g2 = gate_result(report, "G2")
-    assert g2.passed and "no posted band" in g2.reason
+    assert g2.passed and "no settled band" in g2.reason
 
 
 def test_g6_us_residence_requirement_blocks():
@@ -420,3 +420,33 @@ def test_g1_passes_an_unverified_role_with_an_honest_reason():
     assert g1.passed and "unverified" in g1.reason
     dead = run_gates(_role(live=False), never_apply=[])
     assert not next(g for g in dead.results if g.gate == "G1").passed
+
+
+# ---------- the band, not its bottom ----------
+
+def test_a_band_whose_top_clears_the_floor_passes():
+    """Phantom, $165,000 to $280,000, a role Krish approved. Reading the
+    bottom alone rejected it."""
+    from hunter.gates import run_gates
+    g2 = gate_result(run_gates(make_role(comp="$165,000-$280,000")), "G2")
+    assert g2.passed, g2.reason
+
+
+def test_a_band_whose_top_is_below_the_floor_fails():
+    """AKASA, $150,000 to $185,000, read off a live board."""
+    from hunter.gates import run_gates
+    g2 = gate_result(run_gates(make_role(comp="$150,000 - $185,000")), "G2")
+    assert not g2.passed and "tops out" in g2.reason
+
+
+def test_a_base_band_with_variable_on_top_is_not_a_ceiling():
+    """Talkspace, $170K-$190K base plus variable, a role Krish approved."""
+    from hunter.gates import band_tops_out_at, run_gates
+    assert band_tops_out_at("$170K-$190K base + variable") is None
+    g2 = gate_result(run_gates(make_role(comp="$170K-$190K base + variable")), "G2")
+    assert g2.passed, g2.reason
+
+
+def test_a_plain_band_still_has_a_ceiling():
+    from hunter.gates import band_tops_out_at
+    assert band_tops_out_at("$150,000 - $185,000") == 185_000

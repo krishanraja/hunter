@@ -124,3 +124,35 @@ def test_a_post_already_recorded_is_not_processed_twice(monkeypatch):
     posts = [{"link": "https://a16zjobs.substack.com/p/new"},
              {"link": "https://a16zjobs.substack.com/p/old"}]
     assert [p["link"] for p in N.new_posts(None, posts)] == ["https://a16zjobs.substack.com/p/new"]
+
+
+# ---------- finding the portfolio's boards, not just the query results ----------
+
+def test_the_probe_plan_takes_companies_that_are_hiring_and_unknown():
+    from hunter.sources.a16z import board_probe_plan
+    companies = [
+        {"slug": "big", "name": "Big", "job_count": 40},
+        {"slug": "small", "name": "Small", "job_count": 2},
+        {"slug": "quiet", "name": "Quiet", "job_count": 0},
+        {"slug": "known", "name": "Known", "job_count": 90},
+    ]
+    cache = {"known": {"ats": "ashby", "slug": "known"}}
+    plan = board_probe_plan(companies, cache)
+    assert [c["slug"] for c in plan] == ["big", "small"]
+
+
+def test_a_company_already_probed_and_missed_is_not_probed_again():
+    """A miss is remembered as None so the budget goes to companies hunter
+    has not tried, rather than the same seventeen every week."""
+    from hunter.sources.a16z import board_probe_plan
+    companies = [{"slug": "nope", "name": "Nope", "job_count": 9}]
+    assert board_probe_plan(companies, {"nope": None}) == []
+
+
+def test_the_plan_is_capped_and_works_the_busiest_first():
+    from hunter.sources.a16z import board_probe_plan
+    companies = [{"slug": f"c{i}", "name": f"C{i}", "job_count": i}
+                 for i in range(1, 30)]
+    plan = board_probe_plan(companies, {}, cap=5)
+    assert len(plan) == 5
+    assert [c["job_count"] for c in plan] == [29, 28, 27, 26, 25]
