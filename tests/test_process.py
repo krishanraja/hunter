@@ -460,3 +460,50 @@ def test_applied_state_reads_column_a_not_the_application_status_cell(monkeypatc
     assert out["from_sheet"] == 1 and out["written"] == 1
     assert [j for j, _ in patches] == ["anthropic:y"]
     assert patches[0][1]["application_state"] == "Applied"
+
+
+# ---------- clearing the backlog, 2026-09-20 ----------
+
+def test_the_clearing_label_teaches_the_learning_loop_nothing():
+    """Clearing 78 rows must not teach hunter that Krish dislikes 78
+    companies. Three independent guarantees, all asserted here."""
+    from hunter import learn, verdicts
+    from hunter.run import CLEAR_LABEL
+
+    # 1. the label carries no reason code at all
+    kind, code = verdicts.parse(CLEAR_LABEL)
+    assert kind == "rejection" and code is None
+    # 2. nor does his own wording inference find one
+    _kind, inferred, _inf = learn.classify(CLEAR_LABEL)
+    assert inferred not in learn.COMPANY_CODES
+    # 3. and the source marks it as hunter's own output, which the loop skips
+    assert learn.is_auto({"verdict_source": learn.AUTO_SOURCE})
+    events = [{"verdict": "rejection", "reason_code": inferred,
+               "company": "Citi", "source": learn.AUTO_SOURCE,
+               "recorded_at": "2026-09-20"}]
+    assert learn.company_declines(events) == {}
+
+
+def test_a_row_with_no_safe_database_row_is_left_on_the_sheet():
+    """An archived row carrying a rejection in column A and no database stamp
+    is read as HIS rejection by the next reconcile. Better to leave it."""
+    import inspect
+    from hunter import run
+    src = inspect.getsource(run.cmd_clear_unverdicted)
+    assert "stranded" in src and "STAY on" in src
+
+
+def test_clearing_never_deletes():
+    import inspect
+    from hunter import run
+    src = inspect.getsource(run.cmd_clear_unverdicted)
+    assert "archive_rows" in src
+    assert "delete_rows" not in src, "cleared rows must remain restorable"
+
+
+def test_clearing_refuses_to_report_success_if_an_approval_vanished():
+    import inspect
+    from hunter import run
+    src = inspect.getsource(run.cmd_clear_unverdicted)
+    assert "REFUSING TO REPORT SUCCESS" in src
+    assert "approved_before" in src and "approved_after" in src

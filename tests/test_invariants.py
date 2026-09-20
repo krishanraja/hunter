@@ -148,10 +148,24 @@ def test_a_full_row_passes():
 
 # ---------- approved roles ----------
 
-def test_a_yes_with_no_materials_and_no_reason_is_the_worst_state():
+def test_a_yes_queued_for_the_next_build_is_accounted_for():
+    """Not started is the canon default and a real state: select_for_build
+    picks the row up next pass. Calling it broken flagged all fourteen roles
+    he had just approved."""
     f = invariants.check_yes_rows_accounted_for(
         [row(3, verdict="Yes", **{"Package Status": "Not started"})])
+    assert f.state == OK and "queued" in f.detail
+
+
+def test_a_yes_in_a_state_hunter_does_not_understand_is_broken():
+    f = invariants.check_yes_rows_accounted_for(
+        [row(3, verdict="Yes", **{"Package Status": "probably fine"})])
     assert f.state == BROKEN and f.rows == [3]
+
+
+def test_there_is_no_repair_that_writes_a_status_the_writer_refuses():
+    assert "every Yes is accounted for" not in invariants.REPAIRS
+    assert not hasattr(invariants, "repair_yes_without_status")
 
 
 def test_a_yes_with_materials_is_accounted_for():
@@ -269,16 +283,13 @@ def test_repairing_applied_state_follows_column_a():
     assert vals == ["Applied", "Not applied"]
 
 
-def test_a_yes_with_nothing_is_reset_so_the_next_build_picks_it_up():
-    sheet = FakeSheet()
-    invariants.repair_yes_without_status(sheet, [row(3, verdict="Yes")], [3])
-    assert sheet.statuses == {3: DEFAULTS_BY_NAME["Package Status"]}
-
-
 def test_every_broken_check_has_a_repair_or_is_deliberately_reported():
     reportable = {"verdict vocabulary", "approved roles still live",
                   "archive stamped", "package status vocabulary",
-                  "decided rows archived", "row headroom"}
+                  "decided rows archived", "row headroom",
+                  # a status hunter does not understand is a bug upstream;
+                  # overwriting it would hide the bug rather than fix it
+                  "every Yes is accounted for"}
     names = {c.name for c in invariants.check_all(_StubSheet(), [], [])}
     unhandled = names - set(invariants.REPAIRS) - reportable
     assert not unhandled, f"these checks can fail with nothing to do: {unhandled}"

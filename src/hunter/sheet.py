@@ -510,9 +510,16 @@ class Sheet:
         if not mapping:
             return 0
         self._write([(f"{TAB}!A{rn}", [[text]]) for rn, text in sorted(mapping.items())])
+        # ONE read of the whole column, not one per row. The per-row version
+        # made a request per verdict, and clearing 78 rows at once answered
+        # 429 Too Many Requests part way through: the write had landed, the
+        # verification had not, and the caller could not tell which rows were
+        # confirmed. The read-back is the point of this method, so it has to
+        # be cheap enough to always happen.
+        column = self._column_a()
         for rn, text in sorted(mapping.items()):
-            back = self._values(f"{TAB}!A{rn}", formulas=False) or [[""]]
-            got = (back[0][0] if back and back[0] else "").strip()
+            row = column[rn - 1] if len(column) >= rn else []
+            got = (row[0] if row else "").strip()
             if got != text.strip():
                 raise SheetError(f"column A read-back on row {rn} reads {got!r}, "
                                  f"expected {text!r}")

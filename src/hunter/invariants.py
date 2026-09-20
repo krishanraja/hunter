@@ -136,25 +136,44 @@ def check_package_status_vocabulary(rows) -> Finding:
                    f"define: {bad[:4]}", rows=[n for n, _ in bad])
 
 
+# "Not started" is the canon 9.13 default and it is a real state: the row is
+# queued and select_for_build will pick it up on the next pass. Treating it as
+# unaccounted flagged all fourteen roles he had just approved, and the repair
+# then tried to write "Not started" through update_package_status, which
+# validates against the four built statuses and refuses it. The check was
+# wrong and the repair was impossible; both are gone.
+QUEUED = DEFAULTS_BY_NAME["Package Status"]
+KNOWN_STATES = PACKAGE_STATUSES | {QUEUED}
+
+
 def check_yes_rows_accounted_for(rows) -> Finding:
-    """Every role he said Yes to has either materials or a stated reason it
-    has none. A Yes with neither is a role quietly going nowhere, which is
-    the single worst state this system can be in."""
-    silent = []
+    """Every role he said Yes to is in a state hunter understands: materials
+    built, queued for the next build, or a stated reason there are none. A Yes
+    in none of those is a role quietly going nowhere, which is the single
+    worst state this system can be in."""
+    silent, waiting = [], 0
     for r in rows:
         if verdicts.parse(r.verdict or "")[0] != "go":
             continue
         built = r.package_urls.get("cv") and r.package_urls.get("letter")
         status = r.cell("Package Status").strip()
-        if built or status in PACKAGE_STATUSES:
+        if built:
+            continue
+        if status == QUEUED:
+            waiting += 1
+            continue
+        if status in PACKAGE_STATUSES:
             continue
         silent.append(r.row_number)
     if not silent:
-        return Finding("every Yes is accounted for", OK,
-                       "each approved role has materials or a stated reason")
+        detail = "each approved role has materials or is queued for the next build"
+        if waiting:
+            detail = (f"{waiting} approved role(s) queued for the next build, "
+                      f"the rest have materials or a stated reason")
+        return Finding("every Yes is accounted for", OK, detail)
     return Finding("every Yes is accounted for", BROKEN,
-                   f"{len(silent)} approved role(s) have no materials and no "
-                   f"reason why", rows=silent)
+                   f"{len(silent)} approved role(s) are in a state hunter does "
+                   f"not understand", rows=silent)
 
 
 def check_dead_yes_rows(rows) -> Finding:
@@ -357,16 +376,11 @@ def repair_duplicates(sheet: Sheet, rows, targets: list[int]) -> str:
     return f"marked {len(mapping)} duplicate row(s) for archiving"
 
 
-def repair_yes_without_status(sheet: Sheet, rows, targets: list[int]) -> str:
-    """A Yes with nothing to show gets the honest holding status, so the next
-    run picks it up and he can see it has not been forgotten."""
-    n = 0
-    for r in rows:
-        if r.row_number not in targets:
-            continue
-        sheet.update_package_status(r.row_number, DEFAULTS_BY_NAME["Package Status"])
-        n += 1
-    return f"reset {n} approved row(s) to Not started so the next build picks them up" if n else ""
+# There is deliberately no repair for "every Yes is accounted for". The one
+# written on 2026-09-20 called update_package_status with the canon default,
+# which that method refuses because it validates against the four built
+# statuses. A status hunter does not understand is a bug upstream, and
+# overwriting it would hide the bug rather than fix it.
 
 
 def repair_dropdown(sheet: Sheet) -> str:
@@ -405,7 +419,6 @@ REPAIRS = {
     "no empty cells": lambda sheet, rows, f: repair_empty_cells(sheet, rows, f.rows),
     "applied state agrees": lambda sheet, rows, f: repair_applied_state(sheet, rows, f.rows),
     "no duplicate postings": lambda sheet, rows, f: repair_duplicates(sheet, rows, f.rows),
-    "every Yes is accounted for": lambda sheet, rows, f: repair_yes_without_status(sheet, rows, f.rows),
     "sorted by score": lambda sheet, rows, f: repair_sort(sheet),
 }
 

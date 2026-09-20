@@ -828,6 +828,130 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
     return 0
 
 
+CLEAR_LABEL = f"{verdicts.DECLINE_PREFIX}sourced before the bar was fixed"
+
+
+def cmd_clear_unverdicted(apply: bool = False) -> int:
+    """Take every row he has not ruled on off Pipeline, keeping every Yes.
+
+    Krish 2026-09-20, after the sourcing defects were found and fixed:
+    "clear all but the yes's and let Sunday refill from the fixed source".
+
+    The reasoning behind allowing this at all. 65 of his 88 unverdicted rows
+    were LinkedIn links with no readable job description, so the restored bar
+    could not score them: no posting, no gates, no score. They are the output
+    of the sourcing he was right to complain about, and no gate can reach
+    them. Clearing is his call and he made it.
+
+    Three properties this has to have.
+
+    Nothing is deleted. Every row moves to the Applied tab, so the history is
+    intact and `restore <job_id>` puts any of them back.
+
+    Nothing is learned from it. Every DB row is stamped with
+    learn.AUTO_SOURCE, which the learning loop excludes by construction, and
+    the label carries no reason code. Clearing 59 rows must not teach hunter
+    that he dislikes 59 companies. A row hunter cannot stamp is left on the
+    sheet rather than archived, because an archived row with a rejection in
+    column A and no DB stamp is read as HIS rejection by the next reconcile.
+
+    Nothing he approved is touched. Counted before and after.
+    """
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    approved_before = [r for r in rows
+                       if classify_verdict(r.verdict or "") == "go"]
+    targets = [r for r in rows if classify_verdict(r.verdict or "") == "none"]
+    print(f"Pipeline has {len(rows)} rows: {len(approved_before)} you approved, "
+          f"{len(targets)} you have not ruled on\n")
+    if not targets:
+        print("nothing to clear")
+        return 0
+
+    paired = _pair_sheet_to_db(cfg, rows)
+    known_ids = {r["job_id"] for r in db_get(
+        cfg, "hunter_seen_roles", {"select": "job_id", "limit": ALL_ROWS})}
+
+    stampable, mintable, stranded = [], [], []
+    for r in targets:
+        d = paired.get(r.row_number)
+        if d and d.get("job_id"):
+            stampable.append((r, d["job_id"]))
+            continue
+        jid = job_id(r.company, r.role)
+        # A minted id that already exists belongs to some other row, and
+        # stamping it would file this clearing against a different role.
+        (stranded if jid in known_ids else mintable).append((r, jid))
+
+    print(f"  {len(stampable)} row(s) have a database row to stamp")
+    print(f"  {len(mintable)} row(s) need one minted")
+    if stranded:
+        print(f"  {len(stranded)} row(s) cannot be stamped safely and STAY on "
+              f"Pipeline:")
+        for r, _ in stranded:
+            print(f"      row {r.row_number} {r.company} / {r.role}")
+    if not apply:
+        print(f"\ndry run. add --apply to archive "
+              f"{len(stampable) + len(mintable)} row(s) to "
+              f"{config_mod.ARCHIVE_TAB}. Nothing is deleted and restore "
+              f"reverses any of it.")
+        return 0
+
+    import json as json_mod
+    snapshot = [{"row": r.row_number, "job_id": jid, "company": r.company,
+                 "role": r.role, "url": r.jd_url, "cells": r.cells}
+                for r, jid in stampable + mintable]
+    print(f"\nsnapshot of {len(snapshot)} row(s) taken before any write")
+
+    if mintable:
+        db_insert(cfg, "hunter_seen_roles", [
+            {"job_id": jid, "company": r.company, "title": r.role,
+             "url": r.jd_url or "", "job_url": r.jd_url or "",
+             "source": r.cell("Source") or "sheet", "status": "dropped",
+             "sweep_date": TODAY(), "presented_at": NOW(),
+             "krish_verdict": CLEAR_LABEL, "verdict_at": NOW(),
+             "verdict_source": learn.AUTO_SOURCE,
+             "rejection_reason": "cleared on his instruction 2026-09-20; "
+                                 "sourced before the quality bar was restored"}
+            for r, jid in mintable], on_conflict="job_id", merge=True)
+        print(f"minted {len(mintable)} database row(s), all marked "
+              f"{learn.AUTO_SOURCE!r} so the learning loop ignores them")
+
+    for _r, jid in stampable:
+        db_patch(cfg, "hunter_seen_roles", {"job_id": jid},
+                 {"krish_verdict": CLEAR_LABEL, "verdict_at": NOW(),
+                  "verdict_source": learn.AUTO_SOURCE, "status": "dropped",
+                  "rejection_reason": "cleared on his instruction 2026-09-20; "
+                                      "sourced before the quality bar was "
+                                      "restored"})
+    print(f"stamped {len(stampable)} existing database row(s)")
+
+    moving = {r.row_number for r, _ in stampable + mintable}
+    sheet.set_verdicts({n: CLEAR_LABEL for n in moving})
+    fresh = {r.row_number: r for r in sheet.read_pipeline(canon.sheet_headers)}
+    sheet.archive_rows([fresh[n] for n in sorted(moving) if n in fresh],
+                       archive_tab=config_mod.ARCHIVE_TAB,
+                       archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
+                       headers=canon.sheet_headers)
+
+    after = sheet.read_pipeline(canon.sheet_headers)
+    approved_after = [r for r in after
+                      if classify_verdict(r.verdict or "") == "go"]
+    print(f"\narchived {len(moving)} row(s) to {config_mod.ARCHIVE_TAB}")
+    print(f"Pipeline now has {len(after)} rows")
+    print(f"approved rows: {len(approved_before)} before, "
+          f"{len(approved_after)} after")
+    if len(approved_after) != len(approved_before):
+        raise SheetError(
+            f"REFUSING TO REPORT SUCCESS: {len(approved_before)} approved rows "
+            f"went in and {len(approved_after)} came out. Investigate before "
+            f"anything else touches this sheet.")
+    print(json_mod.dumps({"cleared": len(moving),
+                          "approved_kept": len(approved_after)}))
+    return 0
+
+
 def cmd_restore(job_ids: list[str], apply: bool = False) -> int:
     """Put a row back on Pipeline that should never have left it.
 
@@ -4452,6 +4576,8 @@ def main(argv: list[str]) -> int:
         return cmd_verify(apply="--apply" in argv)
     if cmd == "disconnect":
         return cmd_disconnect(apply="--apply" in argv)
+    if cmd == "clear-unverdicted":
+        return cmd_clear_unverdicted(apply="--apply" in argv)
     if cmd == "archive":
         return cmd_archive(apply="--apply" in argv)
     if cmd == "set-dropdown":
@@ -4545,6 +4671,7 @@ def main(argv: list[str]) -> int:
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive, "
           "layout, invariants [--apply], amendments, preflight, "
+          "clear-unverdicted [--apply], "
           "watchdog [--send], review-email [--send], doctor [--offline]")
     return 2
 
