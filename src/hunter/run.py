@@ -2027,7 +2027,16 @@ def _doc_text(db: DocBuild, doc_id: str) -> str:
 # already weighed (the sheet shows the location, the band and the company).
 # G0 (never apply), G1 (dead) and the package gates G8 to G10 still stop a
 # build. Canon 9.4, amended 2026-09-07.
-BUILD_SOFT_GATES = {"G2", "G3", "G4", "G5", "G6", "G7", "G11", "G12"}
+# Gates his Yes outranks at build time. Canon 9.4: the sheet already showed
+# him the band, the location and the company, so a gate that decides what he
+# is SHOWN has no business refusing to build what he asked for. Only G0, G1
+# and the package gates G8 to G10 can stop a build.
+#
+# G13 was missing when it was added on 2026-09-20, and the first process run
+# after it shipped refused to build the Citi role he had explicitly approved,
+# citing the employer. That is the precise failure this set exists to
+# prevent, recreated by a new gate.
+BUILD_SOFT_GATES = {"G2", "G3", "G4", "G5", "G6", "G7", "G11", "G12", "G13"}
 
 
 def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
@@ -2065,7 +2074,17 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
                  {"url": relink, "job_url": relink})
     never = cfg.require_json("hunter_never_apply")
-    report = run_gates(role, never_apply=never, company_declines=company_declines)
+    # The employer index and the role's merit, so the gate reasons written
+    # onto the row say what they actually mean rather than judging the
+    # company with no record of his approvals loaded.
+    try:
+        emp_index = employer.build_index(cfg, declines=company_declines)
+    except Exception:
+        emp_index = None
+    merit = score_role(role, universe=canon.universe,
+                       employer_index=emp_index).merit
+    report = run_gates(role, never_apply=never, company_declines=company_declines,
+                       employer_index=emp_index, merit=merit)
     if not report.passed:
         failed = {g.gate for g in report.failures()}
         reasons = "; ".join(f"{g.gate}: {g.reason}" for g in report.failures())

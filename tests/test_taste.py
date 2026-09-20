@@ -478,3 +478,25 @@ def test_gates_with_no_merit_supplied_keep_the_old_absolute_behaviour():
                        company_declines=idx.declined, employer_index=idx)
     g12 = next(g for g in report.results if g.gate == "G12")
     assert not g12.passed
+
+
+# ---------- his Yes outranks every gate that decides what he is shown ----------
+
+def test_a_new_gate_cannot_refuse_to_build_what_he_approved():
+    """Canon 9.4: the sheet already showed him the band, the location and the
+    company. G13 was left out of the build-time soft set when it shipped, and
+    the first process run after refused to build the Citi role he had
+    explicitly approved, citing the employer."""
+    from hunter.run import BUILD_SOFT_GATES
+    assert "G13" in BUILD_SOFT_GATES
+    assert "G12" in BUILD_SOFT_GATES
+
+
+def test_only_the_gates_canon_names_can_stop_a_build():
+    """G0 never apply, G1 liveness, and the package gates. Everything else is
+    his call to overrule."""
+    from hunter.run import BUILD_SOFT_GATES
+    hard = {"G0", "G1", "G8", "G9", "G10"}
+    assert not (hard & BUILD_SOFT_GATES)
+    # every sourcing gate is soft
+    assert {f"G{i}" for i in range(2, 8)} | {"G11", "G12", "G13"} == BUILD_SOFT_GATES
