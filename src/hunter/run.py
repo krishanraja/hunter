@@ -45,6 +45,28 @@ from .sources import (ResolvedRole, distinctive_tokens, identity_keys,
                       job_id, slugify)
 from .notify import send_summary
 
+class Summary(list):
+    """The run's summary, which also says each line as it happens.
+
+    Every phase appends to a plain list and nothing was printed until the run
+    ended. A sourcing run that sweeps 265 boards takes the better part of an
+    hour, so for that hour there was no way to tell a working run from a hung
+    one, and when one died at the last step its whole summary died with it:
+    only the traceback survived, because stderr is not buffered and stdout is.
+
+    Printing on append costs nothing and makes the Actions log a live view of
+    the run, which is the only view either of us has of a scheduled one.
+    """
+
+    def append(self, line):
+        print(line, flush=True)
+        super().append(line)
+
+    def extend(self, lines):
+        for line in lines:
+            self.append(line)
+
+
 TODAY = lambda: datetime.date.today().isoformat()
 NOW = lambda: datetime.datetime.utcnow().isoformat() + "Z"
 
@@ -883,7 +905,7 @@ def cmd_recover_verdicts(apply: bool = False) -> int:
     if not apply:
         print("\ndry run. add --apply to record them.")
         return 0
-    summary: list[str] = []
+    summary: Summary = Summary()
     gained = recover_verdicts(cfg, sheet, canon, summary)
     print("\n" + "\n".join(summary))
     declines = learn.company_declines(learn.load_events(cfg),
@@ -1774,7 +1796,7 @@ def run_command(cfg: Config, command: str) -> str:
     canon = load_canon(cfg)
     assert_canon_alignment(canon)
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    summary: list[str] = []
+    summary: Summary = Summary()
 
     if command == "source":
         declines, notes = stored_company_declines(cfg)
@@ -2170,7 +2192,7 @@ def cmd_build(target_job_id: str) -> int:
     if not rows:
         print(f"job_id not found: {target_job_id}")
         return 1
-    summary: list[str] = []
+    summary: Summary = Summary()
     ok = build_one(cfg, canon, sheet, rows[0], summary)
     print("\n".join(summary))
     return 0 if ok else 1
@@ -3109,7 +3131,7 @@ def _process_line(counts: dict) -> str:
 
 
 def cmd_process(max_packages: int = 0, retry_dead: bool = False) -> int:
-    summary: list[str] = [f"hunter process {TODAY()}"]
+    summary: Summary = Summary([f"hunter process {TODAY()}"])
     failed = False
     started_at = datetime.datetime.now(datetime.timezone.utc)
     counts: dict = {}
@@ -3172,7 +3194,7 @@ def cmd_migrate_columns(apply: bool = False) -> int:
 
 
 def cmd_run() -> int:
-    summary: list[str] = [f"hunter run {TODAY()}"]
+    summary: Summary = Summary([f"hunter run {TODAY()}"])
     failed = False
     started_at = datetime.datetime.now(datetime.timezone.utc)
     counts: dict = {}
@@ -3805,7 +3827,7 @@ def cmd_approvals_drain(apply: bool = False, send: bool = False) -> int:
         if not rows:
             print(f"         SUPERSEDED but cannot rebuild: no role row for {job_id}")
             continue
-        summary: list[str] = []
+        summary: Summary = Summary()
         ok = build_one(cfg, canon, sheet, rows[0], summary, feedback=detail)
         for line in summary:
             print("         " + line)

@@ -528,3 +528,31 @@ def test_the_roles_below_the_cap_are_held_not_discarded():
     assert "keep their" in src and "database row" in src
     # the cap is applied AFTER the sort, so what is held is the lowest scoring
     assert src.index("staged_rows.sort") < src.index("staged_rows[:cap]")
+
+
+# ---------- a long run is visible while it runs ----------
+
+def test_the_summary_says_each_line_as_it_happens(capsys):
+    """Every phase appended to a plain list and nothing printed until the run
+    ended. A sourcing run takes the better part of an hour, and when one died
+    at the last step its whole summary died with it."""
+    from hunter.run import Summary
+    s = Summary()
+    s.append("a16z boards: probed 120")
+    s.extend(["learned boards swept in full: 265", "sourced: 40 staged"])
+    out = capsys.readouterr().out
+    assert "a16z boards: probed 120" in out
+    assert "learned boards swept in full: 265" in out
+    assert "sourced: 40 staged" in out
+    assert list(s) == ["a16z boards: probed 120",
+                       "learned boards swept in full: 265",
+                       "sourced: 40 staged"], "it is still the summary list"
+
+
+def test_the_summary_is_a_list_so_every_caller_still_works():
+    from hunter.run import Summary
+    s = Summary(["first"])
+    s.append("second")
+    assert isinstance(s, list)
+    assert "\n".join(s) == "first\nsecond"
+    assert len(s) == 2 and s[0] == "first"
