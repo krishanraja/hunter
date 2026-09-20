@@ -4159,13 +4159,25 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
     # its own token and Krish got the same application twice. The employer's form
     # is the thing being applied to, so its URL is what has to be unique.
     taken = live_postings(cfg)
+    failed: list[str] = []
     for row in rows:
         key = posting_key(row)
         if key and key in taken:
             print(f"skip {row['job_id']}: {taken[key][1]} token already "
                   f"{taken[key][0]} for this same posting")
             continue
-        plan, au, role = build_fill_plan(cfg, sheet, row, bank=bank)
+        # One posting must never take the batch with it. On 2026-09-20 a
+        # single Ashby form carrying an EducationHistory block raised on row
+        # 14 of 38 and the other 24 applications, already built and waiting,
+        # were never sent. Whatever one form does, the rest still go, and
+        # every failure is named at the end rather than ending the run.
+        try:
+            plan, au, role = build_fill_plan(cfg, sheet, row, bank=bank)
+        except Exception as e:
+            failed.append(f"{row['job_id']}: {e.__class__.__name__}: "
+                          f"{str(e)[:160]}")
+            print(f"  SKIPPED {row['job_id']}: {e.__class__.__name__}: {e}")
+            continue
         token = approval.new_token(row["job_id"])
         if key:
             taken[key] = (token, "awaiting")
@@ -4287,7 +4299,14 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
               f"plan_hash {approval.plan_hash(plan.as_dict())}")
     if apply:
         print(f"\n{sent} approval email(s) sent")
-    return 0
+    if failed:
+        print(f"\n{len(failed)} posting(s) could not be prepared, and the rest "
+              f"were sent anyway:")
+        for line in failed:
+            print(f"  {line}")
+    # A failure that stopped some applications reaching him is a failing run,
+    # but only after every one that could be sent has been.
+    return 1 if failed else 0
 
 
 def cmd_approvals_drain(apply: bool = False, send: bool = False) -> int:

@@ -45,6 +45,14 @@ TYPE_KINDS = {
     "Url": "url",
     "Number": "number",
     "Date": "date",
+    # Ashby's structured history blocks. They are repeating sub-forms, not
+    # single controls, so hunter cannot fill them from a flat answer bank:
+    # they are recorded as their own kind and the extension leaves them to
+    # Krish. Before this they raised and killed the whole batch at whichever
+    # posting happened to use one.
+    "EducationHistory": "education_history",
+    "WorkHistory": "work_history",
+    "SocialLinks": "social_links",
 }
 
 # Ashby system paths carry stable meaning regardless of the label a company types.
@@ -74,6 +82,8 @@ def _kind(path: str, label: str, vendor_type: str) -> str:
         raise ValueError(
             f"unmapped Ashby field type {vendor_type!r} on {path!r}; add it to "
             f"TYPE_KINDS rather than letting it fall through")
+    if base in ("education_history", "work_history", "social_links"):
+        return base
     if any(h in low for h in DEMOGRAPHIC_HINTS):
         return "demographic"
     # A consent is a boolean or an acknowledgement select whose label is a policy.

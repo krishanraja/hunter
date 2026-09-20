@@ -728,3 +728,51 @@ def test_every_company_with_a_live_candidate_is_scored(monkeypatch):
     assert asked["budget"] >= 9, (
         f"staging asked for a budget of {asked['budget']} against "
         f"{len(asked['names'])} companies, so some would go unscored")
+
+
+# ---------- one posting must never take the batch with it ----------
+
+def test_one_unreadable_form_does_not_stop_the_other_applications(monkeypatch,
+                                                                  capsys):
+    """On 2026-09-20 a single Ashby form carrying an EducationHistory block
+    raised on row 14 of 38, and the other 24 applications, already built and
+    waiting for him, were never sent."""
+    import hunter.run as R
+
+    rows = [{"job_id": f"c{i}:role", "company": f"C{i}", "title": "GM",
+             "package_cv_url": "", "package_letter_url": ""} for i in range(4)]
+    monkeypatch.setattr(R, "build_context",
+                        lambda: (Cfg({"hunter_never_apply": "[]"}), FakeCanon()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet(
+        [list(HEADERS), [""] * N_COLS]))
+    monkeypatch.setattr(R, "GoogleServiceAccount", lambda cfg: type(
+        "T", (), {"access_token": "t"})())
+    monkeypatch.setattr(R, "GoogleOAuth", lambda cfg: type(
+        "T", (), {"access_token": lambda self=None: "t"})())
+    import hunter.notify as notify_mod
+    monkeypatch.setattr(notify_mod, "mailbox", lambda cfg: "krish@example.com")
+    monkeypatch.setattr(R, "db_get", lambda cfg, table, params: rows)
+    monkeypatch.setattr(R, "_answer_bank", lambda sheet: {})
+    monkeypatch.setattr(R, "live_postings", lambda cfg: {})
+    monkeypatch.setattr(R, "posting_key", lambda row: row["job_id"])
+
+    seen = []
+
+    def flaky(cfg, sheet, row, bank=None):
+        seen.append(row["job_id"])
+        if row["job_id"] == "c1:role":
+            raise ValueError("unmapped Ashby field type 'EducationHistory'")
+        raise RuntimeError("stop here, the point is that it was reached")
+
+    monkeypatch.setattr(R, "build_fill_plan", flaky)
+    import hunter.docbuild as docbuild
+    monkeypatch.setattr(docbuild, "DocBuild", lambda tok: object())
+
+    import hunter.docbuild as db_mod
+    monkeypatch.setattr(db_mod, "DocBuild", lambda tok: object())
+    code = R.cmd_approvals(apply=False)
+    assert seen == [r["job_id"] for r in rows], (
+        f"the batch stopped early: only reached {seen}")
+    assert code == 1, "a run that could not prepare some postings is a failure"
+    out = capsys.readouterr().out
+    assert "EducationHistory" in out and "could not be prepared" in out
