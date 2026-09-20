@@ -507,3 +507,24 @@ def test_clearing_refuses_to_report_success_if_an_approval_vanished():
     src = inspect.getsource(run.cmd_clear_unverdicted)
     assert "REFUSING TO REPORT SUCCESS" in src
     assert "approved_before" in src and "approved_after" in src
+
+
+# ---------- the staging cap, 2026-09-20 ----------
+
+def test_staging_is_capped_so_the_sheet_stays_judgeable():
+    """There was no cap, which is how the tab reached 176 rows. A sheet he
+    cannot judge in one sitting is a sheet he does not judge."""
+    import inspect
+    from hunter import run
+    src = inspect.getsource(run.stage_postings)
+    assert "hunter_max_staged_per_run" in src
+    assert "staged_rows[:cap]" in src
+
+
+def test_the_roles_below_the_cap_are_held_not_discarded():
+    import inspect
+    from hunter import run
+    src = inspect.getsource(run.stage_postings)
+    assert "keep their" in src and "database row" in src
+    # the cap is applied AFTER the sort, so what is held is the lowest scoring
+    assert src.index("staged_rows.sort") < src.index("staged_rows[:cap]")

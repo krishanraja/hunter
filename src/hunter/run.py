@@ -2716,6 +2716,20 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     if staged_rows:
         # highest score first, so the sheet reads as a ranked shortlist
         staged_rows.sort(key=lambda t: -(t[1].score or 0))
+        # And only the top of it reaches the sheet. There was no cap until
+        # 2026-09-20, which is how the tab reached 176 rows: a sheet he
+        # cannot judge in one sitting is a sheet he does not judge. The
+        # roles below the line keep their database row and their score, so
+        # nothing is lost and raising the cap surfaces them next run.
+        cap = int(cfg.optional("hunter_max_staged_per_run", "40"))
+        if cap and len(staged_rows) > cap:
+            held = len(staged_rows) - cap
+            cut = staged_rows[cap][1].score
+            staged_rows = staged_rows[:cap]
+            summary.append(
+                f"staging capped at {cap}: {held} more role(s) passed every "
+                f"gate and are held at score {cut} or below. They keep their "
+                f"database row; raise hunter_max_staged_per_run to see them.")
         new_rows = [make_row(company=role.company, role=role.title,
                              jd_url=role.jd_url, score=result.score,
                              why_it_fits=why,
