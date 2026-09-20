@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import datetime
 import re
+from functools import lru_cache
 import requests
 import time
 from dataclasses import dataclass, field
@@ -41,7 +42,7 @@ from .router import classify_verdict, is_warm_path, route_status, select_for_bui
 from .score import BAR, score_role
 from . import sheet as sheet_mod
 from .sheet import Sheet, SheetError, SheetRow, make_row
-from .sources import (ResolvedRole, distinctive_tokens, identity_keys,
+from .sources import (ResolvedRole, company_key, distinctive_tokens, identity_keys,
                       job_id, slugify)
 from .notify import send_summary
 
@@ -117,6 +118,13 @@ ATS_URL_PATTERNS = [
 ]
 
 
+# Memoised because match_rows asks the same question thousands of times.
+# Pairing 79 sheet rows against 6,584 database rows calls this once per
+# combination: half a million URL parses of the same few thousand strings,
+# and a stack dump of a live run showed the process sitting inside
+# urllib.parse.unquote while sourcing had not started. Both functions are
+# pure functions of a string, so the answer cannot go stale within a run.
+@lru_cache(maxsize=100_000)
 def norm_url(url: str | None) -> str | None:
     if not url:
         return None
@@ -127,6 +135,7 @@ def norm_url(url: str | None) -> str | None:
                        parts.path.rstrip("/"), query, ""))
 
 
+@lru_cache(maxsize=100_000)
 def ats_key(url: str | None) -> tuple | None:
     if not url:
         return None
@@ -1821,7 +1830,10 @@ def run_command(cfg: Config, command: str) -> str:
         # turn, which is the whole failure the alert exists to prevent.
         try:
             fresh = sheet.read_pipeline(canon.sheet_headers)
-            summary.append(f"review email: {alerts.send_review_ready(cfg, fresh, counts.get('staged', 0))}")
+            batches = funnel_batches(cfg, sheet, summary)
+            summary.append(
+                f"review email: "
+                f"{alerts.send_review_ready(cfg, fresh, counts.get('staged', 0), batches=batches)}")
         except Exception as e:
             summary.append(f"review email failed: {e.__class__.__name__}: {e}")
         line = (f"{counts['discovered']} found, {counts['recorded']} recorded, "
@@ -2380,6 +2392,73 @@ def open_application_note(opens: dict, company: str) -> str:
     return ""
 
 
+def targets_careers_urls(cfg: Config, sheet: Sheet) -> dict[str, str]:
+    """slug -> careers page, from his Target Companies tab.
+
+    Never fatal. A tab he renames should cost hunter a better board
+    discovery, not the whole sourcing run.
+    """
+    try:
+        from . import targets
+        return targets.careers_urls(sheet)
+    except Exception:
+        return {}
+
+
+def live_universe(cfg: Config, canon: Canon, sheet: Sheet,
+                  summary: list[str]) -> list[str]:
+    """The companies to sweep, taken from the tab he edits.
+
+    Canon 9.1 and the Target Companies tab held two copies of the same list
+    and had already drifted by three names. The tab is the one he opens, so
+    the tab wins, and the difference is proposed as a canon amendment rather
+    than written into canon from code.
+    """
+    try:
+        from . import targets
+        named = targets.universe(sheet)
+    except Exception as e:
+        summary.append(f"Target Companies tab unreadable ({e.__class__.__name__}), "
+                       f"falling back to canon 9.1")
+        return list(canon.universe)
+    if not named:
+        summary.append("Target Companies tab is empty, falling back to canon 9.1")
+        return list(canon.universe)
+    tab_keys = {slugify(n): n for n in named}
+    canon_keys = {slugify(c): c for c in canon.universe}
+    only_tab = sorted(tab_keys[k] for k in tab_keys.keys() - canon_keys.keys())
+    only_canon = sorted(canon_keys[k] for k in canon_keys.keys() - tab_keys.keys())
+    if only_tab or only_canon:
+        summary.append(
+            f"Target Companies tab and canon 9.1 disagree: "
+            f"{len(only_tab)} only on the tab ({', '.join(only_tab[:4])}), "
+            f"{len(only_canon)} only in canon ({', '.join(only_canon[:4])}). "
+            f"The tab is what hunter swept.")
+        propose_canon_universe(cfg, named, only_tab, only_canon)
+    return named
+
+
+def propose_canon_universe(cfg: Config, named: list[str], only_tab: list[str],
+                           only_canon: list[str]) -> None:
+    """Canon is never edited from code. The drift is filed as a proposal."""
+    try:
+        db_insert(cfg, "workflow_proposals", [{
+            "agent_id": "hunter",
+            "title": "canon 9.1 has drifted from the Target Companies tab",
+            "body": ("The tab is the list Krish edits and the one hunter now "
+                     "sweeps. Canon 9.1 should be rewritten to match it.\n\n"
+                     "Only on the tab: " + (", ".join(only_tab) or "none") +
+                     "\nOnly in canon: " + (", ".join(only_canon) or "none") +
+                     "\n\nFull list (" + str(len(named)) + "): " +
+                     ", ".join(named)),
+            "status": "open",
+        }], on_conflict="agent_id,title", merge=True)
+    except Exception:
+        # A proposal that cannot be filed must not take the sourcing run with
+        # it. The summary line above already says the two disagree.
+        pass
+
+
 def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                      summary: list[str], company_declines: dict | None = None) -> dict:
     from .ats import ashby, greenhouse, lever
@@ -2391,12 +2470,41 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     counts = {"discovered": 0, "senior": 0, "fresh": 0, "resolved": 0,
               "recorded": 0, "staged": 0, "unresolved": 0, "spend_usd": 0.0}
     postings = []
-    swept, gaps = [], []
-    for company in canon.universe:
+    from .ats import discover as disc
+    board_cache = disc.load_cache(cfg)
+    careers = targets_careers_urls(cfg, sheet)
+    universe = live_universe(cfg, canon, sheet, summary)
+    if cfg.optional("hunter_company_discovery", "1") != "0":
+        try:
+            from .sources import portfolio as _pf
+            summary.extend(_pf.refresh_if_stale(cfg))
+        except Exception as e:
+            summary.append(f"portfolio refresh skipped: {e.__class__.__name__}")
+        try:
+            found = discover_companies(cfg, sheet, summary)
+        except Exception as e:
+            summary.append(f"company discovery failed: {e.__class__.__name__}: {e}")
+            found = []
+        known = {slugify(c) for c in universe}
+        universe = universe + [f for f in found if slugify(f) not in known]
+    swept, gaps, learned = [], [], 0
+    for company in universe:
         mapping = ats_for(company)
         if not mapping:
-            gaps.append(company)
-            continue
+            # Until 2026-09-20 this line read "gaps.append(company); continue",
+            # and ats_for is a hardcoded 20 entry dict against a universe of
+            # 52. Thirty-two companies Krish had personally named were
+            # collected into a list, counted in the summary as
+            # "discovery-only coverage", and never swept once. The machinery
+            # to resolve them already existed and was used for LinkedIn
+            # postings and a16z companies; it was simply never pointed here.
+            found = disc.discover(cfg, company, board_cache,
+                                  careers_url=careers.get(slugify(company), ""))
+            if not found:
+                gaps.append(company)
+                continue
+            mapping = found
+            learned += 1
         ats, slug = mapping
         try:
             fn = {"greenhouse": greenhouse.board, "ashby": ashby.board,
@@ -2408,8 +2516,13 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
             swept.append(f"{company}:{len(board)}")
         except Exception as e:
             summary.append(f"board {company}/{slug} failed: {e.__class__.__name__}")
-    summary.append(f"ATS boards swept: {len(swept)}; unmapped companies "
-                   f"(discovery-only coverage): {len(gaps)}")
+    swept_companies = [s.rsplit(":", 1)[0] for s in swept]
+    if learned:
+        disc.save_cache(cfg, board_cache)
+    summary.append(
+        f"target company boards swept: {len(swept)} ({learned} resolved this "
+        f"run); still unreadable: {len(gaps)}"
+        + (f" ({', '.join(sorted(gaps)[:8])})" if gaps else ""))
 
     # The a16z portfolio, as Krish asked on 2026-09-03. The board is a strong
     # company list and a strong ATS finder and a poor job list (25 relevance
@@ -2496,13 +2609,20 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     # full like the canon universe. This is where the exhaustive listing
     # comes from.
     try:
-        from .ats import discover as disc
         cache = disc.load_cache(cfg)
-        universe_slugs = {slugify(c) for c in canon.universe}
         fns = {"greenhouse": greenhouse.board, "ashby": ashby.board, "lever": lever.board}
+        swept_slugs = {slugify(c) for c in swept_companies}
         extra = 0
         for ck, hit in cache.items():
-            if not hit or ck in universe_slugs or hit["ats"] not in fns:
+            # This used to skip every slug in canon.universe, on the
+            # assumption the first leg had already swept it. The first leg
+            # could only sweep the 20 companies in ats_for, so a target
+            # company whose board hunter had successfully LEARNED was
+            # excluded here and absent there: swept by nobody, permanently.
+            # Descript, Gamma and Luma AI were all sitting in this cache.
+            # The exclusion is now what was actually swept, not what was
+            # hoped to be.
+            if not hit or ck in swept_slugs or hit["ats"] not in fns:
                 continue
             try:
                 board = fns[hit["ats"]](hit["slug"])
@@ -2554,6 +2674,320 @@ def posting_text(p) -> str:
     return text if len(text) >= 200 else ""
 
 
+def discover_companies(cfg: Config, sheet: Sheet, summary: list[str], *,
+                       apply: bool = True) -> list[str]:
+    """Score companies he has never named, and propose the best of them.
+
+    Returns the names that cleared the sweep floor, so this run can sweep
+    their boards as well as his own list. Nothing here writes to his own
+    columns and nothing is contacted: a good company becomes a row he can
+    adopt by typing a tier.
+    """
+    from . import company as comp_score
+    from . import prospect, targets
+    from .ats import discover as disc
+
+    try:
+        named = targets.read(sheet)
+    except Exception as e:
+        summary.append(f"company discovery skipped, tab unreadable: "
+                       f"{e.__class__.__name__}")
+        return []
+    exclude = {company_key(t_.name) for t_ in named}
+    # A company he has already ruled on is not a discovery.
+    try:
+        for r in db_get(cfg, "hunter_verdict_events",
+                        {"select": "company", "limit": ALL_ROWS}):
+            if r.get("company"):
+                exclude.add(company_key(r["company"]))
+    except Exception:
+        pass
+    boards = disc.load_cache(cfg)
+    cands = prospect.candidates(cfg, exclude=exclude, boards=boards)
+    budget = int(cfg.optional("hunter_max_new_companies_per_run", "60"))
+    batch = cands[:budget]
+    all_scores = company_scores(cfg, [c.name for c in batch], sheet, summary)
+    # company_scores returns everything hunter has ever scored, because the
+    # cache is shared with staging. A proposal must come from THIS batch, or
+    # the tab fills up with the companies he already named.
+    wanted = {c.key for c in batch}
+    scores = {k: s for k, s in all_scores.items() if k in wanted}
+    rows = prospect.proposals(scores, batch,
+                              floor=comp_score.DISCOVERY_FLOOR,
+                              limit=targets.MAX_PROPOSED)
+    summary.append(prospect.summary_line(cands, len(batch), len(rows)))
+    if rows:
+        try:
+            for line in targets.write_proposals(sheet, rows, apply=apply):
+                summary.append(line)
+        except Exception as e:
+            summary.append(f"proposals not written: {e.__class__.__name__}: {e}")
+    # Anything at or above the sweep floor is worth sweeping now, adopted or
+    # not. Waiting for him to type a tier would mean the discovery only ever
+    # pays off next week.
+    return [s.name for s in scores.values()
+            if not s.status and s.total >= comp_score.SWEEP_FLOOR]
+
+
+def funnel_batches_measure(cfg: Config, sheet: Sheet | None = None) -> list:
+    """The batches, measured but not written. What `stats` prints."""
+    out: list = []
+    funnel_batches(cfg, sheet, None, save=False, into=out)
+    return out
+
+
+def funnel_batches(cfg: Config, sheet: Sheet | None = None,
+                   summary: list[str] | None = None, *, save: bool = True,
+                   into: list | None = None) -> list:
+    """Accept rate per batch, measured and written down.
+
+    Never fatal. If this cannot be computed the run still runs; it just
+    stops being able to tell him the funnel is drifting, which is exactly
+    the state hunter was in for the six weeks the rate fell from 77 percent
+    to single figures.
+    """
+    try:
+        from . import batchstats, companyintel, targets
+        # Hunter's own computed tier first, because it covers every company
+        # it has scored rather than only the 53 he named. His stated tier
+        # wins where he has given one: the split is meant to tell him which
+        # kind of company is worth his review time, and his own label is the
+        # one he will recognise.
+        tiers: dict = {}
+        try:
+            for k, row in companyintel.load(cfg).items():
+                if row.get("tier"):
+                    tiers[k] = int(row["tier"])
+        except Exception:
+            pass
+        if sheet is not None:
+            try:
+                for k, v in targets.stated_tiers(sheet).items():
+                    tiers[company_key(k) or k] = v
+            except Exception:
+                pass
+        batches = batchstats.measure(cfg, tiers)
+        if save:
+            batchstats.save(cfg, batches)
+        if into is not None:
+            into.extend(batches)
+        if summary is not None:
+            summary.extend(batchstats.lines(batches))
+        return batches
+    except Exception as e:
+        if summary is not None:
+            summary.append(f"accept rate not measured: {e.__class__.__name__}")
+        return []
+
+
+def company_outcomes(cfg: Config) -> dict[str, dict]:
+    """key -> {seen, yes, no} from what actually happened at each company.
+
+    This is the half of the Target Companies tab that makes it a record
+    rather than a wish list: next to hunter's score sits how many roles it
+    has put in front of him from that company and how he ruled on them.
+    """
+    out: dict[str, dict] = {}
+
+    def row(key: str) -> dict:
+        return out.setdefault(key, {"seen": 0, "yes": 0, "no": 0})
+
+    try:
+        for r in db_get(cfg, "hunter_seen_roles",
+                        {"select": "company,presented_at", "limit": ALL_ROWS}):
+            if r.get("presented_at") and r.get("company"):
+                row(company_key(r["company"]))["seen"] += 1
+    except Exception:
+        return out
+    try:
+        for e in db_get(cfg, "hunter_verdict_events",
+                        {"select": "company,verdict,source", "limit": ALL_ROWS}):
+            src = (e.get("source") or "").lower()
+            if not e.get("company") or ("krish" not in src and "column a" not in src):
+                continue
+            r = row(company_key(e["company"]))
+            if (e.get("verdict") or "").lower() in ("go", "yes", "approved"):
+                r["yes"] += 1
+            else:
+                r["no"] += 1
+    except Exception:
+        pass
+    return out
+
+
+def known_company_keys(cfg: Config) -> set[str]:
+    """Companies that have already reached his sheet at least once.
+
+    The discovery quota is for businesses he has never been shown. A company
+    hunter staged last week is not a discovery however well it scores.
+    """
+    try:
+        rows = db_get(cfg, "hunter_seen_roles",
+                      {"select": "company", "status": "eq.staging",
+                       "limit": ALL_ROWS})
+    except Exception:
+        return set()
+    return {company_key(r["company"] or "") for r in rows if r.get("company")}
+
+
+def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
+                   summary: list[str] | None = None, *,
+                   budget: int | None = None) -> dict:
+    """slug -> CompanyScore for every company in this batch.
+
+    Cached in hunter_company_intel and re-gathered only for companies hunter
+    has never scored, so a weekly run pays for the new names and nothing
+    else. A company that cannot be scored is absent from the result, which
+    the caller must read as unknown rather than as bad.
+
+    budget overrides the per-run cap. Staging passes one big enough to cover
+    every company it is about to judge, because a shared cap meant discovery
+    spent it first: on 2026-09-20 the run staged PayPal, Google, CreatorIQ,
+    vivenu and openrouter, all of which score zero and would have been
+    blocked, simply because nothing had got round to scoring them.
+    """
+    from . import company as comp_score
+    from . import companyintel as intel
+    from .ats import discover as disc
+    from .ats import ashby, greenhouse, lever
+
+    out: dict = {}
+    if not names:
+        return out
+    keys = {}
+    for n in names:
+        k = company_key(n) or slugify(n)
+        keys.setdefault(k, n)
+    try:
+        known = intel.load(cfg)
+    except Exception:
+        known = {}
+    # Never scored, or scored long enough ago to be worth asking again. A
+    # company hunter could not read a fortnight ago may simply have had a
+    # page down, and without a retry that becomes a permanent exclusion.
+    fresh = [k for k in keys
+             if k not in known or intel.is_stale(known[k])]
+    if budget is None:
+        budget = int(cfg.optional("hunter_max_company_evidence_per_run", "60"))
+    careers = targets_careers_urls(cfg, sheet) if sheet is not None else {}
+    a16z_rows = {}
+    try:
+        a16z_rows = {company_key(r["name"]) or r["slug"]: r
+                     for r in db_get(cfg, "hunter_a16z_companies",
+                                     {"select": "slug,name,domain,markets,stage,band,job_count",
+                                      "limit": ALL_ROWS})}
+    except Exception:
+        pass
+    cache = disc.load_cache(cfg)
+    fns = {"greenhouse": greenhouse.board, "ashby": ashby.board, "lever": lever.board}
+    # A firm's own portfolio board answers, in one request for the whole
+    # portfolio, the component the scorer can least often establish: who is
+    # behind the company. It also carries a description, a stage and a
+    # location set, which is four of the five components for a company whose
+    # own site refuses hunter.
+    try:
+        from .sources import portfolio
+        portfolio_rows = portfolio.load(cfg)
+    except Exception:
+        portfolio, portfolio_rows = None, {}
+
+    def gather(k: str):
+        """Evidence for one company. Every call is a network read of a
+        public page, so they run side by side: serially, a budget of 60 was
+        three minutes of a Sunday morning spent waiting on DNS."""
+        name = keys[k]
+        got: dict = {}
+        a16 = a16z_rows.get(k)
+        if a16:
+            got.update(intel.from_a16z(a16))
+        pf = portfolio_rows.get(k)
+        if pf and portfolio is not None:
+            for a, fact in portfolio.row_to_facts(pf).items():
+                got.setdefault(a, fact)
+        domain = (a16 or {}).get("domain") or (pf or {}).get("domain") or ""
+        # The ROOT of his careers link, not the careers page itself. A
+        # careers page says "Careers at TollBit" and nothing about the
+        # business, so reading it left 25 of his 52 named companies with no
+        # description and therefore no score at all.
+        careers_url = careers.get(slugify(name)) or ""
+        url = ""
+        if careers_url:
+            parts = careers_url.split("/")
+            url = "/".join(parts[:3]) if len(parts) >= 3 else careers_url
+        if not url and domain:
+            url = domain if domain.startswith("http") else "https://" + domain
+        guessed = False
+        if not url:
+            url, _ = intel.resolve_domain(name)
+            guessed = bool(url)
+        if url:
+            site, _ = intel.site_facts(url)
+            if guessed and site:
+                site = intel.mark_guessed(site)
+            for a, fact in site.items():
+                got.setdefault(a, fact)
+        board = cache.get(slugify(name)) or None
+        if board and board.get("ats") in fns:
+            try:
+                posts = fns[board["ats"]](board["slug"])
+                burl = f"{board['ats']}:{board['slug']}"
+                for a, fact in intel.from_board([x.title for x in posts], burl).items():
+                    got.setdefault(a, fact)
+                locs = sorted({(x.location or "") for x in posts if x.location})
+                if locs and "locations" not in got:
+                    got["locations"] = comp_score.Fact(
+                        "hires in " + "; ".join(locs[:12])[:300], burl)
+                if "what_it_does" not in got:
+                    for x in posts[:6]:
+                        found = intel.from_posting(
+                            x.raw.get("descriptionPlain") or "", x.url or burl, name)
+                        if found:
+                            got.update(found)
+                            break
+            except Exception:
+                pass
+        a16z_member = bool(got.pop("a16z_portfolio", False))
+        facts = comp_score.Facts(slug=k, name=name, a16z_portfolio=a16z_member,
+                                 **got)
+        return comp_score.score_company(facts)
+
+    scored_now = []
+    batch = fresh[:budget]
+    if batch:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        workers = int(cfg.optional("hunter_company_evidence_workers", "8"))
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            futures = [pool.submit(gather, k) for k in batch]
+            for fu in as_completed(futures):
+                try:
+                    scored_now.append(fu.result())
+                except Exception as e:
+                    if summary is not None:
+                        summary.append(
+                            f"company evidence failed: {e.__class__.__name__}")
+    if scored_now:
+        try:
+            intel.save(cfg, scored_now)
+        except Exception as e:
+            if summary is not None:
+                summary.append(f"company intel not saved: {e.__class__.__name__}")
+    for s in scored_now:
+        out[s.slug] = s
+    for k, row in known.items():
+        if k in out:
+            continue
+        out[k] = intel.restore(row)
+    if summary is not None:
+        retried = sum(1 for k in batch if k in known)
+        if retried:
+            summary.append(f"{retried} company(ies) re-scored because what "
+                           f"hunter knew about them had gone stale")
+    if summary is not None and scored_now:
+        summary.append(f"scored {len(scored_now)} company(ies) this run; "
+                       f"{max(0, len(fresh) - len(batch))} left for next run")
+    return out
+
+
 def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                    postings: list, summary: list[str],
                    company_declines: dict | None = None) -> dict:
@@ -2566,13 +3000,15 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     """
     from .ats import ashby, greenhouse, lever
     from .ats import discover as disc
-    from .gates import SENIOR_TITLE
+    from .company import (DISCOVERY_FLOOR, NEEDS_EVIDENCE as COMPANY_UNKNOWN,
+                          SWEEP_FLOOR as COMPANY_FLOOR)
+    from .gates import EXCEPTIONAL_MERIT as EXCEPTIONAL, SENIOR_TITLE
     from .package.rationale import write_rationale_and_snippet
 
     counts = {"discovered": 0, "senior": 0, "fresh": 0, "resolved": 0,
               "recorded": 0, "staged": 0, "unresolved": 0, "spend_usd": 0.0,
-              "boards_found": 0, "g12_blocked": [], "from_description": 0,
-              "comp_from_text": 0}
+              "boards_found": 0, "g12_blocked": [], "g14_blocked": [],
+              "from_description": 0, "comp_from_text": 0}
     counts["discovered"] = len(postings)
     # Who the employers are, read once rather than per posting.
     try:
@@ -2609,6 +3045,15 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             seen_keys.add(k)
         fresh.append(p)
     counts["fresh"] = len(fresh)
+    # The company question is asked once per company, after dedupe, so a run
+    # pays for the companies that actually have a live candidate rather than
+    # for every name the sweep touched.
+    # Every company with a live candidate is scored, whatever discovery
+    # spent earlier in the run. This is the gate that decides what he looks
+    # at, and it cannot be the thing that runs out of budget.
+    live_companies = sorted({p.company for p in fresh if p.company})
+    company_view = company_scores(cfg, live_companies, sheet, summary,
+                                  budget=max(len(live_companies), 1))
 
     never = cfg.require_json("hunter_never_apply")
     opens = learn.open_applications(db_get(cfg, "hunter_seen_roles", {
@@ -2706,12 +3151,24 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                             employer_index=employer_index)
         report = run_gates(role, never_apply=never, company_declines=company_declines,
                            employer_index=employer_index, merit=result.merit)
+        cscore = company_view.get(company_key(role.company) or slugify(role.company))
         status, reason = "scanned", None
         if result.auto_rejected:
             status, reason = "dropped", result.rejection_reason
         elif not report.passed:
             status = "blocked"
             reason = "; ".join(f"{g.gate}: {g.reason}" for g in report.failures())
+        elif (cscore is not None and cscore.status != COMPANY_UNKNOWN
+              and cscore.total < COMPANY_FLOOR and result.merit < EXCEPTIONAL):
+            # The company question, asked before the seat. A company hunter
+            # has NOT been able to read is not blocked here, only ranked
+            # lower: refusing on an absent observation is the thing this
+            # repo forbids, and "never block on no evidence" is already
+            # written into CLAUDE.md for roles.
+            status = "blocked"
+            reason = (f"G14: company scores {cscore.total} of 10, below the "
+                      f"{COMPANY_FLOOR:g} floor ({cscore.why(2) or 'no evidence'})")
+            counts["g14_blocked"].append(role.company)
         else:
             # The score no longer blocks (canon 9.2 as amended 2026-09-03):
             # 16 of the 17 roles Krish said yes to scored below the old bar.
@@ -2768,9 +3225,24 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         summary.append(f"{counts['from_description']} posting(s) gated from the "
                        f"description the sweep carried, liveness unverified")
 
+    if counts["g14_blocked"]:
+        summary.append(
+            f"G14 blocked {len(counts['g14_blocked'])} posting(s) at companies "
+            f"scoring below {COMPANY_FLOOR:g}: "
+            + ", ".join(sorted(set(counts["g14_blocked"]))[:6]))
+
     if staged_rows:
-        # highest score first, so the sheet reads as a ranked shortlist
-        staged_rows.sort(key=lambda t: -(t[1].score or 0))
+        # Ranked on the company AND the seat, not the seat alone. Under the
+        # old key a role at a company he named tied with a role at an
+        # advertising holding company, and at the staging cap the tie was
+        # broken by whichever leg happened to run first.
+        def rank(entry):
+            role, result = entry[0], entry[1]
+            cs = company_view.get(company_key(role.company) or slugify(role.company))
+            company_part = cs.total if cs and cs.status != COMPANY_UNKNOWN else 5.0
+            return -((result.score or 0) + company_part)
+
+        staged_rows.sort(key=rank)
         # And only the top of it reaches the sheet. There was no cap until
         # 2026-09-20, which is how the tab reached 176 rows: a sheet he
         # cannot judge in one sitting is a sheet he does not judge. The
@@ -2780,7 +3252,32 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         if cap and len(staged_rows) > cap:
             held = len(staged_rows) - cap
             cut = staged_rows[cap][1].score
-            staged_rows = staged_rows[:cap]
+            # Some of the cap is reserved for companies he has never seen.
+            # His instruction on 2026-09-20 was not to lock the funnel to
+            # the list he had already written down: "There are so many
+            # companies I am not thinking about that has good backing,
+            # potential, mission, leadership and opportunity". Ranking alone
+            # would spend every slot on the companies hunter already knows
+            # most about, which is the same list forever.
+            quota = int(cfg.optional("hunter_discovery_quota_per_run", "5"))
+            seen_before = known_company_keys(cfg)
+            def is_new(entry):
+                k = company_key(entry[0].company) or slugify(entry[0].company)
+                cs = company_view.get(k)
+                return (k not in seen_before and cs is not None
+                        and cs.status != COMPANY_UNKNOWN
+                        and cs.total >= DISCOVERY_FLOOR)
+
+            head = staged_rows[:cap]
+            tail = staged_rows[cap:]
+            newcomers = [e for e in tail if is_new(e)][:quota]
+            if newcomers:
+                head = head[:cap - len(newcomers)] + newcomers
+                summary.append(
+                    f"{len(newcomers)} slot(s) went to companies hunter has "
+                    f"never staged before, scoring {DISCOVERY_FLOOR:g} or more: "
+                    + ", ".join(sorted({e[0].company for e in newcomers})))
+            staged_rows = head
             summary.append(
                 f"staging capped at {cap}: {held} more role(s) passed every "
                 f"gate and are held at score {cut} or below. They keep their "
@@ -3106,7 +3603,8 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
     # The invariants run BEFORE the archive, because the repair that stamps a
     # duplicate row is what makes it a decided row the archive can then move.
     try:
-        inv = invariants.enforce(sheet, canon.sheet_headers, apply=True)
+        inv = invariants.enforce(sheet, canon.sheet_headers, apply=True,
+                                 batches=funnel_batches(cfg, sheet, summary))
         counts["repairs"] = len(inv["repaired"])
         counts["still_broken"] = len(inv["still_broken"])
         summary.extend(inv["lines"])
@@ -3279,6 +3777,7 @@ def cmd_run() -> int:
                 notes.append(f"{pcounts['amendments']} edit(s) of yours were read "
                              f"as corrections and fed back into the scorer.")
             out = alerts.send_review_ready(cfg, fresh, counts.get("staged", 0),
+                                           batches=funnel_batches(cfg, sheet, summary),
                                            notes=notes)
             summary.append(f"review email: {out}")
         except Exception as e:
@@ -4731,11 +5230,106 @@ def main(argv: list[str]) -> int:
         for line in layout.describe():
             print(f"  {line}")
         return 0
+    if cmd == "portfolios":
+        # Refresh the VC portfolio boards. Read only against the boards; the
+        # only write is hunter's own cache of what they said.
+        from .sources import portfolio
+        cfg = load()
+        n, notes = portfolio.refresh(cfg)
+        for line in notes:
+            print(line)
+        print(f"stored {n} portfolio companies with their facts")
+        return 0
+    if cmd == "discover":
+        # Companies he has never named, scored and proposed. Read only
+        # unless --apply, and nothing is ever contacted.
+        cfg = load()
+        sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        summary: list[str] = []
+        found = discover_companies(cfg, sheet, summary, apply="--apply" in argv)
+        for line in summary:
+            print(line)
+        if found:
+            print(f"\n{len(found)} company(ies) cleared the sweep floor and "
+                  f"would be swept this run:")
+            for name in sorted(found):
+                print(f"  {name}")
+        if "--apply" not in argv:
+            print("\ndry run. add --apply to write the proposals onto the tab.")
+        return 0
+    if cmd == "stats":
+        # The funnel's own report card, on demand. Nothing here writes to the
+        # sheet or sends anything; it reads what he decided and divides.
+        from . import batchstats
+        cfg = load()
+        sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        batches = funnel_batches_measure(cfg, sheet)
+        print(f"{'batch':12} {'staged':>7} {'ruled':>6} {'yes':>4} {'rate':>6}")
+        for b in batches:
+            rate = f"{round(100 * b.rate)}%" if b.rate is not None else "-"
+            print(f"{b.key:12} {b.staged:7} {b.verdicted:6} {b.accepted:4} {rate:>6}")
+        print()
+        for line in batchstats.lines(batches):
+            print(line)
+        if "--apply" in argv:
+            batchstats.save(cfg, batches)
+            print(f"\nwrote {len(batches)} batch(es) to {batchstats.TABLE}")
+        return 0
+    if cmd == "companies":
+        # Score the companies on his Target Companies tab and show the
+        # working, so a number he disagrees with can be argued with.
+        from . import company as comp_score
+        from . import targets
+        cfg = load()
+        sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        named = targets.read(sheet)
+        summary: list[str] = []
+        scores = company_scores(cfg, [t.name for t in named], sheet, summary)
+        for line in summary:
+            print(line)
+        from .ats import discover as disc
+        outcomes = company_outcomes(cfg)
+        boards = disc.load_cache(cfg)
+        print(f"\n{'score':>5} {'tier':>4} {'his':>3}  company")
+        rows = {}
+        for t_ in named:
+            key = company_key(t_.name) or slugify(t_.name)
+            s = scores.get(key)
+            if not s:
+                continue
+            tier = s.tier if s.tier else "-"
+            print(f"{s.total:5.1f} {str(tier):>4} {str(t_.tier_number or '-'):>3}  "
+                  f"{t_.name[:24]:25} {(s.status or s.why(2))[:80]}")
+            hit = boards.get(slugify(t_.name)) or {}
+            board = f"{hit['ats']}:{hit['slug']}" if hit else ""
+            if not board:
+                # A company in the seed map never goes through discovery, so
+                # its board is not in the cache. Reading blank there made it
+                # look unreachable when it is the one hunter has always had.
+                from .sources import ats_for
+                mapped = ats_for(t_.name)
+                if mapped:
+                    board = f"{mapped[0]}:{mapped[1]}"
+            o = outcomes.get(key) or {}
+            rows[t_.row] = [s.total, s.tier or "", board, targets.today(),
+                            o.get("seen") or "", o.get("yes") or "",
+                            o.get("no") or "", (s.status or s.why(2))[:400]]
+        if "--apply" in argv and rows:
+            for line in targets.write_hunter_columns(sheet, rows):
+                print(line)
+        elif rows:
+            print(f"\ndry run. add --apply to write {len(rows)} score(s) onto "
+                  f"the {targets.TAB} tab.")
+        return 0
     if cmd == "invariants":
         cfg, canon = build_context()
         sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        batches = []
+        if "--rate" in argv:
+            from . import batchstats
+            batches = batchstats.measure(cfg)
         out = invariants.enforce(sheet, canon.sheet_headers,
-                                 apply="--apply" in argv)
+                                 apply="--apply" in argv, batches=batches)
         print("\n".join(out["lines"]))
         if out["repaired"]:
             print("\nrepaired:")

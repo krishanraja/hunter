@@ -187,52 +187,47 @@ def write_rationale_and_snippet(cfg: Config, canon, *, company: str, title: str,
     if len(jd or "") < 200:
         return deterministic(company, title, score, score_reason), fallback_snippet, ["thin JD"]
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=cfg.require("hunter_anthropic_api_key"))
+        from .. import llm
         prompt = PROMPT.format(
             canon_profile=canon.section_text("5")[:2500],
             company=company, title=title, location=location or "not stated",
             comp=comp or "not disclosed", score=score, score_reason=score_reason,
             jd=jd[:6000], max_chars=MAX_CHARS, snippet_chars=SNIPPET_MAX)
-        resp = client.messages.create(
-            model=cfg.optional("hunter_anthropic_model", "claude-opus-5"),
-            max_tokens=1200,
-            messages=[{"role": "user", "content": prompt}],
-            output_config={"format": {"type": "json_schema",
-                                      "schema": RATIONALE_SCHEMA}})
-        if getattr(resp, "stop_reason", "") == "refusal":
+        # llm.complete tries Anthropic, then OpenAI. The Anthropic budget ran
+        # out on 2026-09-20 with ten days to run, and without a second
+        # provider every package built in that window would have carried the
+        # deterministic fallback rationale without anybody noticing until he
+        # read one.
+        text, notes = llm.complete(cfg, prompt, max_tokens=1200,
+                                   schema=RATIONALE_SCHEMA)
+        parts = llm.json_object(text)
+        if parts is None:
             return (deterministic(company, title, score, score_reason),
-                    fallback_snippet, ["model refused"])
-        if getattr(resp, "stop_reason", "") == "max_tokens":
-            # a truncated JSON body is not partially usable
-            return (deterministic(company, title, score, score_reason),
-                    fallback_snippet, ["rationale truncated at the token limit"])
-        parts = json.loads(_text(resp))
+                    fallback_snippet,
+                    notes or ["no model answered with usable JSON"])
         fails = validate(parts, jd)
         if fails:
             # one corrective retry naming the exact failure, then the honest
             # fallback. Usually the model only needs to be told the limit.
-            retry = client.messages.create(
-                model=cfg.optional("hunter_anthropic_model", "claude-opus-5"),
-                max_tokens=1200,
-                messages=[{"role": "user", "content": prompt},
-                          {"role": "assistant", "content": json.dumps(parts)},
-                          {"role": "user", "content":
-                           "That failed validation: " + "; ".join(fails)
-                           + ". Rewrite it shorter and use only figures that "
-                             "appear in the job description."}],
-                output_config={"format": {"type": "json_schema",
-                                          "schema": RATIONALE_SCHEMA}})
-            if getattr(retry, "stop_reason", "") in ("refusal", "max_tokens"):
+            retry_text, retry_notes = llm.complete(
+                cfg, "That failed validation: " + "; ".join(fails)
+                + ". Rewrite it shorter and use only figures that appear in "
+                  "the job description.",
+                max_tokens=1200, schema=RATIONALE_SCHEMA,
+                history=[{"role": "user", "content": prompt},
+                         {"role": "assistant", "content": json.dumps(parts)}])
+            retry_parts = llm.json_object(retry_text)
+            if retry_parts is None:
                 return (deterministic(company, title, score, score_reason),
-                        fallback_snippet, fails)
-            parts = json.loads(_text(retry))
+                        fallback_snippet, fails + retry_notes)
+            parts = retry_parts
             fails = validate(parts, jd)
             if fails:
                 flags.append("rationale rejected twice: " + "; ".join(fails))
                 return (deterministic(company, title, score, score_reason),
                         fallback_snippet, flags)
             flags.append("rationale needed one retry")
+        flags += notes
         snippet = " ".join(parts["snippet"].split()).replace("\u2014", " - ")
         return assemble(parts), snippet, flags
     except Exception as e:

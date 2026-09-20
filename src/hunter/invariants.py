@@ -393,9 +393,29 @@ def repair_sort(sheet: Sheet) -> str:
     return f"sorted {out['rows']} row(s) by score"
 
 
+def check_accept_rate(batches) -> Finding:
+    """Is the funnel still bringing him roles he wants.
+
+    The only check here that is about the OUTPUT rather than the sheet, and
+    the only one with no repair. Between 6 August and 20 September this
+    number fell from 77 percent to single figures and nothing noticed,
+    because nothing was looking. A repair would be dishonest: what to change
+    when the funnel drifts is a judgement, and it is his.
+    """
+    from . import batchstats
+    warn = batchstats.falling(batches or [])
+    if warn:
+        return Finding("accept rate holds up", BROKEN, warn)
+    settled = [b for b in (batches or []) if b.settled]
+    if not settled:
+        return Finding("accept rate holds up", OK,
+                       "no batch has enough verdicts yet to have a rate")
+    return Finding("accept rate holds up", OK, batchstats.trend(batches))
+
+
 # ---------- the pass ----------
 
-def check_all(sheet: Sheet, rows, archive) -> list[Finding]:
+def check_all(sheet: Sheet, rows, archive, batches=None) -> list[Finding]:
     return [
         check_dropdown_reaches_the_end(sheet, rows),
         check_verdict_vocabulary(rows),
@@ -410,6 +430,7 @@ def check_all(sheet: Sheet, rows, archive) -> list[Finding]:
         check_sorted_by_score(rows),
         check_archive_stamped(archive),
         check_row_headroom(sheet, rows),
+        check_accept_rate(batches),
     ]
 
 
@@ -423,7 +444,8 @@ REPAIRS = {
 }
 
 
-def enforce(sheet: Sheet, canon_headers: list[str], *, apply: bool = True) -> dict:
+def enforce(sheet: Sheet, canon_headers: list[str], *, apply: bool = True,
+            batches=None) -> dict:
     """Check every invariant, repair what has a safe repair, report the rest.
 
     Re-reads the sheet itself rather than taking rows from the caller, because
@@ -435,7 +457,7 @@ def enforce(sheet: Sheet, canon_headers: list[str], *, apply: bool = True) -> di
         archive = sheet.read_archive()
     except Exception:
         archive = []
-    findings = check_all(sheet, rows, archive)
+    findings = check_all(sheet, rows, archive, batches)
 
     repaired: list[str] = []
     if apply:

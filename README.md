@@ -99,6 +99,39 @@ Sheet layout is `sheet.HEADERS` (30 columns), asserted against canon 9.13 at
 every start. `migrate-columns [--apply]` moves a tab from the old 28-column
 layout to it.
 
+## The company question
+
+Before hunter asks whether a seat is his shape, it asks whether the business
+is worth his time. `company.py` scores a company out of 10 from five
+weighted components and two penalties, on evidence gathered free by
+`companyintel.py` from the company's own homepage, its about page, the
+opening of its own job postings, its job board, the a16z index and other
+firms' portfolio boards. Nothing is stored without a source URL, and a
+component with no evidence is recorded as unknown rather than as zero.
+
+G14 applies it at staging: a role reaches the sheet only if its company
+clears the floor, unless the role itself is exceptional. A company hunter
+could not read is ranked lower, never refused, because refusing on an absent
+observation is the one thing this repo will not do.
+
+- `companies [--apply]` scores every company on the Target Companies tab and
+  shows its working. With `--apply` it writes the score, the computed tier,
+  the board, the roles seen and his own verdict counts into hunter's columns
+  beside his, and never into his own.
+- `discover [--apply]` scores companies he has never named, found in what
+  hunter already discards, and proposes the best of them under his list.
+- `portfolios` refreshes the VC portfolio boards behind the backing
+  component. It runs itself weekly inside a sourcing run.
+- `stats` prints the accept rate per batch, split by source and company
+  tier. It is the number that fell from 77 percent to 6 while nothing was
+  watching, and the invariants layer now raises it after two batches below
+  35 percent.
+
+The Target Companies tab is the live surface. Columns A to H are his;
+hunter writes to the right of them and below his content, never over either.
+Canon 9.1 is regenerated from the tab through a `workflow_proposals` row,
+never edited from code.
+
 ## The apply layer
 
 `src/hunter/apply/` reads a posting's real application form and resolves every

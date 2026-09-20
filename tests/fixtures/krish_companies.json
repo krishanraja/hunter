@@ -1,0 +1,2615 @@
+[
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "201-500 employees"
+   },
+   "locations": {
+    "source": "ashby:abridge",
+    "value": "hires in CHI Office; California; NYC Office; Remote - Tier 1; SF Office; United States - Remote"
+   },
+   "open_roles": {
+    "source": "ashby:abridge",
+    "value": "open roles include Machine Learning Scientist (All Levels); Senior Full Stack Engineer, Integrations VistA ; Senior Application Security Engineer; Senior Data Scientist; Machine Learning Infrastructure Engineer; Senior Product Designer; Staff Product Designer; Product Lead, Core Product Experiences; Senior Enterprise Security Engineer; Art Director, Part Time (Temporary); Senior Software Engineer, Data; Forward Deployed Product Manager; Research Scientist (Measurement and Evaluation); Senior Full Stack Engineer, Integrations Cerner; Senior Full Stack Engineer, Integrations Epic; Clinician Scientist; Senior Socia"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series E"
+   },
+   "what_it_does": {
+    "source": "https://www.abridge.com/",
+    "value": "Generative AI for Clinical Conversations | Abridge Discover how Abridge transforms documentation for clinical conversations powered by generative AI, enhancing healthcare understanding and improving patient care."
+   }
+  },
+  "label": "declined",
+  "name": "Abridge",
+  "slug": "abridge",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "lever:adlook",
+    "value": "hires in Amsterdam, Netherlands; Chicago, Illinois; Dallas, Texas; Hamburg, Germany; London, United Kingdom; Madrid, Spain; Mexico City, Mexico; Paris, France; Prague, Czech Republic; S\u00e3o Paulo, Brazil; Warsaw, Poland; Zagreb,Croatia"
+   },
+   "open_roles": {
+    "source": "lever:adlook",
+    "value": "open roles include (M\u0142.) Specjalista/Specjalistka ds. Finans\u00f3w; Associate, Client Development; Business Development Executive; Client Development Associate; Client Development Associate; Client Development Director, CEE; Client Development Manager; Director, Business Development; Financial Controller; Manager, Business Development; Manager, Business Development; People & Culture Partner; Regional Vice President, Business Development - North America; Sales Director; Sales Director; Sales Director; Sales Director; Sales Director; Sales Executive; Sales Executive (Croatia); Sales Manager; Sales Manager; Senior Sale"
+   },
+   "what_it_does": {
+    "source": "https://adlook.com/",
+    "value": "Adlook | Next-Gen Omnichannel Media Buying Platform Adlook is a brand growth partner with its own proprietary media platform \u2013 turning your business goal into the KPI across the Open Web, on any screen. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "target",
+  "name": "Adlook",
+  "slug": "adlook",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:raptive",
+    "value": "hires in Chicago or New York; United States"
+   },
+   "open_roles": {
+    "source": "ashby:raptive",
+    "value": "open roles include Sales Marketing Manager; Salesforce Administrator, Solution Design; GTM Lead, Raptive Intelligence; Ad Performance Analyst; Lead Security Engineer"
+   },
+   "what_it_does": {
+    "source": "https://raptive.com/",
+    "value": "Raptive \u2014 Powering creator independence CafeMedia and AdThrive are now Raptive, a new kind of company transforming creators into global brands and lasting businesses."
+   }
+  },
+  "label": "target",
+  "name": "Raptive (formerly AdThrive)",
+  "slug": "adthrive",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:agentio",
+    "value": "hires in New York, NY"
+   },
+   "open_roles": {
+    "source": "ashby:agentio",
+    "value": "open roles include Software Engineer; Product Designer; Shape Your Role at Agentio; Data Scientist; Technical Recruiter; Recruiter\u2014 GTM, G&A; Account Executive, Strategic Partnerships \u2014 Creators; Brand Designer; Creator Partnerships Intern; Marketing Science Lead; Growth Marketing Lead; Brand Communications & Events Lead; Video Content Producer; Sales Director; Product Marketing Lead; Strategy & Operations, Creator Supply; Senior Sales Director; Client Growth Director; Client Growth Manager; Head of Creator Growth"
+   },
+   "stage": {
+    "source": "https://www.agentio.com:443/",
+    "value": "Series B"
+   },
+   "what_it_does": {
+    "source": "https://www.agentio.com:443/",
+    "value": "Agentio | The AI-Native Platform for Creator Advertising Agentio automates campaigns end to end, enabling advertisers to scale creator programs across Meta, YouTube, and beyond in hours, not months, while connecting creators with the world\u2019s top brands."
+   }
+  },
+  "label": "target",
+  "name": "Agentio",
+  "slug": "agentio",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:amperity",
+    "value": "hires in Argentina - Remote; New York, NY; New York, NY; Remote; Seattle, WA; Seattle, WA"
+   },
+   "open_roles": {
+    "source": "greenhouse:amperity",
+    "value": "open roles include Lead Customer Success Manager; Lead Software Development Engineer; Principal Product Builder - AI & Agentic Products; Senior CRM Consultant; Senior IT Systems Engineer; Senior Recruiter; Senior Software Development Engineer; Software Development Engineer II; Software Development Engineer II - Infrastructure; Submit Your Application for Future Consideration"
+   }
+  },
+  "label": "declined",
+  "name": "amperity",
+  "slug": "amperity",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:anaplan",
+    "value": "hires in  Gurugram, India; Abu Dhabi, United Arab Emirates; Bangalore, India; Calgary, Canada; Chennai, Remote; Copenhagen, Denmark; Gurugram; Gurugram, India; Hyderabad, Remote; India; Indonesia; Jakarta, Indonesia"
+   },
+   "open_roles": {
+    "source": "greenhouse:anaplan",
+    "value": "open roles include Account Based Marketing Specialist; Account Executive, Denmark; Accounting Analyst; AI Technical Lead; AI Technical Lead; Alliances Director - Managed Services Partnerships; Anaplan Model Builder; Associate Manager, Data Operations   ; Associate Support Analyst - Level 3 Support; Associate Workplace Experience Coordinator; Backend Python Engineer; Business Development Director (Professional Services Sales); Business Operations Manager ; Business Operations Manager ; Business Operations Manager - Product, Data Insights & Reporting; Business Operations Manager - Product, Data Insights & Reportin"
+   },
+   "what_it_does": {
+    "source": "https://www.anaplan.com/",
+    "value": "Decision Infrastructure for Agentic Enterprises | Anaplan The scenario planning and analysis platform where AI, data, and planning converge to make the right decisions, right now. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Anaplan",
+  "slug": "anaplan",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:anthropic",
+    "value": "hires in Alberta, CAN | Remote-Friendly, Canada; Austin, TX | Remote-Friendly, United States; Austin, TX | Remote-Friendly, United States; Boston, MA; New York City, NY; San Francisco, CA; Washington, DC; Austin, TX; Boston, MA; New York City, NY; San Francisco, CA; Seattle, WA; Bangalore, India; Boston, MA;"
+   },
+   "open_roles": {
+    "source": "greenhouse:anthropic",
+    "value": "open roles include Accommodations Partner; Account Executive, AI Native; Account Executive - DNB; Account Executive - Public Sector (ASEAN); Account Executive, Startups; Account Executive, Startups; Accounting, Revenue Internal Controls; AI Deployment Specialist, Beneficial Deployments; AI Infrastructure Operations, Demand Planning; AI Operations Engineer, Partnerships; Anthropic Fellows Program, AI Safety & Security; Anthropic Fellows Program, ML Systems & Reinforcement Learning; Anthropic Fellows Program, The Anthropic Institute (Economics & Policy); APAC Tax Lead; Applied AI Architect; Applied AI Architect; A"
+   },
+   "what_it_does": {
+    "source": "https://www.anthropic.com/",
+    "value": "Home \\ Anthropic Anthropic is an AI safety and research company that's working to build reliable, interpretable, and steerable AI systems. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Anthropic",
+  "slug": "anthropic",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:cursor",
+    "value": "hires in APJ; Austin; Australia; Bengaluru; EMEA; Germany; Japan; London; New York; Philippines; Remote; San Francisco"
+   },
+   "open_roles": {
+    "source": "ashby:cursor",
+    "value": "open roles include Software Engineer, Growth ; Software Engineer, Infrastructure; Software Engineer, Core Services; Software Engineer, Client Infrastructure; Software Engineer, Generalist; Software Engineer, Enterprise ; Software Engineer, ML Research ; Software Engineer, Product ; Account Executive, Geo Enterprise - San Francisco; Field Engineer; AI Deployment Manager; Research Scientist; Software Engineer, Agent Harness; Software Engineer, Security; Software Engineer, Bugbot; Design Engineer; Software Engineer, Enterprise Platform; Regional Vice President, Commercial Sales, APJ; Software Engineer, Developer Pr"
+   },
+   "what_it_does": {
+    "source": "https://anysphere.inc/",
+    "value": "Cursor Cursor is an applied research lab working on the future of programming."
+   }
+  },
+  "label": "target",
+  "name": "Anysphere (Cursor)",
+  "slug": "anysphere",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:aptoslabs",
+    "value": "hires in Korea; Palo Alto, California; Palo Alto, California, New York City, New York, and Remote - United States; Remote Global (US, EU); San Francisco, CA; US/Global (Remote)"
+   },
+   "open_roles": {
+    "source": "greenhouse:aptoslabs",
+    "value": "open roles include Community Manager (Korea); Head of Enterprise GTM \u2013 Shelby Platform; Information Security Engineer, Product  ; Senior Software Engineer, Platform Infrastructure; Senior Software Engineer, Trading Infrastructure; Software Engineer, Payments Product Lead; Software Engineer, Trading Product"
+   },
+   "stage": {
+    "source": "https://aptoslabs.com/",
+    "value": "Series A"
+   },
+   "what_it_does": {
+    "source": "https://aptoslabs.com/",
+    "value": "Aptos Labs | Accelerating the Future of Web3 Building products, applications, and tooling on the Aptos blockchain. Bringing the benefits of decentralization to the masses. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Aptos Labs",
+  "slug": "aptos",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "1K-5K employees"
+   },
+   "locations": {
+    "source": "greenhouse:asana",
+    "value": "hires in Chicago; Dublin; London; Munich; New York City; Reykjav\u00edk; San Francisco; Stockholm; Sydney; Tokyo; US - Remote; US - Remote West"
+   },
+   "open_roles": {
+    "source": "greenhouse:asana",
+    "value": "open roles include Administrative Business Partner; Analytical Engineer; Analytical Engineering Manager; Backend Software Engineer; Benefits Manager, NAMER; Brand Designer; Channel Partner Manager; Compensation Business Partner; Corporate Account Executive; Corporate Account Executive; Corporate Account Executive, DACH; Corporate Account Executive - Dutch Speaking; Corporate Account Executive - Dutch Speaking; Customer Success Manager, Scaled Accounts; Data Engineer ; Data Scientist; Director of Engineering, AI Agents; Director of Engineering, AI Platform; Director of Security Engineering; Engineering Manager; E"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "IPO"
+   },
+   "what_it_does": {
+    "source": "https://asana.com/",
+    "value": "Work & Project Management for Human-Agent Teams \u2022 Asana Work management software for teams and AI agents. Plan, automate, and execute critical workflows together."
+   }
+  },
+  "label": "declined",
+  "name": "Asana",
+  "slug": "asana",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:cloudflare",
+    "value": "hires in Austin, TX, United States; Distributed; Distributed; Hybrid; Hybrid; Hybrid or Remote; Hybrid; In-Office; In-Office; Lisbon, Portugal; Remote; Remote France; Remote India; Tokyo, Japan"
+   },
+   "open_roles": {
+    "source": "greenhouse:cloudflare",
+    "value": "open roles include Account Executive, FedCiv; Account Executive, Indonesia; AI Security Research & Red Team Engineer; Associate General Counsel, Privacy Compliance; Business Development Manager; Business Development Representative; Business Development Representative, ASEAN (Vietnamese speaking); Business Development Representative - Bahasa Indonesia Speaking;  Business Development Representative (BDR) ;  Business Development Representative (BDR), LATAM Spanish Speaking; Business Development Representative (Cantonese Speaking); Business Development Representative - Danish, Norwegian or Swedish Speaking; Business"
+   },
+   "what_it_does": {
+    "source": "https://www.cloudflare.com/",
+    "value": "Cloudflare: Build for the agent era Welcome to Cloudflare - Powering the next generation of applications"
+   }
+  },
+  "label": "target",
+  "name": "Cloudflare AI Audit",
+  "slug": "audit",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "declined",
+  "name": "Baker Tilly US",
+  "slug": "baker",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:banyansoftware",
+    "value": "hires in Amsterdam, North Holland, Netherlands; Atlanta, Georgia, United States; Berlin, Berlin, Germany; Canada; United States; Cardiff, Wales, United Kingdom; Coventry, England, United Kingdom; France; Greece; London, England, United Kingdom; Madrid, Madrid, Spain; M\u00fcnchen, Bavaria, Germany; Netherlands"
+   },
+   "open_roles": {
+    "source": "greenhouse:banyansoftware",
+    "value": "open roles include Account Executive - Community Banking; Account Executive- Teamup; AccountManager - Sales (Dutch speaker); Business Development Manager; CEO, Banyan Portfolio Company; CEO - Simunix; Chief Executive Officer - Netherlands; Chief Executive Officer | Vertical SaaS - Ongoing & Future Opportunities; Chief Product & Technology Officer; Chief Product Technology Officer - Classter; Chief Product & Technology Officer (CPTO) - Aequitas Solutions; Director, Legal  - Mergers & Acquisitions; Director, M&A - France; Director Sales and Marketing - Medicat; Entrepreneur In Residence; Executive Assistant; Execu"
+   },
+   "what_it_does": {
+    "source": "https://banyansoftware.com/",
+    "value": "Banyan Software | Helping software businesses grow Banyan acquires leading software businesses and helps them grow through operating expertise, applied AI, capital, and a permanent ownership model. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "banyansoftware",
+  "slug": "banyansoftware",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "commercial_leadership": {
+    "source": "ashby:baseten",
+    "value": "hiring Executive Assistant to CRO & Head of Strategic Sales, so no Executive Assistant to CRO & Head of Strategic Sales is in post"
+   },
+   "locations": {
+    "source": "ashby:baseten",
+    "value": "hires in London; New York; San Francisco"
+   },
+   "open_roles": {
+    "source": "ashby:baseten",
+    "value": "open roles include Software Engineer - Dedicated Inference; Account Executive - AI Native; Software Engineer - Model Performance; Forward Deployed Engineer; Site Reliability Engineer; Cloud Platform Engineer; Sales Development Representative - Outbound; Brand Designer; Field Marketing Manager; Security Engineer; GTM Recruiter; Software Engineer - Infrastructure; Account Executive - Strategic; Account Executive - Strategic; Account Executive - AI Native; Frontend Engineer - Dedicated Inference; Recruiting Coordinator; Software Engineer - GPU Kernels; Software Engineer - Enterprise Platform; Manager, Strategic Sal"
+   },
+   "what_it_does": {
+    "source": "https://www.baseten.co/",
+    "value": "Inference Platform: Deploy AI models in production | Baseten Serve and scale open-source and custom AI models on the fastest, most reliable inference platform."
+   }
+  },
+  "label": "target",
+  "name": "Baseten",
+  "slug": "baseten",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.beehiiv.com/",
+    "value": "Newsletter Platform: Create Newsletters and Websites - beehiiv Create, grow, and monetize your newsletter with easy-to-use newsletter tools. Build email newsletters and websites without any coding."
+   }
+  },
+  "label": "target",
+  "name": "Beehiiv",
+  "slug": "beehiiv",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "stage": {
+    "source": "https://www.biospace.com/",
+    "value": "seed round"
+   },
+   "what_it_does": {
+    "source": "https://www.biospace.com/",
+    "value": "BioSpace: Biotech, Pharmaceutical and Clinical Research News (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "BioSpace",
+  "slug": "biospace",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:blackduck",
+    "value": "hires in Bangalore; Belfast; Belfast, UK; Bengaluru; Bengaluru, India; Bengaluru, Karnataka, India; Burlington MA; Burlington, MA; Burlington, MA (Remote); Burlington, MA; Calgary, AB; Burlington, MA; Chicago, IL; Calgary, AB"
+   },
+   "open_roles": {
+    "source": "greenhouse:blackduck",
+    "value": "open roles include Application Engineer 3; Application Engineer 4; Application Security Engineer 2; Application Security Engineer (West Coast); Application Security Engineer (West Coast); DevOps Engineer 2 (Intermediate); Director of HR - Japan; Director Sales Enablement; Enterprise Account Manager; Federal Civilian Account Executive; Implementation Consultant; Implementation Consultant; Implementation Consultant ; Lead Channel Partner; Lead Channel Partner; Lead Enterprise Account Manager- Security- California; Lead Product Security; Lead Sales Engineer - Mandarin; Lead Sales Engineer (West); Lead Solutions Arc"
+   },
+   "what_it_does": {
+    "source": "https://www.blackduck.com/",
+    "value": "Application Security Testing | Software Composition Analysis & Open Source Security | SAST/DAST/SCA | Black Duck Black Duck delivers True Scale Application Security \u2014 SAST, SCA, DAST, and AI-powered AppSec \u2014 to help security and development teams detect vulnerabilities, manage open source license risk, and secure the software supply chain. Trusted by 4,000+ organizations. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "blackduck",
+  "slug": "blackduck",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:curvionblue",
+    "value": "hires in Argentina; Remote; UK"
+   },
+   "open_roles": {
+    "source": "ashby:curvionblue",
+    "value": "open roles include High Ticket Sales Director; International Remote High Ticket Sales Closer ; Sales Development Representative; Staff Accountant; High Ticket Appointment Setter (Warm Leads); Sales Director; High Ticket Sales Closer - Remote; Director of Sales Training - High Ticket; Senior Sales Advisor; Senior Wealth Strategy Consultant; Director of Strategic Partnerships; Closer - Biz opp & education; Closer - Consumer Services; Closer - Business Coaching & Consulting; Closer - REI; Accounting Manager; VP of Revenue & Growth; Director of Revenue Strategy & Growth"
+   },
+   "what_it_does": {
+    "source": "https://curvionblue.com/",
+    "value": "Curvion Blue Skip to the content Approach Solutions col Revenue Partnerships Fully Managed Revenue Teams End-to-end outsourced sales execution Outbound Pipeline Generation Multi-channel outbound systems SDR Deployment Dedicated SDR teams for pipeline growth AE Deployment High-performance closers embedded into your sales process Account Management Expansion, retention, and client revenue growth Out (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Curvion Blue",
+  "slug": "blue",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.bny.com/corporate/global/en.html",
+    "value": "BNY | Global Financial Services BNY is a global financial services platforms company at the heart of the world\u2019s capital markets overseeing $62.6T in assets. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "BNY",
+  "slug": "bny",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://captions.ai/",
+    "value": "Captions: AI That Edits Like a Professional Editor Captions is an AI video generator and editor that makes it easy to go from idea to ready-to-share content. Get great videos every time, no matter your skillset."
+   }
+  },
+  "label": "target",
+  "name": "Captions",
+  "slug": "captions",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:centari",
+    "value": "hires in NYC Office; Singapore"
+   },
+   "open_roles": {
+    "source": "ashby:centari",
+    "value": "open roles include Counsel, Applied Legal Research (Singapore); Senior Software Engineer, Backend; Senior Software Engineer, AI; Head of Law Firm Growth"
+   },
+   "what_it_does": {
+    "source": "https://www.centari.com/",
+    "value": "Centari | AI Deal Intelligence for Law Firms & Investment Funds Purpose-built for complex transactions, Centari converts deal documents into structured data for your entire team to access and act on. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Centari",
+  "slug": "centari",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:chartis",
+    "value": "hires in Brentwood; Chicago; Mission Viejo, California; Remote"
+   },
+   "open_roles": {
+    "source": "ashby:chartis",
+    "value": "open roles include Associate Consultant, Private Equity, Strategic Transformation; Engagement Manager, Financial Performance Improvement; Associate Partner, Revenue Cycle, Performance Transformation; Staff Product Designer; Associate Consultant, Strategic Transformation; Consultant, Strategic Transformation; Senior Managing Advisor, Philanthropy; Engagement Manager, Analytics & Insights, Revenue Cycle; Senior Data Platform Engineer (Orchestration); Associate Vice President, Change Management; Senior Platform Engineer; Oracle Health Architect; Athena Architect; Senior Engineer, IT Security; Senior Software Engine"
+   },
+   "what_it_does": {
+    "source": "https://www.chartis.com/",
+    "value": "Healthcare Consulting, Strategy & Transformation | Chartis Chartis is a leading U.S. healthcare consulting and advisory firm, partnering with providers, health systems, payers, investors, and life sciences organizations to solve their most complex strategic, digital, operational, and financial challenges. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "chartis",
+  "slug": "chartis",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.citi.com/",
+    "value": "Online Banking, Mortgages, Personal Loans, Investing | Citi.com Citibank offers multiple banking services that help you find the right credit cards, open a bank account for checking, & savings, or apply for mortgage & personal loans. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "mixed",
+  "name": "Citi",
+  "slug": "citi",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "stage": {
+    "source": "https://www.clay.com/",
+    "value": "Series C"
+   },
+   "what_it_does": {
+    "source": "https://www.clay.com/",
+    "value": "Clay | Build systems to grow revenue Infrastructure to get any data, run agentic workflows, and launch GTM plays."
+   }
+  },
+  "label": "target",
+  "name": "Clay",
+  "slug": "clay",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:cloudflare",
+    "value": "hires in Austin, TX, United States; Distributed; Distributed; Hybrid; Hybrid; Hybrid or Remote; Hybrid; In-Office; In-Office; Lisbon, Portugal; Remote; Remote France; Remote India; Tokyo, Japan"
+   },
+   "open_roles": {
+    "source": "greenhouse:cloudflare",
+    "value": "open roles include Account Executive, FedCiv; Account Executive, Indonesia; AI Security Research & Red Team Engineer; Associate General Counsel, Privacy Compliance; Business Development Manager; Business Development Representative; Business Development Representative, ASEAN (Vietnamese speaking); Business Development Representative - Bahasa Indonesia Speaking;  Business Development Representative (BDR) ;  Business Development Representative (BDR), LATAM Spanish Speaking; Business Development Representative (Cantonese Speaking); Business Development Representative - Danish, Norwegian or Swedish Speaking; Business"
+   },
+   "what_it_does": {
+    "source": "https://www.cloudflare.com/",
+    "value": "Cloudflare: Build for the agent era Welcome to Cloudflare - Powering the next generation of applications (site matched by name only, worth checking)"
+   }
+  },
+  "label": "mixed",
+  "name": "Cloudflare",
+  "slug": "cloudflare",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:cohere",
+    "value": "hires in Berlin; Canada; Dubai; Europe; France; Germany; Houston; Korea; London; Madrid; Middle East; Montreal"
+   },
+   "open_roles": {
+    "source": "ashby:cohere",
+    "value": "open roles include Senior Full-Stack Engineer, Internal Applications ; Member of Technical Staff, Modeling; Senior Member of Technical Staff, Multimodal AI; Lead - US Government Affairs & Public Policy; Member of Technical Staff, Training Performance Engineer; Member of Technical Staff, Training Infra Engineer; Forward Deployed Engineer, Infrastructure Specialist (Middle East); Solutions Architect - Public Sector; Member of Technical Staff, Post-Training; Member of Technical Staff, Data Analysis and Evaluation; Member of Technical Staff, Multilingual; Member of Technical Staff, Pre-Training Data; Member of Techn"
+   },
+   "what_it_does": {
+    "source": "https://jobs.ashbyhq.com/cohere/7133d205-5421-4336-a8e2-6037b5f55073",
+    "value": "Who are we? Cohere is the leading security-first enterprise AI company."
+   }
+  },
+  "label": "approved",
+  "name": "Cohere",
+  "slug": "cohere",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://coldiq.com/",
+    "value": "GTM Data API for Claude Code & AI Agents | ColdIQ Search leads, find emails, and enrich contacts with a single API key. Access 40+ data providers and 700+ endpoints. Pay only for what you use. Start for free. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "ColdIQ",
+  "slug": "coldiq",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.commonroom.io/",
+    "value": "Complete Buyer Intelligence That Turns Intent Into Pipeline We identify the buyer first. Outreaching, coaching, forecasting and everything in-between runs on complete buyer intelligence your team trusts and relies on. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "mixed",
+  "name": "Common Room",
+  "slug": "common",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "declined",
+  "name": "Confidential Jobs",
+  "slug": "confidential",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://consello.com/",
+    "value": "Consello Consello is an Advisory and Investing Platform. Our six distinct advisory practices provide counsel to the most senior business leaders in the world on the wide range of corporate issues that impact their businesses every day. Our investment business, Consello Capital, identifies high-potential mid-market companies and invests capital and expertise to transform their growth. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Consello",
+  "slug": "consello",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "target",
+  "name": "Created by Humans",
+  "slug": "created",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "commercial_leadership": {
+    "source": "greenhouse:cresta",
+    "value": "hiring Growth Marketing Manager, Web & CRO, so no Growth Marketing Manager, Web & CRO is in post"
+   },
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "501-1K employees"
+   },
+   "locations": {
+    "source": "greenhouse:cresta",
+    "value": "hires in Australia (Remote); Berlin, Germany (Hybird) ; Bucharest, Romania (Hybrid); Canada (Remote); Canada (Remote); Toronto, Canada (Hybrid); United States (Remote); Cluj, Romania (Hybrid); Germany (Remote); Iasi, Romania (Hybrid); India (Remote); New York, United, States (Hybrid); Romania (Remote); San F"
+   },
+   "open_roles": {
+    "source": "greenhouse:cresta",
+    "value": "open roles include Accountant; AI Deployment Manager ; AI Deployment Manager ; AI Quality Assurance Intern; AI Success Manager ; Application Support Engineer; Associate Forward Deployed Product Manager; Conversational Design, Demo Engineer; Conversational Designer, APAC; Customer Engineer; Customer Engineer, APAC; Customer Strategy Director; Data Science Intern (Customer Success); Deal Strategy & Operations Manager; Deal Strategy & Operations Manager; Director, Enterprise Sales, West; Embedded AI Expert; Engagement Manager (Professional Services Sales); Enterprise Account Executive; Enterprise Account Executive,"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series D"
+   },
+   "what_it_does": {
+    "source": "https://cresta.com/",
+    "value": "AI Agents for Every Customer Conversation | Cresta Save money, increase revenue, and build customer loyalty with the only unified platform for human and AI agents that transforms every customer experience."
+   }
+  },
+  "label": "target",
+  "name": "Cresta",
+  "slug": "cresta",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "declined",
+  "name": "Criteo",
+  "slug": "criteo",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "target",
+  "name": "Crossbar AI",
+  "slug": "crossbar",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:crusoe",
+    "value": "hires in Abilene, TX - US; Amarillo, TX - US; Arvada, CO - US; Bellevue, WA - US; Brighton, CO - US; Childress, TX - US; Dallas, TX - US; Dallas, TX - US (Remote); Denver, CO - US; Dublin - IE; Haskell, TX - US; New York, NY - US"
+   },
+   "open_roles": {
+    "source": "ashby:crusoe",
+    "value": "open roles include Staff Product Security Engineer; Senior Network Production Engineer, Network Ops; Wiring Technician; Senior Customer Success Manager; CNC Operator; Project Controls Analyst; CNC Operator; Staff Applied AI Inference Engineer; Staff Production Engineer; Painter; Senior Cloud Support \u200b\u200bEngineer; Senior Production Engineer, Managed AI; Press Brake Operator; Hardware Data Center Technician; Sr. Staff Software Engineer, Managed Platform Services; Recruiting Coordination; Plant Maintenance Technician - Arvada; Production Engineer (Kubernetes); Construction Manager, MEP; Welder; Staff Network Producti"
+   },
+   "stage": {
+    "source": "https://www.crusoe.ai/",
+    "value": "Series F"
+   },
+   "what_it_does": {
+    "source": "https://www.crusoe.ai/",
+    "value": "Crusoe | The AI factory company Crusoe provides next-gen AI infrastructure and cloud compute using an energy-first approach. Deploy AI workloads at scale with reliable performance and 24/7 support."
+   }
+  },
+  "label": "target",
+  "name": "Crusoe",
+  "slug": "crusoe",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "501-1K employees"
+   },
+   "locations": {
+    "source": "ashby:decagon",
+    "value": "hires in Amsterdam; Austin; Australia; Austria; Brazil; Dallas; Denmark; France; Germany; London; New York City; Remote"
+   },
+   "open_roles": {
+    "source": "ashby:decagon",
+    "value": "open roles include Enterprise Account Executive ; Director of Sales, Enterprise; Senior Research Engineer; Senior Agent Product Manager; Engineering Manager, Agent Orchestration; Strategic Account Director - West; Senior Solutions Engineer; Senior Product Designer; Product Manager; Senior Technical Sourcer; Senior Software Engineer, Agent Product; Senior Agent Product Manager; Senior Agent Product Manager; Founders' Office, Business Operations ; Senior Technical Recruiter; Field Engineer; Senior GTM Recruiter; Enterprise Account Executive ; Agent Development Manager; Executive Assistant; Solutions Architect - In"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series D"
+   },
+   "what_it_does": {
+    "source": "https://decagon.ai/",
+    "value": "Decagon | The AI concierge for every customer Build, optimize, and scale AI agents that treat every customer like the only one."
+   }
+  },
+  "label": "target",
+  "name": "Decagon",
+  "slug": "decagon",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "5K-10K employees"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series E"
+   },
+   "what_it_does": {
+    "source": "https://www.deel.com/",
+    "value": "Deel | Global Payroll, Compliance, HR Solutions | HRIS Hire, pay, and manage teams in 150+ countries with Deel. Run global payroll, ensure compliance, and streamline HR operations\u2014all on one powerful platform."
+   }
+  },
+  "label": "declined",
+  "name": "Deel",
+  "slug": "deel",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.denodo.com/en",
+    "value": "Denodo | The AI Data Layer Company Denodo connects, governs, and unifies your entire data estate in real time \u2014 giving AI systems and business users the live, trusted context they need to perform. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Denodo",
+  "slug": "denodo",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "51-200 employees"
+   },
+   "locations": {
+    "source": "greenhouse:descript",
+    "value": "hires in San Francisco, CA ; San Francisco, CA or Remote, US; San Francisco, CA or Remote, US "
+   },
+   "open_roles": {
+    "source": "greenhouse:descript",
+    "value": "open roles include Account Executive; Applied Research Scientist, AI Research; Field Marketing Manager; Head of Enterprise Marketing; Lead Data Scientist, Product ; Lead Editor Product Manager ; Product Marketing Manager; Social Media Manager; Software Engineer, Infrastructure; Software Engineer, Product"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series C"
+   },
+   "what_it_does": {
+    "source": "https://www.descript.com/",
+    "value": "Descript: AI Video & Audio Text-based Editor \u2014 Try Free Descript is the AI video and audio editor that makes editing as easy as editing text. Record, transcribe, edit, and publish in one tool. Try it free."
+   }
+  },
+  "label": "target",
+  "name": "Descript",
+  "slug": "descript",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:thetradedesk",
+    "value": "hires in Bellevue; Bellevue; Chicago; Los Angeles; New York; San Francisco; Bellevue; Denver; Los Angeles; Seattle; Ventura; Bellevue; New York; San Francisco; San Jose; Seattle; Bellevue; New York; San Francisco; Seattle; Bellevue; San Francisco; San Jose; Boulder; Chicago; Chicago; Detroit; Chicago; Irvine"
+   },
+   "open_roles": {
+    "source": "greenhouse:thetradedesk",
+    "value": "open roles include Account Executive; Account Executive (Business Development); Account Management Team Lead; Ad Operations Manager; Associate Account Director; Associate Business Development Director; Associate General Counsel, Commercial CTV & Advertising; Associate General Counsel, Corporate; Associate General Counsel, Data Licensing; Associate General Counsel, Product & Privacy; Associate Trading Director; Business Development Director; Business Development Director - Growth (Accelerate); Business Development Director (Tech/Telco); Commissions Analyst; Data Support Analyst I; Data Support Analyst I; Director"
+   },
+   "what_it_does": {
+    "source": "https://www.thetradedesk.com/",
+    "value": "An objectively better way to advertise | The Trade Desk From brand building to performance marketing, our omnichannel platform was built with one goal: helping you reach yours. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "The Trade Desk",
+  "slug": "desk",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:duolingo",
+    "value": "hires in Beijing, China; London, England; New York, NY; New York, NY; Pittsburgh, PA; New York, NY; Pittsburgh, PA; Seattle, WA; Pittsburgh, PA; Remote - California; Seattle, WA; Tokyo, Japan"
+   },
+   "open_roles": {
+    "source": "greenhouse:duolingo",
+    "value": "open roles include Ad Sales Lead - West; Associate Product Manager, Intern; Consumer Product Lead; Corporate Counsel; Creative Sourcer; Director of Ad Platform Operations; Director of Ad Sales - West; Director, Talent Acquisition \u2013 Sourcing; Engineering Manager, Product; Executive Assistant to the CEO; Executive Assistant to the CEO; Head of Influencers & Community; Head of Influencers & Community; Head of Talent Management Programs and PMO; Manager, Strategy and Business Operations; Manager, Strategy and Business Operations; Managing Editor; Platform Engineer II; Senior Android Engineer, Client Platform - Appli"
+   },
+   "what_it_does": {
+    "source": "https://www.duolingo.com/",
+    "value": "Duolingo Learn languages by playing a game. It (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Duolingo",
+  "slug": "duolingo",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "51-200 employees"
+   },
+   "locations": {
+    "source": "ashby:elevenlabs",
+    "value": "hires in Argentina; Australia; Belgium; Brazil; Canada; Colombia; Denmark; Europe; France; Germany; India; Italy"
+   },
+   "open_roles": {
+    "source": "ashby:elevenlabs",
+    "value": "open roles include Account Manager - India ; Enterprise Solutions Engineer - North America; Account Executive - Japan; Sales Development - United States; Full-Stack Engineer (Back-End Leaning); Full-Stack Engineer (Front-End Leaning); Forward Deployed Engineer - Software Engineer - North America; Full-Stack Engineer; Account Executive, Mid Market - India ; Research Engineer; Sales Finance; Sales Development - Middle East; Events Lead - North America; Account Manager - North Asia; Production Manager (Arabic speaking) ; Deployment Strategist - North America; Transcription / Subtitling Specialist (Freelance); Dubbi"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series D"
+   },
+   "what_it_does": {
+    "source": "https://elevenlabs.io/",
+    "value": "Free AI Voice Generator & Voice Agents Platform | ElevenLabs Create lifelike speech with our AI voice generator and voice agents platform. Access 5,000+ voices in 70+ languages with secure APIs and SDKs."
+   }
+  },
+  "label": "target",
+  "name": "ElevenLabs",
+  "slug": "elevenlabs",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "201-500 employees"
+   },
+   "locations": {
+    "source": "ashby:eliseai",
+    "value": "hires in Austin; Boston; New York City; Remote; San Francisco; Toronto"
+   },
+   "open_roles": {
+    "source": "ashby:eliseai",
+    "value": "open roles include GTM Product Enablement Manager | Housing; GTM Enablement Program Manager | Housing; Sales Development Representative | Housing; Senior Research Scientist; Mid-Market Account Executive | Housing; Enterprise Account Executive | Housing; Senior DevOps Engineer; Founding Software Engineer | Healthcare; Junior Research Scientist; Sales Development Representative | Healthcare; Legal Counsel; Sales Development Manager | Healthcare; Strategic Account Executive | Housing; Product Strategy and Operations, Manager / Senior Manager - New Verticals | Housing; AI Engagement Manager | Housing; Associate Solu"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series E"
+   },
+   "what_it_does": {
+    "source": "https://eliseai.com/",
+    "value": "EliseAI - Industry Leading AI for Housing and Healthcare EliseAI is the industry-leading AI platform transforming both property management and healthcare through automation and conversational AI that help housing and healthcare organizations streamline communications and improve operational efficiency."
+   }
+  },
+  "label": "declined",
+  "name": "EliseAI",
+  "slug": "eliseai",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.vistaequitypartners.com/",
+    "value": "Vista Equity Partners | Software-Focused Investment Firm Vista partners with software leaders and investors through private equity and private credit strategies. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Vista Equity Partners",
+  "slug": "equity",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://every.to/",
+    "value": "Every Every \u2014 The only subscription you need to stay at the edge of AI. Ideas, apps, and training from practitioners who build with AI daily."
+   }
+  },
+  "label": "target",
+  "name": "Every",
+  "slug": "every",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:fireworks",
+    "value": "hires in London; New York; San Francisco; San Mateo; Singapore; United States, Remote"
+   },
+   "open_roles": {
+    "source": "ashby:fireworks",
+    "value": "open roles include AI Product Engineer - Nexus; Technical Recruiter; Partnerships Lead; Executive Assistant; Enterprise Account Executive; Member of Technical Staff, Cloud Infrastructure, Singapore; Enterprise Account Executive, EMEA; Applied Machine Learning Engineer, Singapore; Member of Technical Staff, AI Training Infrastructure; AI Deployment Strategist; Member of Technical Staff, Performance Optimization; Applied Machine Learning Engineer; Member of Technical Staff, Cloud Infrastructure; Member of Technical Staff, Evals & Post-Training Product; Member of Technical Staff, LLM Infrastructure; MTS, Security; "
+   },
+   "what_it_does": {
+    "source": "https://fireworks.ai/",
+    "value": "Own Your Specialized Intelligence | Fireworks Fireworks\u2019 state of the art training and inference platform take you beyond the frontier, transforming open models into your specialized intelligence."
+   }
+  },
+  "label": "target",
+  "name": "Fireworks AI",
+  "slug": "fireworks",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "51-200 employees"
+   },
+   "locations": {
+    "source": "ashby:fleek",
+    "value": "hires in India; London"
+   },
+   "open_roles": {
+    "source": "ashby:fleek",
+    "value": "open roles include Head of Controllership; Key Account Manager; Account Executive; VP Finance; Commercial Director; Account Manager; Ex-YC Founder; Chief of Staff; Special Projects Lead - Category Expansion; General Manager - India"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series B"
+   },
+   "what_it_does": {
+    "source": "https://www.joinfleek.com/home",
+    "value": "Vintage Wholesale Marketplace - Bulk Vintage Wholesale | Fleek Fleek: #1 marketplace for verified vintage wholesalers in UK, France, Germany & US \u2713 Top-ranked platform with global reach \u2713 Connecting elite retailers & wholesalers worldwide \u2713 Curated premium brands from across the globe \u2713 Join the leading international vintage wholesale network \u00bb Start with Fleek now!"
+   }
+  },
+  "label": "approved",
+  "name": "Fleek",
+  "slug": "fleek",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:flex",
+    "value": "hires in New York, NY; New York, NY; Remote; Salt Lake City, UT; San Francisco, CA; New York, NY; Salt Lake City, UT; San Francisco, CA; New York, NY; San Francisco, CA; Remote; Remote; USA; Salt Lake City, UT; USA"
+   },
+   "open_roles": {
+    "source": "greenhouse:flex",
+    "value": "open roles include Associate Director, Product Compliance; Associate General Counsel; Associate General Counsel, Product & Regulatory; Chief of Staff (Executive Office) and VP of Strategy & Operations; Chief of Staff to the GM of Housing; Director, Account Management; Director, Financial Systems & Transformation; Director, Sales Solutions Engineering; Director, Strategic Partnerships; Lifecycle Marketing Manager; Manager, Corporate Accounting; Mid-Market Account Manager; Principal Product Designer, Consumer; Principal Product Manager, Payments; Sales Development Representative I; Senior Director, Business Develo"
+   },
+   "what_it_does": {
+    "source": "https://flex.com/",
+    "value": "Flex | Advanced Manufacturing with End-to-End Solutions Flex is the manufacturing partner of choice for streamlined product lifecycles. From design to end of life, our end-to-end services optimize efficiency. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "flex",
+  "slug": "flex",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "declined",
+  "name": "Forvis Mazars US",
+  "slug": "forvis",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:foundry",
+    "value": "hires in Japan; London, United Kingdom; New York, NY  \u00b7 Boston, MA; New York, NY \u00b7 Austin, TX \u00b7 San Francisco, CA \u00b7 Boston, MA; New York, NY \u00b7 Boston, MA; New York, San Francisco, Boston; Warsaw, Poland"
+   },
+   "open_roles": {
+    "source": "greenhouse:foundry",
+    "value": "open roles include Account Executive; Account Executive; Account Executive - Japanese & English Speaker; Director of Global Tax & Treasury; Dynamics 365 Finance & Operations (D365 F&O) Developer; Enterprise Sales Director; GL Accountant, EMEA; Product Marketing Manager; Senior Vice President & General Manager, Audience & Growth\u00a0"
+   },
+   "what_it_does": {
+    "source": "https://www.foundry.com/",
+    "value": "Imagination Engineered | Foundry Foundry creates pioneering software for creative industries across Digital Design, Media and Entertainment. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Foundry",
+  "slug": "foundry",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "approved",
+  "name": "Fractional AI",
+  "slug": "fractional",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:gamma",
+    "value": "hires in New York; San Francisco"
+   },
+   "open_roles": {
+    "source": "ashby:gamma",
+    "value": "open roles include Senior Tax Manager; Software Engineer, Backend; Software Engineer, Frontend; Software Engineer, Data Systems; Senior Lifecycle Marketing Manager; Sales Manager; Sales Manager; Research Engineer; Senior Product Designer; Senior Solutions Architect; AI Engineer ; Customer Success Manager; AI Data Scientist; Site Reliability Engineer; Customer Success Manager; Software Engineer, Platform; Software Engineer, Full Stack; Security Engineer; Technical Support Engineer; Account Executive; Account Executive; Software Engineer, Distributed Systems - Infra; UI Engineer; Software Engineer, Growth; Growth "
+   },
+   "what_it_does": {
+    "source": "https://jobs.ashbyhq.com/gamma/a3ef1ab4-111e-4a9c-a367-59ae5ed06ca5",
+    "value": "make real-time collaboration feel effortless, integrate AI capabilities into intuitive interfaces, and ensure the editor performs flawlessly whether someone is creating their first gamma or their thousandth."
+   }
+  },
+  "label": "target",
+  "name": "Gamma",
+  "slug": "gamma",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:genies",
+    "value": "hires in Genies LA"
+   },
+   "open_roles": {
+    "source": "ashby:genies",
+    "value": "open roles include Lead Full Stack Engineer"
+   },
+   "what_it_does": {
+    "source": "https://genies.com/",
+    "value": "AI Character Company Powering The Future Of Interactive Digital Identity | Genies Genies is an AI avatar technology company powering the visual and embodiment layer for AI. Genies brings AI to life as fully realized personas that look, think, behave, and play like living identities across enterprise, consumer, entertainment and gaming."
+   }
+  },
+  "label": "target",
+  "name": "Genies",
+  "slug": "genies",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.glean.com/",
+    "value": "Glean \u2013 Enterprise AI that Works | Agents, Assistant & Search Glean is the Enterprise AI platform connected to your enterprise's data. Find, create, and automate anything. Explore what Glean can do for you!"
+   }
+  },
+  "label": "target",
+  "name": "Glean",
+  "slug": "glean",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.gong.io/",
+    "value": "Gong - Revenue AI OS Gong Revenue AI OS helps your entire GTM organization win. Drive growth with multimodal revenue signal processing, specialized AI agents, and purpose-built applications."
+   }
+  },
+  "label": "target",
+  "name": "Gong",
+  "slug": "gong",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "approved",
+  "name": "Google (YouTube Partnerships)",
+  "slug": "google",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:gusto",
+    "value": "hires in Atlanta, GA - Remote; Chicago, IL - Remote; Denver, CO - Hybrid; Las Vegas, NV - Remote; Phoenix, AZ - Remote; Atlanta, GA - Remote; Denver, CO - Hybrid; New York, NY - Hybrid; Phoenix, AZ - Remote; San Francisco, CA - Hybrid; Atlanta, GA - Remote; Denver, CO - Hybrid; New York, NY - Hybrid; Phoenix"
+   },
+   "open_roles": {
+    "source": "greenhouse:gusto",
+    "value": "open roles include Account Coordinator (Retirement Sponsor Support); Agentic Operations Architect; AI Operations Program Manager, Benefits; Benefits Advising (Renewals) Leader; Business Development Representative ; Business Insurance Account Executive; Channel Partnerships Manager, Investor Ecosystems (VC & PE); Compliance Manager, Broker-Dealer & Investment Adviser; Conversion Operations Associate; Customer Support Specialist, Health Insurance Benefits; Data Scientist, Risk ; Design Systems, Staff Product Designer; Employee Relations Partner; Enablement Manager, Partners; Enterprise Application AI Engineer; Exe"
+   }
+  },
+  "label": "declined",
+  "name": "Gusto",
+  "slug": "gusto",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "501-1K employees"
+   },
+   "locations": {
+    "source": "ashby:harvey",
+    "value": "hires in Bengaluru; Chicago; Dallas; Dublin; London; Madrid; Mexico; Milan; Munich; New York; Paris; Remote"
+   },
+   "open_roles": {
+    "source": "ashby:harvey",
+    "value": "open roles include Customer Success Manager, Mid Market, EMEA; Enterprise Customer Success Manager; Senior Software Engineer, Core Infrastructure; Senior Software Engineer, Frontend; Applied Legal Researcher; Account Executive, Enterprise, EMEA; Senior Product Security Engineer; Account Executive, Mid Market, EMEA; Senior Product Operations Manager; Account Executive, Mid-Market; Senior Software Engineer, Site Reliability Engineer ; Staff Software Engineer, Site Reliability Engineer ; Senior Software Engineer, Developer Experience; Staff Software Engineer, Backend; Staff Software Engineer, Developer Experience ;"
+   },
+   "stage": {
+    "source": "https://www.harvey.ai/",
+    "value": "Raised $550M"
+   },
+   "what_it_does": {
+    "source": "https://www.harvey.ai/",
+    "value": "Harvey | AI software for legal and professional services Legal AI tailored for leading law firms and corporate legal teams worldwide. Harvey streamlines contract analysis, due diligence, compliance, and litigation."
+   }
+  },
+  "label": "target",
+  "name": "Harvey",
+  "slug": "harvey",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "501-1K employees"
+   },
+   "locations": {
+    "source": "ashby:headway",
+    "value": "hires in New York City; New York, NY; Remote; Remote - New York; San Francisco, CA; Seattle, WA"
+   },
+   "open_roles": {
+    "source": "ashby:headway",
+    "value": "open roles include Senior Product Designer, Provider Acquisition; Staff Product Designer, Provider Practice Growth; Staff Data Infrastructure Engineer; Senior HR Business Partner; Remote Licensed Mental Health Therapist; Remote Licensed Psychiatric Nurse Practitioner; Remote Licensed Psychiatrist; Remote Licensed Professional Counselor; Remote Licensed Clinical Social Worker; Remote Licensed Clinical Psychologist; Remote Licensed Marriage and Family Therapist; Remote Licensed Mental Health Counselor; Senior Fullstack Software Engineer; Senior Backend Software Engineer; Engineering Manager (Provider); Staff Fulls"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series D"
+   },
+   "what_it_does": {
+    "source": "a16z portfolio index",
+    "value": "a16z lists its markets as Fintech"
+   }
+  },
+  "label": "declined",
+  "name": "Headway",
+  "slug": "headway",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:hearst",
+    "value": "hires in Albuquerque, NM, United States; Amherst, NY, United States; Atlanta, GA, United States; Boone, IA, United States; Carmel, IN, United States; Carmel, IN, United States; Durham, NC, United States; South San Francisco, CA, United States; Charlotte, NC, United States; Charlotte, NC, United States; New Y"
+   },
+   "open_roles": {
+    "source": "greenhouse:hearst",
+    "value": "open roles include Administrative Assistant; Blackbook General; business-tester-TEST-UAT-Req#\u2019 e.g. \u2018CDS-Beth L-TEST-UAT-123456; CDS: Mail Machine Operators; Corporate-Karl Z-UAT-203502-Ext; Corporate Stages TEST; Corporate UAT TEST JOB - SP; Corporate UAT TEST JOB - SP; Dallas/Newspapers: Sales; Design & Content Designer - iCrossing TEST; Director 1, Customer Service; Editor; FDB - Ayla Save - TEST - Clinical Pharmacist; FDB - Eunice Mendoza - TEST - UAT - Req# 123456 - Indeed; FDB Software Engineers TEST JOB; FDB - Software Engineer - TEST - UAT - Req# 203535; Hearst Newspapers: Editorial TEST JOB; HT General "
+   }
+  },
+  "label": "mixed",
+  "name": "Hearst Magazines",
+  "slug": "hearst",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "51-200 employees"
+   },
+   "stage": {
+    "source": "https://www.hebbia.com/",
+    "value": "Series A"
+   },
+   "what_it_does": {
+    "source": "https://www.hebbia.com/",
+    "value": "Hebbia | AI built for the rigor of finance The leading AI platform for finance, used by the world's leading asset managers, investment banks, law firms and Fortune 500 companies."
+   }
+  },
+  "label": "target",
+  "name": "Hebbia",
+  "slug": "hebbia",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://janushendersoninvestors.com/",
+    "value": "Coming Soon janushendersoninvestors.com We're under construction. Please check back for an update soon. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Janus Henderson Investors",
+  "slug": "henderson",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:heygen",
+    "value": "hires in  Los Angeles, San Francisco, Palo Alto; Los Angeles, Palo Alto, San Francisco, Toronto; Los Angeles, San Francisco, Palo Alto, Toronto; Los Angeles, Toronto, Singapore; San Francisco / Los Angeles; San Francisco, Los Angeles; San Francisco, Los Angeles, Remote - Europe; San Francisco, Palo Alto, Los"
+   },
+   "open_roles": {
+    "source": "greenhouse:heygen",
+    "value": "open roles include Backend Engineer; Backend Engineer - Infrastructure; Commercial Account Executive, New Business; Data Infrastructure Engineer; Enterprise Customer Success Manager \u2014 UK, Remote Contract; Frontend Software Engineer; Fullstack Software Engineer; Head of Enterprise Marketing; Legal Counsel; Online Community Manager; Research Engineer; Revenue Operations Lead; Security Engineer; Software Engineer, Dev Productivity"
+   },
+   "what_it_does": {
+    "source": "https://www.heygen.com/",
+    "value": "HeyGen: Create Realistic AI Videos of Yourself in Minutes Create AI videos from your ideas using HeyGen. Input text, image, or audio to create complete videos with narration, captions, visuals, and animations."
+   }
+  },
+  "label": "target",
+  "name": "HeyGen",
+  "slug": "heygen",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://higgsfield.ai/",
+    "value": "Higgsfield AI \u2014 AI-native creative suite Create images, videos, and voice content with Higgsfield AI from text prompts or references. Edit and upscale media, automate creative workflows with its AI agent, and generate content on web and mobile."
+   }
+  },
+  "label": "target",
+  "name": "Higgsfield",
+  "slug": "higgsfield",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:higgsfieldai",
+    "value": "hires in Almaty; Almaty, Kazakhstan; Los Angeles, USA; New York, USA; Remote, France; Remote, Germany; Remote, USA; San Francisco Bay Area, USA; United States | Miami, USA"
+   },
+   "open_roles": {
+    "source": "ashby:higgsfieldai",
+    "value": "open roles include Head of Revenue Accounting; Accounts Payable Manager; Growth Product Manager (PLG); Product Manager, Lifecycle & Retention; Associate General Counsel, Product & Privacy; Growth Manager; Regional GTM Director, France; Regional GTM Director, Germany; GTM Director, LatAM; GTM Recruiter; Customer Support Representative; Legal Ops Manager; Product Designer; Product Manager (Core Product); Backend Engineer; Video Editor; Scriptwriter; Youtube Scriptwriter; Chief Accountant; Associate General Counsel, Commercial; GTM Account Executive; AI Engineer; Frontend Engineer; Security Infrastructure Engineer "
+   },
+   "what_it_does": {
+    "source": "https://higgsfieldai.com/",
+    "value": "higgsfieldai.com for sale | Spaceship.com higgsfieldai.com is for sale on Spaceship. Secure checkout and quick transfer. See all purchase options. No hidden fees. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "higgsfieldai",
+  "slug": "higgsfieldai",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:imbue",
+    "value": "hires in San Francisco, CA"
+   },
+   "open_roles": {
+    "source": "greenhouse:imbue",
+    "value": "open roles include Product Engineer"
+   },
+   "what_it_does": {
+    "source": "https://imbue.com/",
+    "value": "We build honest software - Imbue We build AI to help people think, create, and build. Tools that are loyal to you, not the company that built them."
+   }
+  },
+  "label": "target",
+  "name": "Imbue",
+  "slug": "imbue",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:january",
+    "value": "hires in New York City"
+   },
+   "open_roles": {
+    "source": "ashby:january",
+    "value": "open roles include Senior Data Scientist, Product Analytics; Senior Software Engineer; Software Engineer; Senior Security Engineer; Head of Security Engineering; Senior Recruiter; Strategy & Operations; Mid Market Account Executive; Recruiter; Staff Product Manager; Senior Product Manager; Chief of Staff; Senior Analytics Engineer"
+   },
+   "what_it_does": {
+    "source": "https://www.january.com/",
+    "value": "January | AI Debt Collection That Recovers More January's AI personalizes every collections interaction to recover 30%+ more than leading agencies, with 6x fewer complaints. Test it on your portfolio. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "January",
+  "slug": "january",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "declined",
+  "name": "Wolters Kluwer",
+  "slug": "kluwer",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "11-50 employees"
+   },
+   "locations": {
+    "source": "ashby:krea",
+    "value": "hires in San Francisco"
+   },
+   "open_roles": {
+    "source": "ashby:krea",
+    "value": "open roles include Machine Learning Engineer; ML Engineer - Personalization & Recommendation Systems; Engineer, Supercomputing & Distributed Systems; Creative Lead; Software Engineer, Backend; Product Engineer; Founding Customer Success Manager; Fullstack Engineer; ML Researcher - Image / Video Diffusion; ML Researcher - Posttraining"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series B"
+   },
+   "what_it_does": {
+    "source": "a16z portfolio index",
+    "value": "a16z lists its markets as AI"
+   }
+  },
+  "label": "target",
+  "name": "Krea",
+  "slug": "krea",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:kustomer",
+    "value": "hires in US - New York, NY"
+   },
+   "open_roles": {
+    "source": "ashby:kustomer",
+    "value": "open roles include Software Engineer, Full Stack (Senior, Staff+); Sales Development Representative"
+   },
+   "what_it_does": {
+    "source": "https://www.kustomer.com/",
+    "value": "AI Customer Service Platform & CRM | Kustomer Deliver faster, personalized support with Kustomer's AI customer service CRM. Unify conversations, automate workflows, and power omnichannel CX in one platform. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "kustomer",
+  "slug": "kustomer",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "lever:ladders",
+    "value": "hires in New York or Remote; New York, NY"
+   },
+   "open_roles": {
+    "source": "lever:ladders",
+    "value": "open roles include Marketing Designer; Product Designer (User Research &  Interaction Design); Senior Software Engineer"
+   },
+   "what_it_does": {
+    "source": "https://www.ladders.dev/",
+    "value": "Engineering Ladders | A collection of engineering ladders for reference and inspiration. A collection of engineering ladders for reference and inspiration. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "mixed",
+  "name": "Ladders",
+  "slug": "ladders",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:legora",
+    "value": "hires in Chicago; Denver; Dubai; Houston; London; Madrid; Malm\u00f6; Mexico City; Milan; Munich; New York City; Paris"
+   },
+   "open_roles": {
+    "source": "ashby:legora",
+    "value": "open roles include Legal Engineer, Law Firms; Partnerships Associate; Account Executive, SMB; Senior Platform Engineer - Platform Team; Platform Specialist - Sydney; Account Executive SMB - EMEA; Software Engineer - Platform Team; Account Executive Enterprise; Software Engineer - Platform Team ; Senior Software Engineer ; Engagement Manager; Account Executive - Stockholm; Legal Engineer; Senior Backend Engineer  - Platform Team ; Senior Product Designer; Engineering Manager - Product Engineering; Business Development Representative; Business Development Representative - EMEA; Senior Talent Acquisition Partner, G"
+   },
+   "what_it_does": {
+    "source": "https://legora.com/",
+    "value": "Legora Legora is the collaborative AI powering lawyers to review and research faster, draft smarter, and advise with precision. Legora adapts to your ways of working, unlocking team and machine collaboration at scale. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Legora",
+  "slug": "legora",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.newyorklife.com/",
+    "value": "Trusted Guidance and Protection | New York Life Insurance Protect and build your future with comprehensive one-on-one guidance from New York Life. Learn about our life insurance and financial product offerings. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "New York Life",
+  "slug": "life",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.lindy.ai/",
+    "value": "Lindy \u2013 The AI Teammate That Lets You Do More Lindy is the AI employee that connects to all your tools, knows everything about your company, and does real work for the whole team."
+   }
+  },
+  "label": "target",
+  "name": "Lindy",
+  "slug": "lindy",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:listenlabs",
+    "value": "hires in Austin, TX; London, UK; New York, NY; Remote; San Francisco, CA; San Francisco, New York"
+   },
+   "open_roles": {
+    "source": "ashby:listenlabs",
+    "value": "open roles include Member of Technical Staff, Product; Insights Strategist; Growth; Insights Strategist; Business Development Representative; Engagement Manager; Member of Technical Staff, Platform; Member of Technical Staff, Tech Lead; Business Development Representative ; Founding Experiential Marketing Lead; Insights Analyst; Insights Analyst; Account Executive, Strategic Accounts; Account Executive, Strategic Accounts ; Account Executive, Enterprise; Account Executive, Enterprise; Account Executive, Enterprise; Account Executive, Strategic Accounts; Business Development Lead; Sales Recruiter (Contractor); Ac"
+   },
+   "what_it_does": {
+    "source": "https://listenlabs.ai/",
+    "value": "Listen Labs \u00e2\u0080\u00a2 Trusted AI Research for Leading Brands Customer research conducted, analyzed, and summarized by AI."
+   }
+  },
+  "label": "target",
+  "name": "Listen Labs",
+  "slug": "listen",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:logicgate",
+    "value": "hires in  Chicago or Bellevue; Bellevue, WA ; Bellevue, Washington, United States, ; Chicago; Chicago or Bellevue; Chicago, Illinois, United States; Hybrid - Bellevue, WA or Chicago, IL; Remote; Remote - United States; Remote USA; Remote USA | Chicago Preferred; United Kingdom"
+   },
+   "open_roles": {
+    "source": "greenhouse:logicgate",
+    "value": "open roles include AI Operations Specialist; Director, Cybersecurity; EMEA Solutions Engineer / Sr. Solutions Engineer; Head of GTM Operations (Chicago, IL); Implementation Services Manager (Bellevue, WA / Chicago, IL); Manager, Customer Success (Bellevue, WA / Chicago, IL); Professional Services Associate (Bellevue, WA / Chicago, IL); Professional Services Manager (Bellevue, WA / Chicago,IL); Senior IT Governance & Compliance Manager; Senior Procurement Manager (Bellevue, WA); Senior Product Designer  (Bellevue, WA / Chicago, IL); Senior Software Engineer: Front-End; Software Engineer: Back-End; Sr. Product Mar"
+   },
+   "what_it_does": {
+    "source": "https://www.logicgate.ai/",
+    "value": "AI GRC Platform for Enterprise Risk & Compliance | LogicGate LogicGate is the leading AI-powered GRC platform with 30+ applications for enterprise risk, third-party risk, cyber risk, and compliance management. Get a demo today. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "LogicGate",
+  "slug": "logicgate",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "51-200 employees"
+   },
+   "locations": {
+    "source": "ashby:lumaai",
+    "value": "hires in Berlin, GER; London, UK; Los Angeles, CA; Munich, GER; Paris, FRA; Redwood City, CA; Remote, INT; Riyadh, KSA"
+   },
+   "open_roles": {
+    "source": "ashby:lumaai",
+    "value": "open roles include Research Scientist / Engineer \u2013 Performance Optimization; Research Scientist / Engineer \u2013 Reinforcement Learning; Research Scientist / Engineer \u2013 Training Infrastructure; Senior Site Reliability Engineer; Creative Technologist; Research Scientist - World Model; Software Engineer - Data Infrastructure; Robotics Engineer; Forward Deployed Creative [Germany]; Software Engineer, Inference; Forward Deployed Creative [KSA]; Product Manager, Applied Research; Sales Manager ; Software Engineer - Product; Staff AI Infrastructure Engineer; Product Manager, Core Product; Product Manager, Enterprise; Sale"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series C"
+   },
+   "what_it_does": {
+    "source": "https://lumalabs.ai/",
+    "value": "Luma | AI Agents for Creative Work Luma AI is the creative AI platform for video generation and image creation. Powered by the world's leading video generation models, Ray and Uni, and creative agents handling end-to-end workflows. Trusted by leading agencies and brands. Try it free."
+   }
+  },
+  "label": "target",
+  "name": "Luma AI",
+  "slug": "luma",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.lumidawealth.com/",
+    "value": "Investment Strategy for Alternative Investments Lumida is a digital-first wealth advisor for people who want access to the same opportunities as institutions \u2014 public markets, private deals, and alternatives. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Lumida Wealth",
+  "slug": "lumida",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:mercor",
+    "value": "hires in London; Mercor HQ, 181 Fremont Street; Mexico | Mexico City; New York City; San Francisco; San Francisco or NYC"
+   },
+   "open_roles": {
+    "source": "ashby:mercor",
+    "value": "open roles include Infrastructure Engineer ; Strategic Project Lead; Strategic Projects Lead, Deeptune; Data Scientist; Administrative Generalist; Software Engineer, Agents; Product Manager; Research Operations, Code; Data Engineer; Technology Operations Lead; Strategic Project Associate; Strategic Finance Lead; Senior Product Designer; Research Engineer - Environments, Data and Post-Training; Senior Growth Lead; Sales Lead; Recruiter; Engagement Manager; Agentic Finance Engineer; Program Manager, Quality; Research Program Manager; Enterprise AI Lead; Delivery Engineer, Frontier Data Products ; Software Engineer"
+   },
+   "what_it_does": {
+    "source": "https://www.mercor.com:443/",
+    "value": "Mercor | Organizing human intelligence to power the AI economy Mercor is organizing human intelligence to power the AI economy. We are powering frontier research, AI benchmarks, and AI agent training at scale for the top AI labs and enterprises."
+   }
+  },
+  "label": "target",
+  "name": "Mercor",
+  "slug": "mercor",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:modal",
+    "value": "hires in London; New York; San Francisco; Stockholm"
+   },
+   "open_roles": {
+    "source": "ashby:modal",
+    "value": "open roles include Member of Technical Staff - Systems; Forward Deployed Engineer - ML; Business Operations Manager; Member of Technical Staff - ML Performance; Member of Technical Staff - Python SDK; Customer Engineer; Forward Deployed Engineer - Systems; Developer Relations Engineer, Sandboxes; Developer Relations Engineer; Account Executive - Enterprise; Talent Partner, GTM; Member of Design Staff - Brand; Member of Technical Staff - Product (Backend); Member of Technical Staff - Systems; Forward Deployed Engineer - Systems; Member of Technical Staff - Platform Engineering; Systems Engineering Manager; Soluti"
+   },
+   "what_it_does": {
+    "source": "https://modal.com/",
+    "value": "Modal: High-performance AI infrastructure Bring your own code, and run CPU, GPU, and data-intensive compute at scale. The serverless platform for AI and data teams."
+   }
+  },
+  "label": "target",
+  "name": "Modal",
+  "slug": "modal",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:mongodb",
+    "value": "hires in Alberta; British Columbia; Manitoba; Nova Scotia; Ontario; Quebec; Toronto; Alberta; British Columbia; Manitoba; Nova Scotia; Quebec; Alberta; British Columbia; Ontario; Quebec; Amsterdam; Amsterdam; Copenhagen; Stockholm; Amsterdam; Germany; Arizona; California; Washington; Atlanta; Austin; Baltimo"
+   },
+   "open_roles": {
+    "source": "greenhouse:mongodb",
+    "value": "open roles include Account Development Representative; Account Development Representative - English Speaking; Account Development Representative, French Speaking; Account Development Representative, German Speaking; Account Development Representative, Hebrew Speaking; Account Development Representative, Italian Speaking; Account Executive, Growth; Account Executive, Growth; Account Executive, Growth; Advisory Partner Solutions Architect; Advisory / Senior Solutions Architect; Advisory Solutions Architect; Advisory Solutions Architect; Advisory Solutions Architect; Application Engineer; Associate Commercial Growt"
+   },
+   "what_it_does": {
+    "source": "https://www.mongodb.com/",
+    "value": "MongoDB: The World\u2019s Leading Modern Data Platform | MongoDB Get your ideas to market faster with a flexible, AI-ready database. MongoDB makes working with data easy. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "MongoDB",
+  "slug": "mongodb",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:monstro",
+    "value": "hires in New York City \u2014 Onsite; New York City, Onsite with travel"
+   },
+   "open_roles": {
+    "source": "greenhouse:monstro",
+    "value": "open roles include Managing Director, Enterprise Accounts, Financial Services AI; Managing Director Strategic Banking Accounts; Principal SME Regulatory Affairs \u2014 Banking & AI Compliance; Senior Frontend Engineer ; Senior Software Engineer; Staff Software Engineer"
+   },
+   "what_it_does": {
+    "source": "https://www.monstro.com/",
+    "value": "Monstro \u00b7 Financial Intelligence for financial institutions Monstro is the financial intelligence system built exclusively for financial institutions. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "monstro",
+  "slug": "monstro",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.morganstanley.com/",
+    "value": "Morgan Stanley | Global Leader in Financial Services Discover how we help individuals, families, institutions and governments raise, manage and distribute the capital they need to achieve their goals. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Morgan Stanley",
+  "slug": "morgan",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:morpho",
+    "value": "hires in New York; Paris"
+   },
+   "open_roles": {
+    "source": "ashby:morpho",
+    "value": "open roles include Solution Architect - Americas; Staff Fullstack Engineer; Staff Backend Engineer; Senior Fintech BD; Ops Associate - People Success; Account Growth; Revenue Operations Manager; Staff Product Manager (New Credit); Product Manager (Protocol)"
+   },
+   "what_it_does": {
+    "source": "https://morpholabs.com/about-us",
+    "value": "About Us \u2013 Morpho All You Need In One Single Theme. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat Search for: Search here: Home Home About Us About Us Services Services Portfolio Portfolio Contact Contact Home About Us Services Portfolio Contact About Us Planning & Modelling Lorem ipsum dolor sit amet, consect (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Morpho Labs",
+  "slug": "morpho",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:mutiny",
+    "value": "hires in In person in New York City"
+   },
+   "open_roles": {
+    "source": "ashby:mutiny",
+    "value": "open roles include Social Media Creator; Founding Enterprise Account Executive; Head of AI Strategists; AI Strategist; Staff Product Designer; Senior Software Engineer (AI Products); Enterprise Sales Manager; Head of GTM (Path to COO); Executive Assistant and Operations Manager ; Product Designer"
+   },
+   "what_it_does": {
+    "source": "https://mutiny.ai/",
+    "value": "Mutiny Every company is a series of decisions. We know which ones win. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Mutiny",
+  "slug": "mutiny",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.nscale.com/about",
+    "value": "Nscale is the vertically integrated AI infrastructure company building the physical and digital foundation to train, deploy, and scale AI from cloud to edge. By owning and operating the full stack spanning energy, data centers, GPU compute and software, Nscale gives AI natives, enterprises, and governments the efficiency, reliability, and control that advanced AI demands. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Nscale",
+  "slug": "nscale",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "lever:ogury",
+    "value": "hires in Barcelona; Cologne; London; New York City; Paris; Singapore"
+   },
+   "open_roles": {
+    "source": "lever:ogury",
+    "value": "open roles include Apprentice Accountant - 12 months; Business Lead (Group Head - WPP); Client Services Executive; Client Services Executive - 1 Year Apprenticeship; Client Services Executive - 6 months Internship; Client Services Intern (6 months); Data Engineer; DevOps / SRE Engineer; Engagement & Internal Communications Internship (12 months); Future Opportunities \u2013 Engineering & Product; General Manager CTV & Video Business; General Manager, CTV & Video Business; Learning Internship (12 months); Procure to Pay (P2P) Manager; Revenue Operations Analyst (1 Year Apprenticeship); Revenue Operations Analyst (1 Ye"
+   },
+   "what_it_does": {
+    "source": "https://www.ogury.com/",
+    "value": "Ogury \u2013 Global Ad Tech Company The Growth Engine for Brands. Powered by Persona Intelligence. Ogury helps brands and agencies turn audience understanding into measurable growth. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Ogury",
+  "slug": "ogury",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "1K-5K employees"
+   },
+   "locations": {
+    "source": "ashby:openai",
+    "value": "hires in Abu Dhabi, UAE; Australia - Remote; Bangalore - Remote; Delhi, India; Dublin, Ireland; India - Remote; London, UK; Madrid, Spain; Mountain View; Mumbai, India; Munich, Germany; New York City"
+   },
+   "open_roles": {
+    "source": "ashby:openai",
+    "value": "open roles include Technical Program Manager, Compute Infrastructure; Research Engineer; Account Director, Large Enterprise - Tokyo; Research Engineer, Retrieval & Search, Applied Engineering; Account Director, Startups; Researcher, Robustness & Safety Training; Software Engineer, Scaled Abuse; Software Engineer, Data Infrastructure; Training: ML Framework Engineer; Software Engineer, Developer Productivity; Software Engineer, Data Acquisition ; Data Engineer; Research Engineer, Frontier Evals & Environments; Clean Energy and New Technology Lead; Research Scientist; Software Engineer, Observability; Software Eng"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Growth"
+   },
+   "what_it_does": {
+    "source": "https://jobs.ashbyhq.com/openai/8fb1615c-34bf-47c4-a1d1-b7b2f836bbd3",
+    "value": "provide a unified platform for other OpenAI teams to seamlessly run production Applied AI and Research training workloads."
+   }
+  },
+  "label": "mixed",
+  "name": "OpenAI",
+  "slug": "openai",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.optable.co/who-we-are",
+    "value": "Optable helps media and advertising businesses adapt, grow, and securely activate their data with privacy-preserving software for the agentic advertising era."
+   }
+  },
+  "label": "target",
+  "name": "Optable",
+  "slug": "optable",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:opusclip",
+    "value": "hires in Burnaby; Mountain View; Remote"
+   },
+   "open_roles": {
+    "source": "ashby:opusclip",
+    "value": "open roles include Member of Technical Staff, AI Engineer; AI Artist; Creative Strategist; Senior Product Designer; Senior Visual Designer; Account Executive ; AI Product Management Intern; Engineering Lead; Lead AI Researcher"
+   },
+   "what_it_does": {
+    "source": "https://www.opus.pro/",
+    "value": "OpusClip: #1 AI video clipping and editing tool OpusClip turns long videos into high-quality viral clips, and publishes them to all social platforms in one click. We help 10M+ creators create and grow faster."
+   }
+  },
+  "label": "target",
+  "name": "OpusClip",
+  "slug": "opusclip",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:oscar",
+    "value": "hires in Arizona, United States; Atlanta, Georgia, United States; Boston, Massachusetts, United States; Dallas, Texas, United States; Florida, United States; Georgia, United States; Hartford, Connecticut, United States; Los Angeles, California, United States; Miami, Florida, United States; New York, New York"
+   },
+   "open_roles": {
+    "source": "greenhouse:oscar",
+    "value": "open roles include 1099 Nurse Practitioner or Physician Assistant - Virtual Urgent Care (Bilingual - Spanish); 1099 Physician - APP Supervision; Advanced Practice Provider - Virtual Urgent Care (Part-time); Analytics Engineer I; Associate, Actuarial; Associate Director, Claims Compliance; Associate Director, Claims Compliance; Associate Director, Claims Compliance; Associate Director, Claims Compliance; Associate Director, Corporate Compliance; Associate Director, Corporate Compliance; Associate Director, Corporate Compliance; Associate Director, Corporate Compliance; Associate Director, Corporate Events; Associ"
+   },
+   "what_it_does": {
+    "source": "https://www.oscar.ai/",
+    "value": "Business Automation Solutions | OscarAI \u2013 United States (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "oscar",
+  "slug": "oscar",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://eyparthenon.com/",
+    "value": "eyparthenon.com for sale | Spaceship.com eyparthenon.com is for sale on Spaceship. Secure checkout and quick transfer. See all purchase options. No hidden fees. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "EY-Parthenon",
+  "slug": "parthenon",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:patientpoint",
+    "value": "hires in Allentown, Pennsylvania, United States; Baltimore, Maryland, United States; Boston, Massachusetts, United States; Charlotte, North Carolina, United States; Chicago, Illinois, United States; Cincinnati, Ohio, United States; New York City, NY; Cincinnati, Ohio, United States; Cincinnati, Ohio, United "
+   },
+   "open_roles": {
+    "source": "greenhouse:patientpoint",
+    "value": "open roles include Associate Outside Sales Executive - Healthcare; Associate Outside Sales Executive - Healthcare; Associate Outside Sales Executive - Healthcare; Director, Client Sales; Director, Client Sales; Director, Client Sales - Consumer Health Network; Director, Precision Operations; Director, Programmatic Demand Partnerships; Director, Yield Management; Implementation Manager; Implementation Manager; Implementation Manager; Implementation Manager; Implementation Manager; Implementation Manager; Implementation Manager; Implementation Manager; Implementation Manager; Implementation Manager; Implementation"
+   },
+   "what_it_does": {
+    "source": "https://patientpoint.com/",
+    "value": "PatientPoint | The Point of Change Company Discover how PatientPoint delivers content that drives better health decisions and outcomes for healthcare providers, brands, and patients. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "patientpoint",
+  "slug": "patientpoint",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.paypal.com/us/home",
+    "value": "Pay, Send and Save Money with PayPal | PayPal US From paying friends to saving money or getting cash back when you shop, explore what the new PayPal app has to offer. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "PayPal",
+  "slug": "paypal",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:perplexity",
+    "value": "hires in Belgrade; Berlin; London; New York City; Remote (United States); San Francisco; Washington D.C."
+   },
+   "open_roles": {
+    "source": "ashby:perplexity",
+    "value": "open roles include Product Marketing Manager, Partnerships; Member of Technical Staff (Software Engineer, Monetization); Associate Product Marketing Manager; Member of Technical Staff (AI Inference Engineer); Member of Technical Staff (AI Infrastructure Engineer); Member of Technical Staff (Backend/Infrastructure Engineer, Search); Member of Technical Staff (Machine Learning Engineer, Search); Member of Technical Staff (Search Engine Developer, Search Core); Member of Technical Staff (Backend Software Engineer, Search Crawler); Member of Technical Staff (AI Researcher); Member of Technical Staff (Software Engine"
+   },
+   "what_it_does": {
+    "source": "https://jobs.ashbyhq.com/perplexity/d5bc2302-202f-4596-9c4d-8720d1e79064",
+    "value": "Perplexity is revolutionizing how the world gets work done, and we do it alongside some of the most important companies in the world."
+   }
+  },
+  "label": "target",
+  "name": "Perplexity",
+  "slug": "perplexity",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.pfizer.com/",
+    "value": "Pfizer: One of the world's premier biopharmaceutical companies (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Pfizer",
+  "slug": "pfizer",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "51-200 employees"
+   },
+   "locations": {
+    "source": "ashby:phantom",
+    "value": "hires in Remote; Remote-US"
+   },
+   "open_roles": {
+    "source": "ashby:phantom",
+    "value": "open roles include Senior Software Engineer, Frontend; Staff DevOps Engineer (Platform); Staff Software Engineer (SRE); Software Engineer, Frontend / Full Stack (Identity Platform); Staff Platform Security Engineer (Security); Head of Brand Creative; Senior Software Engineer, Backend (Money Movement); Senior Brand Designer; Head of Business and Corporate Development; Senior Copywriter; VIP Account Manager; Staff Machine Learning Engineer; Growth Partnerships Lead"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Venture"
+   },
+   "what_it_does": {
+    "source": "https://phantom.com/",
+    "value": "Phantom: Your home for trading crypto, predictions, and more The self-custodial wallet for trading predictions, perps, and tokens across Solana, Ethereum, Bitcoin, Robinhood, HyperEVM, and more."
+   }
+  },
+  "label": "approved",
+  "name": "Phantom",
+  "slug": "phantom",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:pika",
+    "value": "hires in Palo Alto HQ"
+   },
+   "open_roles": {
+    "source": "ashby:pika",
+    "value": "open roles include Research Scientist, Post-Training \u2014 Video Generation; ML Engineer, Inference & Optimization; Senior/Staff Software Engineer, Backend; Research Scientist, Data; Head of Growth; Product Manager; Research Intern (BS/MS/PhD); Head of Sales; Head of Finance; Principal Software Engineer, Product; Head of Engineer, Product; Senior/Staff Software Engineer, Product"
+   },
+   "what_it_does": {
+    "source": "https://pika.art/",
+    "value": "Pika AI creative tools. Built for Creatives."
+   }
+  },
+  "label": "target",
+  "name": "Pika",
+  "slug": "pika",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "lever:pointclickcare",
+    "value": "hires in Kitchener, Waterloo; Mississauga; Mississauga, Ontario; Remote - US; Remote or Mississauga; Remote, Canada; Remote, USA; Toronto, Ontario"
+   },
+   "open_roles": {
+    "source": "lever:pointclickcare",
+    "value": "open roles include (Canada) Principal ML System Engineer; (Canada) Regional Named Account Executive - Northeast; (Canada) Software Implementation Consultant - Clinical; (US) Principal ML System Engineer; (US) Regional Named Account Executive - Northeast; (US) Software Implementation Consultant - Clinical; Accounts Receivable Specialist (1 year contract); Accounts Receivable Specialist (6 month contract); Ai Solution Engineer - (Technology Support); Canada -Manager, Customer Support (Senior Care); Canada Sales - Talent Community; Canada- Escalation Manager (Customer Support); Canada- Jr Software Engineer (SRE); C"
+   },
+   "what_it_does": {
+    "source": "https://pointclickcare.com/",
+    "value": "Healthcare Software for Smarter Care Delivery | PointClickCare Transform care coordination and outcomes with AI-powered healthcare software that improves collaboration, reimbursement, and transitions of care. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "PointClickCare",
+  "slug": "pointclickcare",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "lever:portagepointpartners",
+    "value": "hires in Gurgaon; New York, NY"
+   },
+   "open_roles": {
+    "source": "lever:portagepointpartners",
+    "value": "open roles include Associate, Cross-Functional; Associate, Data Analytics // Application Development; Associate, Data Analytics // DevOps; Associate, Investment Banking; Associate, Office of the CFO // Accounting Advisory & Controllership Transformation; Associate, Office of the CFO // Strategic Finance & Analytics; Associate, Transaction Advisory Services; Associate, Transaction Advisory Services // Financial Due Diligence; Associate, Turnaround & Restructuring Services; Director, Accounting Advisory & Controllership Transformation (AACT); Director, Commercial Strategy // Business Services Insights; Director, C"
+   },
+   "what_it_does": {
+    "source": "https://portagepointpartners.com/",
+    "value": "Portage Point Partners | Expert Business Advisory Firm Portage Point Partners is a business advisory, interim management, investment banking and turnaround and restructuring firm focused on the middle market. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "portagepointpartners",
+  "slug": "portagepointpartners",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:profound",
+    "value": "hires in Boston, MA"
+   },
+   "open_roles": {
+    "source": "greenhouse:profound",
+    "value": "open roles include Director, Program Lead \u2013 Women\u2019s Health and Preeclampsia; (Senior) Scientist, Cardiovascular and Metabolic Disease;  Sr. Director, Alliance and Program Management"
+   },
+   "what_it_does": {
+    "source": "https://www.profound.com/Home.aspx?ReturnUrl=%2F",
+    "value": "Create Customized Market Research Reports and Industry Analysis With Profound Access More Than 1.2 Million Market Research Reports Across 700 Industry Segments. Generate Customized Blended Reports Using Profound's New Section Slicing Features! (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Profound",
+  "slug": "profound",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:prorata",
+    "value": "hires in Remote - US"
+   },
+   "open_roles": {
+    "source": "ashby:prorata",
+    "value": "open roles include Senior Partner Solutions Engineer"
+   },
+   "what_it_does": {
+    "source": "https://prorata.ai/",
+    "value": "ProRata.AI - We build AI-powered search, advertising, and attribution solutions grounded in respect for content. ProRata builds AI search, advertising, and attribution solutions that respect the content that powers them. Discover how we deliver high-fidelity AI answers, smart ads into AI search streams, and independent content attribution for AI."
+   }
+  },
+  "label": "target",
+  "name": "ProRata.ai",
+  "slug": "prorata",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:ramp",
+    "value": "hires in London; New York, NY (HQ); Remote (Sweden); Remote (US); San Francisco, CA; Toronto, ON"
+   },
+   "open_roles": {
+    "source": "ashby:ramp",
+    "value": "open roles include  Security Engineer, Cloud; Mobile Engineer, Android; Software Engineer, Frontend; Credit Risk Associate; Account Executive | Strategic ; Mobile Engineer, iOS; Product Operations Specialist | Generalist; Senior Manager, Account Executive | Mid-Market; Account Manager | Commercial; Product Designer; University Grad | Customer Experience Associate; Partner Development Representative | Private Equity; Account Manager | Mid-Market; Senior Product Marketing Manager - New Products; Software Engineer, Data Platform ; Customer Activation Manager | Enterprise; Customer Activation Manager | Mid-Market; S"
+   },
+   "what_it_does": {
+    "source": "https://ramp.com/about-us",
+    "value": "Ramp is the ultimate platform for modern finance teams. From corporate cards and expense management software, to bill payments and vendor management, Ramp's all-in-one solution is designed to automate finance operations and build healthier businesses. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Ramp",
+  "slug": "ramp",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "approved",
+  "name": "RavenPack",
+  "slug": "ravenpack",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.razorfish.com/",
+    "value": "Leaders In What's Next | Razorfish Razorfish creates unforgettable experiences that connect and enrich people\u2019s lives through innovative digital marketing transformation and strategic solutions. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Razorfish",
+  "slug": "razorfish",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://recursion.com/",
+    "value": "Pioneering AI Drug Discovery | Recursion Dive into Recursion's innovative approach to decoding biology. Join our mission & explore what AI drug discovery companies can do. Contact us today! (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Recursion",
+  "slug": "recursion",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "1K-5K employees"
+   },
+   "locations": {
+    "source": "greenhouse:reddit",
+    "value": "hires in Amsterdam, Netherlands; Chicago, IL; Chicago, IL; Los Angeles, CA; New York City, NY; San Francisco, CA; Chicago, IL; New York City, NY; London, United Kingdom; Los Angeles, CA; Los Angeles, CA; New York City, NY; Los Angeles, CA; San Francisco, CA; New York City, NY; Remote - British Columbia, Cana"
+   },
+   "open_roles": {
+    "source": "greenhouse:reddit",
+    "value": "open roles include 3rd Party Partnerships Manager - Signals; Ads Conversion Modeling, Machine Learning Engineering Manager; Backend Engineer, IAM; Backend Software Engineer, PDP Experience; Client Account Manager, Large Customer Sales (CPG); Client Account Manager, Large Customer Sales (Tech); Client Partner, Mid-Market Sales (B2B Services - Acquisitions); Client Partner, Mid-Market Sales (Goods); Community Manager, French Speaking (Contract); Country Lead, Business Marketing, UK; Director, Intellectual Property; Director, Privacy Legal; Director, Revenue Strategy & Operations (Large Customer Sales); Director, R"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series D"
+   }
+  },
+  "label": "target",
+  "name": "Reddit",
+  "slug": "reddit",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "lever:rembrand",
+    "value": "hires in Remote"
+   },
+   "open_roles": {
+    "source": "lever:rembrand",
+    "value": "open roles include Head of Content Partnerships and Premium Supply"
+   },
+   "what_it_does": {
+    "source": "https://www.rembrand.com/",
+    "value": "Home For advertisers In-Content for Advertisers Put your brand in content. Spaceback Content Ads Social content into CTV ads in seconds. For publishers In-Content for Publishers A platform to add innovative ad formats and boost revenue without more interruptions. For publishers Resources Gallery Explore our innovative media integration solutions in action. Case Studies See how these brands used In"
+   }
+  },
+  "label": "target",
+  "name": "Rembrand",
+  "slug": "rembrand",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:revin",
+    "value": "hires in New York City"
+   },
+   "open_roles": {
+    "source": "ashby:revin",
+    "value": "open roles include Sales Development Representative; Account Executive; Founding Growth; Senior Software Engineer ; Senior Product Designer; Customer Success Manager; Executive Assistant; Head of Partnerships; Forward Deployed Engineer (FDE)"
+   },
+   "what_it_does": {
+    "source": "https://revin.ai/",
+    "value": "Revin \u00e2\u0080\u0093 The #1 AI Platform for Service Operators Increase revenue and cut costs by launching agents across your entire call center (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Revin",
+  "slug": "revin",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:ripple",
+    "value": "hires in Chicago, Illinois, United States; Chicago, Illinois, United States; Miami, FL, United States; New York, NY, United States; Chicago, Illinois, United States; New York, NY, United States; Dubai, United Arab Emirates; Dublin, Ireland; Geneva, Switzerland; London, UK; Luxembourg, Luxembourg; Miami, FL, "
+   },
+   "open_roles": {
+    "source": "greenhouse:ripple",
+    "value": "open roles include Business Development Director - RippleX; Business Development Senior Director - Capital Markets; Client Support Analyst; Client Support Analyst; Corporate Counsel; Corporate Counsel; Customer Success Manager; Customer Success Senior Manager; Director, Corporate & Product Communications; Director, Global SDR Operations; Director of Engineering, Infrastructure; Director, Product Management, Global Payouts; Engineering Manager, Digital Assets; Engineering Manager, Digital Assets; Engineering Manager, Digital Assets; Head of Customer Success & Support; Head of Managed Services; Head of Managed Ser"
+   },
+   "what_it_does": {
+    "source": "https://ripple.com/",
+    "value": "Financial Infrastructure & Blockchain Technology Solutions | Ripple Ripple is the leading provider of stablecoin-powered cross-border payments and digital asset custody solutions. Discover how we\u2019re driving impact with blockchain. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "ripple",
+  "slug": "ripple",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "target",
+  "name": "Roho",
+  "slug": "roho",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:runway",
+    "value": "hires in North America"
+   },
+   "open_roles": {
+    "source": "ashby:runway",
+    "value": "open roles include \u2699\ufe0f Senior/Staff Platform Engineer; \u2699\ufe0f Senior/Staff Product Engineer; \ud83d\udcc8 Forward Deployed Finance Partner; \u2699\ufe0f Engineering Manager"
+   },
+   "what_it_does": {
+    "source": "https://runway.com/",
+    "value": "Runway | Building Real-World Intelligence Runway is building foundational Real-World Intelligence that can understand, simulate and act in the world. We offer products and services built on-top of this intelligence to empower individuals and organizations to do more in the world."
+   }
+  },
+  "label": "target",
+  "name": "Runway",
+  "slug": "runway",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.salesforce.com/?bc=OTH",
+    "value": "Salesforce: The #1 Agentic AI CRM Salesforce is the #1 AI CRM, helping companies become Agentic Enterprises where humans and agents drive success together through a unified AI, data, and Customer 360 platform. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Salesforce",
+  "slug": "salesforce",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:scaleai",
+    "value": "hires in Argentina; Mexico City, MX; Argentina; Uruguay; Austin, TX; Colorado Springs, CO; Honolulu, HI; Omaha, NE; St. Louis, MO; Washington, DC; Austin, TX; Colorado Springs, CO; Omaha, NE; St. Louis, MO; Washington, DC; Boston, MA; Budapest, Hungary; Canada; Canada; United States; Colorado Springs, CO; Co"
+   },
+   "open_roles": {
+    "source": "greenhouse:scaleai",
+    "value": "open roles include AI Advisory Consultant; AI Advisory Principal; AI Infrastructure Engineer, Sandbox Platform; AI Infrastructure Engineer, Serving Platform; AI Product Manager (Coding/Multimodal); AI Strategy Consultant, Frontier Tech; Applied AI Engineer, Global Public Sector; Associate General Counsel, Product & IP; Business Development Representative, Partnerships (Physical AI); Chief of Staff, Public Sector Engineering & Security ; Communications Senior Manager, Corporate & Product (Enterprise) ; Contributor Experience Manager, Community; Data Acquisition Lead, Frontier Environments; Deployment Strategist ;"
+   }
+  },
+  "label": "declined",
+  "name": "Scale AI",
+  "slug": "scale",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.tdsecurities.com/ca/en",
+    "value": "Home | TD Securities TD Securities is a leading investment bank that provides corporate and investment banking and capital markets products and services to corporate, institutional and government clients. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "TD Securities",
+  "slug": "securities",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "51-200 employees"
+   },
+   "locations": {
+    "source": "greenhouse:setpoint",
+    "value": "hires in Austin or New York (Hybrid); Austin, TX (Hybrid); New York, NY (Hybrid); Salt Lake City (Hybrid)"
+   },
+   "open_roles": {
+    "source": "greenhouse:setpoint",
+    "value": "open roles include Analyst, Diligence; Capital Solutions Manager (Capital OS); Capital Solutions Manager (Data OS, Insight OS); Implementation Manager; Professional Services Manager; Senior Analytics Engineer; Senior Full Stack Engineer; Software Engineer (Backend); Software Engineer (Implementations); Strategic Finance Associate"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series B"
+   },
+   "what_it_does": {
+    "source": "https://www.setpoint.io/",
+    "value": "Setpoint \u2014 the capital markets operating system Originators, Asset Managers and Lenders use Setpoint's technology and capital to power asset-backed transactions."
+   }
+  },
+  "label": "approved",
+  "name": "Setpoint.io",
+  "slug": "setpoint",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:sierra",
+    "value": "hires in Canada - Remote; London; Madrid; Munich; New York, NY; Paris; San Francisco, CA; Singapore; South Korea; Sydney; Tokyo; Toronto"
+   },
+   "open_roles": {
+    "source": "ashby:sierra",
+    "value": "open roles include Enterprise Sales Engineer; High Growth Enterprise Account Executive; Enterprise Sales Director - Majors; Software Engineer, Platform; Product Manager, Agent Data Platform; Product Manager, Agent Development; Enterprise Account Executive, Europe; Software Engineer, Agent; Product Designer; Product Manager, Agent Development (German speaking); Software Engineer, Agent; Product Manager, Agent Development; Software Engineer, Agent Runtime; Security Engineer; Enterprise Sales Engineer; Developer Relations Engineer; Product Marketing Manager; IT Infrastructure Engineer; Event Marketer; Software Engi"
+   },
+   "what_it_does": {
+    "source": "https://sierra.ai/",
+    "value": "Better customer experiences | Sierra Sierra helps businesses build better, more human customer experiences with AI."
+   }
+  },
+  "label": "target",
+  "name": "Sierra",
+  "slug": "sierra",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "11-50 employees"
+   },
+   "locations": {
+    "source": "ashby:slingshotai",
+    "value": "hires in London; New York"
+   },
+   "open_roles": {
+    "source": "ashby:slingshotai",
+    "value": "open roles include Postdoctoral Clinical Research Scientist; Creative Strategy Lead; Creative Lead, Paid Social; Head of Creative - Paid Social; Product Psychologist ; Conversation Reviewer (Fully Remote)"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series A"
+   },
+   "what_it_does": {
+    "source": "https://slingshotai.com/",
+    "value": "Slingshot AI Slingshot AI is a mental health research lab building a foundation model for psychology. Our mission is to use AI to make mental health care more accessible, and to help people change their minds and lives the way they want to."
+   }
+  },
+  "label": "approved",
+  "name": "Slingshot AI",
+  "slug": "slingshot",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:socure",
+    "value": "hires in California - Remote; Hub - Bangalore; Hub - London; Hub - Miami; Hub - New York; Hub - San Francisco; Hub - Seattle; Hub - Toronto; Hub - Washington DC; Hybrid - India; Hybrid - London; Hybrid - New York, NY"
+   },
+   "open_roles": {
+    "source": "ashby:socure",
+    "value": "open roles include Senior Solution Consultant \u2013 Post-Sales, Platform; Head of Growth Engineering; Senior Solution Consultant; Account Executive Director, Public Sector (Federal); Software Engineer - II ; Associate Procurement Analyst; Senior Frontend Engineer; Senior Backend Engineer; Senior Software Engineer - Backend (DocV); Senior Manager, Solution Engineering - DocV; Vertical Marketing Lead, Gaming; Staff Data Scientist - Fraud & Risk; Staff Product Designer, RiskOS Platform; Senior Backend Engineer; Senior Manager- Software Engineering; Senior Data Engineer; Staff Backend Engineer; Account Executive Directo"
+   },
+   "what_it_does": {
+    "source": "https://www.socure.com/",
+    "value": "Identity Verification Platform for AI Risk Decisioning | Socure Socure is the leading AI-powered identity verification platform trusted by 3,000+ customers to verify consumers, businesses, & employees with confidence. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Socure",
+  "slug": "socure",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://soni.com/",
+    "value": "SONI.com SONI.com $1,995,000 or 0% APR financing Buy now Name .si (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Soni",
+  "slug": "soni",
+  "tier_stated": null
+ },
+ {
+  "a16z": true,
+  "facts": {
+   "headcount": {
+    "source": "a16z portfolio index",
+    "value": "51-200 employees"
+   },
+   "locations": {
+    "source": "ashby:sphere",
+    "value": "hires in Europe; San Francisco HQ; United States"
+   },
+   "open_roles": {
+    "source": "ashby:sphere",
+    "value": "open roles include Tax Support Specialist; Account Executive (Europe); Account Executive (SF); Senior Backend Engineer (Infrastructure); Senior Full Stack Engineer; Senior Product Engineer; Lead AI Engineer; Founding Growth Lead; Forward Deployed Engineer; GTM Engineer; AI Agent Infrastructure Lead; TRAM Trainer; E-Invoicing Lead; SALT Lead; Sales Development Representative; TRAM Trainer - EMEA"
+   },
+   "stage": {
+    "source": "a16z portfolio index",
+    "value": "Series A"
+   },
+   "what_it_does": {
+    "source": "https://www.getsphere.com/",
+    "value": "Global Tax Compliance Software for VAT, GST & Sales Tax | Sphere Manage VAT, GST, and sales tax worldwide with Sphere\u2019s global tax compliance software. Automate registration, calculation, and filing seamlessly."
+   }
+  },
+  "label": "target",
+  "name": "Sphere",
+  "slug": "sphere",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "declined",
+  "name": "StartX Med",
+  "slug": "startx",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "commercial_leadership": {
+    "source": "ashby:suno",
+    "value": "hiring Senior Conversion Rate Optimization Manager (CRO Marketing), so no Senior Conversion Rate Optimization Manager (CRO Marketing) is in post"
+   },
+   "locations": {
+    "source": "ashby:suno",
+    "value": "hires in Boston; London; Los Angeles; NYC; Remote; San Francisco"
+   },
+   "open_roles": {
+    "source": "ashby:suno",
+    "value": "open roles include Senior / Staff Software Engineer, Frontend; Staff / Senior Software Engineer, Platform Teams; Staff / Senior Software Engineer, Product Teams; Machine Learning Scientist; Software Engineer, Android; iOS Engineer; Software Engineer, Growth; Software Engineer, Trust & Safety; Senior Engineering Manager; Software Engineer, Fullstack, Pro-Create ; Payroll Manager; Senior/Staff Software Engineer - Commerce Platform; Sr. Paid Social Manager; Engineering Manager ; Senior Data Scientist, Content + Social; Senior / Staff Product Designer; People Partner; Senior Counsel, Music Business Affairs; Senior /"
+   },
+   "what_it_does": {
+    "source": "https://suno.com/",
+    "value": "Suno | AI Music Generator Create stunning original music for free in seconds using our AI generator. Make your own masterpieces, share with friends, and discover music from artists worldwide."
+   }
+  },
+  "label": "target",
+  "name": "Suno",
+  "slug": "suno",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:synthesia",
+    "value": "hires in Austin; Berlin; Europe; Germany; London; Munich; New York City; Paris; Remote; Seattle; UK Remote; US Remote"
+   },
+   "open_roles": {
+    "source": "ashby:synthesia",
+    "value": "open roles include SecOps Security Engineer (Staff-level, L6) ; Enterprise Account Executive; Strategic Account Executive (German Speaking); Solutions Consultant ; Research Engineer in Data; Enterprise Account Executive DACH; Regional Director of Sales; Strategic Account Executive; Staff Research Engineer - Interactive Avatars; Customer Support Associate; SEO Manager; Sales Development Representative - German Speaker; Senior Engineering Manager, Growth; Technical Support Specialist - German Speaking; Senior Brand Designer, Experiential; Senior Brand Designer, Experiential; Principal ML Platform Engineer; Princip"
+   },
+   "what_it_does": {
+    "source": "https://www.synthesia.io/",
+    "value": "Synthesia: #1 AI Video Platform for Business Official Synthesia site. The AI video platform trusted by 90%+ of the Fortune 100 to communicate, train, and upskill teams in 160+ languages."
+   }
+  },
+  "label": "target",
+  "name": "Synthesia",
+  "slug": "synthesia",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:talkspace",
+    "value": "hires in New York, NY; New York, NY (Remote); Ohio (Remote); Remote; United States (Remote)"
+   },
+   "open_roles": {
+    "source": "greenhouse:talkspace",
+    "value": "open roles include Business Development Representative, Consultant Relationships; Business Development Representative, Military Engagement  ; General Application for Clinical and Corporate; General Application for Product, Engineering and Technology; Health Educator (Contract); Health & Wellness Coach (Contract); Military Coordinator/Payor Success Associate  ; Network Onboarding Specialist; Network Strategic Operations Coordinator; Operations Manager, Client Success; Performance Marketing Manager; Product Manager; Psychiatric Consultant; Senior AI Engineer; Senior Data Engineer; Senior Performance Marketing Mana"
+   },
+   "what_it_does": {
+    "source": "https://www.talkspace.com/",
+    "value": "Talkspace - #1 Rated Online Therapy, 1 Million+ Users Get matched with a licensed therapist and start therapy from anywhere. Talkspace offers affordable, flexible mental health care with or without insurance. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Talkspace",
+  "slug": "talkspace",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://telnyx.com/",
+    "value": "Infrastructure for realtime agents | Telnyx Telnyx is the only licensed carrier that owns its AI infrastructure end-to-end: private network, GPUs, edge compute. Nothing sits between your agent and the person on the line because every hop is ours. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Telnyx",
+  "slug": "telnyx",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.thoughtspot.com/",
+    "value": "ThoughtSpot Agentic Analytics Platform Transform insights into action with the ThoughtSpot Agentic Analytics Platform\u2014AI agents, automated insights, and embedded intelligence. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "ThoughtSpot",
+  "slug": "thoughtspot",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {},
+  "label": "declined",
+  "name": "TIAA",
+  "slug": "tiaa",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:togetherai",
+    "value": "hires in Amsterdam; Amsterdam ; Amsterdam, Netherlands ; Bangalore India; Bangalore, India; India; India ; London; London & Amsterdam; Pune or Bangalore, India; Remote; San Francisco"
+   },
+   "open_roles": {
+    "source": "greenhouse:togetherai",
+    "value": "open roles include AI Infrastructure System Engineer Bangalore ; AI Infrastructure Systems Engineer; AI Infrastructure Systems Engineer (Amsterdam & London); Associate, Infrastructure Strategy & Operations; Commercial Counsel-Infrastructure and GTM; Customer Success Engineer (CSE), GPU Cluster; Data Center Operations Coordinator; Director, Data Center Operations; Director of Brand; Director of Technical Accounting; Forward Deployed Engineer (Inference & Post-Training); Forward Deployed Engineer (Inference & Post-Training) - Mandarin Speaking; GTM Data Analytics Engineer; GTM Engineer; Head of Distribution Partne"
+   },
+   "what_it_does": {
+    "source": "https://www.together.ai/",
+    "value": "Together AI | The AI Native Cloud Build what's next on the AI Native Cloud. Full-stack AI platform for inference, fine-tuning, and GPU clusters \u2014 powered by cutting-edge research."
+   }
+  },
+  "label": "target",
+  "name": "Together AI",
+  "slug": "together",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:tollbit",
+    "value": "hires in Remote"
+   },
+   "open_roles": {
+    "source": "greenhouse:tollbit",
+    "value": "open roles include Staff Engineer, Backend"
+   },
+   "what_it_does": {
+    "source": "https://tollbit.com/",
+    "value": "TollBit - Your complete web stack for the agentic internet Create an agent optimized version of your website for autonomous visitors. Control access, analyze AI bot traffic, and monetize your site as the agent economy grows."
+   }
+  },
+  "label": "target",
+  "name": "TollBit",
+  "slug": "tollbit",
+  "tier_stated": "1"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:topsort",
+    "value": "hires in Barcelona, Barcelona, Spain; London, England, United Kingdom; Santiago, Santiago Metropolitan Region, Chile; Somerville, Massachusetts, United States"
+   },
+   "open_roles": {
+    "source": "greenhouse:topsort",
+    "value": "open roles include Account Executive, EMEA; Account Manager, North America; Application for Engineering Roles; Software Engineer, Infrastructure; Software Engineer, Integrations"
+   },
+   "what_it_does": {
+    "source": "https://www.topsort.com/",
+    "value": "Topsort \u2014 AI Monetization Infrastructure for Modern Commerce Topsort is the AI-powered retail media and commerce monetization infrastructure for marketplaces, retailers, delivery apps, and travel platforms."
+   }
+  },
+  "label": "target",
+  "name": "Topsort",
+  "slug": "topsort",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:trulioo",
+    "value": "hires in Denver, CO; Dublin, Ireland; London, UK; New York, NY; Remote; San Diego, CA; San Francisco, CA; Singapore; Sydney, Australia; Toronto, ON; United States; Vancouver, BC"
+   },
+   "open_roles": {
+    "source": "ashby:trulioo",
+    "value": "open roles include Enterprise Account Executive (EMEA); Head of EMEA Sales; Enterprise Account Executive (North America); Product Manager (KYB); Continuous Improvement & AI Intelligence Automation Lead; Continuous Improvement & AI Intelligence Automation Lead; Product Manager (KYB); Corporate Controller; Corporate Controller; Senior Director, Corporate Strategy & Development; Senior Director, Corporate Strategy & Development; Senior Director, Corporate Strategy & Development; Senior Director, Corporate Strategy & Development; Account Executive; Senior Solutions Consultant; Senior Director, Global Privacy & Data "
+   },
+   "what_it_does": {
+    "source": "https://www.trulioo.com/",
+    "value": "Global Online Identity Verification Service - KYC, KYB, AML | Trulioo Trulioo is the leader in global identity verification, providing real-time online identity proofing for more than 5 billion people in 195-plus countries. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "approved",
+  "name": "Trulioo",
+  "slug": "trulioo",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.tvscientific.com/",
+    "value": "tvScientific by Pinterest: TV Advertising That Drives Sales tvScientific by Pinterest powers Performance TV advertising that drives sales. Activate Connected TV with AI optimization, measurement, and provable outcomes."
+   }
+  },
+  "label": "target",
+  "name": "tvScientific",
+  "slug": "tvscientific",
+  "tier_stated": "2"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:uipath",
+    "value": "hires in Amsterdam; Austin; Bangalore; Bangalore - Engineering; Beijing; Bellevue; Bucharest; Cluj; Denver; Hong Kong; Istanbul; Jaipur"
+   },
+   "open_roles": {
+    "source": "ashby:uipath",
+    "value": "open roles include Principal Platform Engineer- Site Reliability ; Enterprise Account Executive - Financials ; Principal Product Designer, Vertical Solutions; Senior Applied Scientist; Principal Applied Scientist ; Enterprise Account Executive; Enterprise Account Executive - Retail; Enterprise Sales Executive; Senior Forward Deployed Scientist; Senior Software Engineer - Intelligent Document Processing; Business Development Representative (Spanish/English Fluent); Business Operations Project Manager - Marketing; Software Engineer II; Sales Engineer; Customer Engineering Director ; Solution Architect; Area Vice-P"
+   },
+   "what_it_does": {
+    "source": "https://www.uipath.com/about-us",
+    "value": "UiPath vision is to enable automation across all knowledge work to accelerate human achievement and build an AI-powered automation platform that understands, automates, and operates end-to-end processes. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "UiPath",
+  "slug": "uipath",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:vidmob",
+    "value": "hires in New York, NY; Remote, United States; S\u00e3o Paulo, Brazil"
+   },
+   "open_roles": {
+    "source": "ashby:vidmob",
+    "value": "open roles include General Consideration; Director, Data Partnerships; Staff Data Engineer; Senior Account Manager- US; Staff Product Manager, SaaS platform; Principal Product Manager, Data and Recommendations; Staff Technical Program Manager; Senior Sales Solutions Engineer"
+   },
+   "what_it_does": {
+    "source": "https://vidmob.com/",
+    "value": "Home \u2022 Vidmob is The Creative Data Company Vidmob is the Creative Data Company. Vidmob provides AI-powered tools to harness brand-specific creative data for smarter marketing and media decisions. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Vidmob",
+  "slug": "vidmob",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "greenhouse:whop",
+    "value": "hires in Brooklyn, NY; Palo Alto, CA"
+   },
+   "open_roles": {
+    "source": "greenhouse:whop",
+    "value": "open roles include Accounts Payable Specialist; Data Engineer, Strategic Finance; Design; Engineering; Growth; Payments Business Operations; Payments & Risk Data Scientist; Payments Risk Manager; Senior Payments Partnerships Manager; Strategic Finance Lead; U.S. Indirect Tax Senior Manager"
+   },
+   "what_it_does": {
+    "source": "https://whop.com/",
+    "value": "Whop. Create or run businesses with AI Whop is the place for business operators. Scale up customer acquisition and distribute your products with a few clicks. Spin up an empire in an afternoon."
+   }
+  },
+  "label": "target",
+  "name": "Whop",
+  "slug": "whop",
+  "tier_stated": "3"
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "what_it_does": {
+    "source": "https://www.wiley.com/about-us",
+    "value": "We transform knowledge into actionable intelligence, helping researchers, educators, and professionals tackle today's most pressing challenges. (site matched by name only, worth checking)"
+   }
+  },
+  "label": "declined",
+  "name": "Wiley",
+  "slug": "wiley",
+  "tier_stated": null
+ },
+ {
+  "a16z": false,
+  "facts": {
+   "locations": {
+    "source": "ashby:writer",
+    "value": "hires in Chicago, IL; London, UK; New York City, NY; San Francisco, CA"
+   },
+   "open_roles": {
+    "source": "ashby:writer",
+    "value": "open roles include Software engineer, generative AI; Software engineer, generative AI (UK); Product marketing lead; Senior commercial counsel; AI engineer ; AI engineer (UK) ; Software engineer, agents (UK); Software engineer, agents; AI research scientist; Director, solutions architecture ; Solutions architect (Central) ; Senior brand manager; Enterprise AI transformation lead (UK); Enterprise AI adoption lead (East); Enterprise AI adoption lead (UK); Enterprise AI transformation lead (Central); Enterprise AI transformation lead (East); Enterprise AI transformation lead (West); Strategic AI adoption lead (East)"
+   },
+   "what_it_does": {
+    "source": "https://writer.com/",
+    "value": "WRITER - The enterprise AI platform for agentic work WRITER is the enterprise AI agent platform trusted by Fortune 500 companies, built to help teams execute and scale on-brand, compliant work."
+   }
+  },
+  "label": "target",
+  "name": "Writer",
+  "slug": "writer",
+  "tier_stated": "1"
+ }
+]

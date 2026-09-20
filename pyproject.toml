@@ -7,6 +7,11 @@ dependencies = [
     "requests>=2.31",
     "google-auth>=2.28",
     "anthropic>=1.0",
+    # The second provider behind llm.py. The Anthropic budget ran out
+    # mid-build on 2026-09-20 with ten days to run, and without a fallback
+    # every package built in that window would have carried the
+    # deterministic rationale with nothing saying why.
+    "openai>=1.40",
     # One upload slot means one attachment carrying both documents. Concatenating
     # finished PDFs cannot disturb formatting, which building a combined Doc could.
     "pypdf>=4.2",

@@ -556,3 +556,175 @@ def test_the_summary_is_a_list_so_every_caller_still_works():
     assert isinstance(s, list)
     assert "\n".join(s) == "first\nsecond"
     assert len(s) == 2 and s[0] == "first"
+
+
+# ---------- G14: the company question, asked before the seat ----------
+
+def _stage_with_company(monkeypatch, score, *, status="", merit=None,
+                        title="Chief of Staff"):
+    """Run one posting through stage_postings with a fixed company score."""
+    from hunter.company import CompanyScore, Component
+    from hunter.sources import RolePosting
+
+    inserted = []
+    monkeypatch.setattr(run_mod, "seen_identity_keys", lambda cfg: set())
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: [])
+    monkeypatch.setattr(run_mod, "db_insert",
+                        lambda cfg, table, rows, **kw: inserted.extend(rows))
+    monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
+    import hunter.ats.discover as disc
+    monkeypatch.setattr(disc, "load_cache", lambda cfg: {})
+    monkeypatch.setattr(disc, "save_cache", lambda cfg, cache: None)
+    jd = ("Acme is the enterprise AI platform for support teams. We are "
+          "hiring a commercial leader to build the go to market motion from "
+          "scratch across Europe, owning the number end to end. " * 8)
+    monkeypatch.setattr(run_mod, "fetch_with_retry",
+                        lambda fetch, slug, pid: (True, jd,
+                                                  "https://jobs.ashbyhq.com/acme/1"))
+    cs = CompanyScore(slug="acme", name="Acme", total=score, status=status,
+                      components=[Component("category", 4, True,
+                                            "in ai native enterprise", "https://x")])
+    monkeypatch.setattr(run_mod, "company_scores",
+                        lambda cfg, names, sheet=None, summary=None, budget=None:
+                        {"acme": cs})
+    monkeypatch.setattr(run_mod, "known_company_keys", lambda cfg: set())
+    p = RolePosting(company="Acme", title=title, location="London, United Kingdom",
+                    comp_text="$250,000 - $320,000",
+                    url="https://jobs.ashbyhq.com/acme/1", source="ats",
+                    ats="ashby", ats_slug="acme", ats_posting_id="1")
+    summary = []
+    counts = run_mod.stage_postings(
+        Cfg({"hunter_never_apply": "[]"}), FakeCanon(),
+        FakeSheet([list(HEADERS), [""] * N_COLS]), [p], summary)
+    return counts, inserted, summary
+
+
+def test_a_role_at_a_company_below_the_floor_never_reaches_his_sheet(monkeypatch):
+    """28 of the last batch's 33 declines carried a company level reason
+    code. He was not rejecting the seat."""
+    counts, inserted, _ = _stage_with_company(monkeypatch, 2.0)
+    assert counts["staged"] == 0
+    assert len(counts["g14_blocked"]) == 1
+    assert inserted[0]["status"] == "blocked"
+    assert "G14" in inserted[0]["rejection_reason"]
+    assert "2.0 of 10" in inserted[0]["rejection_reason"]
+
+
+def test_a_company_hunter_could_not_read_is_ranked_not_refused(monkeypatch):
+    """CLAUDE.md, already: never block on no evidence. A company whose site
+    refuses hunter is hunter's problem, not the company's, and refusing the
+    role on it would be scoring an absence."""
+    from hunter.company import NEEDS_EVIDENCE
+    counts, inserted, _ = _stage_with_company(monkeypatch, 0.0,
+                                              status=NEEDS_EVIDENCE)
+    assert not counts["g14_blocked"]
+    assert inserted[0]["status"] == "staging"
+
+
+def test_a_company_above_the_floor_passes(monkeypatch):
+    counts, inserted, _ = _stage_with_company(monkeypatch, 8.0)
+    assert not counts["g14_blocked"] and inserted[0]["status"] == "staging"
+
+
+def test_the_company_floor_opens_for_an_exceptional_role(monkeypatch):
+    """His ruling on 2026-09-20: "citi is an example where I'd reject that
+    company unless the role was ideal, which that one was". No company gate
+    in this repo is absolute, and G14 is not the exception."""
+    from hunter.gates import EXCEPTIONAL_MERIT
+    import hunter.score as score_mod
+
+    real = score_mod.score_role
+
+    def exceptional(role, **kw):
+        r = real(role, **kw)
+        object.__setattr__(r, "merit", EXCEPTIONAL_MERIT) if hasattr(r, "__dataclass_fields__") else None
+        try:
+            r.merit = EXCEPTIONAL_MERIT
+        except Exception:
+            pass
+        return r
+
+    monkeypatch.setattr(run_mod, "score_role", exceptional)
+    counts, inserted, _ = _stage_with_company(monkeypatch, 2.0)
+    assert not counts["g14_blocked"], (
+        "an exceptional role must survive a company he would usually skip")
+    assert inserted[0]["status"] == "staging"
+
+
+def test_cold_targets_stops_when_it_runs_out_of_time(monkeypatch):
+    """Each of these is one model call with web search and takes the better
+    part of a minute. Measured on 2026-09-20: eighteen of them ran for
+    eighteen minutes while sourcing, the step that actually puts roles in
+    front of him, had not started. Actions kills the run at 120 minutes."""
+    import hunter.people.bridges as bridges_mod
+
+    roles = [{"job_id": f"c{i}:role", "company": f"C{i}", "title": "GM",
+              "location": "London"} for i in range(10)]
+    monkeypatch.setattr(bridges_mod, "db_get", lambda *a, **k: [])
+    clock = {"t": 0.0}
+    monkeypatch.setattr(bridges_mod.time, "monotonic", lambda: clock["t"])
+
+    class Msgs:
+        def create(self, **kw):
+            clock["t"] += 60.0
+            raise RuntimeError("no network in tests")
+
+    class Client:
+        def __init__(self, **kw): self.messages = Msgs()
+
+    import sys, types
+    mod = types.ModuleType("anthropic")
+    mod.Anthropic = Client
+    monkeypatch.setitem(sys.modules, "anthropic", mod)
+
+    class Cfg:
+        def optional(self, key, default=""):
+            return {"hunter_cold_targets_seconds": "180"}.get(key, default)
+        def require(self, key):
+            return "key"
+
+    stats = bridges_mod.cold_targets(Cfg(), roles, cap=10)
+    assert stats["searched"] < 10, "it spent the whole run on cold targets"
+    assert stats.get("out_of_time"), "it stopped without saying why"
+
+
+def test_every_company_with_a_live_candidate_is_scored(monkeypatch):
+    """The company budget is shared with discovery, and discovery runs
+    first. On 2026-09-20 that meant the run staged PayPal, Google, CreatorIQ,
+    vivenu and openrouter, every one of which scores zero and would have
+    been blocked, simply because nothing had got round to scoring them.
+
+    The gate that decides what he looks at cannot be the thing that runs out
+    of budget.
+    """
+    asked = {}
+
+    def fake_scores(cfg, names, sheet=None, summary=None, *, budget=None):
+        asked["names"] = list(names)
+        asked["budget"] = budget
+        return {}
+
+    monkeypatch.setattr(run_mod, "company_scores", fake_scores)
+    from hunter.sources import RolePosting
+    monkeypatch.setattr(run_mod, "seen_identity_keys", lambda cfg: set())
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: [])
+    monkeypatch.setattr(run_mod, "db_insert", lambda *a, **kw: None)
+    monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
+    import hunter.ats.discover as disc
+    monkeypatch.setattr(disc, "load_cache", lambda cfg: {})
+    monkeypatch.setattr(disc, "save_cache", lambda cfg, cache: None)
+    monkeypatch.setattr(run_mod, "fetch_with_retry",
+                        lambda fetch, slug, pid: (True, "x" * 900, "https://x/1"))
+    posts = [RolePosting(company=f"Co{i}", title="General Manager, Europe",
+                         location="London", url=f"https://jobs.ashbyhq.com/co{i}/1",
+                         source="ats", ats="ashby", ats_slug=f"co{i}",
+                         ats_posting_id="1")
+             for i in range(9)]
+    run_mod.stage_postings(Cfg({"hunter_never_apply": "[]",
+                                "hunter_max_company_evidence_per_run": "2"}),
+                           FakeCanon(),
+                           FakeSheet([list(HEADERS), [""] * N_COLS]), posts, [])
+    assert len(asked["names"]) == 9
+    assert asked["budget"] >= 9, (
+        f"staging asked for a budget of {asked['budget']} against "
+        f"{len(asked['names'])} companies, so some would go unscored")

@@ -73,15 +73,7 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
     """(answer, why_not). An empty answer always carries a reason."""
     if not evidence.strip():
         return "", "no evidence loaded, so nothing could be traced"
-    try:
-        import anthropic
-    except ImportError:
-        return "", "anthropic sdk missing"
-    # The same key every other generated word in this system uses.
-    key = cfg.optional("hunter_anthropic_api_key")
-    if not key:
-        return "", "no hunter_anthropic_api_key in system_config"
-    model = cfg.optional("hunter_anthropic_model", "claude-opus-5")
+    from .. import llm
     # His banned list, up front. Telling the model only after it has already
     # used one of them wastes a retry and sometimes all three: the OpenAI answer
     # died three times on the word "solutions" because nothing had ever said not
@@ -95,15 +87,11 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
               f"JOB DESCRIPTION:\n{jd_text[:6000]}\n\n"
               f"EVIDENCE (everything you may draw on):\n{evidence[:120000]}"
               f"{forbidden}")
-    client = anthropic.Anthropic(api_key=key)
-    try:
-        resp = client.messages.create(
-            model=model, max_tokens=MAX_TOKENS, system=SYSTEM,
-            messages=[{"role": "user", "content": prompt}])
-    except Exception as e:
-        return "", f"{e.__class__.__name__}: {str(e)[:120]}"
+    raw, notes = llm.complete(cfg, prompt, max_tokens=MAX_TOKENS, system=SYSTEM)
+    if not raw:
+        return "", "; ".join(notes) or "no model answered"
 
-    answer, why = _parse(resp)
+    answer, why = _parse(raw)
     if not answer:
         return "", why
 
@@ -122,18 +110,18 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
             {"role": "user", "content":
              f"That answer will not do: {problem}. Keep everything that is "
              f"true and specific, cut what is not, and return the same JSON."}]
-        try:
-            resp = client.messages.create(model=model, max_tokens=MAX_TOKENS,
-                                          system=SYSTEM, messages=messages)
-        except Exception as e:
-            return "", f"{e.__class__.__name__}: {str(e)[:120]}"
-        answer, why = _parse(resp)
+        raw, notes = llm.complete(cfg, messages[-1]["content"],
+                                  max_tokens=MAX_TOKENS, system=SYSTEM,
+                                  history=messages[:-1])
+        if not raw:
+            return "", "; ".join(notes) or "no model answered"
+        answer, why = _parse(raw)
         if not answer:
             return "", why
     return "", _problem(answer, evidence, banned_phrases) or "unknown"
 
 
-def _parse(resp) -> tuple[str, str]:
+def _parse(raw: str, truncated: bool = False) -> tuple[str, str]:
     """The answer, however the model chose to wrap it.
 
     A reply cut off at the token limit is named as that, not as a malformed one:
@@ -144,9 +132,9 @@ def _parse(resp) -> tuple[str, str]:
     the point, so this looks for the object anywhere in the reply and falls back
     to the plain text when there is no object at all.
     """
-    if getattr(resp, "stop_reason", "") == "max_tokens":
+    if truncated:
         return "", "the reply was cut off at the token limit"
-    raw = _text(resp).strip()
+    raw = (raw or "").strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
     start, end = raw.find("{"), raw.rfind("}")
