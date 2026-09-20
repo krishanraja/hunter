@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import datetime
 import re
+from functools import lru_cache
 import requests
 import time
 from dataclasses import dataclass, field
@@ -117,6 +118,13 @@ ATS_URL_PATTERNS = [
 ]
 
 
+# Memoised because match_rows asks the same question thousands of times.
+# Pairing 79 sheet rows against 6,584 database rows calls this once per
+# combination: half a million URL parses of the same few thousand strings,
+# and a stack dump of a live run showed the process sitting inside
+# urllib.parse.unquote while sourcing had not started. Both functions are
+# pure functions of a string, so the answer cannot go stale within a run.
+@lru_cache(maxsize=100_000)
 def norm_url(url: str | None) -> str | None:
     if not url:
         return None
@@ -127,6 +135,7 @@ def norm_url(url: str | None) -> str | None:
                        parts.path.rstrip("/"), query, ""))
 
 
+@lru_cache(maxsize=100_000)
 def ats_key(url: str | None) -> tuple | None:
     if not url:
         return None
