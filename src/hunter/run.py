@@ -2380,6 +2380,73 @@ def open_application_note(opens: dict, company: str) -> str:
     return ""
 
 
+def targets_careers_urls(cfg: Config, sheet: Sheet) -> dict[str, str]:
+    """slug -> careers page, from his Target Companies tab.
+
+    Never fatal. A tab he renames should cost hunter a better board
+    discovery, not the whole sourcing run.
+    """
+    try:
+        from . import targets
+        return targets.careers_urls(sheet)
+    except Exception:
+        return {}
+
+
+def live_universe(cfg: Config, canon: Canon, sheet: Sheet,
+                  summary: list[str]) -> list[str]:
+    """The companies to sweep, taken from the tab he edits.
+
+    Canon 9.1 and the Target Companies tab held two copies of the same list
+    and had already drifted by three names. The tab is the one he opens, so
+    the tab wins, and the difference is proposed as a canon amendment rather
+    than written into canon from code.
+    """
+    try:
+        from . import targets
+        named = targets.universe(sheet)
+    except Exception as e:
+        summary.append(f"Target Companies tab unreadable ({e.__class__.__name__}), "
+                       f"falling back to canon 9.1")
+        return list(canon.universe)
+    if not named:
+        summary.append("Target Companies tab is empty, falling back to canon 9.1")
+        return list(canon.universe)
+    tab_keys = {slugify(n): n for n in named}
+    canon_keys = {slugify(c): c for c in canon.universe}
+    only_tab = sorted(tab_keys[k] for k in tab_keys.keys() - canon_keys.keys())
+    only_canon = sorted(canon_keys[k] for k in canon_keys.keys() - tab_keys.keys())
+    if only_tab or only_canon:
+        summary.append(
+            f"Target Companies tab and canon 9.1 disagree: "
+            f"{len(only_tab)} only on the tab ({', '.join(only_tab[:4])}), "
+            f"{len(only_canon)} only in canon ({', '.join(only_canon[:4])}). "
+            f"The tab is what hunter swept.")
+        propose_canon_universe(cfg, named, only_tab, only_canon)
+    return named
+
+
+def propose_canon_universe(cfg: Config, named: list[str], only_tab: list[str],
+                           only_canon: list[str]) -> None:
+    """Canon is never edited from code. The drift is filed as a proposal."""
+    try:
+        db_insert(cfg, "workflow_proposals", [{
+            "agent_id": "hunter",
+            "title": "canon 9.1 has drifted from the Target Companies tab",
+            "body": ("The tab is the list Krish edits and the one hunter now "
+                     "sweeps. Canon 9.1 should be rewritten to match it.\n\n"
+                     "Only on the tab: " + (", ".join(only_tab) or "none") +
+                     "\nOnly in canon: " + (", ".join(only_canon) or "none") +
+                     "\n\nFull list (" + str(len(named)) + "): " +
+                     ", ".join(named)),
+            "status": "open",
+        }], on_conflict="agent_id,title", merge=True)
+    except Exception:
+        # A proposal that cannot be filed must not take the sourcing run with
+        # it. The summary line above already says the two disagree.
+        pass
+
+
 def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                      summary: list[str], company_declines: dict | None = None) -> dict:
     from .ats import ashby, greenhouse, lever
@@ -2391,12 +2458,28 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     counts = {"discovered": 0, "senior": 0, "fresh": 0, "resolved": 0,
               "recorded": 0, "staged": 0, "unresolved": 0, "spend_usd": 0.0}
     postings = []
-    swept, gaps = [], []
-    for company in canon.universe:
+    from .ats import discover as disc
+    board_cache = disc.load_cache(cfg)
+    careers = targets_careers_urls(cfg, sheet)
+    universe = live_universe(cfg, canon, sheet, summary)
+    swept, gaps, learned = [], [], 0
+    for company in universe:
         mapping = ats_for(company)
         if not mapping:
-            gaps.append(company)
-            continue
+            # Until 2026-09-20 this line read "gaps.append(company); continue",
+            # and ats_for is a hardcoded 20 entry dict against a universe of
+            # 52. Thirty-two companies Krish had personally named were
+            # collected into a list, counted in the summary as
+            # "discovery-only coverage", and never swept once. The machinery
+            # to resolve them already existed and was used for LinkedIn
+            # postings and a16z companies; it was simply never pointed here.
+            found = disc.discover(cfg, company, board_cache,
+                                  careers_url=careers.get(slugify(company), ""))
+            if not found:
+                gaps.append(company)
+                continue
+            mapping = found
+            learned += 1
         ats, slug = mapping
         try:
             fn = {"greenhouse": greenhouse.board, "ashby": ashby.board,
@@ -2408,8 +2491,13 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
             swept.append(f"{company}:{len(board)}")
         except Exception as e:
             summary.append(f"board {company}/{slug} failed: {e.__class__.__name__}")
-    summary.append(f"ATS boards swept: {len(swept)}; unmapped companies "
-                   f"(discovery-only coverage): {len(gaps)}")
+    swept_companies = [s.rsplit(":", 1)[0] for s in swept]
+    if learned:
+        disc.save_cache(cfg, board_cache)
+    summary.append(
+        f"target company boards swept: {len(swept)} ({learned} resolved this "
+        f"run); still unreadable: {len(gaps)}"
+        + (f" ({', '.join(sorted(gaps)[:8])})" if gaps else ""))
 
     # The a16z portfolio, as Krish asked on 2026-09-03. The board is a strong
     # company list and a strong ATS finder and a poor job list (25 relevance
@@ -2496,13 +2584,20 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     # full like the canon universe. This is where the exhaustive listing
     # comes from.
     try:
-        from .ats import discover as disc
         cache = disc.load_cache(cfg)
-        universe_slugs = {slugify(c) for c in canon.universe}
         fns = {"greenhouse": greenhouse.board, "ashby": ashby.board, "lever": lever.board}
+        swept_slugs = {slugify(c) for c in swept_companies}
         extra = 0
         for ck, hit in cache.items():
-            if not hit or ck in universe_slugs or hit["ats"] not in fns:
+            # This used to skip every slug in canon.universe, on the
+            # assumption the first leg had already swept it. The first leg
+            # could only sweep the 20 companies in ats_for, so a target
+            # company whose board hunter had successfully LEARNED was
+            # excluded here and absent there: swept by nobody, permanently.
+            # Descript, Gamma and Luma AI were all sitting in this cache.
+            # The exclusion is now what was actually swept, not what was
+            # hoped to be.
+            if not hit or ck in swept_slugs or hit["ats"] not in fns:
                 continue
             try:
                 board = fns[hit["ats"]](hit["slug"])
