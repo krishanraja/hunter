@@ -262,18 +262,30 @@ def validate_row(cells: list[str], *, is_append: bool = True) -> list[str]:
     return fails
 
 
+def row_diff(expected: list[str], actual: list[str]) -> list[tuple[str, str, str]]:
+    """(column name, written, read back) for every cell that disagrees.
+
+    rows_equal answered only true or false, so a failed append said
+    "read-back mismatch on Pipeline!A39:AD78" and nothing else: not which of
+    the forty rows, not which of the thirty columns, not what the two values
+    were. That is unactionable, and it aborted a run that had just spent half
+    an hour sweeping.
+    """
+    actual = pad_row(actual, len(expected))
+    out = []
+    for i, (e, a) in enumerate(zip(expected, actual)):
+        pe, pa = parse_hyperlink(e), parse_hyperlink(a)
+        same = (pe == pa) if (pe or pa) else (str(e).strip() == str(a).strip())
+        if not same:
+            name = HEADERS[i] if i < len(HEADERS) else f"column {i}"
+            out.append((name, str(e)[:120], str(a)[:120]))
+    return out
+
+
 def rows_equal(expected: list[str], actual: list[str]) -> bool:
     """Structural comparison tolerant of Sheets normalization: HYPERLINKs
     compare by (url, label); everything else compares as trimmed text."""
-    actual = pad_row(actual, len(expected))
-    for e, a in zip(expected, actual):
-        pe, pa = parse_hyperlink(e), parse_hyperlink(a)
-        if pe or pa:
-            if pe != pa:
-                return False
-        elif str(e).strip() != str(a).strip():
-            return False
-    return True
+    return not row_diff(expected, actual)
 
 
 def column_state(header: list[str], trailing: tuple[str, ...] = ()) -> str:
@@ -729,9 +741,19 @@ class Sheet:
         rng = f"{TAB}!A{start}:{LAST_COL}{start + len(new_rows) - 1}"
         self._write([(rng, new_rows)])
         landed = [pad_row(r) for r in self._values(rng)]
-        if len(landed) != len(new_rows) or not all(
-                rows_equal(e, a) for e, a in zip(new_rows, landed)):
-            raise SheetError(f"read-back mismatch on {rng}; inspect before retrying")
+        if len(landed) != len(new_rows):
+            raise SheetError(f"read-back on {rng} returned {len(landed)} row(s), "
+                             f"expected {len(new_rows)}; inspect before retrying")
+        problems = []
+        for n, (want, got) in enumerate(zip(new_rows, landed)):
+            for name, w, g in row_diff(want, got):
+                problems.append(f"row {start + n} {name}: wrote {w!r}, "
+                                f"sheet holds {g!r}")
+        if problems:
+            raise SheetError(
+                f"read-back mismatch on {rng}, {len(problems)} cell(s) differ. "
+                + " | ".join(problems[:6])
+                + (f" | and {len(problems) - 6} more" if len(problems) > 6 else ""))
         return rng
 
     def update_package_cells(self, row_number: int, *, cv_url: str, letter_url: str,

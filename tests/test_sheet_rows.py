@@ -908,3 +908,37 @@ def test_hunter_gate_failures_never_reach_the_sheet_through_reconcile(monkeypatc
         assert ledger.db_to_sheet == [], status
         assert len(s.grid) == 2, status
         assert any("not a staged role" in x for x in ledger.skipped), status
+
+
+# ---------- a failed read-back has to say what differed ----------
+
+def test_a_read_back_mismatch_names_the_column_and_both_values():
+    """It said only "read-back mismatch on Pipeline!A39:AD78": not which of
+    the forty rows, not which of the thirty columns, not what the two values
+    were. That aborted a run which had just spent half an hour sweeping, and
+    left nothing to diagnose it with."""
+    from hunter.sheet import row_diff
+    want = good_row()
+    got = list(want)
+    got[C["Comp"]] = "$250,000"
+    got[C["Location"]] = "London"
+    diff = row_diff(want, got)
+    names = {d[0] for d in diff}
+    assert names == {"Comp", "Location"}
+    for name, written, held in diff:
+        assert written != held
+
+
+def test_an_identical_row_has_no_diff():
+    from hunter.sheet import row_diff
+    row = good_row()
+    assert row_diff(row, list(row)) == []
+
+
+def test_a_hyperlink_still_compares_by_url_and_label():
+    from hunter.sheet import hyperlink, row_diff
+    want = good_row()
+    got = list(want)
+    got[C["Job Link"]] = hyperlink("https://job-boards.greenhouse.io/acme/jobs/123", "JD")
+    assert row_diff(want, got) == [] or all(
+        d[0] != "Job Link" for d in row_diff(want, got))
