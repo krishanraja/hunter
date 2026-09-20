@@ -121,3 +121,19 @@ def make_synthetic_cv():
         el, pos = _para(segs, start=pos, **opts)
         content.append(el)
     return {"body": {"content": content}}
+
+
+@pytest.fixture(autouse=True)
+def _reset_model_providers():
+    """A provider disabled by one test must not silence the next one.
+
+    llm.complete remembers a provider that answered "out of budget until the
+    first of the month", because asking it 150 more times in one run buys
+    nothing. Tests share a process, so that memory has to be cleared between
+    them or the suite reports failures that belong to whichever test ran
+    first.
+    """
+    from hunter import llm
+    llm.reset()
+    yield
+    llm.reset()
