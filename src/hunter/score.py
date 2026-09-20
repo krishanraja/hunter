@@ -88,6 +88,16 @@ class ScoreResult:
     rejection_reason: str | None
     components: dict[str, int] = field(default_factory=dict)
     why_it_fits: str = ""
+    # The role judged on its own merits, with the employer left out entirely.
+    #
+    # Krish 2026-09-20: "citi is an example where I'd reject that company
+    # unless the role was ideal, which that one was." A company he declined
+    # is a strong default no, not an absolute one, so the question at such a
+    # company is how good the ROLE is. Scoring it with the company penalty
+    # already applied and then asking whether it cleared a high bar is
+    # circular: the penalty is what stops it clearing.
+    merit: int = 0
+    employer_kind: str = ""
 
 
 def _hits(patterns: list[str], text: str) -> int:
@@ -212,6 +222,12 @@ def score_role(role: ResolvedRole, *, floor: int = FLOOR,
     available = sum(WEIGHTS[k] for k in known) or 1
     earned = sum(known.values()) + penalties
     total = max(1, min(10, round(earned / available * 10)))
+    # The same arithmetic with the employer component and its penalty removed.
+    merit_known = {k: v for k, v in known.items() if k != "employer"}
+    merit_available = sum(WEIGHTS[k] for k in merit_known) or 1
+    merit_penalties = penalties - min(0, emp.points)
+    merit = max(1, min(10, round(
+        (sum(merit_known.values()) + merit_penalties) / merit_available * 10)))
     unknown = sorted(k for k in WEIGHTS if components.get(k) is None)
     why = (f"Engine-Builder signals {engine}, mandate "
            f"{'present' if components['mandate'] else 'absent'}, "
@@ -220,4 +236,5 @@ def score_role(role: ResolvedRole, *, floor: int = FLOOR,
            + (f"; not determinable from the posting: {', '.join(unknown)}"
               if unknown else "") + ".")
     return ScoreResult(score=total, auto_rejected=False, rejection_reason=None,
-                       components=components, why_it_fits=why)
+                       components=components, why_it_fits=why,
+                       merit=merit, employer_kind=emp.kind)

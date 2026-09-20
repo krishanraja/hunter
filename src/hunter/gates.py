@@ -15,6 +15,23 @@ from .sources import ResolvedRole
 
 FLOOR = 200_000  # canon 6, decision 2026-08-24
 
+# What a role at a company he has declined has to score ON ITS OWN MERITS,
+# with the company penalty left out, to reach him anyway.
+#
+# Krish 2026-09-20: "citi is an example where I'd reject that company unless
+# the role was ideal, which that one was." A company-level decline is a strong
+# default no, not an absolute one, and G12 was treating it as absolute: the
+# Citi role he approved would never have been shown to him again.
+#
+# Measured on the roles hunter has recorded at the eleven companies he had
+# declined, scored with the employer component removed: the "AI Adoption and
+# Commercialization Senior Lead, SVP" seat at Citi scores 10, and the next
+# best is amperity "Head of Partnerships and Alliances" at 8, which he
+# declined. Everything else lands between 0 and 5. Nine is the line those
+# numbers draw, and it is a judgement rather than a derivation, so it is one
+# constant in one place.
+EXCEPTIONAL_MERIT = 9
+
 # "SVP, Strategy" and "GM, UK" are how the postings Krish approves actually
 # write themselves, and neither matched: \bvp never fires inside SVP, and GM
 # was absent entirely, so G3 rejected the archetype A titles canon section 5
@@ -175,7 +192,8 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
               equity_override: bool = False,
               package_texts: tuple[str, str] | None = None,
               company_declines: dict | None = None,
-              employer_index=None) -> GateReport:
+              employer_index=None,
+              merit: int | None = None) -> GateReport:
     results: list[GateResult] = []
     hay = f"{role.title}\n{role.jd_text}"
 
@@ -261,12 +279,28 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
     # G12: a company Krish declined as business uninteresting or domain
     # expertise is a verdict on the company. Applied as written, dated, and
     # reversible through hunter_company_allow.
+    # G12, and the exception he added on 2026-09-20. A company he declined is
+    # a strong default no. A role that is ideal on its own merits still
+    # reaches him, and the row says why it got through.
     from .learn import declined_company
     hit = declined_company(company_declines, role.company)
-    results.append(GateResult(
-        "G12", hit is None,
-        f"company declined by Krish on {hit['date']} ({hit['code']})" if hit
-        else "no company-level decline on record"))
+    exceptional = merit is not None and merit >= EXCEPTIONAL_MERIT
+    if not hit:
+        results.append(GateResult("G12", True,
+                                  "no company-level decline on record"))
+    elif exceptional:
+        results.append(GateResult(
+            "G12", True,
+            f"you declined {hit['company']} on {hit['date']} ({hit['code']}), "
+            f"but this role scores {merit} of 10 on its own merits, so it is "
+            f"shown anyway for you to judge"))
+    else:
+        results.append(GateResult(
+            "G12", False,
+            f"company declined by Krish on {hit['date']} ({hit['code']})"
+            + (f"; the role scores {merit} of 10 on its own, below the "
+               f"{EXCEPTIONAL_MERIT} an exception needs" if merit is not None
+               else "")))
 
     # G7, and the escape hatch that switched it off.
     #
@@ -310,8 +344,14 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
     # gate was written. Every other sector he declines also contains a role he
     # approved, which is why no other sector is here and why the score, not a
     # gate, carries the rest of company quality.
-    results.append(GateResult(
-        "G13", not emp.blocks, f"employer {emp.kind}: {emp.evidence}"))
+    if emp.blocks and exceptional:
+        results.append(GateResult(
+            "G13", True,
+            f"employer {emp.kind} ({emp.evidence}), and the role scores "
+            f"{merit} of 10 on its own merits, so it is shown anyway"))
+    else:
+        results.append(GateResult(
+            "G13", not emp.blocks, f"employer {emp.kind}: {emp.evidence}"))
 
     if package_texts is None:
         for g in ("G8", "G9", "G10"):

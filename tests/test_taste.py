@@ -410,3 +410,71 @@ def test_the_posting_text_is_recorded_so_the_whole_bar_becomes_testable():
     assert '"jd_text"' in src, (
         "a scored role must record the text it was scored from, or the taste "
         "test can never grow past the employer and the band")
+
+
+# ---------- a declined company is a default no, not an absolute one ----------
+
+def _declined_index(*companies):
+    return Index(portfolio={}, portfolio_tokens={}, approved=set(),
+                 declined={c: {"company": c, "date": "2026-09-20",
+                               "code": "business_uninteresting",
+                               "job_id": "x", "quote": ""} for c in companies})
+
+
+IDEAL_JD = ("Own adoption and commercialization of AI use cases. Build the "
+            "operating model, define KPIs, partnerships and market entry. "
+            "Architect the function.")
+ORDINARY_JD = ("Own the function and deliver results. Work with stakeholders "
+               "across the business to drive outcomes and manage the team.")
+
+
+def test_the_role_he_called_ideal_reaches_him_despite_the_company():
+    """Krish 2026-09-20: "citi is an example where I'd reject that company
+    unless the role was ideal, which that one was". G12 was absolute, so this
+    role would never have been shown to him again."""
+    from hunter.gates import run_gates
+    idx = _declined_index("citi")
+    role = _role("Citi", "AI Adoption and Commercialization Senior Lead, SVP",
+                 IDEAL_JD, location="New York, NY")
+    result = score.score_role(role, employer_index=idx)
+    assert result.merit >= 9, result.merit
+    report = run_gates(role, company_declines=idx.declined,
+                       employer_index=idx, merit=result.merit)
+    g12 = next(g for g in report.results if g.gate == "G12")
+    assert g12.passed and "on its own merits" in g12.reason
+
+
+def test_an_ordinary_role_at_the_same_company_does_not():
+    from hunter.gates import run_gates
+    idx = _declined_index("citi")
+    role = _role("Citi", "Sr Director, Client Services", ORDINARY_JD,
+                 location="New York, NY")
+    result = score.score_role(role, employer_index=idx)
+    report = run_gates(role, company_declines=idx.declined,
+                       employer_index=idx, merit=result.merit)
+    g12 = next(g for g in report.results if g.gate == "G12")
+    assert not g12.passed
+    assert "below the" in g12.reason
+
+
+def test_the_merit_score_leaves_the_employer_out_entirely():
+    """Judging the role with the company penalty already applied and then
+    asking whether it cleared a high bar is circular: the penalty is what
+    stops it clearing."""
+    idx = _declined_index("citi")
+    role = _role("Citi", "AI Adoption and Commercialization Senior Lead, SVP",
+                 IDEAL_JD, location="New York, NY")
+    result = score.score_role(role, employer_index=idx)
+    assert result.merit > result.score
+    assert result.employer_kind == employer.DECLINED
+
+
+def test_gates_with_no_merit_supplied_keep_the_old_absolute_behaviour():
+    """A caller that has not scored yet must not accidentally grant an
+    exception to every declined company."""
+    from hunter.gates import run_gates
+    idx = _declined_index("citi")
+    report = run_gates(_role("Citi", "Head of GTM", IDEAL_JD),
+                       company_declines=idx.declined, employer_index=idx)
+    g12 = next(g for g in report.results if g.gate == "G12")
+    assert not g12.passed

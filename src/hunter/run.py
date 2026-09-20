@@ -744,11 +744,11 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
         # The restored bar: the employer on record, and the band read out of
         # the posting body when the source left the field empty.
         role.comp = comp_mod.best(role.comp, role.jd_text)
-        report = run_gates(role, never_apply=never,
-                           company_declines=declines,
-                           employer_index=employer_index)
         result = score_role(role, universe=canon.universe,
                             employer_index=employer_index)
+        report = run_gates(role, never_apply=never,
+                           company_declines=declines,
+                           employer_index=employer_index, merit=result.merit)
         if decided_row:
             # His verdict outranks the rubric. The row keeps the score it has
             # and only gains the rationale it was missing.
@@ -829,6 +829,68 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
 
 
 CLEAR_LABEL = f"{verdicts.DECLINE_PREFIX}sourced before the bar was fixed"
+
+
+def recover_verdicts(cfg: Config, sheet: Sheet, canon: Canon,
+                     summary: list[str] | None = None) -> int:
+    """Record his declines from the sheet itself, live rows and archive both.
+
+    A verdict only became a learning event if reconcile had managed to pair
+    the sheet row with its database row. Roughly half never did, so half his
+    taste was thrown away, and every company-level rule built on top of it
+    was built on half the evidence. The sheet is the record; this reads it.
+
+    Idempotent: hunter_verdict_events is unique on
+    (job_id, verdict, reason_code, reason_text).
+    """
+    rows = list(sheet.read_pipeline(canon.sheet_headers))
+    try:
+        rows += list(sheet.read_archive())
+    except Exception as e:
+        (summary or []).append(f"archive unreadable during verdict recovery: "
+                               f"{e.__class__.__name__}")
+    events = learn.from_sheet_rows(rows, source="sheet column A, recovered")
+    if not events:
+        return 0
+    before = len(learn.load_events(cfg))
+    for i in range(0, len(events), 400):
+        db_insert(cfg, "hunter_verdict_events", events[i:i + 400],
+                  on_conflict="job_id,verdict,reason_code,reason_text",
+                  ignore_duplicates=True)
+    after = len(learn.load_events(cfg))
+    if summary is not None:
+        summary.append(f"verdict recovery: {len(events)} decline(s) read off the "
+                       f"sheet, events {before} -> {after}")
+    return after - before
+
+
+def cmd_recover_verdicts(apply: bool = False) -> int:
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    rows = list(sheet.read_pipeline(canon.sheet_headers)) + list(sheet.read_archive())
+    events = learn.from_sheet_rows(rows, source="sheet column A, recovered")
+    have = {(e.get("job_id"), e.get("reason_text")) for e in learn.load_events(cfg)}
+    new = [e for e in events if (e["job_id"], e["reason_text"]) not in have]
+    print(f"{len(events)} decline(s) of yours are on the sheet or in the archive")
+    print(f"{len(new)} of them have no learning event on record\n")
+    from collections import Counter
+    for code, n in Counter(e["reason_code"] for e in new).most_common():
+        print(f"  {n:>3}  {code}")
+    company = [e for e in new if e["reason_code"] in learn.COMPANY_CODES]
+    print(f"\n  {len(company)} are company-level declines that should drive G12:")
+    for e in company[:25]:
+        print(f"    {e['company'][:22]:24} {e['title'][:44]:46} {e['reason_code']}")
+    if not apply:
+        print("\ndry run. add --apply to record them.")
+        return 0
+    summary: list[str] = []
+    gained = recover_verdicts(cfg, sheet, canon, summary)
+    print("\n" + "\n".join(summary))
+    declines = learn.company_declines(learn.load_events(cfg),
+                                      learn.load_company_allow(cfg))
+    names = sorted({d["company"] for d in declines.values()})
+    print(f"\ncompanies G12 now blocks ({len(names)}):\n  " + ", ".join(names))
+    return 0
 
 
 def cmd_clear_unverdicted(apply: bool = False) -> int:
@@ -2587,10 +2649,13 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                             jd_url=jd_url, jd_text=jd, live=live,
                             source=p.source, location=p.location or "",
                             comp=band, liveness=liveness)
-        report = run_gates(role, never_apply=never, company_declines=company_declines,
-                           employer_index=employer_index)
+        # Score BEFORE gating. G12 and G13 need the role's merit, which is
+        # its score with the employer left out, to decide whether a company
+        # he declined is overridden by an exceptional role.
         result = score_role(role, universe=canon.universe,
                             employer_index=employer_index)
+        report = run_gates(role, never_apply=never, company_declines=company_declines,
+                           employer_index=employer_index, merit=result.merit)
         status, reason = "scanned", None
         if result.auto_rejected:
             status, reason = "dropped", result.rejection_reason
@@ -4576,6 +4641,8 @@ def main(argv: list[str]) -> int:
         return cmd_verify(apply="--apply" in argv)
     if cmd == "disconnect":
         return cmd_disconnect(apply="--apply" in argv)
+    if cmd == "recover-verdicts":
+        return cmd_recover_verdicts(apply="--apply" in argv)
     if cmd == "clear-unverdicted":
         return cmd_clear_unverdicted(apply="--apply" in argv)
     if cmd == "archive":

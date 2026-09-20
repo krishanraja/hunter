@@ -145,6 +145,47 @@ def record(cfg: Config, rows: list[dict]) -> int:
     return len(events)
 
 
+def from_sheet_rows(rows, *, source: str) -> list[dict]:
+    """Verdict events built from sheet rows directly, without a database row.
+
+    record() needs a hunter_seen_roles row carrying krish_verdict, which means
+    a verdict only becomes an event if reconcile managed to pair the sheet row
+    with its database row first. Measured 2026-09-20: 51 of his 110 declines
+    had no event at all, 24 of them company-level declines that should have
+    been driving G12, because the rows never paired. Citi was among them, so
+    the gate that exists to stop a company he rejected was never armed for the
+    company he named in his complaint.
+
+    The sheet is the record of what he decided. This reads it as one.
+    hunter's own codes are excluded: a dead posting or a duplicate is hunter
+    failing, not his taste, and the clearing label is hunter's own output.
+    """
+    from .sources import job_id as mint
+    out, seen = [], set()
+    for r in rows:
+        text = (r.verdict or "").strip()
+        kind, code = verdicts.parse(text)
+        if kind != "rejection" or not text:
+            continue
+        if verdicts.is_system_code(code):
+            continue
+        if "sourced before the bar was fixed" in text:
+            continue
+        company, title = (r.company or "").strip(), (r.role or "").strip()
+        if not company or not title:
+            continue
+        if code is None:
+            code = infer(text).primary
+        jid = mint(company, title)
+        if jid in seen:
+            continue
+        seen.add(jid)
+        out.append({"job_id": jid, "company": company, "title": title,
+                    "verdict": kind, "reason_code": code,
+                    "reason_text": text[:500], "source": source})
+    return out
+
+
 def load_events(cfg: Config) -> list[dict]:
     return db_get(cfg, "hunter_verdict_events",
                   {"select": "*", "order": "recorded_at.asc", "limit": ALL_ROWS})
