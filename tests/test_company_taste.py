@@ -60,26 +60,28 @@ def test_the_bar_admits_the_companies_he_named(scored, capsys):
     """He wrote 52 company names down himself. A bar that blocks them is not
     measuring his taste, whatever else it does."""
     targets = _of(scored, "target")
-    passed, total = _rate(targets, lambda s: s.total >= SWEEP_FLOOR)
-    blocked = [r["name"] for s, r in targets if s.total < SWEEP_FLOOR]
+    # s.sweeps, not s.total. A company can score above the floor and still
+    # be held back as needs-evidence, and an earlier version of this test
+    # counted those as swept, which overstated the bar by 9 companies.
+    passed, total = _rate(targets, lambda s: s.sweeps)
+    blocked = [r["name"] for s, r in targets if not s.sweeps]
     with capsys.disabled():
         print(f"\n  of the {total} companies he named, the bar sweeps {passed}")
         print(f"  blocked: {', '.join(sorted(blocked)) or 'none'}")
-    assert passed / total >= 0.75, (
+    assert passed / total >= 0.78, (
         f"the bar blocks {total - passed} of the {total} companies he chose: "
         f"{sorted(blocked)}")
 
 
 def test_the_bar_blocks_the_companies_he_turned_down(scored, capsys):
     declined = _of(scored, "declined")
-    blocked, total = _rate(declined, lambda s: s.total < SWEEP_FLOOR)
-    admitted = [(r["name"], s.total) for s, r in declined
-                if s.total >= SWEEP_FLOOR]
+    blocked, total = _rate(declined, lambda s: not s.sweeps)
+    admitted = [(r["name"], s.total) for s, r in declined if s.sweeps]
     with capsys.disabled():
         print(f"\n  of the {total} companies he declined, the bar blocks {blocked}")
         for name, total_score in sorted(admitted, key=lambda x: -x[1]):
             print(f"    still admitted: {name} at {total_score}")
-    assert blocked / total >= 0.80, (
+    assert blocked / total >= 0.85, (
         f"the bar admits {total - blocked} of the {total} companies he "
         f"declined: {admitted}")
 

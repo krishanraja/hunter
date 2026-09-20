@@ -289,7 +289,11 @@ def test_every_broken_check_has_a_repair_or_is_deliberately_reported():
                   "decided rows archived", "row headroom",
                   # a status hunter does not understand is a bug upstream;
                   # overwriting it would hide the bug rather than fix it
-                  "every Yes is accounted for"}
+                  "every Yes is accounted for",
+                  # the only check about the OUTPUT rather than the sheet.
+                  # What to change when the funnel drifts is a judgement,
+                  # and it is his, so a repair here would be dishonest.
+                  "accept rate holds up"}
     names = {c.name for c in invariants.check_all(_StubSheet(), [], [])}
     unhandled = names - set(invariants.REPAIRS) - reportable
     assert not unhandled, f"these checks can fail with nothing to do: {unhandled}"
@@ -303,3 +307,41 @@ class _StubSheet:
 
     def _validation_at(self, row, tab="Pipeline", sheet_id=None):
         return {"condition": {"type": "ONE_OF_LIST"}}
+
+
+# ---------- the number nobody was watching ----------
+
+def test_a_funnel_that_has_stopped_working_is_raised_in_plain_words():
+    """Between 6 August and 20 September the accept rate fell from 77 percent
+    to single figures. Every batch was recorded; the rate was not, so nothing
+    could see the line going down."""
+    from hunter import batchstats
+
+    good = batchstats.Batch(key="2026-08-06", staged=13, verdicted=13, accepted=10)
+    bad1 = batchstats.Batch(key="2026-09-14", staged=16, verdicted=16, accepted=1)
+    bad2 = batchstats.Batch(key="2026-09-17", staged=56, verdicted=56, accepted=6)
+
+    ok = invariants.check_accept_rate([good])
+    assert ok.state == invariants.OK, "a healthy funnel must not raise"
+
+    bad = invariants.check_accept_rate([good, bad1, bad2])
+    assert bad.state == invariants.BROKEN
+    assert "2026-09-14" in bad.detail and "%" in bad.detail
+
+
+def test_one_bad_batch_is_not_yet_a_trend():
+    """Waiting for a third batch is six more weeks of his life, but raising on
+    one is crying wolf at ordinary variance."""
+    from hunter import batchstats
+    good = batchstats.Batch(key="2026-08-06", staged=13, verdicted=13, accepted=10)
+    bad = batchstats.Batch(key="2026-09-14", staged=16, verdicted=16, accepted=1)
+    assert invariants.check_accept_rate([good, bad]).state == invariants.OK
+
+
+def test_a_batch_he_has_barely_judged_has_no_rate_rather_than_a_rate_of_zero():
+    """Zero would read as "he rejected everything" and would drag the trend
+    down, which is scoring an absent observation."""
+    from hunter import batchstats
+    fresh = batchstats.Batch(key="2026-09-20", staged=34, verdicted=1, accepted=0)
+    assert fresh.rate is None and not fresh.settled
+    assert invariants.check_accept_rate([fresh]).state == invariants.OK

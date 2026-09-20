@@ -178,7 +178,14 @@ def score_role(role: ResolvedRole, *, floor: int = FLOOR,
     # settles the question, and absent both the component is unknown rather
     # than failed. Unknown components leave both the numerator and the
     # denominator, and the score is expressed out of ten.
-    in_universe = any((role.company or "").lower().strip() == str(c).lower().strip()
+    # Exact lowercased string equality, which is what this was, means "Clay
+    # Labs" is not Clay and "Cursor (Anysphere)" is not Anysphere. hunter has
+    # distinctive_tokens for exactly this and uses it everywhere else, so the
+    # one signal that carried his named list into the score fired almost
+    # never.
+    from .sources import distinctive_tokens
+    role_tokens = distinctive_tokens(role.company or "", "")
+    in_universe = any(role_tokens & distinctive_tokens(str(c), "")
                       for c in universe)
     # STAGE_OK used to match "public", "nasdaq", "nyse" and "ipo", so a listed
     # bank earned this point for being a listed bank. Krish 2026-09-20 on

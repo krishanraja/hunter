@@ -108,9 +108,15 @@ def batch_state(rows) -> dict:
 
 
 def review_email(rows, staged: int, *, state: dict | None = None,
-                 top: int = 12, notes: list[str] | None = None) -> tuple[str, str, str]:
+                 top: int = 12, notes: list[str] | None = None,
+                 batches=None) -> tuple[str, str, str]:
     """(subject, html, text) for the batch he has to review."""
     st = state or batch_state(rows)
+    # The funnel's own report card, in front of him every week. He should
+    # never again be the monitoring system for his own accept rate.
+    if batches:
+        from . import batchstats
+        notes = list(notes or []) + batchstats.lines(batches)
     fresh = [r for r in rows if verdicts.parse(r.verdict or "")[0] == "none"]
 
     def score_of(r):
@@ -178,7 +184,8 @@ def review_email(rows, staged: int, *, state: dict | None = None,
 
 
 def send_review_ready(cfg: Config, rows, staged: int, *,
-                      notes: list[str] | None = None, force: bool = False) -> dict:
+                      notes: list[str] | None = None, force: bool = False,
+                      batches=None) -> dict:
     """Mail him the batch, once per batch.
 
     The fingerprint is the date plus the number waiting, so two runs on one day
@@ -191,7 +198,8 @@ def send_review_ready(cfg: Config, rows, staged: int, *,
     fp = f"{_now():%Y-%m-%d}:{st['to_review']}"
     if not force and already_sent(cfg, REVIEW_READY, fp):
         return {"sent": False, "reason": "already told him about this batch"}
-    subject, body, text = review_email(rows, staged, state=st, notes=notes)
+    subject, body, text = review_email(rows, staged, state=st, notes=notes,
+                                       batches=batches)
     out = notify.send_email(cfg, subject, body, text=text)
     mark_sent(cfg, REVIEW_READY, fp, {"staged": staged, **st})
     return {"sent": bool(out.get("sent")), "subject": subject, **st}

@@ -211,7 +211,17 @@ HIS_GEOGRAPHY = re.compile(
 HEADCOUNT = re.compile(r"\b(\d[\d,]*)\s*(?:to|-|–)\s*(\d[\d,]*)\b|\b(\d[\d,]*)\+?\s*(?:employees|people|staff|headcount)\b", re.I)
 BAND = re.compile(r"\b(\d+)\s*(k?)\s*(?:to|-|–)\s*(\d+)\s*(k?)\b", re.I)
 
-MIN_EVIDENCED = 2
+# One, because knowing what the business does is already mandatory and
+# MIN_DENOMINATOR already says arithmetically that a single observation is
+# not certainty: a company known only by its category lands at 6.7, which is
+# Tier 3, swept last. Requiring two observations on top of that was the same
+# caution charged twice, and it left 35 percent of the companies he had
+# personally named unswept. Measured on his 138 labelled companies: at one,
+# the bar sweeps 80 percent of his targets and blocks 87 percent of his
+# declines; at two, 65 and 93. Blocking a company he chose costs him a role
+# he wants; admitting one he declined costs him a row to reject, and the
+# role level gates still stand behind it.
+MIN_EVIDENCED = 1
 SWEEP_FLOOR = 6.0
 DISCOVERY_FLOOR = 8.0
 MAX_SCORE = 10.0
@@ -376,12 +386,22 @@ def category_fit(f: Facts) -> Component:
     if not f.what_it_does:
         return _unknown("category", "what the business does is")
     text = f.what_it_does.value
+    # Best match, not first match. Clay describes itself as infrastructure
+    # for agentic GTM workflows and also happens to use the phrase "creative
+    # tools", and first-wins ordering labelled it a creator economy company.
+    # The points are the same either way, but the line he reads on the sheet
+    # has to be right or the score cannot be argued with.
+    hits = []
     for name, pat in CATEGORIES.items():
-        m = pat.search(text)
-        if m:
-            return Component("category", WEIGHTS["category"], True,
-                             f"in {name.replace('_', ' ')} ({m.group(0).strip()})",
-                             f.what_it_does.source)
+        found = pat.findall(text)
+        if found:
+            hits.append((len(found), name, pat.search(text).group(0).strip()))
+    if hits:
+        hits.sort(key=lambda h: (-h[0], list(CATEGORIES).index(h[1])))
+        _, name, phrase = hits[0]
+        return Component("category", WEIGHTS["category"], True,
+                         f"in {name.replace('_', ' ')} ({phrase})",
+                         f.what_it_does.source)
     if ADJACENT.search(text):
         return Component("category", WEIGHTS["category"] / 2, True,
                          "adjacent to his categories, not in one",

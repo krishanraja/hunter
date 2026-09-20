@@ -504,8 +504,32 @@ def save(cfg: Config, scores: list) -> None:
 
 def load(cfg: Config) -> dict[str, dict]:
     return {r["slug"]: r for r in db_get(cfg, TABLE,
-            {"select": "slug,name,total,tier,status,evidenced,why,scored_at",
-             "limit": ALL_ROWS})}
+            {"select": "slug,name,total,tier,status,evidenced,why,components,"
+                       "scored_at", "limit": ALL_ROWS})}
+
+
+def restore(row: dict):
+    """A CompanyScore from a saved row, evidence and all.
+
+    Rebuilding one without its components produced a number with no working
+    shown, which is the opposite of the promise this makes: every score
+    lands on his tab next to the sentence and the URL it came from, so he
+    can overrule it in one edit.
+    """
+    from .company import CompanyScore, Component
+    raw = row.get("components")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            raw = []
+    comps = [Component(name=c.get("name", ""), points=float(c.get("points") or 0),
+                       evidenced=bool(c.get("evidenced")),
+                       evidence=c.get("evidence", ""), source=c.get("source", ""))
+             for c in (raw or []) if isinstance(c, dict)]
+    return CompanyScore(slug=row.get("slug", ""), name=row.get("name") or "",
+                        total=float(row.get("total") or 0), components=comps,
+                        status=row.get("status") or "")
 
 
 # The opening of a job description is almost always the company describing

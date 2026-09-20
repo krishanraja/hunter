@@ -129,12 +129,20 @@ def write_hunter_columns(sheet: Sheet, rows: dict[int, list],
     lo = min(rows)
     hi = max(rows)
     back = sheet.read_tab_values(f"{TAB}!{first}{lo}:{last}{hi}")
+    def same(a, b) -> bool:
+        """Sheets stores 10.0 as 10 and 0.0 as 0, so a read back is compared
+        as a number when both sides are numbers and as text otherwise."""
+        try:
+            return float(a) == float(b)
+        except (TypeError, ValueError):
+            return str(a).strip() == str(b).strip()
+
     problems = []
     for row, values in sorted(rows.items()):
         got = back[row - lo] if row - lo < len(back) else []
-        want = [str(v) for v in (list(values) + [""] * len(HUNTER_HEADERS))[:len(HUNTER_HEADERS)]]
-        got = [str(v) for v in (list(got) + [""] * len(HUNTER_HEADERS))[:len(HUNTER_HEADERS)]]
-        if got[:2] != want[:2]:
+        want = (list(values) + [""] * len(HUNTER_HEADERS))[:len(HUNTER_HEADERS)]
+        got = (list(got) + [""] * len(HUNTER_HEADERS))[:len(HUNTER_HEADERS)]
+        if not all(same(g, w) for g, w in zip(got[:2], want[:2])):
             problems.append(f"row {row}: wrote {want[:2]} and read back {got[:2]}")
     if problems:
         raise SheetError("the Target Companies write did not land: "
