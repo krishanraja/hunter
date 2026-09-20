@@ -600,6 +600,12 @@ def test_db_insert_normalizes_heterogeneous_keys(monkeypatch):
     sent = {}
 
     class FakeResp:
+        # A fake standing in for requests.Response has to carry the fields the
+        # caller reads. db_insert checks status_code so a failed batch can say
+        # which batch, how big it was, and what the server objected to.
+        status_code = 201
+        text = ""
+
         def raise_for_status(self):
             pass
 

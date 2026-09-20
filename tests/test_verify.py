@@ -191,3 +191,53 @@ def test_the_reads_that_decide_identity_ask_for_every_row():
     assert not offenders, (
         "a capped read of an identity table is a silent wrong answer once the "
         f"table outgrows the cap; use ALL_ROWS: {offenders}")
+
+
+# ---------- one write is not one request ----------
+
+def test_a_large_insert_is_sent_in_batches(monkeypatch):
+    """A sourcing run's single insert answered 500 once 265 boards were being
+    swept and every row carried the posting text. Half an hour of sweeping
+    was thrown away at the last step because the write was indivisible."""
+    from hunter import config as C
+
+    sent = []
+
+    class FakeResp:
+        status_code = 201
+        text = ""
+        def raise_for_status(self): pass
+
+    def fake_post(url, headers=None, params=None, json=None, timeout=None):
+        sent.append(len(json))
+        return FakeResp()
+
+    monkeypatch.setattr(C.requests, "post", fake_post)
+    cfg = C.Config(supabase_url="https://x", supabase_key="k", raw={})
+    C.db_insert(cfg, "hunter_seen_roles",
+                [{"job_id": f"c{i}:r"} for i in range(1000)])
+    assert len(sent) > 1, "a thousand rows went in one request"
+    assert max(sent) <= C.INSERT_BATCH
+    assert sum(sent) == 1000, "batching must not drop or duplicate rows"
+
+
+def test_a_failed_batch_says_which_one_and_how_big(monkeypatch):
+    """"500 Server Error" alone says nothing about which write, how large it
+    was, or what the server objected to."""
+    import pytest
+    import requests as rq
+    from hunter import config as C
+
+    class FakeResp:
+        status_code = 500
+        text = "statement timeout"
+        def raise_for_status(self): raise AssertionError("should not be reached")
+
+    monkeypatch.setattr(C.requests, "post",
+                        lambda *a, **k: FakeResp())
+    cfg = C.Config(supabase_url="https://x", supabase_key="k", raw={})
+    with pytest.raises(rq.HTTPError) as e:
+        C.db_insert(cfg, "hunter_seen_roles", [{"job_id": "a:b"}])
+    msg = str(e.value)
+    assert "hunter_seen_roles" in msg and "statement timeout" in msg
+    assert "KB" in msg

@@ -173,6 +173,15 @@ def db_get(cfg: Config, table: str, params: dict[str, str]) -> list[dict]:
     return out
 
 
+# How many rows go in one POST. A single request carrying every row of a
+# sourcing run answered 500 on 2026-09-20: 265 a16z boards had been swept
+# instead of 8, and every row now carries the posting text it was scored
+# from, so one insert was tens of megabytes of JSON. Thirty minutes of
+# sweeping was thrown away at the last step because the write was one
+# indivisible thing. Batching also means partial progress survives.
+INSERT_BATCH = 300
+
+
 def db_insert(cfg: Config, table: str, rows: list[dict], *,
               on_conflict: str | None = None, ignore_duplicates: bool = False,
               merge: bool = False) -> None:
@@ -191,9 +200,19 @@ def db_insert(cfg: Config, table: str, rows: list[dict], *,
         prefer.append("resolution=ignore-duplicates")
     headers["Prefer"] = ",".join(prefer)
     params = {"on_conflict": on_conflict} if on_conflict else {}
-    r = requests.post(f"{cfg.supabase_url}/rest/v1/{table}",
-                      headers=headers, params=params, json=rows, timeout=60)
-    r.raise_for_status()
+    url = f"{cfg.supabase_url}/rest/v1/{table}"
+    for start in range(0, len(rows), INSERT_BATCH):
+        chunk = rows[start:start + INSERT_BATCH]
+        r = requests.post(url, headers=headers, params=params, json=chunk,
+                          timeout=120)
+        if r.status_code >= 400:
+            # raise_for_status alone says "500 Server Error" and nothing about
+            # which write, how big it was, or what the server objected to.
+            raise requests.HTTPError(
+                f"{r.status_code} writing rows {start} to {start + len(chunk)} "
+                f"of {len(rows)} into {table} "
+                f"({len(chunk)} row(s), {len(str(chunk)) // 1024}KB): "
+                f"{r.text[:300]}", response=r)
 
 
 def db_patch(cfg: Config, table: str, match: dict[str, str], values: dict) -> None:

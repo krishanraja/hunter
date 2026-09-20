@@ -2676,8 +2676,13 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                # The text this score came from. Without it a role cannot be
                # replayed through the scorer, so the taste test can only
                # measure the parts of the bar that do not need the posting.
-               # Truncated because the point is replay, not archival.
-               "jd_text": (role.jd_text or "")[:20000],
+               #
+               # 6,000 characters, not 20,000. The scorer's signals are all in
+               # the first page or two of a posting, and the rest is benefits
+               # boilerplate. At 20,000 a sourcing run's single insert became
+               # tens of megabytes of JSON and the database answered 500,
+               # throwing away half an hour of sweeping at the last step.
+               "jd_text": (role.jd_text or "")[:6000],
                "last_verified_at": NOW() if live else None}
         inserts.append(row)
         if status == "staging":
