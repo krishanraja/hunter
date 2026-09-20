@@ -171,3 +171,67 @@ Named here rather than pretended away.
   read.** Ashby, Greenhouse and Lever are covered; Workday, Rippling, Gem and
   in-house boards are not. Those companies are in the index and invisible to
   the sweep.
+
+---
+
+## The company layer (added 2026-09-20)
+
+Hunter now asks whether the business is worth his time before it asks about
+the seat. That is a new surface, and these are the ways it can go wrong.
+
+### Evidence
+
+| Case | What happens |
+|---|---|
+| A company's site answers 403 to hunter | **repaired.** Retried with a browser user agent, then its about page, then the opening of its own job postings. Gamma and Perplexity both needed this. |
+| A homepage renders client side and leaves only class names | **repaired.** `_is_prose` refuses markup leakage and nav furniture, so a Tailwind selector string is never stored as a description. Krea and Reddit both produced one. |
+| The slug guess lands on a different company | **reported.** The resolved host must be the company's own, so a redirect to a registrar is refused. Where a name match is all hunter has, the evidence line on his tab says "site matched by name only, worth checking". Perplexity, Gamma and Krea each hit this. |
+| A model returns a fact with no citation | **repaired.** A `Fact` cannot be constructed without a source, so the field is dropped rather than stored. |
+| A model answers "no published figure found" instead of null | **repaired.** `NON_ANSWER` drops it, because that sentence would otherwise be scored as an observation. |
+| A portfolio board reports head_count as a band index | **repaired.** It is not read at all. 1Password comes back as 5. |
+| Nothing can be established about a company | **reported.** Status is `needs evidence`, it does not enter the sweep set, and roles from it are ranked rather than refused. |
+| A firm's portfolio board stops answering | **reported.** The firm is named in the run summary. It is never silently absent. |
+
+### Scoring and the gate
+
+| Case | What happens |
+|---|---|
+| A component has no evidence | **repaired by design.** It scores nothing AND is marked unknown, and the score is normalised over what was observed. Unknown and zero are never the same answer. |
+| Only one thing is known about a company | **repaired.** `MIN_DENOMINATOR` divides by at least the weight of category plus one, so one lucky match lands at Tier 3 rather than a perfect 10. |
+| What the business does is unknown | **reported.** Nothing is scored without it. It is the prerequisite, not one consideration among five. |
+| A role is exceptional at a company below the floor | **repaired.** G14 opens at `EXCEPTIONAL_MERIT`, like G12 and G13. His ruling: "citi is an example where I'd reject that company unless the role was ideal". |
+| The declared weights and the component functions disagree | **repaired.** Points come from `WEIGHTS`, and a test asserts each component can reach exactly its declared weight. |
+| `score.py` drifts from the rubric on his Scoring Reference tab | **reported.** A test carries his rubric and fails if either moves. |
+
+### The tab and the proposals
+
+| Case | What happens |
+|---|---|
+| He renames or moves the Target Companies tab | **reported.** Sourcing falls back to canon 9.1 and says so; it never fails the run. |
+| The tab and canon 9.1 disagree | **reported.** The tab wins, and the drift is filed as a `workflow_proposals` row. Canon is never edited from code. |
+| A hunter write lands in the wrong range | **reported.** Every write is read back, and columns A to H are never written at all. |
+| A proposal block grows unread | **repaired.** Capped at 15 rows, and shorter lists clear the tail rather than leaving last week's behind. |
+| A page title arrives in the company field | **repaired.** "Ceribell \| AI-Powered Point-of-Care EEG" is trimmed to "Ceribell". |
+| An ATS slug arrives as the company name | **repaired.** A properly cased name beats a lowercase one, so his tab is never offered "tanium". |
+| A candidate is a category, not an employer | **repaired.** "health", "capital", "stealth" and friends are refused. |
+
+### The funnel
+
+| Case | What happens |
+|---|---|
+| Accept rate falls for two batches | **reported.** The invariants layer raises it and the weekly email carries the trend. Deliberately no repair: what to change is his judgement. |
+| A batch he has barely judged | **repaired.** It has no rate at all, rather than a rate of zero that would drag the trend down. |
+| A verdict never paired to a database row | **repaired.** The rate reads `hunter_verdict_events`, not `krish_verdict`, which is the column that reported a batch he mostly declined as 100 percent. |
+| The discovery budget never reaches the good candidates | **repaired.** Candidates are ordered by what is free to know first: portfolio backing, a readable board, people he knows there. |
+
+### Still open
+
+- A homonym that hunter cannot tell apart from the real company (gamma.ai
+  against gamma.app) is scored with a caveat rather than refused. His tab
+  shows the caveat; nothing else can settle it.
+- A large private company with no funding language on its site scores as an
+  unknown stage rather than as mature. Asana, Salesforce, UiPath and
+  ThoughtSpot all clear the company floor for this reason, and are caught by
+  G12 only because he has already declined them.
+- The 1,228 portfolio companies are refreshed only when `portfolios` is run.
+  Nothing yet re-runs it on a schedule.
