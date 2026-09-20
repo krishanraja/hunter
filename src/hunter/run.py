@@ -2470,6 +2470,11 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                "rejection_reason": reason, "source": role.source,
                "location": role.location, "comp": role.comp,
                "sweep_date": TODAY(), "why_it_fits": result.why_it_fits,
+               # The text this score came from. Without it a role cannot be
+               # replayed through the scorer, so the taste test can only
+               # measure the parts of the bar that do not need the posting.
+               # Truncated because the point is replay, not archival.
+               "jd_text": (role.jd_text or "")[:20000],
                "last_verified_at": NOW() if live else None}
         inserts.append(row)
         if status == "staging":

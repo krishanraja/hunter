@@ -333,3 +333,19 @@ def test_the_employer_component_is_worth_something_but_not_everything():
     does."""
     assert employer.POINTS[employer.PORTFOLIO] < 3
     assert employer.POINTS[employer.UNKNOWN] == 0
+
+
+# ---------- what the fixture cannot yet measure ----------
+
+def test_the_posting_text_is_recorded_so_the_whole_bar_becomes_testable():
+    """hunter_seen_roles never stored the text a role was scored from, so a
+    role cannot be replayed through the scorer and this file can only measure
+    the employer, the seat and the band. Roles staged from 2026-09-20 carry
+    it, and once enough have accumulated the JD-dependent components can be
+    measured against his verdicts too."""
+    import inspect
+    from hunter import run
+    src = inspect.getsource(run.stage_postings)
+    assert '"jd_text"' in src, (
+        "a scored role must record the text it was scored from, or the taste "
+        "test can never grow past the employer and the band")
