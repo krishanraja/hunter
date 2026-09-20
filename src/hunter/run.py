@@ -2215,11 +2215,25 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                 cache[c["slug"]] = None
         if probed:
             disc.save_cache(cfg, cache)
-            db_insert(cfg, "hunter_a16z_companies",
-                      [{"slug": s, "ats": (cache[s] or {}).get("ats"),
-                        "ats_slug": (cache[s] or {}).get("slug")}
-                       for s in {c["slug"] for c in kept} if s in cache],
-                      on_conflict="slug", merge=True)
+            # `name` is NOT NULL with no default, and a PostgREST upsert is an
+            # INSERT ON CONFLICT: the not-null check fires before the conflict
+            # is resolved, so omitting it answers 400 even for a row that
+            # already exists. The first version of this omitted it, and the
+            # only reason it was noticed is that the write was read back.
+            try:
+                db_insert(cfg, "hunter_a16z_companies",
+                          [{"slug": c["slug"], "name": c["name"],
+                            "ats": (cache.get(c["slug"]) or {}).get("ats"),
+                            "ats_slug": (cache.get(c["slug"]) or {}).get("slug")}
+                           for c in kept if c["slug"] in cache],
+                          on_conflict="slug", merge=True)
+                stored = sum(1 for c in kept
+                             if (cache.get(c["slug"]) or {}).get("ats"))
+                summary.append(f"a16z boards recorded on the portfolio table: "
+                               f"{stored}")
+            except Exception as e:
+                summary.append(f"a16z board write failed, cache still holds them: "
+                               f"{e.__class__.__name__}: {e}")
         summary.append(f"a16z boards: probed {probed} portfolio companies, "
                        f"found {learned_boards} readable board(s)")
 
