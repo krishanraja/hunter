@@ -330,10 +330,15 @@ def site_facts(url: str, timeout: int = 20) -> tuple[dict, list[str]]:
 # order: a page that does not name the company is somebody else's site, and
 # scoring a company from a squatter's parking page would be worse than
 # scoring it from nothing.
-TLDS = (".com", ".ai", ".io", ".app", ".co", ".dev")
+# Three, not six. A company hunter has never heard of costs one DNS round
+# trip per candidate, and at a budget of 300 companies the tail of .app,
+# .co and .dev turned a discovery pass into twenty five minutes of waiting
+# for names that were never going to resolve. Real companies are on one of
+# these or are reachable through the name they publish.
+TLDS = (".com", ".ai", ".io")
 
 
-def resolve_domain(name: str, timeout: int = 10) -> tuple[str, str]:
+def resolve_domain(name: str, timeout: int = 6) -> tuple[str, str]:
     """Find the company's own site, and prove the page is about them.
 
     Returns (url, note). The proof is that the page names the company; a
