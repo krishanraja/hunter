@@ -62,8 +62,11 @@ written.
 | 1a.8 | A sector rule blocks roles he wants | the measurement, before the rule ships | Healthcare, consultancy and agency blocklists were all written and deleted: they would have killed BioSpace, Recursion, Talkspace, Harvey and Razorfish. Only banks and insurers are a gate. **repaired** |
 | 1a.9 | A title rule blocks seats he wants | the measurement, before the rule ships | A junior-seat rule for Lead and Manager was written and deleted: he approved three Lead seats at $205K to $360K and every General Manager seat on the sheet. **repaired** |
 | 1a.10 | A company hunter knows nothing about | `employer.UNKNOWN`, worth zero | Reaches him. Refusing needs evidence; ranking does not. **repaired** |
-| 1a.11 | The bar drifts again | `tests/test_taste.py` | Prints how many of his approvals and declines the bar blocks, and fails when it blocks an approval. **repaired** |
-| 1a.12 | His taste changes | the fixture goes stale | Nothing notices yet. Refresh it when he verdicts a batch. **open** |
+| 1a.11 | A company he declined posts an ideal role | G12 and G13 read the role's merit, its score with the employer left out | Shown anyway above merit 9, with the reason on the row. An absolute block would have hidden the Citi role he approved, and judging it on the ordinary score is circular because the company penalty is what stops it clearing. **repaired** |
+| 1a.12 | A verdict of his is lost because the row never paired | `learn.from_sheet_rows` reads the sheet, which is the record, rather than requiring a database match | 89 of his declines had no learning event at all and G12 was running on 11 companies instead of 36, Citi among the missing. **repaired** |
+| 1a.13 | The bar drifts again | `tests/test_taste.py` | Prints how many of his approvals and declines the bar blocks, and fails when it blocks an approval. **repaired** |
+| 1a.14 | His taste changes | the fixture goes stale | Refresh it when he verdicts a batch. Doing so on 2026-09-20 broke the institution gate within the hour, which is the file working. Still a manual step. **open** |
+| 1a.15 | Merit 9 is a judgement, not a derivation | nothing | One example of an ideal role at a declined company is all his data holds. The threshold is one constant in `gates.EXCEPTIONAL_MERIT` and wants tuning once real runs have produced more. **open** |
 
 ## 2. Sourcing
 
