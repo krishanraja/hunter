@@ -585,7 +585,8 @@ def _stage_with_company(monkeypatch, score, *, status="", merit=None,
                       components=[Component("category", 4, True,
                                             "in ai native enterprise", "https://x")])
     monkeypatch.setattr(run_mod, "company_scores",
-                        lambda cfg, names, sheet=None, summary=None: {"acme": cs})
+                        lambda cfg, names, sheet=None, summary=None, budget=None:
+                        {"acme": cs})
     monkeypatch.setattr(run_mod, "known_company_keys", lambda cfg: set())
     p = RolePosting(company="Acme", title=title, location="London, United Kingdom",
                     comp_text="$250,000 - $320,000",
@@ -685,3 +686,45 @@ def test_cold_targets_stops_when_it_runs_out_of_time(monkeypatch):
     stats = bridges_mod.cold_targets(Cfg(), roles, cap=10)
     assert stats["searched"] < 10, "it spent the whole run on cold targets"
     assert stats.get("out_of_time"), "it stopped without saying why"
+
+
+def test_every_company_with_a_live_candidate_is_scored(monkeypatch):
+    """The company budget is shared with discovery, and discovery runs
+    first. On 2026-09-20 that meant the run staged PayPal, Google, CreatorIQ,
+    vivenu and openrouter, every one of which scores zero and would have
+    been blocked, simply because nothing had got round to scoring them.
+
+    The gate that decides what he looks at cannot be the thing that runs out
+    of budget.
+    """
+    asked = {}
+
+    def fake_scores(cfg, names, sheet=None, summary=None, *, budget=None):
+        asked["names"] = list(names)
+        asked["budget"] = budget
+        return {}
+
+    monkeypatch.setattr(run_mod, "company_scores", fake_scores)
+    from hunter.sources import RolePosting
+    monkeypatch.setattr(run_mod, "seen_identity_keys", lambda cfg: set())
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: [])
+    monkeypatch.setattr(run_mod, "db_insert", lambda *a, **kw: None)
+    monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
+    import hunter.ats.discover as disc
+    monkeypatch.setattr(disc, "load_cache", lambda cfg: {})
+    monkeypatch.setattr(disc, "save_cache", lambda cfg, cache: None)
+    monkeypatch.setattr(run_mod, "fetch_with_retry",
+                        lambda fetch, slug, pid: (True, "x" * 900, "https://x/1"))
+    posts = [RolePosting(company=f"Co{i}", title="General Manager, Europe",
+                         location="London", url=f"https://jobs.ashbyhq.com/co{i}/1",
+                         source="ats", ats="ashby", ats_slug=f"co{i}",
+                         ats_posting_id="1")
+             for i in range(9)]
+    run_mod.stage_postings(Cfg({"hunter_never_apply": "[]",
+                                "hunter_max_company_evidence_per_run": "2"}),
+                           FakeCanon(),
+                           FakeSheet([list(HEADERS), [""] * N_COLS]), posts, [])
+    assert len(asked["names"]) == 9
+    assert asked["budget"] >= 9, (
+        f"staging asked for a budget of {asked['budget']} against "
+        f"{len(asked['names'])} companies, so some would go unscored")

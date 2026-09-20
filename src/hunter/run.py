@@ -2831,13 +2831,20 @@ def known_company_keys(cfg: Config) -> set[str]:
 
 
 def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
-                   summary: list[str] | None = None) -> dict:
+                   summary: list[str] | None = None, *,
+                   budget: int | None = None) -> dict:
     """slug -> CompanyScore for every company in this batch.
 
     Cached in hunter_company_intel and re-gathered only for companies hunter
     has never scored, so a weekly run pays for the new names and nothing
     else. A company that cannot be scored is absent from the result, which
     the caller must read as unknown rather than as bad.
+
+    budget overrides the per-run cap. Staging passes one big enough to cover
+    every company it is about to judge, because a shared cap meant discovery
+    spent it first: on 2026-09-20 the run staged PayPal, Google, CreatorIQ,
+    vivenu and openrouter, all of which score zero and would have been
+    blocked, simply because nothing had got round to scoring them.
     """
     from . import company as comp_score
     from . import companyintel as intel
@@ -2860,7 +2867,8 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
     # page down, and without a retry that becomes a permanent exclusion.
     fresh = [k for k in keys
              if k not in known or intel.is_stale(known[k])]
-    budget = int(cfg.optional("hunter_max_company_evidence_per_run", "60"))
+    if budget is None:
+        budget = int(cfg.optional("hunter_max_company_evidence_per_run", "60"))
     careers = targets_careers_urls(cfg, sheet) if sheet is not None else {}
     a16z_rows = {}
     try:
@@ -3040,8 +3048,12 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     # The company question is asked once per company, after dedupe, so a run
     # pays for the companies that actually have a live candidate rather than
     # for every name the sweep touched.
-    company_view = company_scores(cfg, sorted({p.company for p in fresh if p.company}),
-                                  sheet, summary)
+    # Every company with a live candidate is scored, whatever discovery
+    # spent earlier in the run. This is the gate that decides what he looks
+    # at, and it cannot be the thing that runs out of budget.
+    live_companies = sorted({p.company for p in fresh if p.company})
+    company_view = company_scores(cfg, live_companies, sheet, summary,
+                                  budget=max(len(live_companies), 1))
 
     never = cfg.require_json("hunter_never_apply")
     opens = learn.open_applications(db_get(cfg, "hunter_seen_roles", {

@@ -348,7 +348,7 @@ def resolve_domain(name: str, timeout: int = 6) -> tuple[str, str]:
     base = slugify(name).replace("-", "")
     if not base or len(base) < 3:
         return "", "name too short to guess a domain"
-    words = [w for w in re.split(r"[^a-z0-9]+", name.lower()) if len(w) > 2]
+    words = [w for w in re.split(r"[^a-z0-9]+", name.lower()) if len(w) > 1]
     candidates = []
     # A name that already carries its own domain ("ProRata.ai") is telling
     # you the answer; guessing "prorataai.com" from it finds a different
@@ -356,6 +356,14 @@ def resolve_domain(name: str, timeout: int = 6) -> tuple[str, str]:
     dotted = re.sub(r"[^a-z0-9.\-]", "", name.lower().strip())
     if "." in dotted and not dotted.endswith("."):
         candidates.append("https://" + dotted)
+    # "Lightning AI" lives at lightning.ai, not lightningai.com, and the
+    # .com belongs to somebody else entirely. A trailing word is very often
+    # the top level domain the company chose, which is why it is in the name.
+    if len(words) > 1 and words[-1] in ("ai", "io", "dev", "app"):
+        stem = "".join(w for w in words[:-1])
+        if len(stem) >= 3:
+            candidates.append(f"https://{stem}.{words[-1]}")
+            candidates.append(f"https://{'-'.join(words[:-1])}.{words[-1]}")
     candidates += [f"https://{base}{tld}" for tld in TLDS]
     misses = []
     for url in candidates:
@@ -373,8 +381,14 @@ def resolve_domain(name: str, timeout: int = 6) -> tuple[str, str]:
         # krea to a Slovak IT consultancy, and all three were scored.
         host = re.sub(r"^www\.", "", (str(r.url).split("/")[2] if "//" in str(r.url)
                                        else "")).lower()
-        label = host.split(".")[0] if host else ""
-        if label.replace("-", "") != base.replace("-", ""):
+        # The whole host, not just its first label. "Lightning AI" lives at
+        # lightning.ai, whose first label is "lightning" while the slug is
+        # "lightningai", and comparing labels threw away the right answer
+        # while a parked domain that redirects to a registrar still has to
+        # fail.
+        squashed = host.replace(".", "").replace("-", "")
+        want = base.replace("-", "")
+        if not (squashed.startswith(want) or want.startswith(host.split(".")[0])):
             misses.append(f"{url} redirected to {host}")
             continue
         text = _clean(r.text)[:4000].lower()

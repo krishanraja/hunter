@@ -311,3 +311,23 @@ def test_a_score_that_stands_is_refreshed_more_slowly():
 def test_a_row_with_no_timestamp_is_always_worth_asking_about_again():
     from hunter import companyintel as intel
     assert intel.is_stale({"status": "", "scored_at": ""})
+
+
+def test_a_slogan_is_not_enough_to_conclude_a_company_is_outside_his_world():
+    """Lightning AI's homepage says "From the PyTorch Lightning creators. Own
+    your AI" and nothing else. Scoring that as outside his categories blocked
+    an AI infrastructure company on sixty characters of marketing. Too
+    little to tell is unknown, which costs the company nothing and comes back
+    on the fortnightly retry."""
+    c = category_fit(f(what_it_does=Fact(
+        "Lightning AI. Own your AI, don't rent it.", WEB)))
+    assert c.unknown, "a slogan was read as a verdict"
+
+
+def test_a_real_description_that_is_outside_is_still_called_outside():
+    """The short-description rule must not become a way for every company to
+    avoid the only negative the category component can give."""
+    c = category_fit(f(what_it_does=Fact(
+        "Acme operates a nationwide chain of dental practices, providing "
+        "routine and cosmetic dentistry to families across the midwest.", WEB)))
+    assert c.evidenced and c.points == 0 and "outside" in c.evidence

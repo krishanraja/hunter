@@ -54,7 +54,8 @@ CATEGORIES: dict[str, re.Pattern] = {
         r"\bgenerative (?:ai )?(?:video|image|audio|voice|media|art)\b|"
         r"\btext[\s-]to[\s-](?:video|image|speech|music)\b|"
         r"\bcreative (?:suite|tools?|ai platform|work)\b|"
-        r"\bcreators? (?:economy|independence|advertising|monetis|monetiz|tools?)\b|"
+        r"\bcreators? (?:economy|independence|advertising|marketing|monetis|"
+        r"monetiz|tools?)\b|"
         r"\bfor (?:creators|creatives)\b|\bbuilt for creatives\b|"
         r"\bnewsletter (?:platform|tools?)\b|\bmonetize your newsletter\b|"
         r"\bdigital identity\b|\bvirtual (?:avatars?|humans?)\b", re.I),
@@ -77,7 +78,11 @@ CATEGORIES: dict[str, re.Pattern] = {
         r"\bdeploy (?:ai|ml|open[\s-]source) models\b|"
         r"\bserve and scale\b|\bserverless (?:gpu|compute|platform)\b|"
         r"\bvector (?:database|search)\b|"
-        r"\b(?:llm|model) (?:evaluation|observability|gateway|router|serving)\b",
+        r"\b(?:llm|model) (?:evaluation|observability|gateway|router|routing|"
+        r"serving|marketplace)\b|"
+        r"\bfor every model\b|\bevery (?:major )?(?:llm|model)\b|"
+        r"\bunified (?:interface|api|gateway)\b.{0,24}\bmodels?\b|"
+        r"\bbest models? (?:and|&) prices\b|\brun (?:any|open) models?\b",
         re.I),
     "adtech_hypergrowth": re.compile(
         r"\b(?:ad ?tech|advertising) (?:platform|technology|infrastructure)\b|"
@@ -221,6 +226,11 @@ BAND = re.compile(r"\b(\d+)\s*(k?)\s*(?:to|-|–)\s*(\d+)\s*(k?)\b", re.I)
 # declines; at two, 65 and 93. Blocking a company he chose costs him a role
 # he wants; admitting one he declined costs him a row to reject, and the
 # role level gates still stand behind it.
+# Shorter than this is a tagline, not a description of a business. Long
+# enough to say what a company sells, short enough that plenty of real
+# homepages clear it.
+MIN_DESCRIPTION = 80
+
 MIN_EVIDENCED = 1
 SWEEP_FLOOR = 6.0
 DISCOVERY_FLOOR = 8.0
@@ -406,6 +416,14 @@ def category_fit(f: Facts) -> Component:
         return Component("category", WEIGHTS["category"] / 2, True,
                          "adjacent to his categories, not in one",
                          f.what_it_does.source)
+    # "Outside his categories" is a conclusion, and a slogan is not enough to
+    # reach it. Lightning AI's homepage says "From the PyTorch Lightning
+    # creators. Own your AI" and nothing else, and scoring that as outside
+    # blocked an AI infrastructure company on sixty characters of marketing.
+    # Too little to tell is unknown, which costs the company nothing and
+    # comes back on the fortnightly retry.
+    if len(text) < MIN_DESCRIPTION:
+        return _unknown("category", f"what the business does ({text[:40]}...) is")
     return Component("category", 0.0, True,
                      "outside his five categories", f.what_it_does.source)
 
