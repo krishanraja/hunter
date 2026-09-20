@@ -292,7 +292,7 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
         results.append(GateResult(
             "G7", True, f"domain words present but the employer is AI-native: "
                         f"{emp.evidence}"))
-    elif emp.kind == employer_mod.INSTITUTION:
+    elif emp.blocks:
         results.append(GateResult(
             "G7", False, f"{domain_hit.group(0)!r} at {role.company}, which is "
                          f"{emp.evidence}"))
@@ -311,8 +311,7 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
     # approved, which is why no other sector is here and why the score, not a
     # gate, carries the rest of company quality.
     results.append(GateResult(
-        "G13", emp.kind != employer_mod.INSTITUTION,
-        f"employer {emp.kind}: {emp.evidence}"))
+        "G13", not emp.blocks, f"employer {emp.kind}: {emp.evidence}"))
 
     if package_texts is None:
         for g in ("G8", "G9", "G10"):

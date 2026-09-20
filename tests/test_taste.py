@@ -25,7 +25,8 @@ import pathlib
 
 import pytest
 
-from hunter import comp, employer, score
+from hunter import comp, employer, learn, score
+from hunter.sources import distinctive_tokens, slugify
 from hunter.employer import Index
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "krish_verdicts.json"
@@ -50,6 +51,28 @@ def no(verdicts):
 
 # ---------- the one sector his data supports ----------
 
+def live_index(verdicts):
+    """The index as a run actually builds it: his approvals and his
+    company-level declines both present.
+
+    Measuring with an empty index is what made Citi look like a clean block
+    on 2026-09-20. He had declined two Citi roles as business uninteresting
+    and then approved a third, and with no approvals loaded the gate saw only
+    the declines.
+    """
+    approved = {slugify(r["company"]) for r in verdicts if r["label"] == "yes"}
+    declined = {}
+    for r in verdicts:
+        if r["label"] != "no" or r.get("code") not in learn.COMPANY_CODES:
+            continue
+        for tok in distinctive_tokens(r["company"]):
+            declined.setdefault(tok, {"company": r["company"], "code": r["code"],
+                                      "date": "2026-09-20", "job_id": "x",
+                                      "quote": ""})
+    return Index(portfolio={}, portfolio_tokens={}, approved=approved,
+                 declined=declined)
+
+
 def test_the_institution_list_hits_his_declines_and_none_of_his_approvals(yes, no):
     """Banks, insurers and asset managers. The measurement that earned this
     list a place, and the reason no other sector has one."""
@@ -57,8 +80,31 @@ def test_the_institution_list_hits_his_declines_and_none_of_his_approvals(yes, n
                      if employer.INSTITUTIONS.search(r["company"])})
     caught = sorted({r["company"] for r in no
                      if employer.INSTITUTIONS.search(r["company"])})
-    assert killed == [], f"the institution list would block roles he approved: {killed}"
+    # Citi is here: two roles declined as business uninteresting, one
+    # approved since. The pattern still matches it, and classify() resolves
+    # the contradiction rather than the pattern doing so.
+    assert killed == ["Citi"], f"unexpected approvals hit: {killed}"
     assert len(caught) >= 5, f"only catches {caught}, which is not worth a gate"
+
+
+def test_a_company_he_has_both_declined_and_approved_blocks_nothing(verdicts):
+    """Citi. Two of his own signals pointing opposite ways. Hunter reports
+    the contradiction and refuses neither; choosing would be hunter deciding
+    his taste for him."""
+    v = employer.classify("Citi", live_index(verdicts))
+    assert v.kind == employer.CONFLICTED
+    assert not v.blocks
+    assert "will not choose" in v.evidence
+
+
+def test_a_bank_he_has_never_ruled_on_still_blocks(verdicts):
+    """Goldman Sachs is in neither half of his data, so the sector rule is
+    the only thing that speaks. TIAA would answer "declined" instead, which
+    also blocks but for a stronger reason."""
+    idx = live_index(verdicts)
+    v = employer.classify("Goldman Sachs", idx)
+    assert v.kind == employer.INSTITUTION and v.blocks
+    assert employer.classify("TIAA", idx).blocks
 
 
 @pytest.mark.parametrize("company", [
@@ -100,14 +146,26 @@ def test_an_unknown_company_is_worth_nothing_either_way():
     assert not v.is_ai_native, "no record is not evidence of being AI native"
 
 
-def test_a_company_he_declined_outranks_everything_else():
+def _declined(slug, name):
+    return {slug: {"company": name, "date": "2026-09-07",
+                   "code": "business_uninteresting", "job_id": "x", "quote": ""}}
+
+
+def test_a_company_he_declined_outranks_portfolio_membership():
     idx = Index(portfolio={"flex": "Flex"}, portfolio_tokens={},
-                approved={"flex"},
-                declined={"flex": {"company": "Flex", "date": "2026-09-07",
-                                   "code": "business_uninteresting",
-                                   "job_id": "x", "quote": ""}})
+                approved=set(), declined=_declined("flex", "Flex"))
     v = employer.classify("Flex", idx)
-    assert v.kind == employer.DECLINED and v.points < 0
+    assert v.kind == employer.DECLINED and v.points < 0 and v.blocks
+
+
+def test_a_decline_and_an_approval_at_one_company_is_a_contradiction():
+    """Not a silent win for either. Both signals are his."""
+    idx = Index(portfolio={}, portfolio_tokens={}, approved={"flex"},
+                declined=_declined("flex", "Flex"))
+    v = employer.classify("Flex", idx)
+    assert v.kind == employer.CONFLICTED
+    assert v.points == 0, "a contradiction is not evidence in either direction"
+    assert not v.blocks
 
 
 # ---------- the junior seat, and why there is no rule for it ----------
@@ -275,12 +333,15 @@ def test_the_bar_separates_his_yeses_from_his_noes(yes, no, verdicts):
     blocks none of what he approved, and it blocks a material share of what he
     declined.
     """
+    idx = live_index(verdicts)
+
     def blocked(r):
         """What the restored bar refuses outright: a bank, insurer or asset
-        manager, or a stated band below the floor. Everything else is ranked,
-        not refused, because his verdicts do not support refusing it."""
+        manager he has never approved, or a stated band below the floor.
+        Everything else is ranked, not refused, because his verdicts do not
+        support refusing it."""
         from hunter.gates import FLOOR, band_tops_out_at
-        if employer.classify(r["company"]).kind == employer.INSTITUTION:
+        if employer.classify(r["company"], idx).blocks:
             return True
         ceiling = band_tops_out_at(r.get("comp"))
         return ceiling is not None and ceiling < FLOOR

@@ -28,12 +28,23 @@ So this module holds no opinions of its own. It reports what is on record:
   DECLINED    he has declined it for a company-level reason. G12 owns the
               block; this is the same fact, reported for scoring.
   INSTITUTION the one sector his data does support: banks, insurers and asset
-              managers. 7 of his declines, 0 of his approvals.
+              managers. 8 of his declines, and the only approval among them
+              is Citi, which is CONFLICTED rather than blocked.
+  CONFLICTED  he has declined the company at company level AND approved a
+              role there. Two of his own signals pointing opposite ways.
+              Blocks nothing, scores nothing, and says so.
   UNKNOWN     everything else, which is most things, and is neutral.
 
 UNKNOWN is the common answer and it is deliberately worth nothing either way.
 A company hunter cannot place is a company he should judge, not one it should
 guess about.
+
+CONFLICTED exists because of Citi. He declined two Citi roles as business
+uninteresting, named Citi in his complaint about legacy businesses, and then
+marked a third Citi role Yes on the sheet. The taste test caught it the moment
+the fixture was refreshed. Picking a winner there would be hunter deciding his
+taste for him in a case where he has been explicit twice in both directions, so
+it does neither and puts the contradiction in front of him.
 """
 from __future__ import annotations
 
@@ -47,12 +58,14 @@ PORTFOLIO = "portfolio"
 APPROVED = "approved"
 DECLINED = "declined"
 INSTITUTION = "institution"
+CONFLICTED = "conflicted"
 UNKNOWN = "unknown"
 
 # What each kind is worth to the score. Positive evidence outweighs nothing;
 # the institution penalty is large because it is the one class his verdicts
 # establish without a single counterexample.
-POINTS = {PORTFOLIO: 2, APPROVED: 2, UNKNOWN: 0, INSTITUTION: -3, DECLINED: -5}
+POINTS = {PORTFOLIO: 2, APPROVED: 2, UNKNOWN: 0, CONFLICTED: 0,
+          INSTITUTION: -3, DECLINED: -5}
 
 # Banks, insurers and asset managers. Measured against his 148 verdicts: 7
 # declines, 0 approvals. Every other sector he declines has an approval in it,
@@ -84,6 +97,17 @@ class Verdict:
     @property
     def points(self) -> int:
         return POINTS[self.kind]
+
+    @property
+    def blocks(self) -> bool:
+        """Does this refuse the role outright, as opposed to ranking it down.
+
+        CONFLICTED never blocks. When he has declined a company at company
+        level AND approved a role there, hunter has two of his own signals
+        pointing opposite ways and no basis for choosing between them, so it
+        does neither and says so.
+        """
+        return self.kind in (DECLINED, INSTITUTION)
 
     @property
     def is_ai_native(self) -> bool:
@@ -168,12 +192,21 @@ def classify(company: str, index: Index | None = None) -> Verdict:
     index = index or Index.empty()
 
     from . import learn
+    slug = slugify(name)
     hit = learn.declined_company(index.declined, name)
     if hit:
+        # Both signals, his, pointing opposite ways. Citi 2026-09-20: two
+        # roles declined as business uninteresting, then a third approved.
+        # Choosing either would be hunter deciding his taste for him, so it
+        # reports the contradiction and blocks nothing.
+        if slug in index.approved:
+            return Verdict(CONFLICTED,
+                           f"you declined {hit['company']} on {hit['date']} "
+                           f"({hit['code']}) and approved a role there since; "
+                           f"hunter will not choose between them")
         return Verdict(DECLINED, f"you declined {hit['company']} on {hit['date']} "
                                  f"({hit['code']})")
 
-    slug = slugify(name)
     if slug in index.portfolio:
         return Verdict(PORTFOLIO, f"in the a16z portfolio as "
                                   f"{index.portfolio[slug]}")
