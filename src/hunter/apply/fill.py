@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from .approval import FieldLine
 from .infobank import AnswerBank
-from .model import FormSpec
+from .model import FormSpec, HIS_OWN_KINDS
 from .resolve import Answer, Resolver, Unanswered
 
 
@@ -35,8 +35,14 @@ class FilledField:
 
     @property
     def blocking(self) -> bool:
-        """Required, and we have nothing to put in it."""
-        return self.required and self.unresolved
+        """Required, and we have nothing to put in it.
+
+        A repeating sub-form is the one exception: see HIS_OWN_KINDS. It is
+        still unresolved and still flagged, so the email names it; it just
+        does not stop the email existing.
+        """
+        return (self.required and self.unresolved
+                and self.kind not in HIS_OWN_KINDS)
 
 
 @dataclass

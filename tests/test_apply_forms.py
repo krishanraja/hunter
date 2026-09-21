@@ -861,3 +861,56 @@ def test_a_readable_form_with_no_fields_is_not_ready_either():
     spec = FormSpec(ats="ashby", slug="x", posting_id="y", title="", fields=())
     plan = build_payload(spec, build_bank(), company="X", role="Y")
     assert plan.ready is False
+
+
+# ---------- the repeating sub-forms Ashby sends, and the narrow carve out ----------
+
+def _spec(*fields):
+    from hunter.apply.model import FormSpec
+    return FormSpec(ats="ashby", slug="s", posting_id="p", title="t",
+                    fields=tuple(fields), readable=True)
+
+
+def _field(kind, label, required=True):
+    from hunter.apply.model import FormField
+    return FormField(key=f"_systemfield_{kind}", label=label, kind=kind,
+                     required=required)
+
+
+def test_an_education_history_block_is_a_kind_rather_than_a_crash():
+    """One Ashby form carrying an EducationHistory block raised through the
+    whole approvals run and 24 built applications were never sent."""
+    from hunter.apply.model import KINDS
+    for kind in ("education_history", "work_history", "social_links"):
+        assert kind in KINDS
+        _field(kind, "Education")   # must not raise
+
+
+def test_a_required_sub_form_does_not_stop_the_application_reaching_him():
+    """Hunter cannot fill a repeating history from a flat answer bank and
+    never will, so blocking on one means that application never reaches him
+    at all. He presses submit himself, on the real form, where he can see
+    the section and type into it."""
+    from hunter.apply.fill import build_payload
+    plan = build_payload(
+        _spec(_field("education_history", "Education"),
+              _field("name", "Name"), _field("email", "Email")),
+        build_bank(), company="Acme", role="GM", jd_url="https://x/1")
+    edu = next(f for f in plan.fields if f.kind == "education_history")
+    assert edu.unresolved, "it is still unanswered, and must say so"
+    assert not edu.blocking, "and it must not stop the email existing"
+    assert any("browser" in (f.reason or "") for f in plan.fields)
+
+
+def test_an_ordinary_required_field_with_no_answer_still_refuses():
+    """The carve out is for repeating sub-forms alone. A half-filled
+    application he approves from a photograph is the failure the whole apply
+    layer exists to prevent."""
+    from hunter.apply.fill import build_payload
+    plan = build_payload(
+        _spec(_field("short_text", "What is your employee number at Acme?"),
+              _field("name", "Name")),
+        build_bank(), company="Acme", role="GM", jd_url="https://x/1")
+    unknown = next(f for f in plan.fields if "employee number" in f.label)
+    assert unknown.unresolved and unknown.blocking
+    assert not plan.ready

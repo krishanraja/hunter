@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass
 
 from .infobank import AnswerBank, norm_label
-from .model import FormField, looks_like_essay
+from .model import FormField, looks_like_essay, HIS_OWN_KINDS
 
 # Reasons a field is deliberately not auto filled.
 NEEDS_KRISH = "needs Krish"
@@ -589,6 +589,15 @@ class Resolver:
             return self._fit_to_options(field, self._consent())
         if field.kind == "demographic":
             return self._fit_to_options(field, self._demographic(field))
+        if field.kind in HIS_OWN_KINDS:
+            # A repeating sub-form. There is no flat answer for it, and
+            # pretending otherwise would put a single string where the form
+            # wants several rows. He fills it on the real form, which he is
+            # looking at anyway when he presses submit.
+            return Unanswered(
+                NEEDS_KRISH,
+                f"{field.label.strip() or field.kind} is a repeating section "
+                f"of the form and is Krish's to complete in the browser")
         if field.kind == "long_text" or (
                 field.kind == "short_text" and looks_like_essay(field.label)):
             return Unanswered(NEEDS_ESSAY, "drafted per posting, then approved")

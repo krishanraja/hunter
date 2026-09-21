@@ -13,11 +13,27 @@ KINDS = (
     "name", "email", "phone", "location", "file_resume", "file_cover",
     "url", "boolean", "single_select", "multi_select", "short_text",
     "long_text", "number", "date", "consent", "demographic",
+    # Ashby's repeating sub-forms. Not single controls, so no flat answer
+    # can fill them. ashby_form.py mapped them and nothing downstream was
+    # told, so FormField refused to exist and one posting raised through
+    # the whole approvals run.
+    "education_history", "work_history", "social_links",
 )
 
 # Kinds that carry no answer of Krish's and must never be auto-filled from a
 # generic default: a consent tick and a demographic disclosure are his to make.
 FLAGGED_KINDS = frozenset({"consent", "demographic"})
+
+# Sub-forms he completes in his own browser, with the form in front of him.
+#
+# These are the ONLY unanswered required fields that do not block the
+# approval email. Hunter cannot fill a repeating education or work history
+# from a flat answer bank and never will, so blocking on one means that
+# application never reaches him at all. He presses submit himself, on the
+# real form, so an education section he can see and type into is not the
+# silent blank the blocking rule exists to prevent. Every other required
+# field with no answer still refuses to send.
+HIS_OWN_KINDS = frozenset({"education_history", "work_history", "social_links"})
 
 # Kinds whose answer is prose rather than a lookup.
 ESSAY_KINDS = frozenset({"long_text"})
