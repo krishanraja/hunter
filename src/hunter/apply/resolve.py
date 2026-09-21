@@ -550,6 +550,56 @@ class Resolver:
             return Answer(entry.value, f"Info Bank: {entry.field_name}")
         return None
 
+    # Two questions every other employer will ask in its own words, where a
+    # verbatim Info Bank row would only ever match the one form it came from.
+    # Revin asked both and the application was held for them.
+    def _verbatim_question(self, field: FormField) -> Resolution | None:
+        """An Info Bank row written for this exact question wins outright.
+
+        Phantom's "How did you hear about Phantom?" and Fleek's "What is your
+        current Right To Work Status" each have a row holding the exact option
+        text the form offers, and each was being answered first by a generic
+        rule ("LinkedIn", "Yes") that then matched none of the options and
+        blanked. A row he wrote for one question is the most specific answer
+        there is and should not be shadowed.
+
+        Only question-shaped labels, though. The bank also holds short field
+        names like City, State and ZIP, and letting those win would override
+        the residence rule that answers with the ROLE's city rather than his
+        own.
+        """
+        label = (field.label or "").strip()
+        if "?" not in label and len(label.split()) < 4:
+            return None
+        entry = self.bank.get(label)
+        if entry and entry.usable and entry.value.strip():
+            return Answer(entry.value, f"Info Bank: {entry.field_name}",
+                          flagged=bool(entry.always_flagged))
+        return None
+
+    def _about_him_now(self, field: FormField) -> Resolution | None:
+        label = _padded(field.label)
+        # "Previous company" and "company you are applying to" are not this.
+        if _any(label, "previous", "last company", "former", "applying to",
+                "this company", "our company"):
+            return None
+        if _any(label, "current company", "current employer", "employer name",
+                "where do you currently work", "who do you currently work",
+                "present employer", "company you work for",
+                "company do you work for", "company are you at"):
+            entry = self.bank.get("Current company")
+            if entry and entry.value.strip():
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+            return Unanswered(NEEDS_KRISH, "no stored current company")
+        if _any(label, "startup experience", "worked at a startup",
+                "experience at a startup", "early stage experience",
+                "worked in a startup"):
+            entry = self.bank.get("Startup experience")
+            if entry and entry.value.strip():
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+            return Unanswered(NEEDS_KRISH, "no stored startup experience answer")
+        return None
+
     def _consent(self) -> Resolution:
         entry = self.bank.get(self.CONSENT_FIELD)
         if entry and entry.usable:
@@ -604,9 +654,11 @@ class Resolver:
 
         label = _padded(field.label)
         result: Resolution | None = None
-        for attempt in (self._authorisation(label), self._location(field),
+        for attempt in (self._verbatim_question(field),
+                        self._authorisation(label), self._location(field),
                         self._name_parts(field), self._postal(field),
-                        self._how_did_you_hear(field), self._direct(field)):
+                        self._how_did_you_hear(field), self._about_him_now(field),
+                        self._direct(field)):
             if attempt is not None:
                 result = attempt
                 break

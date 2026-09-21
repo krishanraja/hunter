@@ -914,3 +914,85 @@ def test_an_ordinary_required_field_with_no_answer_still_refuses():
     unknown = next(f for f in plan.fields if "employee number" in f.label)
     assert unknown.unresolved and unknown.blocking
     assert not plan.ready
+
+
+# ---------- the two questions every employer asks in its own words ----------
+
+def _resolver_with(**rows):
+    """A resolver over a bank carrying exactly these rows."""
+    from hunter.apply.infobank import AnswerBank, BankEntry, norm_label
+    from hunter.apply.resolve import Resolver
+    entries = {norm_label(k): BankEntry(section="J", field_name=k, value=v,
+                                        status="locked", notes="", raw_value=v)
+               for k, v in rows.items()}
+    return Resolver(AnswerBank(entries=entries), role_location="New York, NY")
+
+
+@pytest.mark.parametrize("label", [
+    "Current company", "Current employer", "Where do you currently work?",
+    "Present employer", "What company do you work for?",
+])
+def test_current_company_is_answered_however_it_is_worded(label):
+    """Revin asked for it and the application was held. A verbatim Info Bank
+    row would only ever have matched Revin's exact wording."""
+    r = _resolver_with(**{"Current company": "Mindmake"})
+    res = r.resolve(_field("short_text", label))
+    assert getattr(res, "value", "") == "Mindmake"
+
+
+@pytest.mark.parametrize("label", [
+    "Do you have startup experience?", "Have you worked at a startup?",
+    "Experience at a startup?",
+])
+def test_startup_experience_is_answered_however_it_is_worded(label):
+    r = _resolver_with(**{"Startup experience": "Yes"})
+    res = r.resolve(_field("boolean", label))
+    assert getattr(res, "value", "") == "Yes"
+
+
+def test_a_previous_employer_is_not_his_current_one():
+    """"Previous company" and "the company you are applying to" both contain
+    the word company, and answering either with his employer would put a
+    wrong fact on a real application."""
+    r = _resolver_with(**{"Current company": "Mindmake"})
+    for label in ("Previous company", "Why do you want to work at this company?",
+                  "Last company you worked for"):
+        res = r.resolve(_field("short_text", label))
+        assert getattr(res, "value", "") != "Mindmake", label
+
+
+def test_a_question_with_no_stored_answer_still_blocks():
+    """The additions must not become a blanket answer-everything. A required
+    question hunter has no row for still refuses to send that one email."""
+    from hunter.apply.fill import build_payload
+    plan = build_payload(
+        _spec(_field("short_text", "What is your employee number at Acme?"),
+              _field("name", "Name")),
+        build_bank(), company="Acme", role="GM", jd_url="https://x/1")
+    unknown = next(f for f in plan.fields if "employee number" in f.label)
+    assert unknown.blocking and not plan.ready
+
+
+def test_a_short_bank_row_never_hijacks_a_smarter_rule():
+    """An exact-question Info Bank row wins, but only for question-shaped
+    labels. The bank also holds short field names like City, State and ZIP,
+    and letting those win would override the residence rule that answers a
+    form's "City" with the ROLE's city rather than the one he sleeps in.
+    """
+    from hunter.apply.infobank import AnswerBank, BankEntry, norm_label
+    from hunter.apply.resolve import Resolver
+    rows = {"City": "Brooklyn", "State": "NY",
+            "Do you have experience at an investment bank in a leadership role?": "No"}
+    entries = {norm_label(k): BankEntry(section="J", field_name=k, value=v,
+                                        status="locked", notes="", raw_value=v)
+               for k, v in rows.items()}
+    r = Resolver(AnswerBank(entries=entries), role_location="London, United Kingdom")
+
+    city = r.resolve(_field("location", "City"))
+    assert "Brooklyn" not in getattr(city, "value", ""), (
+        "a one word bank row took a question the residence rule owns")
+
+    # and the question-shaped row still wins outright
+    bank_q = r.resolve(_field(
+        "boolean", "Do you have experience at an investment bank in a leadership role?"))
+    assert getattr(bank_q, "value", "") == "No"
