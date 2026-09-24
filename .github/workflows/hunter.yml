@@ -31,7 +31,7 @@ on:
         type: choice
         default: process
         options: [process, run, source, packages, drain, approvals, approvals-drain, submit,
-                  bridges, reconcile, recon, migrate-columns]
+                  close-submitted, bridges, reconcile, recon, migrate-columns]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string
