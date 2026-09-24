@@ -591,6 +591,12 @@ INTRO = re.compile(
     r"provides?)\s+(?:the\s+|a\s+|an\s+)?[^.]{25,320}\.)")
 
 
+# The verb that separates a business from what it does. The same list the
+# INTRO pattern starts its description on, so the two cannot drift.
+SUBJECT_VERB = re.compile(
+    r"\b(?:is|are|builds?|makes?|powers?|helps?|provides?)\b")
+
+
 def from_posting(jd_text: str, url: str, company: str = "") -> dict:
     """A description of the business, taken from its own job posting."""
     if not jd_text or not url:
@@ -599,13 +605,28 @@ def from_posting(jd_text: str, url: str, company: str = "") -> dict:
     best = ""
     for m in INTRO.finditer(head):
         sentence = m.group(1).strip()
-        if ABOUT_THE_ROLE.search(sentence):
-            # "You'll build and lead the tax function at Gamma" names the
-            # company and describes the job. Storing it as what the business
-            # does would score Gamma as a tax practice.
+        # The role language can sit just OUTSIDE the captured sentence and the
+        # guard missed it every time. "About the role: you will build and lead
+        # the tax function at Gamma" captures from "build", which contains no
+        # role words at all, so it was stored as what Gamma does and would
+        # score Gamma as a tax practice. The verb that starts the capture is
+        # the giveaway, so the run up to it has to be read as well.
+        lead_in = head[max(0, m.start() - 120):m.start()]
+        if ABOUT_THE_ROLE.search(sentence) or ABOUT_THE_ROLE.search(lead_in):
             continue
-        if company and company.split()[0].lower() not in sentence.lower():
-            continue
+        if company:
+            first = company.split()[0].lower()
+            # Named, and named as the SUBJECT. "the tax function at Gamma"
+            # and "powers the revenue operations function at Northwind" both
+            # name the company without being about it, and a first-N-characters
+            # window is only a proxy for that: the second one puts the name at
+            # character 44 and would pass. The verb is the boundary, because a
+            # sentence about a business says the business before it says what
+            # the business does.
+            mv = SUBJECT_VERB.search(sentence)
+            subject = sentence[:mv.start()] if mv else sentence
+            if first not in subject.lower():
+                continue
         best = sentence
         break
     if len(best) < 40 or not _is_prose(best):

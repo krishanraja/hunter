@@ -585,7 +585,7 @@ def _stage_with_company(monkeypatch, score, *, status="", merit=None,
                       components=[Component("category", 4, True,
                                             "in ai native enterprise", "https://x")])
     monkeypatch.setattr(run_mod, "company_scores",
-                        lambda cfg, names, sheet=None, summary=None, budget=None:
+                        lambda cfg, names, sheet=None, summary=None, **kw:
                         {"acme": cs})
     monkeypatch.setattr(run_mod, "known_company_keys", lambda cfg: set())
     p = RolePosting(company="Acme", title=title, location="London, United Kingdom",
@@ -699,9 +699,11 @@ def test_every_company_with_a_live_candidate_is_scored(monkeypatch):
     """
     asked = {}
 
-    def fake_scores(cfg, names, sheet=None, summary=None, *, budget=None):
+    def fake_scores(cfg, names, sheet=None, summary=None, *, budget=None,
+                    postings=None):
         asked["names"] = list(names)
         asked["budget"] = budget
+        asked["postings"] = postings
         return {}
 
     monkeypatch.setattr(run_mod, "company_scores", fake_scores)
@@ -776,3 +778,66 @@ def test_one_unreadable_form_does_not_stop_the_other_applications(monkeypatch,
     assert code == 1, "a run that could not prepare some postings is a failure"
     out = capsys.readouterr().out
     assert "EducationHistory" in out and "could not be prepared" in out
+
+
+def test_the_advert_hunter_already_holds_reaches_the_company_scorer(monkeypatch):
+    """Measured 2026-09-24: half the companies in a batch were marked needs
+    evidence, most of them with nothing gathered at all, so G14 could not
+    refuse them however poor they were. Arcana, Selby Jennings, Virtuous, BOI
+    and Azza HealthCare Agency all read "evidenced 0 (nothing)".
+
+    from_posting could already read a business out of its own advert, and was
+    reachable only when the company had a known ATS board. The companies that
+    need it most have no board, no resolvable domain, and a job description
+    sitting in hand the whole time. This asserts the description gets there,
+    with the posting URL as its source.
+    """
+    asked = {}
+
+    def fake_scores(cfg, names, sheet=None, summary=None, *, budget=None,
+                    postings=None):
+        asked["postings"] = postings
+        return {}
+
+    monkeypatch.setattr(run_mod, "company_scores", fake_scores)
+    from hunter.sources import RolePosting
+    monkeypatch.setattr(run_mod, "seen_identity_keys", lambda cfg: set())
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: [])
+    monkeypatch.setattr(run_mod, "db_insert", lambda *a, **kw: None)
+    monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
+    import hunter.ats.discover as disc
+    monkeypatch.setattr(disc, "load_cache", lambda cfg: {})
+    monkeypatch.setattr(disc, "save_cache", lambda cfg, cache: None)
+    monkeypatch.setattr(run_mod, "fetch_with_retry",
+                        lambda fetch, slug, pid: (True, "x" * 900, "https://x/1"))
+
+    long_desc = ("Selby Jennings is a specialist recruitment agency placing "
+                 "professionals across banking and financial services. " + "x" * 200)
+    posts = [
+        RolePosting(company="Selby Jennings", title="General Manager, Europe",
+                    location="London", url="https://jobs.example.com/sj/1",
+                    source="apify_linkedin",
+                    raw={"descriptionPlain": long_desc}),
+        # Too short to be a description of anything, so it is not offered.
+        RolePosting(company="Tiny", title="Head of GTM", location="London",
+                    url="https://jobs.example.com/tiny/1",
+                    source="apify_linkedin", raw={"descriptionPlain": "Apply now."}),
+        # No description at all, which must not become an empty claim.
+        RolePosting(company="Bare", title="Head of GTM", location="London",
+                    url="https://jobs.example.com/bare/1",
+                    source="apify_linkedin"),
+    ]
+    run_mod.stage_postings(Cfg({"hunter_never_apply": "[]"}), FakeCanon(),
+                           FakeSheet([list(HEADERS), [""] * N_COLS]), posts, [])
+    got = asked["postings"]
+    assert got, "the descriptions already in hand must reach the scorer"
+    # Keyed the way the rest of the engine keys a company, not the way a test
+    # guesses it: company_key("Selby Jennings") is "jennings".
+    key = run_mod.company_key("Selby Jennings")
+    assert key in got, sorted(got)
+    text, url = got[key]
+    assert "recruitment agency" in text
+    assert url == "https://jobs.example.com/sj/1", "cited to the posting itself"
+    assert run_mod.company_key("Tiny") not in got, "a stub is not evidence"
+    assert run_mod.company_key("Bare") not in got, \
+        "an absent description must not become an empty claim"

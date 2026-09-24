@@ -219,3 +219,34 @@ def source_lines(batches: list[Batch]) -> list[str]:
         pct = f"{round(100 * acc / jud)}%" if jud else "no verdicts"
         out.append(f"  {src:<28} {acc:>3}/{jud:<4} {pct}")
     return out
+
+
+def by_leg(batches: list[Batch], leg_of) -> list[tuple[str, int, int]]:
+    """by_source, grouped into supply legs.
+
+    The same leg has reached the sheet under four labels, which made it look
+    like four small sources rather than the one carrying most of the funnel.
+    leg_of is injected so batchstats stays free of run's imports.
+    """
+    total: dict[str, dict] = {}
+    for b in batches:
+        for src, v in b.by_source.items():
+            leg = leg_of(src)
+            t = total.setdefault(leg, {"verdicted": 0, "accepted": 0})
+            t["verdicted"] += v["verdicted"]
+            t["accepted"] += v["accepted"]
+    rows = [(l, v["accepted"], v["verdicted"]) for l, v in total.items()]
+    return sorted(rows, key=lambda r: (-r[2], r[0]))
+
+
+def leg_lines(batches: list[Batch], leg_of) -> list[str]:
+    rows = by_leg(batches, leg_of)
+    if not rows:
+        return []
+    judged = sum(r[2] for r in rows)
+    out = [f"accept rate by supply leg ({judged} verdicts in total):"]
+    for leg, acc, jud in rows:
+        pct = f"{round(100 * acc / jud)}%" if jud else "no verdicts"
+        share = f"{round(100 * jud / judged)}%" if judged else "-"
+        out.append(f"  {leg:<24} {acc:>3}/{jud:<4} {pct:>5}   {share:>4} of the funnel")
+    return out
