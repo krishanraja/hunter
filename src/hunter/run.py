@@ -4486,7 +4486,7 @@ def already_archived(sheet, company: str, role: str) -> int:
 def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
                    company: str, role: str, screenshot: str = "",
                    confirmation: str = "", after_png: bytes = b"",
-                   archive: bool = True,
+                   archive: bool = True, receipt: bool = True,
                    summary: list[str] | None = None) -> bool:
     """Everything that has to be true once an application is actually sent.
 
@@ -4587,13 +4587,18 @@ def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
         except Exception as e:
             note.append(f"archive to the Applied tab FAILED: {e}")
 
-    try:
-        send_applied_receipt(cfg, company=company, role=role, when=today,
-                             screenshot=screenshot, notes=note,
-                             confirmation=confirmation, after_png=after_png)
-        note.append("receipt emailed")
-    except Exception as e:
-        note.append(f"receipt email FAILED: {e}")
+    # One role, one receipt. A caller recording several passes receipt=False and
+    # sends a single digest instead: eight roles marked in one go put eight
+    # separate emails in his inbox, and his answer was "you dont need to send
+    # tons and tons of emails for every single application complete".
+    if receipt:
+        try:
+            send_applied_receipt(cfg, company=company, role=role, when=today,
+                                 screenshot=screenshot, notes=note,
+                                 confirmation=confirmation, after_png=after_png)
+            note.append("receipt emailed")
+        except Exception as e:
+            note.append(f"receipt email FAILED: {e}")
     for line in note:
         print(f"  {line}")
     return wrote_sheet
@@ -4653,6 +4658,45 @@ def send_applied_receipt(cfg: Config, *, company: str, role: str, when: str,
                else f"Submitted (UNCONFIRMED): {company} {role}")
     notify.send_email(cfg, subject, html, to=notify.mailbox(cfg), text=text,
                       attachments=attachments)
+
+
+def send_applied_digest(cfg: Config, rows: list[tuple[str, str, str]],
+                        *, when: str) -> None:
+    """One email for a batch, instead of one per role.
+
+    Krish, 2026-09-24, looking at five copies of the same receipt: "you dont
+    need to send tons and tons of emails for every single application
+    complete". The duplicates were a defect and are fixed at the source; the
+    volume was not a defect, it was the design, and the design was wrong.
+
+    Keeps the distinction the single receipt exists for. A role whose form
+    acknowledged it is quoted; a role recorded on his own say so says that, in
+    those words, and is never dressed up as the form speaking.
+    """
+    from . import notify
+    from .apply.approval import _esc
+    items = []
+    for company, role, confirmation in rows:
+        said = (f"<span style='color:#1a7f37'>{_esc(confirmation)}</span>"
+                if confirmation else
+                "<span style='color:#c47f00'>no confirmation recorded</span>")
+        items.append(f"<li><strong>{_esc(company)}</strong> {_esc(role)}"
+                     f"<br><span style='font-size:13px'>{said}</span></li>")
+    html = (f"<div style=\"font:15px/1.55 -apple-system,BlinkMacSystemFont,"
+            f"'Segoe UI',system-ui,sans-serif;color:#111;max-width:680px\">"
+            f"<div style='display:none'>[hunter-outbound]</div>"
+            f"<h2 style='margin:0 0 2px;font-size:19px'>"
+            f"{len(rows)} application(s) recorded</h2>"
+            f"<div style='color:#555;margin-bottom:18px'>{when}</div>"
+            f"<ul style='color:#333'>{''.join(items)}</ul>"
+            f"<p style='color:#555'>Each one is marked Applied on the sheet "
+            f"with today's date and has moved to the Applied tab.</p></div>")
+    text = "\n".join(
+        ["[hunter-outbound]", f"{len(rows)} application(s) recorded on {when}", ""]
+        + [f"  {c} {r} ({conf or 'no confirmation recorded'})"
+           for c, r, conf in rows])
+    notify.send_email(cfg, f"Submitted: {len(rows)} application(s)", html,
+                      to=notify.mailbox(cfg), text=text)
 
 
 def cmd_submit(token: str, confirm: bool = False) -> int:
@@ -4903,13 +4947,21 @@ def cmd_applied(token: str = "", job_ids: str = "") -> int:
             return 1
         rows.append(row)
     for jid in wanted:
+        # ONE row per job, the newest one still in play. A job id collects a
+        # ledger row every time an approval is sent, and the 21 resent on
+        # 2026-09-24 gave most of them several. Taking all of them recorded the
+        # same application five times and put five identical Submitted receipts
+        # in his inbox, which is what he saw. It also reopened tokens that had
+        # been cancelled on purpose.
         found = db_get(cfg, approval.TABLE,
                        {"select": "token,job_id,company,role,state",
-                        "job_id": f"eq.{jid}", "order": "token.asc", "limit": "5"})
+                        "job_id": f"eq.{jid}",
+                        "state": f"in.({approval.AWAITING},{approval.APPROVED})",
+                        "order": "sent_at.desc", "limit": "1"})
         if not found:
             # Never a silent skip: an id that names nothing is a typo, and a
             # typo that passes quietly leaves a role he sent reading Not applied.
-            print(f"no approval row for job id {jid!r}")
+            print(f"no approval row awaiting submission for job id {jid!r}")
             return 1
         rows.extend(found)
 
@@ -4917,7 +4969,7 @@ def cmd_applied(token: str = "", job_ids: str = "") -> int:
         print("usage: applied --list | applied --job-id id1,id2 | applied --token X")
         return 2
 
-    done = 0
+    recorded: list[tuple[str, str, str]] = []
     for row in rows:
         if row["state"] == approval.SUBMITTED:
             print(f"already recorded as submitted: {row.get('company')} "
@@ -4925,16 +4977,25 @@ def cmd_applied(token: str = "", job_ids: str = "") -> int:
             continue
         approval.set_state(cfg, row["token"], approval.SUBMITTED,
                            submitted_at=NOW(), failure_reason=SAID_SO)
-        # One archive pass at the end, not one per role: archiving between roles
-        # takes rows out from under the roles still to be written.
-        record_applied(cfg, canon, sheet, row["job_id"],
-                       company=row.get("company") or "",
-                       role=row.get("role") or "",
-                       confirmation=SAID_SO, archive=False)
+        # One archive pass and one email at the end, not one of each per role.
+        # Archiving between roles takes rows out from under the roles still to
+        # be written, and a receipt per role filled his inbox.
+        wrote = record_applied(cfg, canon, sheet, row["job_id"],
+                               company=row.get("company") or "",
+                               role=row.get("role") or "",
+                               confirmation=SAID_SO,
+                               archive=False, receipt=False)
         print(f"recorded: {row.get('company')} {row.get('role')}")
-        done += 1
-    if done:
+        if wrote:
+            recorded.append((row.get("company") or "", row.get("role") or "",
+                             SAID_SO))
+    if recorded:
         cmd_archive(apply=True)
+        try:
+            send_applied_digest(cfg, recorded,
+                                when=datetime.date.today().isoformat())
+        except Exception as e:
+            print(f"digest email FAILED: {e}")
     return 0
 
 
@@ -5091,6 +5152,7 @@ def cmd_close_submitted(apply: bool = False) -> int:
         todo.append(r)
     dupes = sum(len(v) for v in siblings.values())
 
+    written: list[tuple[str, str, str]] = []
     print(f"{len(rows)} submitted, {len(open_ones)} not yet written to the sheet"
           f"{f', {dupes} of them a second id for a posting already in the list' if dupes else ''}"
           f"{'' if apply else ' (dry run, pass --apply)'}")
@@ -5111,7 +5173,10 @@ def cmd_close_submitted(apply: bool = False) -> int:
             cfg, canon, sheet, r["job_id"],
             company=r.get("company") or "", role=r.get("role") or "",
             confirmation=(r.get("failure_reason") or "").strip(),
-            archive=False)
+            archive=False, receipt=len(todo) == 1)
+        if wrote and len(todo) > 1:
+            written.append((r.get("company") or "", r.get("role") or "",
+                            (r.get("failure_reason") or "").strip()))
         if not wrote:
             # The row was not written, so its siblings are not finished either.
             continue
@@ -5129,6 +5194,12 @@ def cmd_close_submitted(apply: bool = False) -> int:
             cmd_archive(apply=True)
         except Exception as e:
             print(f"archive to the {config_mod.ARCHIVE_TAB} tab FAILED: {e}")
+    if written:
+        try:
+            send_applied_digest(cfg, written,
+                                when=datetime.date.today().isoformat())
+        except Exception as e:
+            print(f"digest email FAILED: {e}")
     return 0
 
 
