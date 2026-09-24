@@ -144,3 +144,58 @@ def test_the_hourly_job_reads_approval_replies():
     # Only on the hourly tick, and only after the main command succeeded, so a
     # broken run never reaches the step that can submit an application.
     assert "drain" in drain[0].get("if", "")
+
+
+def _picked_args(**env):
+    """Run the workflow's own 'Pick the command' script and read back the args it
+    writes, rather than trusting a copy of the logic written here."""
+    import os
+    import pathlib
+    import subprocess
+    import tempfile
+
+    import yaml
+    wf = yaml.safe_load(
+        (pathlib.Path(__file__).parent.parent / ".github/workflows/hunter.yml").read_text())
+    step = [s for s in wf["jobs"]["hunter"]["steps"]
+            if s.get("name") == "Pick the command"][0]
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "github_output")
+        open(out, "w").close()
+        subprocess.run(["bash", "-e", "-c", step["run"]], check=True,
+                       env={**os.environ, "GITHUB_OUTPUT": out, **env},
+                       capture_output=True)
+        written = pathlib.Path(out).read_text()
+    for line in written.splitlines():
+        if line.startswith("args="):
+            return line[len("args="):]
+    raise AssertionError(f"the picker wrote no args: {written!r}")
+
+
+def test_a_hand_dispatched_drain_still_writes_his_submissions_to_the_sheet():
+    """The four steps that close the loop are gated on args being exactly
+    "drain". With no extra arguments the picker built "drain " with a trailing
+    space, which is not that string, so a dispatch by hand ran the command and
+    skipped every one of them: his pressed applications stayed "Not applied"
+    unless a scheduled tick happened to come along."""
+    import pathlib
+    import yaml
+
+    args = _picked_args(EVENT="workflow_dispatch", INPUT_COMMAND="drain",
+                        INPUT_EXTRA="", SCHEDULE="", ACTION="", COMMAND_ID="")
+    assert args == "drain", f"dispatching drain produced {args!r}"
+
+    wf = yaml.safe_load(
+        (pathlib.Path(__file__).parent.parent / ".github/workflows/hunter.yml").read_text())
+    gated = [s for s in wf["jobs"]["hunter"]["steps"]
+             if "== 'drain'" in str(s.get("if", ""))]
+    assert len(gated) >= 4, "the loop-closing steps are no longer gated on drain"
+    assert any("close-submitted" in str(s.get("run", "")) for s in gated)
+
+
+def test_an_extra_argument_still_reaches_the_command():
+    """The separator may not be dropped along with the trailing space."""
+    args = _picked_args(EVENT="workflow_dispatch", INPUT_COMMAND="drain",
+                        INPUT_EXTRA="--id 42", SCHEDULE="", ACTION="",
+                        COMMAND_ID="")
+    assert args == "drain --id 42"
