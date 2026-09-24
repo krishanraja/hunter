@@ -62,9 +62,10 @@
   const STALE =
     'Your Hunter extension is version ' + MINE + ' and this application needs ' +
     '%NEED%. It has filled what it can, and parts of this form are probably ' +
-    'empty. Download https://github.com/krishanraja/hunter/archive/refs/heads/' +
-    'main.zip, extract it over your hunter folder, then press the reload arrow ' +
-    'on the Hunter card at chrome://extensions and reopen this link.';
+    'empty. Download https://github.com/krishanraja/hunter/releases/download/' +
+    'extension/hunter-extension.zip, extract it over your hunter folder, then ' +
+    'press the reload arrow on the Hunter card at chrome://extensions and ' +
+    'reopen this link.';
 
   // ---- The watch, and why it lives in storage ------------------------------
   //
@@ -79,37 +80,69 @@
   // Extension storage survives the navigation. Local rather than session, because
   // a content script cannot read session storage without a service worker to
   // widen its access level, and this needs no service worker at all.
-  const WATCH = 'hunter_watch';
+  // One slot held one job, and every form opened overwrote it. Working through
+  // a batch is exactly the usage that broke it: Krish applied to six more roles
+  // on 2026-09-24 and not one was recorded, because each fill replaced the watch
+  // belonging to the application before it, and the re-injected copy on the
+  // confirmation page then read a watch for a different job, failed the origin
+  // and path check, and reported nothing. A map, keyed by the job's own page.
+  const WATCH = 'hunter_watches';
+  // Enough for any batch he will do in half an hour, and bounded so storage
+  // cannot grow for ever.
+  const MAX_WATCHES = 40;
   const basePath = () => location.pathname.replace(/\/application\/?$/, '');
+  const watchKey = (w) => (w.origin || '') + (w.path || '');
 
   function marksIn() {
     const body = (document.body ? document.body.innerText : '').toLowerCase();
     return SUBMITTED_MARKS.filter((m) => body.includes(m));
   }
 
-  async function saveWatch(w) {
-    try { await chrome.storage.local.set({ [WATCH]: w }); } catch (e) { /* best effort */ }
-  }
-  async function clearWatch() {
-    try { await chrome.storage.local.remove(WATCH); } catch (e) { /* best effort */ }
-  }
-  async function loadWatch() {
+  async function allWatches() {
     try {
       const got = await chrome.storage.local.get([WATCH]);
-      return (got && got[WATCH]) || null;
-    } catch (e) { return null; }
+      const all = got && got[WATCH];
+      return (all && typeof all === 'object') ? all : {};
+    } catch (e) { return {}; }
+  }
+  async function putWatches(all) {
+    try { await chrome.storage.local.set({ [WATCH]: all }); } catch (e) { /* best effort */ }
+  }
+  async function saveWatch(w) {
+    const all = await allWatches();
+    all[watchKey(w)] = w;
+    // Expired entries go on the way past, so a batch cannot leave them behind.
+    const now = Date.now();
+    const live = Object.keys(all)
+      .filter((k) => all[k] && all[k].until > now)
+      .sort((a, b) => all[b].until - all[a].until)
+      .slice(0, MAX_WATCHES);
+    const kept = {};
+    for (const k of live) kept[k] = all[k];
+    await putWatches(kept);
+  }
+  async function clearWatch(w) {
+    const all = await allWatches();
+    if (w) delete all[watchKey(w)];
+    await putWatches(all);
   }
 
   // A watch only resumes on the SAME job. Same origin and same path prefix, so a
   // watch left over from one application cannot fire on a different job he opens
-  // on the same board within the half hour.
+  // on the same board within the half hour. The longest matching path wins, so a
+  // watch on /jobs/4 cannot answer for the page at /jobs/42.
   async function resumable() {
-    const w = await loadWatch();
-    if (!w || !w.token || !w.key) return null;
-    if (w.origin !== location.origin) return null;
-    if (!w.path || location.pathname.indexOf(w.path) !== 0) return null;
-    if (!w.until || Date.now() > w.until) { await clearWatch(); return null; }
-    return w;
+    const all = await allWatches();
+    let best = null;
+    for (const k of Object.keys(all)) {
+      const w = all[k];
+      if (!w || !w.token || !w.key) continue;
+      if (w.origin !== location.origin) continue;
+      if (!w.path || location.pathname.indexOf(w.path) !== 0) continue;
+      if (!w.until || Date.now() > w.until) { await clearWatch(w); continue; }
+      if (!best || w.path.length > best.path.length) best = w;
+    }
+    return best;
   }
 
   const cap = capability();
@@ -197,7 +230,7 @@
   // so an earlier version painted the green "Hunter has it" banner over a write
   // that never happened, which is the same lie in the opposite direction.
   async function report(watch, why) {
-    await clearWatch();
+    await clearWatch(watch);
     try {
       const res = await fetch(watch.api.replace(/\/payload$/, '/submitted'), {
         method: 'POST',
@@ -236,7 +269,7 @@
       await new Promise((r) => setTimeout(r, 1500));
     }
     // Out of time. Clear it so a stale watch cannot fire on some later page.
-    await clearWatch();
+    await clearWatch(watch);
   }
 
   const watch = {

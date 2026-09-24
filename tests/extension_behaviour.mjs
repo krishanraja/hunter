@@ -19,12 +19,17 @@ function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/
   // reached after ~900 ticks, which is under a second of real time.
   const base = Date.now();
   let tick = 0;
-  const store = { local: watch ? { hunter_watch: watch } : {}, sync: {} };
+  const seed = {};
+  for (const v of [].concat(watch || [])) seed[(v.origin || '') + (v.path || '')] = v;
+  const store = { local: watch ? { hunter_watches: seed } : {}, sync: {} };
   // Every watch ever saved, not just the one left at the end. The loop clears the
   // watch when it reports and when it expires, so the end state cannot show
   // whether it was ever written, and a version that never persisted it would look
   // identical.
   const saved = [];
+  // Every map written, not only the entries in it: the loop clears a watch
+  // when it expires, so the end state cannot show what was stored together.
+  const writes = [];
   const posts = [];
   const banners = [];
   const g = {
@@ -42,7 +47,11 @@ function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/
         sync: { get: async () => ({}) },
         local: {
           get: async (k) => { const o = {}; for (const key of k) if (key in store.local) o[key] = store.local[key]; return o; },
-          set: async (o) => { saved.push(o.hunter_watch); Object.assign(store.local, o); },
+          set: async (o) => {
+            writes.push({ ...(o.hunter_watches || {}) });
+            for (const v of Object.values(o.hunter_watches || {})) saved.push(v);
+            Object.assign(store.local, o);
+          },
           remove: async (k) => { delete store.local[k]; },
         },
       },
@@ -60,7 +69,7 @@ function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/
   };
   g.window = g;
   g.window.__hunterFill = async () => ({ filled: [], files: [], missed: [], required_missed: [] });
-  return { g, store, saved, posts, banners };
+  return { g, store, saved, writes, posts, banners };
 }
 
 async function run(w) {
@@ -108,7 +117,7 @@ const CAP = '#hunter=acme:role-abc123.' + 'a'.repeat(32);
   await run(w);
   assert.equal(w.posts.length, 1, 'the new document must report the submission');
   assert.match(w.posts[0].evidence, /application received/);
-  assert.equal(w.store.local.hunter_watch, undefined, 'and clear the watch');
+  assert.deepEqual(w.store.local.hunter_watches, {}, 'and clear that watch');
   console.log('ok  a submission that navigates is still reported');
 }
 
@@ -143,7 +152,7 @@ const CAP = '#hunter=acme:role-abc123.' + 'a'.repeat(32);
   });
   await run(w);
   assert.equal(w.posts.length, 0, 'an expired watch must not fire');
-  assert.equal(w.store.local.hunter_watch, undefined, 'and must be removed');
+  assert.deepEqual(w.store.local.hunter_watches, {}, 'and must be removed');
   console.log('ok  an expired watch is dropped');
 }
 
@@ -164,4 +173,43 @@ const CAP = '#hunter=acme:role-abc123.' + 'a'.repeat(32);
   console.log('ok  the watch is stored before the page can navigate');
 }
 
-console.log('\nall six hold');
+
+// 7. A batch. Opening the next application must not throw away the watch on the
+//    one before it. One storage slot held one job, every fill overwrote it, and
+//    six applications Krish sent on 2026-09-24 were never recorded because of it.
+{
+  const earlier = {
+    token: 'higgsfield:head-of-entertainment-gtm', key: 'b'.repeat(32),
+    api: 'https://controlcenter.krishraja.com/api/hunter/payload',
+    origin: 'https://jobs.ashbyhq.com', path: '/higgsfield/111',
+    baseline: [], until: Date.now() + 600000,
+  };
+  // He fills a second application on another board while the first is still open.
+  const filling = world({
+    hash: CAP, bodyText: 'Apply for this role', watch: earlier,
+    url: 'https://job-boards.greenhouse.io/acme/jobs/42/application',
+  });
+  await run(filling);
+  const kept = filling.writes[0];
+  assert.ok(kept['https://jobs.ashbyhq.com/higgsfield/111'],
+            'the earlier application is still watched');
+  assert.ok(kept['https://job-boards.greenhouse.io/acme/jobs/42'],
+            'and so is the one just filled');
+
+  // Now the first one lands on its confirmation page, minutes later.
+  const confirming = world({
+    hash: '', bodyText: 'Thanks for applying, we have your details.',
+    watch: Object.values(kept),
+    url: 'https://jobs.ashbyhq.com/higgsfield/111/confirmation',
+  });
+  await run(confirming);
+  assert.equal(confirming.posts.length, 1,
+               'the earlier application still reports its submission');
+  assert.equal(confirming.posts[0].token, 'higgsfield:head-of-entertainment-gtm');
+  assert.ok(confirming.store.local.hunter_watches[
+              'https://job-boards.greenhouse.io/acme/jobs/42'],
+            'and reporting one does not clear the other');
+  console.log('ok  a batch keeps a watch per application');
+}
+
+console.log('\nall seven hold');

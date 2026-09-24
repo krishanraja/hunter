@@ -4457,10 +4457,37 @@ class _SheetNotWritten(Exception):
     """
 
 
+def already_archived(sheet, company: str, role: str) -> int:
+    """The row number on the Applied tab for this company and role, or 0.
+
+    A role that has already been moved to Applied is finished, and looking for
+    it on Pipeline finds nothing. Without this, the ledger row stayed open and
+    retried against a row that no longer exists, for ever, which is what
+    happened to Mutiny on 2026-09-24.
+    """
+    want = ((company or "").strip().lower(), (role or "").strip().lower())
+    if not any(want):
+        return 0
+    try:
+        grid = sheet.read_tab_values(
+            f"{config_mod.ARCHIVE_TAB}!A1:{sheet_mod.ARCHIVE_LAST_COL}2000")
+    except Exception:
+        return 0
+    b, r = sheet_mod.COLS["Business"], sheet_mod.COLS["Role"]
+    for i, cells in enumerate(grid or [], start=1):
+        if len(cells) <= max(b, r):
+            continue
+        if ((cells[b] or "").strip().lower(),
+                (cells[r] or "").strip().lower()) == want:
+            return i
+    return 0
+
+
 def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
                    company: str, role: str, screenshot: str = "",
                    confirmation: str = "", after_png: bytes = b"",
-                   summary: list[str] | None = None) -> None:
+                   archive: bool = True,
+                   summary: list[str] | None = None) -> bool:
     """Everything that has to be true once an application is actually sent.
 
     Four writes and a message, none of which existed. A submission reached the
@@ -4492,11 +4519,22 @@ def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
     # application that was sent. That is the exact condition this function exists
     # to remove, so a failure has to leave the work retriable.
     wrote_sheet = False
-    if target is None:
+    if target is None and not hits:
+        # Already on the Applied tab is not a failure, it is the finished state.
+        # The archive pass moves every decided row, so a role written earlier in
+        # the same batch, or under a second job id for the same posting, has no
+        # Pipeline row left to find. Treating that as a miss left the ledger open
+        # and retrying against a row that will never come back.
+        arch = already_archived(sheet, company, role)
+        if arch:
+            note.append(f"already on the {config_mod.ARCHIVE_TAB} tab at row "
+                        f"{arch}; nothing left to write")
+            wrote_sheet = True
+    if target is None and not wrote_sheet:
         note.append(f"{len(hits)} Pipeline rows match {company} / {role}; "
                     f"sheet NOT updated and the ledger left open so the next run "
                     f"retries. Fix the company or role text, or do the row by hand")
-    else:
+    elif target is not None:
         rn = target.row_number
         failures = 0
         for what, fn in (
@@ -4538,11 +4576,16 @@ def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
 
     # Off Pipeline and onto Applied, which is cmd_archive's job and was only ever
     # run by hand against a column A value nothing set.
-    try:
-        cmd_archive(apply=True)
-        note.append("ran the archive pass: decided rows moved to the Applied tab")
-    except Exception as e:
-        note.append(f"archive to the Applied tab FAILED: {e}")
+    #
+    # A caller writing several roles at once passes archive=False and runs the
+    # pass once itself. Archiving between roles moved rows out from under the
+    # roles still to be written, and each of those then matched nothing.
+    if archive:
+        try:
+            cmd_archive(apply=True)
+            note.append("ran the archive pass: decided rows moved to the Applied tab")
+        except Exception as e:
+            note.append(f"archive to the Applied tab FAILED: {e}")
 
     try:
         send_applied_receipt(cfg, company=company, role=role, when=today,
@@ -4553,6 +4596,7 @@ def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
         note.append(f"receipt email FAILED: {e}")
     for line in note:
         print(f"  {line}")
+    return wrote_sheet
 
 
 def send_applied_receipt(cfg: Config, *, company: str, role: str, when: str,
@@ -4954,16 +4998,41 @@ def cmd_close_submitted(apply: bool = False) -> int:
     ids = sorted({r["job_id"] for r in rows if r.get("job_id")})
     state = {r["job_id"]: r for r in db_get(
         cfg, "hunter_seen_roles",
-        {"select": "job_id,application_state", "job_id": f"in.({','.join(ids)})",
-         "limit": "200"})}
+        {"select": "job_id,application_state,job_url,url",
+         "job_id": f"in.({','.join(ids)})", "limit": "200"})}
     open_ones = [r for r in rows
                  if (state.get(r["job_id"], {}).get("application_state") or "")
                  not in APPLIED_STATES]
-    print(f"{len(rows)} submitted, {len(open_ones)} not yet written to the sheet"
-          f"{'' if apply else ' (dry run, pass --apply)'}")
+
+    # One posting, however many ledger rows point at it. Mutiny reached this
+    # function under three job ids on 2026-09-24; the first wrote its Pipeline
+    # row, the archive took the row away, and the other two matched nothing and
+    # were left open to retry against a row that no longer existed. The
+    # employer's form is the thing applied to, so it is written once and its
+    # siblings are closed with it.
+    first: dict[str, dict] = {}
+    siblings: dict[str, list[dict]] = {}
+    todo: list[dict] = []
     for r in open_ones:
+        key = posting_key(state.get(r["job_id"], {}))
+        if not key:
+            todo.append(r)
+            continue
+        if key in first:
+            siblings.setdefault(key, []).append(r)
+            continue
+        first[key] = r
+        todo.append(r)
+    dupes = sum(len(v) for v in siblings.values())
+
+    print(f"{len(rows)} submitted, {len(open_ones)} not yet written to the sheet"
+          f"{f', {dupes} of them a second id for a posting already in the list' if dupes else ''}"
+          f"{'' if apply else ' (dry run, pass --apply)'}")
+    for r in todo:
         print(f"\n  {r['company']} {r['role'][:50]}")
         print(f"    {r.get('failure_reason') or 'no confirmation recorded'}")
+        for s in siblings.get(posting_key(state.get(r["job_id"], {})), []):
+            print(f"    same posting as {s['job_id']}, which closes with it")
         if not apply:
             continue
         # Passed through as it is, empty included. send_applied_receipt branches
@@ -4972,9 +5041,28 @@ def cmd_close_submitted(apply: bool = False) -> int:
         # subject line. Substituting the word "submitted" for an empty value made
         # every receipt claim an acknowledgement, which is the distinction
         # submit.py keeps on purpose and the reason this receipt exists.
-        record_applied(cfg, canon, sheet, r["job_id"],
-                       company=r.get("company") or "", role=r.get("role") or "",
-                       confirmation=(r.get("failure_reason") or "").strip())
+        wrote = record_applied(
+            cfg, canon, sheet, r["job_id"],
+            company=r.get("company") or "", role=r.get("role") or "",
+            confirmation=(r.get("failure_reason") or "").strip(),
+            archive=False)
+        if not wrote:
+            # The row was not written, so its siblings are not finished either.
+            continue
+        for s in siblings.get(posting_key(state.get(r["job_id"], {})), []):
+            try:
+                db_patch(cfg, "hunter_seen_roles", {"job_id": s["job_id"]},
+                         {"application_state": APPLIED_STATE, "applied_at": NOW()})
+                print(f"    closed {s['job_id']}: same posting, already written")
+            except Exception as e:
+                print(f"    could not close {s['job_id']}: {e}")
+    # Once, at the end. Archiving between roles took rows out from under the
+    # roles still to be written.
+    if apply and todo:
+        try:
+            cmd_archive(apply=True)
+        except Exception as e:
+            print(f"archive to the {config_mod.ARCHIVE_TAB} tab FAILED: {e}")
     return 0
 
 
@@ -5006,6 +5094,12 @@ def cmd_confirmations(apply: bool = False) -> int:
     if not open_rows:
         print("no applications waiting on a receipt")
         return 0
+    who = confirmations.mailbox(cfg)
+    if who.get("error"):
+        print(f"mailbox: {who['error']}")
+    else:
+        print(f"reading {who['address'] or 'an unnamed mailbox'} "
+              f"({who['total']} messages in it)")
     try:
         messages = confirmations.fetch(cfg)
     except confirmations.ConfirmError as e:

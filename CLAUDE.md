@@ -209,7 +209,7 @@ So:
 
 The steps to give him, every time:
 
-1. Download <https://github.com/krishanraja/hunter/archive/refs/heads/main.zip>
+1. Download <https://github.com/krishanraja/hunter/releases/download/extension/hunter-extension.zip>
 2. Extract it over the `hunter` folder, replacing the files
 3. At `chrome://extensions`, press the reload arrow on the Hunter card
 4. Reopen the link from the email

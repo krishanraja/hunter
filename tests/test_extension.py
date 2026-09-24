@@ -228,7 +228,7 @@ def test_a_stale_extension_says_so_rather_than_claiming_success():
     green = body.index("Filled all ")
     assert stale < green
     # And it must say what to do, not merely that something is wrong.
-    assert "main.zip" in RUN
+    assert "hunter-extension.zip" in RUN
     assert "chrome://extensions" in RUN
     assert "reload" in RUN.lower()
 
@@ -254,7 +254,7 @@ def test_the_version_compare_gets_the_awkward_cases_right():
 
 
 def test_what_the_extension_decides_when_it_actually_runs():
-    """The six behaviours that decide whether a role is recorded as applied.
+    """The seven behaviours that decide whether a role is recorded as applied.
 
     Reading the source for the right strings cannot answer any of them, so
     tests/extension_behaviour.mjs builds a page, a chrome API and a fetch, runs the
@@ -277,6 +277,10 @@ def test_what_the_extension_decides_when_it_actually_runs():
       the watch is stored BEFORE the page can navigate, which is the half that
         makes the resume reachable in a real browser rather than only in a harness
         that pre-seeded storage
+
+      a batch keeps a watch per application. One storage slot held one job and
+        every fill overwrote it, so six roles Krish submitted on 2026-09-24 were
+        never recorded
     """
     import shutil
     import subprocess
@@ -289,4 +293,4 @@ def test_what_the_extension_decides_when_it_actually_runs():
          str(EXT / "run.js")],
         capture_output=True, text=True, timeout=180, cwd=root)
     assert out.returncode == 0, out.stdout + out.stderr
-    assert "all six hold" in out.stdout, out.stdout
+    assert "all seven hold" in out.stdout, out.stdout

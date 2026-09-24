@@ -31,7 +31,7 @@ on:
         type: choice
         default: process
         options: [process, run, source, packages, drain, approvals, approvals-drain, submit,
-                  bridges, reconcile, recon, migrate-columns]
+                  close-submitted, confirmations, bridges, reconcile, recon, migrate-columns]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string
@@ -85,7 +85,11 @@ jobs:
           elif [ "$EVENT" = "repository_dispatch" ]; then
             if [ -n "$COMMAND_ID" ]; then ARGS="drain --id $COMMAND_ID"; else ARGS="${ACTION#hunter-}"; fi
           else
-            ARGS="$INPUT_COMMAND $INPUT_EXTRA"
+            # No extra means no separator. "drain " with a trailing space is not
+            # equal to "drain", and every step below that writes his submissions
+            # to the sheet is gated on exactly that string, so a hand dispatch of
+            # drain ran the command and silently skipped all four of them.
+            ARGS="$INPUT_COMMAND${INPUT_EXTRA:+ $INPUT_EXTRA}"
           fi
           echo "args=$ARGS" >> "$GITHUB_OUTPUT"
           echo "skip=$SKIP" >> "$GITHUB_OUTPUT"

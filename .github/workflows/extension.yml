@@ -1,0 +1,64 @@
+name: extension
+
+# The extension, on its own, as a small zip he can actually download.
+#
+# The whole-repo archive stopped being downloadable on 2026-09-24: Windows
+# Defender refused hunter-main.zip with "Virus detected". The archive had not
+# changed, and nothing in it is malicious, but windows/setup.bat copies a
+# script into the Startup folder, which is a persistence technique whatever the
+# intent, and an antivirus is right to be suspicious of it inside a downloaded
+# archive.
+#
+# He does not need the repository. He needs five text files that Chrome loads
+# unpacked. This publishes exactly those, to a fixed tag, so the download link
+# never changes and carries no scripts at all.
+on:
+  push:
+    branches: [main]
+    paths: ["extension/**", ".github/workflows/extension.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: extension-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The archive holds an extension/ folder, so extracting it over his
+      # hunter folder replaces hunter/extension and nothing else.
+      - name: Build the zip
+        id: build
+        run: |
+          VERSION=$(python -c "import json;print(json.load(open('extension/manifest.json'))['version'])")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          zip -r hunter-extension.zip extension
+          unzip -l hunter-extension.zip
+
+      # Nothing executable may reach him through this link. A .bat or .exe in
+      # here would be both the thing that broke the download and a thing he has
+      # no reason to trust.
+      - name: Refuse to publish anything executable
+        run: |
+          if unzip -l hunter-extension.zip | grep -Eiq '\.(exe|bat|cmd|ps1|vbs|scr|dll|msi|sh)$'; then
+            echo "the extension zip contains an executable; not publishing"
+            unzip -l hunter-extension.zip
+            exit 1
+          fi
+
+      - name: Publish it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="The Hunter Chrome extension, version ${{ steps.build.outputs.version }}, built from main at ${{ github.sha }}."
+          gh release view extension >/dev/null 2>&1 \
+            || gh release create extension --title "Hunter extension" --notes "$NOTES"
+          gh release edit extension --notes "$NOTES"
+          gh release upload extension hunter-extension.zip --clobber
+          echo "published https://github.com/${{ github.repository }}/releases/download/extension/hunter-extension.zip"
