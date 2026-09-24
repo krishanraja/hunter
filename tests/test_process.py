@@ -742,11 +742,18 @@ def test_one_unreadable_form_does_not_stop_the_other_applications(monkeypatch,
     import hunter.run as R
 
     rows = [{"job_id": f"c{i}:role", "company": f"C{i}", "title": "GM",
+             "url": f"https://c{i}.example/j",
              "package_cv_url": "", "package_letter_url": ""} for i in range(4)]
     monkeypatch.setattr(R, "build_context",
                         lambda: (Cfg({"hunter_never_apply": "[]"}), FakeCanon()))
-    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet(
-        [list(HEADERS), [""] * N_COLS]))
+    # All four rows have to be ON the Pipeline sheet: cmd_approvals is bounded
+    # by the sheet now, and a built package whose row has left it is skipped
+    # before any form is read. With an empty grid here the batch would be
+    # empty for the RIGHT reason and this test would prove nothing.
+    grid = [list(HEADERS), [""] * N_COLS]
+    for i in range(4):
+        grid.append(data_row("Yes", f"C{i}", "GM", f"https://c{i}.example/j"))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet(grid))
     monkeypatch.setattr(R, "GoogleServiceAccount", lambda cfg: type(
         "T", (), {"access_token": "t"})())
     monkeypatch.setattr(R, "GoogleOAuth", lambda cfg: type(

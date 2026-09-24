@@ -4230,6 +4230,32 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
         print("no built packages to send" + (f" for {job_id}" if job_id else ""))
         return 1
 
+    # The sheet decides, not package_status. This query reads a database flag
+    # and never re-read column A, so a role whose row has LEFT the Pipeline
+    # still queued an approval email. On 2026-09-24 Krish had two rows removed
+    # by name, Confidential and Strativ Group; both kept krish_verdict "Yes"
+    # and package_status "built", and the next approvals run would have mailed
+    # him an application to press for each of the two roles he had just had
+    # deleted. select_for_build already treats the sheet as the authority
+    # (router.py: "column A as it reads now, never a DB field") and this step
+    # is the one place downstream of it that did not.
+    #
+    # A sheet hunter cannot read refuses the whole batch rather than mailing
+    # it: the failure mode this prevents is sending, and sending cannot be
+    # undone.
+    srows = sheet.read_pipeline(canon.sheet_headers)
+    paired, _, _, _ = match_rows(srows, list(rows))
+    on_sheet = {d.get("job_id") for _, d in paired if d.get("job_id")}
+    gone = [r for r in rows if r.get("job_id") not in on_sheet]
+    if gone:
+        for r in gone:
+            print(f"skip {r['job_id']}: no longer on the Pipeline sheet "
+                  f"({r.get('company')} / {r.get('title')})")
+        rows = [r for r in rows if r.get("job_id") in on_sheet]
+    if not rows:
+        print("every built package belongs to a row that has left the sheet")
+        return 1
+
     to = notify.mailbox(cfg)
     bank = _answer_bank(sheet)
     oauth = GoogleOAuth(cfg)
@@ -5469,6 +5495,80 @@ def retire_dead_posting(cfg: Config, canon, sheet: Sheet, job_id: str, *,
         print(f"    {line}")
 
 
+def cmd_retire(job_ids: str, apply: bool = False) -> int:
+    """Retire postings Krish names, because the board no longer serves them.
+
+    cmd_decline refuses any row not reading exactly "New", so nothing hunter
+    decides can overwrite a judgement of his. That rule stays. This is the
+    other case, the same shape as prune-sheet --job-id: on 2026-09-24 he
+    marked Databricks and Ladders "Yes", verify found both postings gone, and
+    he said "drop them". A role he approved whose form no longer exists cannot
+    be applied to, and there was no path to retire it that did not mean him
+    editing the dropdown by hand.
+
+    The posting being dead is CHECKED here rather than assumed. A live posting
+    is refused, whatever was typed, because "he named it" is authority to
+    retire a dead role and not a licence to delete a live one.
+    """
+    from .ats import ashby, greenhouse, lever, workday
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    named = [j.strip() for j in (job_ids or "").split(",") if j.strip()]
+    if not named:
+        print("nothing named; pass --job-id a,b")
+        return 2
+    rows = db_get(cfg, "hunter_seen_roles",
+                  {"select": "job_id,company,title,url,job_url,status,"
+                             "package_status,krish_verdict", "limit": ALL_ROWS})
+    by_id = {r.get("job_id"): r for r in rows}
+    fetchers = {"greenhouse": greenhouse.fetch_posting,
+                "lever": lever.fetch_posting, "ashby": ashby.fetch_posting,
+                "workday": workday.fetch_posting}
+    plan: list[tuple[dict, str]] = []
+    for jid in named:
+        row = by_id.get(jid)
+        if row is None:
+            # Never a silent skip: a typo leaves a role he asked to be rid of
+            # sitting there while the run reports success.
+            print(f"no role matched job id {jid!r}")
+            return 1
+        key = ats_key(row.get("url") or row.get("job_url") or "")
+        if key:
+            ats, slug, pid = key
+            try:
+                live, _, _ = fetch_with_retry(fetchers[ats], slug, pid)
+            except Exception as e:
+                # Unreadable is not dead, and must never be reported as such.
+                print(f"REFUSING {jid}: could not reach {ats} to check whether "
+                      f"the posting is live ({e.__class__.__name__})")
+                return 1
+            if live:
+                print(f"REFUSING {jid}: the posting is still live on "
+                      f"{ats}/{slug}. Retiring it would be a lie on the sheet.")
+                return 1
+            why = f"posting gone from {ats}/{slug}"
+        elif (row.get("status") or "") == "dead":
+            # No ATS link to re-check, but hunter already recorded it dead.
+            why = "posting recorded dead and carries no ATS link to re-check"
+        else:
+            print(f"REFUSING {jid}: no ATS link and hunter has not recorded it "
+                  f"dead, so there is no evidence the posting has gone")
+            return 1
+        plan.append((row, why))
+    print(f"{len(plan)} posting(s) to retire:")
+    for row, why in plan:
+        print(f"  {row['company'][:24]:26} {row['title'][:40]:42} {why}")
+    if not apply:
+        print("\ndry run. add --apply to retire these")
+        return 0
+    for row, why in plan:
+        print(f"  {row['job_id']}")
+        retire_dead_posting(cfg, canon, sheet, row["job_id"],
+                            company=row.get("company") or "",
+                            role=row.get("title") or "", why=why)
+    return 0
+
+
 def cmd_close_submitted(apply: bool = False) -> int:
     """Do the sheet work for applications Krish pressed Submit on himself.
 
@@ -5778,6 +5878,16 @@ def main(argv: list[str]) -> int:
             print("usage: python -m hunter.run decline <row>=<reason> ... [--apply]")
             return 2
         return cmd_decline(pairs_in, apply="--apply" in argv)
+    if cmd == "retire":
+        jids = ""
+        if "--job-id" in argv:
+            i = argv.index("--job-id")
+            if i + 1 < len(argv):
+                jids = argv[i + 1]
+        if not jids:
+            print("usage: python -m hunter.run retire --job-id a,b [--apply]")
+            return 2
+        return cmd_retire(jids, apply="--apply" in argv)
     if cmd == "bank-seed":
         return cmd_bank_seed(apply="--apply" in argv)
     if cmd == "gtm-seed":
