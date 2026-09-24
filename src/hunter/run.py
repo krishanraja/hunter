@@ -5094,6 +5094,12 @@ def cmd_confirmations(apply: bool = False) -> int:
     if not open_rows:
         print("no applications waiting on a receipt")
         return 0
+    who = confirmations.mailbox(cfg)
+    if who.get("error"):
+        print(f"mailbox: {who['error']}")
+    else:
+        print(f"reading {who['address'] or 'an unnamed mailbox'} "
+              f"({who['total']} messages in it)")
     try:
         messages = confirmations.fetch(cfg)
     except confirmations.ConfirmError as e:

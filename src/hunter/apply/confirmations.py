@@ -132,3 +132,30 @@ def match(messages: list[dict], open_rows: list[dict]) -> list[tuple[dict, dict]
                 used.add(row["token"])
                 break
     return pairs
+
+
+def mailbox(cfg: Config) -> dict:
+    """Which inbox is actually being read, and how much is in it.
+
+    On 2026-09-24 this step reported "0 candidate message(s)" against twelve
+    open applications. Twelve applications produce twelve employer receipts, so
+    zero meant the search was looking somewhere other than where they land, and
+    nothing in the output said where that was. An address and a total make the
+    difference between an empty inbox and the wrong one visible at a glance.
+    """
+    token = GoogleOAuth(cfg).access_token()
+    h = {"Authorization": "Bearer " + token}
+    out = {"address": "", "total": -1, "error": ""}
+    try:
+        r = requests.get(f"{GMAIL}/profile", headers=h, timeout=30)
+        if r.status_code == 403:
+            out["error"] = ("Gmail read is not granted for this token; "
+                            "run python -m hunter.oauth_grant")
+            return out
+        r.raise_for_status()
+        j = r.json()
+        out["address"] = j.get("emailAddress", "")
+        out["total"] = int(j.get("messagesTotal", -1))
+    except Exception as e:
+        out["error"] = f"{e.__class__.__name__}: {str(e)[:120]}"
+    return out
