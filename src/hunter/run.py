@@ -4883,6 +4883,19 @@ def cap_by_leg_and_company(staged_rows: list, summary: list[str], *,
     return kept
 
 
+def recent_sourced_rows(cfg: Config, days: int = 14) -> list[dict]:
+    """The roles hunter sourced recently, with where they were and why they
+    died. Read by the geography report, which needs the rows a run PAID FOR
+    rather than the rows that survived: the point of it is what was thrown
+    away after the money was spent.
+    """
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+    return list(db_get(cfg, "hunter_seen_roles",
+                       {"select": "source,location,rejection_reason,sweep_date",
+                        "sweep_date": f"gte.{since}", "limit": ALL_ROWS}))
+
+
 def score_coverage_lines(cfg: Config, batches: int = 4) -> list[str]:
     """How much of the recent funnel the company gate can actually see.
 
@@ -5882,7 +5895,7 @@ def main(argv: list[str]) -> int:
     if cmd == "stats":
         # The funnel's own report card, on demand. Nothing here writes to the
         # sheet or sends anything; it reads what he decided and divides.
-        from . import batchstats
+        from . import batchstats, geoscope
         cfg = load()
         sheet = Sheet(GoogleServiceAccount(cfg).access_token)
         batches = funnel_batches_measure(cfg, sheet)
@@ -5907,6 +5920,16 @@ def main(argv: list[str]) -> int:
             print(line)
         print()
         for line in staged_company_lines(cfg, limit=25):
+            print(line)
+        # Where the sourcing is pointed, and what that costs. G6 deleted 42
+        # percent of the LinkedIn leg and 52 percent of the boards in run
+        # 126, and nothing anywhere showed which search was asking for it.
+        print()
+        for line in geoscope.search_lines(linkedin_search_urls(cfg, sheet)):
+            print(line)
+        print()
+        for line in geoscope.deleted_lines(recent_sourced_rows(cfg),
+                                           leg_of=source_leg):
             print(line)
         if "--apply" in argv:
             batchstats.save(cfg, batches)
