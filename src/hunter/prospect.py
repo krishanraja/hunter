@@ -40,6 +40,25 @@ NOT_A_COMPANY = {
 MIN_NAME = 3
 
 
+def hires_in_his_cities(locations) -> bool:
+    """Does a portfolio row record a location he would take a job in.
+
+    company.HIS_GEOGRAPHY is the existing definition and is reused rather
+    than restated: there are already three geography regexes in this
+    repository and a fourth written here would drift from all of them.
+
+    An empty or missing list is False, which ranks the company lower and
+    drops nothing. That is the whole contract of this function.
+    """
+    from .company import HIS_GEOGRAPHY
+    if isinstance(locations, str):
+        locations = [locations]
+    if not isinstance(locations, (list, tuple)):
+        return False
+    return any(isinstance(loc, str) and HIS_GEOGRAPHY.search(loc)
+               for loc in locations)
+
+
 @dataclass
 class Candidate:
     key: str
@@ -51,6 +70,7 @@ class Candidate:
     backed_by: str = ""
     hiring: int = 0
     has_board: bool = False
+    hires_in_his_cities: bool = False   # a recorded location in London or NYC
     reasons: list[str] = field(default_factory=list)
 
     @property
@@ -61,9 +81,22 @@ class Candidate:
         about the company, only an ordering: a company he already knows
         somebody at, whose board hunter can read, is worth establishing the
         facts about before one seen once in a keyword sweep.
+
+        Geography earns as much as a readable board, and it is the term that
+        was missing. G6 deleted 42 percent of the LinkedIn leg and 52 percent
+        of the boards in run 126, so half of what the scoring budget buys is
+        spent on companies whose roles cannot pass. 362 of the 1,125
+        portfolio companies already carry a recorded London, UK or New York
+        location and nothing read it.
+
+        A company with no location scores nothing here and is ranked lower.
+        It is never dropped: unknown is not the same as elsewhere, and only
+        60 companies are scored per run, so this decides what is looked at
+        FIRST rather than what is looked at at all.
         """
         return (4.0 * self.a16z
                 + 3.5 * bool(self.backed_by)
+                + 3.0 * self.hires_in_his_cities
                 + 1.0 * min(self.hiring, 20) / 20
                 + 3.0 * self.has_board
                 + 2.0 * min(self.in_contacts, 5) / 5
@@ -85,6 +118,8 @@ class Candidate:
             bits.append(f"{self.senior_seen} senior role(s) seen")
         if self.has_board:
             bits.append("readable job board")
+        if self.hires_in_his_cities:
+            bits.append("hires in London or New York")
         return ", ".join(bits)
 
 
@@ -200,6 +235,10 @@ def candidates(cfg: Config, *, exclude: set[str] | None = None,
             c.backed_by = r.get("firm") or ""
             if r.get("active_jobs_count"):
                 c.hiring = int(r["active_jobs_count"])
+            # The locations the firm recorded for the company, which is the
+            # only free evidence of WHERE it hires that hunter already holds.
+            if hires_in_his_cities(r.get("locations")):
+                c.hires_in_his_cities = True
 
     if boards:
         from .sources import slugify

@@ -107,3 +107,69 @@ def test_the_leg_breakdown_reports_share_as_well_as_rate():
     text = "\n".join(B.leg_lines([b], R.source_leg))
     assert "93% of the funnel" in text and "12%" in text
     assert "7% of the funnel" in text and "40%" in text
+
+
+# ---------- geography decides what the scoring budget buys ----------
+
+def test_a_company_that_hires_in_his_cities_is_scored_before_one_that_does_not():
+    """Only 60 companies are scored per run (hunter_max_new_companies_per_run),
+    and the order was blind to geography while G6 deleted 42 percent of the
+    LinkedIn leg and 52 percent of the boards for being in the wrong place.
+    """
+    from hunter.prospect import Candidate
+    here = Candidate(key="a", name="A", hires_in_his_cities=True)
+    there = Candidate(key="b", name="B", hires_in_his_cities=False)
+    assert here.priority > there.priority
+
+
+def test_an_unknown_location_ranks_lower_and_is_never_dropped():
+    """Never block on no evidence. A company hunter holds no location for is
+    ranked below one it does, and still appears in the candidate list."""
+    from hunter.prospect import Candidate
+    unknown = Candidate(key="u", name="U", a16z=True)
+    known = Candidate(key="k", name="K", a16z=True, hires_in_his_cities=True)
+    assert known.priority > unknown.priority
+    # and the unknown one still carries real priority of its own
+    assert unknown.priority > 0
+
+
+def test_geography_alone_does_not_outrank_the_company_signals():
+    """It is a tiebreaker on where to spend the budget, not a verdict. A
+    company in the right city and nothing else must not beat one his own
+    contacts work at with a readable board."""
+    from hunter.prospect import Candidate
+    only_geo = Candidate(key="g", name="G", hires_in_his_cities=True)
+    real = Candidate(key="r", name="R", a16z=True, has_board=True, in_contacts=3)
+    assert real.priority > only_geo.priority
+
+
+def test_the_location_test_agrees_with_the_existing_definition():
+    """There are already three geography regexes in this repository and a
+    fourth written here would drift from all of them.
+
+    Checked by agreement on real portfolio strings rather than by grepping
+    the source for the name: a local regex assigned to a variable called
+    HIS_GEOGRAPHY passes that grep and is exactly the drift in question.
+    """
+    from hunter.company import HIS_GEOGRAPHY
+    from hunter.prospect import hires_in_his_cities
+    for loc in ("London, England", "New York", "Brooklyn, NY", "San Francisco",
+                "Remote - US", "US-remote", "remote, anywhere", "Paris",
+                "Berlin", "United Kingdom", "Singapore", "NYC"):
+        assert hires_in_his_cities([loc]) is bool(HIS_GEOGRAPHY.search(loc)), loc
+
+
+def test_a_missing_or_malformed_location_list_is_false_not_an_error():
+    """These rows come from three different firms' portfolio exports."""
+    from hunter.prospect import hires_in_his_cities
+    for bad in (None, [], "", 0, {"city": "London"}, [None, 7]):
+        assert hires_in_his_cities(bad) is False
+    # a bare string is the one non-list shape worth honouring
+    assert hires_in_his_cities("London, England") is True
+
+
+def test_it_reads_every_location_not_only_the_first():
+    """A company headquartered in Berlin that also hires US-remote is one he
+    would take, and stopping at locations[0] would rank it as foreign."""
+    from hunter.prospect import hires_in_his_cities
+    assert hires_in_his_cities(["Berlin", "Munich", "Remote - US"]) is True
