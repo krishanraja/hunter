@@ -21,6 +21,7 @@ Phases of a full run, in order:
 from __future__ import annotations
 
 import datetime
+import html as html_mod
 import json
 import re
 from functools import lru_cache
@@ -4503,8 +4504,24 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
             print(f"    the row stays: hunter could not read the form, and the "
                   f"posting is {'still live' if gone is False else 'not known to be gone'}. "
                   f"Apply by hand at {where}")
+            # Send him the application anyway. It was written, gated and built;
+            # refusing to send meant it never reached him at all.
+            if apply:
+                try:
+                    send_apply_by_hand(
+                        cfg, company=role.company, role=role.title,
+                        jd_url=where,
+                        cv_url=row.get("package_cv_url") or "",
+                        letter_url=row.get("package_letter_url") or "",
+                        essays=plan.essays, why=why,
+                        attachments=attachments or None)
+                    print(f"    documents emailed to {to} to apply by hand")
+                except Exception as e:
+                    print(f"    could not email the documents: "
+                          f"{e.__class__.__name__}: {e}")
             failed.append(f"{row['job_id']}: form cannot be filled "
-                          f"automatically ({plan.ats}), apply by hand")
+                          f"automatically ({plan.ats}), documents emailed to "
+                          f"apply by hand")
             continue
         if not plan.ready:
             print(f"  REFUSING to send: {len(plan.blocking)} required field(s) "
@@ -4887,6 +4904,49 @@ def send_applied_receipt(cfg: Config, *, company: str, role: str, when: str,
                else f"Submitted (UNCONFIRMED): {company} {role}")
     notify.send_email(cfg, subject, html, to=notify.mailbox(cfg), text=text,
                       attachments=attachments)
+
+
+def send_apply_by_hand(cfg: Config, *, company: str, role: str, jd_url: str,
+                       cv_url: str, letter_url: str, essays: dict,
+                       why: str, attachments=None) -> None:
+    """The application, for a form hunter cannot fill.
+
+    Krish, 2026-09-24, about BOI: "BOI I can apply myself (still give me the
+    application via email)". Before this the run refused and sent nothing, so
+    a package that had been written, gated and built never reached him at all.
+
+    Deliberately NOT an approval. No token is minted and no ledger row is
+    written, because there is nothing to approve: replying APPROVE would move a
+    token into a submit path that has no form to drive and would sit there
+    waiting for a browser that can never open it. This is a delivery.
+
+    It never claims the form was filled. That claim is what this repository
+    exists to avoid, and it is the exact shape of the "Filled all 17 fields"
+    banner over an untouched section.
+    """
+    from . import notify
+    bits = [f"<p>{html_mod.escape(role)} at <b>{html_mod.escape(company)}</b></p>",
+            f"<p><b>Hunter cannot fill this form.</b> {html_mod.escape(why)}</p>",
+            "<p>The documents are written and attached. Apply in your own "
+            "browser and paste the answers below.</p>"]
+    if jd_url:
+        bits.append(f'<p><a href="{html_mod.escape(jd_url)}">The posting</a></p>')
+    links = [(n, u) for n, u in (("CV", cv_url), ("Letter", letter_url)) if u]
+    if links:
+        bits.append("<p>" + " &middot; ".join(
+            f'<a href="{html_mod.escape(u)}">{n}</a>' for n, u in links) + "</p>")
+    for q, a in (essays or {}).items():
+        bits.append(f"<p><b>{html_mod.escape(str(q))}</b></p>"
+                    f"<p>{html_mod.escape(str(a)).replace(chr(10), '<br>')}</p>")
+    bits.append("<p>Nothing was submitted and no approval is pending for this "
+                "one. Mark it applied with the Applied button once you have "
+                "sent it.</p>")
+    notify.send_email(
+        cfg, f"Apply by hand: {company} {role}",
+        "".join(bits), to=notify.mailbox(cfg),
+        text=f"[hunter-outbound]\nApply by hand: {role} at {company}. "
+             f"{why} Documents attached.",
+        attachments=attachments or None)
 
 
 def send_applied_digest(cfg: Config, rows: list[tuple[str, str, str]],

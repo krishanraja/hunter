@@ -683,7 +683,48 @@ class GreenhouseDriver(Driver):
         self.page.get_by_role("button", name="Submit application").click(timeout=15000)
 
 
-DRIVERS = {d.ats: d for d in (AshbyDriver, GreenhouseDriver)}
+class LeverDriver(Driver):
+    """Lever.
+
+    Every control Lever asks about is addressed by its own `name`, including
+    the bracketed ones: urls[LinkedIn], cards[<uuid>][field0],
+    surveysResponses[<uuid>][responses][field2]. Brackets are legal inside a
+    quoted CSS attribute value, so a single attribute selector reaches all of
+    them, and it is the only selector shape used here. An id selector would
+    not: Lever gives these inputs no id matching their name.
+
+    A card question renders as a radio GROUP sharing one name. The first
+    member resolves, and _choose_one's _press_group then picks the member
+    carrying the label resolve.py already fitted to the employer's own option
+    text, so nothing here needs to know Lever's option ids.
+    """
+
+    ats = "lever"
+
+    def apply_url(self) -> str:
+        return (f"https://jobs.lever.co/{self.plan.slug}/"
+                f"{self.plan.posting_id}/apply")
+
+    def choice_selectors(self, field) -> list[str]:
+        return [f'[name="{field.key}"]', f'select[name="{field.key}"]']
+
+    def text_selectors(self, field) -> list[str]:
+        return [f'input[name="{field.key}"]', f'textarea[name="{field.key}"]',
+                f'[name="{field.key}"]']
+
+    def file_selectors(self, field) -> list[str]:
+        # Lever gives the application ONE file slot, named resume, and uses it
+        # for whatever single document is attached. Naming it explicitly first
+        # keeps a future second slot from taking the CV.
+        return ['input[type="file"][name="resume"]',
+                f'input[type="file"][name="{field.key}"]',
+                'input[type="file"]']
+
+    def press_submit(self) -> None:
+        self.page.get_by_role("button", name="Submit application").click(timeout=15000)
+
+
+DRIVERS = {d.ats: d for d in (AshbyDriver, GreenhouseDriver, LeverDriver)}
 
 
 def driver_for(plan: FillPlan):
