@@ -4201,6 +4201,13 @@ def live_postings(cfg: Config) -> dict[str, tuple[str, str]]:
     return out
 
 
+# Forms hunter cannot enumerate without a signed in session, plus the
+# catch-all for a URL no adapter matches. An unreadable form of these kinds
+# says nothing about whether the posting is still open, so a role carrying one
+# is never retired as dead. apply/fetch.py returns exactly these ats values.
+CANNOT_ENUMERATE = frozenset({"linkedin", "google", "unknown"})
+
+
 def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -> int:
     """Build and, with --apply, send one approval email per built package.
 
@@ -4378,7 +4385,26 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
             # it as a built package means it comes back on every run and Krish
             # gets an approval email for a role nobody can apply to. Retire it
             # where it lives: the role row, and his sheet.
+            #
+            # But ONLY when the evidence is death. This branch used to retire
+            # every unreadable form, and "unreadable" covers two different
+            # facts. BOI (Board of Innovation) is a role he approved whose only
+            # URL is a LinkedIn job view: fetch returns unreadable because
+            # LinkedIn needs an authenticated session, not because the posting
+            # has gone. Retiring it would have written "Declined - dead
+            # posting" on his sheet about a job that is very likely still open,
+            # which is the manufactured claim this whole repository exists to
+            # avoid. account_required already drew the distinction and this
+            # branch ignored it.
             why = plan.notes[0] if plan.notes else "the form could not be read"
+            if plan.ats in CANNOT_ENUMERATE:
+                print(f"  REFUSING to send: {why}")
+                print(f"    the row stays: this is hunter unable to read the "
+                      f"form, not evidence the posting has gone. Apply by hand "
+                      f"at {plan.jd_url or row.get('url') or 'the posting'}")
+                failed.append(f"{row['job_id']}: {plan.ats} form cannot be "
+                              f"filled automatically, apply by hand")
+                continue
             print(f"  REFUSING to send: {why}")
             if apply:
                 retire_dead_posting(cfg, canon, sheet, row["job_id"],

@@ -111,3 +111,32 @@ def test_an_unreadable_sheet_refuses_the_batch_rather_than_mailing_it(monkeypatc
                             AssertionError("sent on an unreadable sheet")))
     with pytest.raises(RuntimeError):
         R.cmd_approvals(apply=False)
+
+
+# ---------- unreadable is not dead ----------
+
+def test_a_linkedin_only_posting_is_not_retired_as_dead():
+    """BOI (Board of Innovation) is a role Krish approved whose only URL is a
+    LinkedIn job view. apply/fetch returns unreadable because LinkedIn needs an
+    authenticated session, NOT because the posting has gone. The refusal branch
+    retired every unreadable form, so it would have written "Declined - dead
+    posting" onto his sheet about a job that is very likely still open.
+    """
+    assert "linkedin" in R.CANNOT_ENUMERATE
+    assert "google" in R.CANNOT_ENUMERATE
+    assert "unknown" in R.CANNOT_ENUMERATE
+    # A real ATS that answered "gone" is still retired.
+    assert "ashby" not in R.CANNOT_ENUMERATE
+    assert "greenhouse" not in R.CANNOT_ENUMERATE
+    assert "lever" not in R.CANNOT_ENUMERATE
+
+
+def test_the_set_matches_what_fetch_actually_returns():
+    """Written by reading apply/fetch.py, so a new unreadable kind added there
+    without thinking about this branch shows up as a failure here rather than
+    as a false 'dead posting' on his sheet."""
+    import pathlib
+    src = pathlib.Path(R.__file__).parent.joinpath("apply/fetch.py").read_text()
+    for kind in ("linkedin", "google", "unknown"):
+        assert f'unreadable(\n            "{kind}"' in src or \
+               f'unreadable("{kind}"' in src, kind
