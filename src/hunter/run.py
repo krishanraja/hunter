@@ -3253,12 +3253,18 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             return -((result.score or 0) + company_part)
 
         staged_rows.sort(key=rank)
+        # Diversity before volume. Ranked first so the best of each leg and
+        # each company survives the trim, then trimmed, then capped.
+        cap = int(cfg.optional("hunter_max_staged_per_run", "40"))
+        staged_rows = cap_by_leg_and_company(
+            staged_rows, summary, cap=cap,
+            per_company=int(cfg.optional("hunter_max_per_company_per_run", "3")),
+            leg_share=float(cfg.optional("hunter_max_leg_share_per_run", "0.35")))
         # And only the top of it reaches the sheet. There was no cap until
         # 2026-09-20, which is how the tab reached 176 rows: a sheet he
         # cannot judge in one sitting is a sheet he does not judge. The
         # roles below the line keep their database row and their score, so
         # nothing is lost and raising the cap surfaces them next run.
-        cap = int(cfg.optional("hunter_max_staged_per_run", "40"))
         if cap and len(staged_rows) > cap:
             held = len(staged_rows) - cap
             cut = staged_rows[cap][1].score
@@ -4699,6 +4705,143 @@ def send_applied_digest(cfg: Config, rows: list[tuple[str, str, str]],
                       to=notify.mailbox(cfg), text=text)
 
 
+# The same supply leg has reached the sheet under four different labels:
+# "apify_linkedin", "Apify LinkedIn", "Apify LinkedIn (2026-09-10 sweep)" and
+# "linkedin". Fragmented like that it looked like four small sources instead of
+# one carrying 142 of the 231 verdicts Krish has ever given, and any cap keyed
+# on the raw label would be bypassed by the next spelling.
+def source_leg(source: str) -> str:
+    """The supply leg a source label belongs to."""
+    s = (source or "").strip().lower()
+    if not s:
+        return "unknown"
+    if "apify" in s or s.startswith("linkedin"):
+        return "linkedin keyword sweep"
+    if s.startswith("market scan"):
+        return "market scan"
+    if "a16z" in s:
+        return "a16z portfolio"
+    if s.startswith("direct ats sweep"):
+        return "legacy ats sweep"
+    if s.startswith("newsletter"):
+        return "newsletter"
+    for ats in ("greenhouse", "ashby", "lever", "workday", "smartrecruiters"):
+        if s.startswith(ats):
+            return "company board"
+    return s
+
+
+def cap_by_leg_and_company(staged_rows: list, summary: list[str], *,
+                           cap: int, per_company: int,
+                           leg_share: float) -> list:
+    """Trim a ranked batch so no one leg and no one company can own it.
+
+    Measured 2026-09-24 against his own verdicts: the LinkedIn keyword sweep
+    carried 62 percent of everything he has ever ruled on and ran at 12
+    percent, while the company boards ran at 67 percent on six verdicts each.
+    He was not seeing the good roles because the good legs were starved.
+
+    Sierra is the same failure one level down: one board put fourteen roles on
+    the sheet and he declined all fourteen.
+
+    Neither is a quality judgement and neither deletes anything. The rows
+    trimmed here keep their database row and their score, exactly as the
+    overall cap already leaves them, so a leg that is genuinely producing gets
+    its slots back next run rather than being written off.
+    """
+    if not staged_rows:
+        return staged_rows
+    leg_cap = max(1, int(cap * leg_share)) if leg_share > 0 else 0
+    kept: list = []
+    per_leg_count: dict[str, int] = {}
+    per_company_count: dict[str, int] = {}
+    held_leg: dict[str, int] = {}
+    held_company: dict[str, int] = {}
+    for entry in staged_rows:
+        role = entry[0]
+        leg = source_leg(getattr(role, "source", ""))
+        ckey = company_key(role.company) or slugify(role.company)
+        if per_company and per_company_count.get(ckey, 0) >= per_company:
+            held_company[role.company] = held_company.get(role.company, 0) + 1
+            continue
+        if leg_cap and per_leg_count.get(leg, 0) >= leg_cap:
+            held_leg[leg] = held_leg.get(leg, 0) + 1
+            continue
+        kept.append(entry)
+        per_leg_count[leg] = per_leg_count.get(leg, 0) + 1
+        per_company_count[ckey] = per_company_count.get(ckey, 0) + 1
+    if held_company:
+        summary.append(
+            f"held {sum(held_company.values())} role(s) over the {per_company} "
+            f"per company limit: "
+            + ", ".join(f"{c} ({n})" for c, n in
+                        sorted(held_company.items(), key=lambda kv: -kv[1])[:5]))
+    if held_leg:
+        summary.append(
+            f"held {sum(held_leg.values())} role(s) over the "
+            f"{round(100 * leg_share)}% per supply leg limit ({leg_cap} slots): "
+            + ", ".join(f"{l} ({n})" for l, n in
+                        sorted(held_leg.items(), key=lambda kv: -kv[1])))
+    return kept
+
+
+def score_coverage_lines(cfg: Config, batches: int = 4) -> list[str]:
+    """How much of the recent funnel the company gate can actually see.
+
+    G14 blocks a company hunter has READ and found wanting, and ranks one it
+    could not read. That is deliberate and right. It also means the gate is a
+    no-op wherever coverage is thin, and nothing reported coverage, so "the
+    scorer is on" and "the scorer sees 12 percent of the funnel" looked the
+    same from outside.
+
+    Measured per batch, because company scoring only entered staging on
+    2026-09-20: an older batch reading zero says the gate did not exist yet,
+    not that it is broken, and mixing the two eras hides both.
+    """
+    from . import companyintel as intel
+    from . import company as comp_score
+    roles = db_get(cfg, "hunter_seen_roles",
+                   {"select": "company,presented_at", "limit": ALL_ROWS})
+    try:
+        known = intel.load(cfg)
+    except Exception as e:
+        return [f"company score coverage unavailable: {e.__class__.__name__}"]
+    per: dict[str, dict] = {}
+    for r in roles:
+        day = (r.get("presented_at") or "")[:10]
+        if not day:
+            continue
+        b = per.setdefault(day, {"companies": set(), "scored": set(),
+                                 "totals": []})
+        name = (r.get("company") or "").strip()
+        if not name:
+            continue
+        k = company_key(name) or slugify(name)
+        b["companies"].add(k)
+        row = known.get(k) or {}
+        if row.get("total") is not None:
+            b["scored"].add(k)
+            try:
+                b["totals"].append(float(row["total"]))
+            except (TypeError, ValueError):
+                pass
+    if not per:
+        return []
+    days = sorted(per)[-batches:]
+    out = [f"company score coverage, last {len(days)} batch(es) "
+           f"(gate floor {comp_score.SWEEP_FLOOR}):",
+           f"  {'batch':12} {'companies':>9} {'scored':>7} {'cover':>6} {'mean':>6}"]
+    for d in days:
+        b = per[d]
+        n, sc = len(b["companies"]), len(b["scored"])
+        cover = f"{round(100 * sc / n)}%" if n else "-"
+        mean = f"{sum(b['totals']) / len(b['totals']):.1f}" if b["totals"] else "-"
+        out.append(f"  {d:12} {n:9} {sc:7} {cover:>6} {mean:>6}")
+    out.append("  a batch before 2026-09-20 predates the gate; zero there is "
+               "history, not a fault")
+    return out
+
+
 def staged_company_lines(cfg: Config, limit: int = 25) -> list[str]:
     """Which companies actually fill his sheet, and what he said about them.
 
@@ -5581,7 +5724,13 @@ def main(argv: list[str]) -> int:
         for line in batchstats.lines(batches):
             print(line)
         print()
+        for line in batchstats.leg_lines(batches, source_leg):
+            print(line)
+        print()
         for line in batchstats.source_lines(batches):
+            print(line)
+        print()
+        for line in score_coverage_lines(cfg):
             print(line)
         print()
         for line in staged_company_lines(cfg, limit=25):
