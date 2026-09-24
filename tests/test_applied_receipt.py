@@ -12,17 +12,29 @@ import pytest
 
 import hunter.run as R
 from hunter import verdicts
+from hunter import sheet as sheet_mod
 from hunter.sheet import SheetRow, N_COLS, APPLIED_STATUS
 
 
 class FakeSheet:
-    def __init__(self, rows):
+    def __init__(self, rows, archived=()):
         self._rows = rows
+        self._archived = list(archived)
         self.applied: dict[int, str] = {}
         self.verdicts_set: dict[int, str] = {}
 
     def read_pipeline(self, headers):
         return self._rows
+
+    def read_tab_values(self, rng):
+        """The Applied tab, as raw cells, in the same 30 column order."""
+        grid = []
+        for company, role in self._archived:
+            cells = [""] * N_COLS
+            cells[sheet_mod.COLS["Business"]] = company
+            cells[sheet_mod.COLS["Role"]] = role
+            grid.append(cells)
+        return grid
 
     def mark_applied(self, row_number, *, when):
         self.applied[row_number] = when
@@ -274,3 +286,120 @@ def test_a_role_already_written_is_not_written_again(monkeypatch):
                         lambda *a, **k: recorded.append(a[3]))
     assert R.cmd_close_submitted(apply=True) == 0
     assert recorded == ["c"], "only the role with nothing written should be written"
+
+
+def test_a_role_already_on_the_applied_tab_closes_instead_of_retrying(wired):
+    """Mutiny, 2026-09-24. record_applied ends by archiving every decided row,
+    and it ran once per role in the batch. A role written earlier in the same
+    batch, or reached under a second job id for the same posting, then found no
+    Pipeline row, was reported as "0 Pipeline rows match", and had its ledger
+    entry left open on purpose so the next run would retry. The row it wanted
+    was on the Applied tab and never coming back, so it retried for ever."""
+    sheet = FakeSheet([row(71, "Clay", "Head of GTM Strategy & Ops")],
+                      archived=[("Mutiny", "Head of GTM (Path to COO)")])
+    wrote = R.record_applied(None, Canon(), sheet, "mutiny:head-of-gtm",
+                             company="Mutiny", role="Head of GTM (Path to COO)")
+    assert wrote is True, "an archived role is finished, not a failure"
+    # Nothing was written to Pipeline, because there is nothing there to write.
+    assert sheet.applied == {} and sheet.verdicts_set == {}
+    # And the ledger closes, which is what stops the retry.
+    table, match, values = wired["patch"][0]
+    assert match == {"job_id": "mutiny:head-of-gtm"}
+    assert values["application_state"] == R.APPLIED_STATE
+    notes = wired["mail"][0]["notes"]
+    assert any("already on the Applied tab" in n for n in notes)
+    assert not any("NOT marked done" in n for n in notes)
+
+
+def test_a_role_that_is_simply_missing_still_refuses_to_close(wired):
+    """The guard above may not become a blanket pass. A company or role that is
+    on neither tab is a real miss and must stay open for the next run."""
+    sheet = FakeSheet([row(71, "Clay", "Head of GTM Strategy & Ops")],
+                      archived=[("Mutiny", "Head of GTM (Path to COO)")])
+    wrote = R.record_applied(None, Canon(), sheet, "nowhere:x",
+                             company="Nowhere", role="Some Role")
+    assert wrote is False
+    assert wired["patch"] == [], "nothing may be marked done in Supabase"
+    assert any("NOT marked done" in n for n in wired["mail"][0]["notes"])
+
+
+def test_the_archive_can_be_held_back_for_a_batch(wired):
+    """Archiving between roles moved rows out from under the roles still to be
+    written. cmd_close_submitted runs the pass once, itself, at the end."""
+    sheet = FakeSheet([row(71, "Clay", "Head of GTM Strategy & Ops")])
+    R.record_applied(None, Canon(), sheet, "clay:x", company="Clay",
+                     role="Head of GTM Strategy & Ops", archive=False)
+    assert wired["archive"] == 0
+    R.record_applied(None, Canon(), sheet, "clay:x", company="Clay",
+                     role="Head of GTM Strategy & Ops")
+    assert wired["archive"] == 1
+
+
+def test_two_job_ids_for_one_posting_are_written_once_and_both_close(monkeypatch):
+    """One posting, however many role rows point at it. Mutiny arrived under
+    three job ids; each was a separate ledger row, and each wanted the same
+    single Pipeline row."""
+    seen = {
+        "a": {"job_id": "a", "application_state": None,
+              "job_url": "https://jobs.ashbyhq.com/mutiny/123"},
+        "b": {"job_id": "b", "application_state": None,
+              "job_url": "https://jobs.ashbyhq.com/mutiny/123?src=x"},
+        "c": {"job_id": "c", "application_state": None,
+              "job_url": "https://jobs.ashbyhq.com/clay/999"},
+    }
+    approvals = [{"token": k, "job_id": k, "company": "Mutiny" if k != "c" else "Clay",
+                  "role": "r", "submitted_at": "2026-09-24T12:00:00Z",
+                  "failure_reason": "the form said \"successfully submitted\""}
+                 for k in ("a", "b", "c")]
+
+    def fake_db_get(cfg, table, params):
+        return approvals if table.endswith("approvals") else list(seen.values())
+
+    recorded: list[str] = []
+    patched: list[tuple] = []
+    monkeypatch.setattr(R, "db_get", fake_db_get)
+    monkeypatch.setattr(R, "db_patch",
+                        lambda cfg, table, match, values: patched.append((match, values)))
+    monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "GoogleServiceAccount",
+                        lambda cfg: type("T", (), {"access_token": ""})())
+    monkeypatch.setattr(R, "cmd_archive", lambda apply=False: 0)
+
+    def fake_record(cfg, canon, sheet, job_id, **kw):
+        recorded.append(job_id)
+        return True
+
+    monkeypatch.setattr(R, "record_applied", fake_record)
+    assert R.cmd_close_submitted(apply=True) == 0
+    assert recorded == ["a", "c"], "the second id for one posting is not written again"
+    assert [m["job_id"] for m, _ in patched] == ["b"], "and it closes with its sibling"
+    assert patched[0][1]["application_state"] == R.APPLIED_STATE
+
+
+def test_a_sibling_stays_open_when_the_write_failed(monkeypatch):
+    """A posting whose row was not written is not finished, so neither is the
+    second id pointing at it."""
+    seen = {
+        "a": {"job_id": "a", "application_state": None,
+              "job_url": "https://jobs.ashbyhq.com/mutiny/123"},
+        "b": {"job_id": "b", "application_state": None,
+              "job_url": "https://jobs.ashbyhq.com/mutiny/123"},
+    }
+    approvals = [{"token": k, "job_id": k, "company": "Mutiny", "role": "r",
+                  "submitted_at": "2026-09-24T12:00:00Z", "failure_reason": ""}
+                 for k in ("a", "b")]
+    patched: list[tuple] = []
+    monkeypatch.setattr(R, "db_get",
+                        lambda cfg, table, params: approvals
+                        if table.endswith("approvals") else list(seen.values()))
+    monkeypatch.setattr(R, "db_patch",
+                        lambda cfg, table, match, values: patched.append((match, values)))
+    monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "GoogleServiceAccount",
+                        lambda cfg: type("T", (), {"access_token": ""})())
+    monkeypatch.setattr(R, "cmd_archive", lambda apply=False: 0)
+    monkeypatch.setattr(R, "record_applied", lambda *a, **k: False)
+    assert R.cmd_close_submitted(apply=True) == 0
+    assert patched == [], "nothing closes on the back of a write that did not happen"
