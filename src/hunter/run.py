@@ -1466,6 +1466,7 @@ def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False,
     # had already marked both of them Yes. A judgement of his is not something
     # to work around, so the only way past the guard is him naming the row.
     named = {j.strip() for j in (job_ids or "").split(",") if j.strip()}
+    named_rows: set[int] = set()
     if named:
         by_id = {d.get("job_id"): srow for srow, d in pairs}
         for jid in sorted(named):
@@ -1476,6 +1477,7 @@ def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False,
                 print(f"no Pipeline row matched job id {jid!r}")
                 return 1
             plan[srow.row_number] = f"removed by name ({jid})"
+            named_rows.add(srow.row_number)
     for s in srows:
         k = ident(s)
         if k in first:
@@ -1516,7 +1518,10 @@ def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False,
     if not apply:
         print("\ndry run. add --apply to delete these rows")
         return 0
-    removed = sheet.delete_rows(sorted(plan))
+    # Only the rows he named are exempt from the write path's own column A
+    # check. Everything the rules chose still has to read "New" at the moment
+    # of deletion.
+    removed = sheet.delete_rows(sorted(plan), named=named_rows)
     print(f"\ndeleted {removed} rows; sheet now has "
           f"{len(sheet.read_pipeline(canon.sheet_headers))} data rows")
     return 0

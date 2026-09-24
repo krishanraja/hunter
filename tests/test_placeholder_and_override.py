@@ -15,6 +15,8 @@ needs the company to be the employer.
 """
 from __future__ import annotations
 
+import pytest
+
 import hunter.run as R
 from hunter import company as comp
 from hunter import companyintel as intel
@@ -148,7 +150,7 @@ def test_a_row_he_names_is_removed_whatever_column_a_says(monkeypatch, capsys):
         def read_pipeline(self, headers):
             return rows
 
-        def delete_rows(self, ns):
+        def delete_rows(self, ns, *, named=frozenset()):
             deleted.extend(ns)
             return len(ns)
 
@@ -189,7 +191,7 @@ def test_prune_still_refuses_a_judged_row_it_was_not_given(monkeypatch):
         def read_pipeline(self, headers):
             return rows
 
-        def delete_rows(self, ns):
+        def delete_rows(self, ns, *, named=frozenset()):
             deleted.extend(ns)
             return len(ns)
 
@@ -204,3 +206,63 @@ def test_prune_still_refuses_a_judged_row_it_was_not_given(monkeypatch):
     # Brazil would normally be pruned as outside canon geography.
     assert R.cmd_prune_sheet(apply=True) == 0
     assert deleted == [], "a row he has judged is never deleted by machine"
+
+
+def _sheet_with(col_a, monkeypatch):
+    """A Sheet whose column A actually shrinks when rows are deleted.
+
+    delete_rows has a third guard after the write: it re-reads column A and
+    refuses if the sheet did not get shorter. A fake that returns the same grid
+    forever fails that check, correctly.
+    """
+    from hunter import sheet as sheet_mod
+    s = sheet_mod.Sheet.__new__(sheet_mod.Sheet)
+    s.sheet_id = 1
+    state = {"rows": list(col_a)}
+    posted: list = []
+
+    def fake_post(path, body):
+        posted.append(body)
+        for req in body.get("requests", []):
+            start = req["deleteDimension"]["range"]["startIndex"]
+            del state["rows"][start]
+
+    monkeypatch.setattr(s, "_column_a", lambda: [[v] for v in state["rows"]],
+                        raising=False)
+    monkeypatch.setattr(s, "_post", fake_post, raising=False)
+    return s, posted
+
+
+def test_the_write_path_still_refuses_a_judged_row_it_was_not_named(monkeypatch):
+    """The second guard, which caught my first attempt at this on 2026-09-24.
+
+    cmd_prune_sheet plans the deletion; Sheet.delete_rows re-reads column A at
+    the moment of the write and aborts the whole batch if a target is no longer
+    "New". Patching the planner alone was not enough, and the run failed rather
+    than deleting something it should not have. That is the guard working.
+    """
+    from hunter import sheet as sheet_mod
+    # rows 1,2 header and blank; row 3 New; row 4 Yes.
+    s, posted = _sheet_with(["Verdict", "", "New", "Yes"], monkeypatch)
+    with pytest.raises(sheet_mod.SheetError) as e:
+        s.delete_rows([3, 4])
+    assert "no longer 'New'" in str(e.value)
+    assert posted == [], "nothing may be written when the batch is refused"
+
+
+def test_only_the_named_row_is_exempt_from_the_write_path_check(monkeypatch):
+    """Naming a row exempts THAT row. Passing expect_verdict=None would have
+    disabled the check for every row in the same call, including the duplicate
+    and out-of-geography rows the rules chose, which is the blanket this guard
+    exists to prevent."""
+    from hunter import sheet as sheet_mod
+    s, posted = _sheet_with(["Verdict", "", "New", "Yes", "Yes"], monkeypatch)
+    # Row 4 named, row 5 not: the batch must still be refused because of row 5.
+    with pytest.raises(sheet_mod.SheetError):
+        s.delete_rows([3, 4, 5], named={4})
+    assert posted == []
+
+    # Named alone, alongside a legitimately New row, goes through.
+    s2, posted2 = _sheet_with(["Verdict", "", "New", "Yes"], monkeypatch)
+    assert s2.delete_rows([3, 4], named={4}) == 2
+    assert posted2, "the delete must actually be posted"

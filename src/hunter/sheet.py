@@ -382,13 +382,23 @@ class Sheet:
         return self._values(f"{tab}!A1:A2000", formulas=False)
 
     def delete_rows(self, row_numbers: list[int], *,
-                    expect_verdict: str | None = "New") -> int:
+                    expect_verdict: str | None = "New",
+                    named: set[int] | frozenset[int] = frozenset()) -> int:
         """Remove data rows, refusing any row Krish has written on.
 
         Deleting is the one destructive thing this module does, so it re-reads
         column A immediately before the write and aborts the whole batch if any
         target no longer reads exactly `expect_verdict`. Rows go in descending
         order so earlier indices stay valid.
+
+        `named` exempts specific row numbers from that check, and nothing else
+        about it changes. It exists for the one case the check cannot tell
+        apart from the case it is for: on 2026-09-24 Krish asked for two rows
+        off the sheet by job id, having already marked both Yes. Refusing a row
+        HE named is not protecting his judgement, it is ignoring it. Passing
+        expect_verdict=None instead would have disabled the check for the whole
+        batch, including the duplicate and out-of-geography rows in the same
+        call, which is exactly the blanket this guard exists to prevent.
         """
         targets = sorted({int(n) for n in row_numbers}, reverse=True)
         if not targets:
@@ -398,8 +408,11 @@ class Sheet:
                              f"are the header and the intentional blank")
         grid = self._column_a()
         dirty = []
+        exempt = {int(n) for n in named}
         if expect_verdict is not None:
             for n in targets:
+                if n in exempt:
+                    continue
                 cell = (grid[n - 1][0] if len(grid) >= n and grid[n - 1] else "").strip()
                 if cell != expect_verdict:
                     dirty.append((n, cell))
