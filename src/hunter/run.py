@@ -4846,29 +4846,95 @@ def cmd_apply_local(token: str = "", cdp_url: str = "", profile_dir: str = "",
     return 0
 
 
-def cmd_applied(token: str) -> int:
+SAID_SO = "Krish said he submitted this himself"
+
+
+def cmd_applied_list() -> int:
+    """Every application still waiting on a submission, with the id to name it by.
+
+    Marking a role applied means naming exactly one, and the only place the ids
+    were visible was a run log nobody keeps. Reading the wrong one off an old log
+    stamps Applied on a role he has not sent.
+    """
+    from .apply import approval
+    cfg = load()
+    rows = db_get(cfg, approval.TABLE,
+                  {"select": "token,job_id,company,role,state,sent_at",
+                   "state": f"in.({approval.AWAITING},{approval.APPROVED})",
+                   "order": "sent_at.desc", "limit": "200"})
+    if not rows:
+        print("nothing is waiting on a submission")
+        return 0
+    print(f"{len(rows)} application(s) waiting on a submission:\n")
+    for r in rows:
+        print(f"  {r['job_id']}")
+        print(f"    {r.get('company')} {(r.get('role') or '')[:60]}  "
+              f"[{r['state']}, sent {(r.get('sent_at') or '')[:10]}]")
+    print("\nto record the ones you sent yourself:")
+    print("  applied --job-id id1,id2,id3")
+    return 0
+
+
+def cmd_applied(token: str = "", job_ids: str = "") -> int:
     """Record an application Krish pressed himself.
 
     The other half of apply-local. Hunter cannot see his click, so he says so
     once and everything that would have happened after an automated submit
     happens now: the ledger, the sheet, the role row, the move to the Applied tab.
+
+    His word is the evidence and the receipt says so in those words. It never
+    borrows the phrasing used when a form actually acknowledged something,
+    because "the form said" and "he told me" are different claims and the whole
+    point of that field is to keep them apart.
+
+    Takes several ids because he applies in batches, and a batch of one dispatch
+    per role is a batch he will not do.
     """
     from .apply import approval
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    row = approval.get_row(cfg, token)
-    if not row:
-        print(f"no approval row for token {token!r}")
-        return 1
-    if row["state"] == approval.SUBMITTED:
-        print("already recorded as submitted")
-        return 0
-    approval.set_state(cfg, token, approval.SUBMITTED, submitted_at=NOW(),
-                       failure_reason="pressed by Krish in his own browser")
-    record_applied(cfg, canon, sheet, row["job_id"],
-                   company=row.get("company") or "", role=row.get("role") or "",
-                   confirmation="pressed by Krish in his own browser")
-    print(f"recorded: {row.get('company')} {row.get('role')}")
+
+    wanted = [j.strip() for j in (job_ids or "").split(",") if j.strip()]
+    rows: list[dict] = []
+    if token:
+        row = approval.get_row(cfg, token)
+        if not row:
+            print(f"no approval row for token {token!r}")
+            return 1
+        rows.append(row)
+    for jid in wanted:
+        found = db_get(cfg, approval.TABLE,
+                       {"select": "token,job_id,company,role,state",
+                        "job_id": f"eq.{jid}", "order": "token.asc", "limit": "5"})
+        if not found:
+            # Never a silent skip: an id that names nothing is a typo, and a
+            # typo that passes quietly leaves a role he sent reading Not applied.
+            print(f"no approval row for job id {jid!r}")
+            return 1
+        rows.extend(found)
+
+    if not rows:
+        print("usage: applied --list | applied --job-id id1,id2 | applied --token X")
+        return 2
+
+    done = 0
+    for row in rows:
+        if row["state"] == approval.SUBMITTED:
+            print(f"already recorded as submitted: {row.get('company')} "
+                  f"{row.get('role')}")
+            continue
+        approval.set_state(cfg, row["token"], approval.SUBMITTED,
+                           submitted_at=NOW(), failure_reason=SAID_SO)
+        # One archive pass at the end, not one per role: archiving between roles
+        # takes rows out from under the roles still to be written.
+        record_applied(cfg, canon, sheet, row["job_id"],
+                       company=row.get("company") or "",
+                       role=row.get("role") or "",
+                       confirmation=SAID_SO, archive=False)
+        print(f"recorded: {row.get('company')} {row.get('role')}")
+        done += 1
+    if done:
+        cmd_archive(apply=True)
     return 0
 
 
@@ -5306,11 +5372,15 @@ def main(argv: list[str]) -> int:
     if cmd == "confirmations":
         return cmd_confirmations(apply="--apply" in argv)
     if cmd == "applied":
-        tok = _flag("--token")
-        if not tok:
-            print("usage: python -m hunter.run applied --token X")
+        if "--list" in argv:
+            return cmd_applied_list()
+        tok, jids = _flag("--token"), _flag("--job-id")
+        if not tok and not jids:
+            print("usage: python -m hunter.run applied --list")
+            print("       python -m hunter.run applied --job-id id1,id2")
+            print("       python -m hunter.run applied --token X")
             return 2
-        return cmd_applied(tok)
+        return cmd_applied(token=tok, job_ids=jids)
     if cmd == "approvals-drain":
         return cmd_approvals_drain(apply="--apply" in argv,
                                    send="--send" in argv)

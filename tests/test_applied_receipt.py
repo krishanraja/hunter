@@ -403,3 +403,49 @@ def test_a_sibling_stays_open_when_the_write_failed(monkeypatch):
     monkeypatch.setattr(R, "record_applied", lambda *a, **k: False)
     assert R.cmd_close_submitted(apply=True) == 0
     assert patched == [], "nothing closes on the back of a write that did not happen"
+
+
+def test_his_word_is_recorded_as_his_word_not_as_the_form_speaking(monkeypatch):
+    """Krish applied to six more roles on 2026-09-24 that the extension never
+    reported, so their rows still read Not applied and no receipt was ever sent.
+    Marking them is his say so, and the receipt has to say that. "the form said"
+    is a quote from the employer's page and this is not one; substituting it
+    would be the manufactured confirmation the whole confirmation field exists
+    to prevent."""
+    rows = [{"token": "t1", "job_id": "udio:x", "company": "udio",
+             "role": "Head of Artist Partnerships", "state": "awaiting"}]
+    states: list[tuple] = []
+    recorded: list[dict] = []
+    monkeypatch.setattr(R, "db_get", lambda cfg, table, params: rows)
+    monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "GoogleServiceAccount",
+                        lambda cfg: type("T", (), {"access_token": ""})())
+    monkeypatch.setattr(R, "cmd_archive", lambda apply=False: 0)
+    monkeypatch.setattr(R, "record_applied",
+                        lambda *a, **k: recorded.append(k) or True)
+    from hunter.apply import approval as ap
+    monkeypatch.setattr(ap, "set_state",
+                        lambda cfg, token, state, **kw: states.append((token, state, kw)))
+    assert R.cmd_applied(job_ids="udio:x") == 0
+    assert states[0][1] == ap.SUBMITTED
+    assert states[0][2]["failure_reason"] == R.SAID_SO
+    assert "said he submitted" in R.SAID_SO
+    assert "the form said" not in R.SAID_SO
+    assert recorded[0]["confirmation"] == R.SAID_SO
+    # The batch archives once, at the end, not once per role.
+    assert recorded[0]["archive"] is False
+
+
+def test_an_id_that_names_nothing_stops_rather_than_skipping(monkeypatch):
+    """A typo in a job id must not pass quietly: the role he actually sent would
+    be left reading Not applied while the run says it succeeded."""
+    monkeypatch.setattr(R, "db_get", lambda cfg, table, params: [])
+    monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "GoogleServiceAccount",
+                        lambda cfg: type("T", (), {"access_token": ""})())
+    called: list = []
+    monkeypatch.setattr(R, "record_applied", lambda *a, **k: called.append(a))
+    assert R.cmd_applied(job_ids="typo:nothing") == 1
+    assert called == [], "nothing may be recorded off an id that matched no row"
