@@ -4201,11 +4201,39 @@ def live_postings(cfg: Config) -> dict[str, tuple[str, str]]:
     return out
 
 
-# Forms hunter cannot enumerate without a signed in session, plus the
-# catch-all for a URL no adapter matches. An unreadable form of these kinds
-# says nothing about whether the posting is still open, so a role carrying one
-# is never retired as dead. apply/fetch.py returns exactly these ats values.
-CANNOT_ENUMERATE = frozenset({"linkedin", "google", "unknown"})
+def posting_is_gone(row: dict) -> bool | None:
+    """Has the board stopped serving this posting. None means hunter cannot
+    tell, which is a third answer and never collapses into either of the
+    other two.
+
+    This exists because "hunter cannot read the form" and "the posting has
+    gone" are different facts and were conflated. apply/fetch returns
+    unreadable() for BOTH a LinkedIn URL needing a login AND an ATS whose
+    form adapter has not been written, and the second one says in its own
+    words "the posting is readable but its form is not". On 2026-09-24 that
+    conflation marked Versapay and Rembrand dead on his sheet, two live Lever
+    postings he had said Yes to, one of them an hour earlier.
+
+    So liveness is ASKED of the board here rather than inferred from whether
+    a form could be parsed. No answer is not an answer.
+    """
+    from .ats import ashby, greenhouse, lever, workday
+    key = ats_key(row.get("url") or row.get("job_url") or "")
+    if not key:
+        return None
+    ats, slug, pid = key
+    fetchers = {"greenhouse": greenhouse.fetch_posting,
+                "lever": lever.fetch_posting, "ashby": ashby.fetch_posting,
+                "workday": workday.fetch_posting}
+    fn = fetchers.get(ats)
+    if fn is None:
+        return None
+    try:
+        live, _, _ = fetch_with_retry(fn, slug, pid)
+    except Exception:
+        # Unreachable is not dead, and must never be reported as such.
+        return None
+    return not live
 
 
 def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -> int:
@@ -4397,18 +4425,26 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
             # avoid. account_required already drew the distinction and this
             # branch ignored it.
             why = plan.notes[0] if plan.notes else "the form could not be read"
-            if plan.ats in CANNOT_ENUMERATE:
-                print(f"  REFUSING to send: {why}")
-                print(f"    the row stays: this is hunter unable to read the "
-                      f"form, not evidence the posting has gone. Apply by hand "
-                      f"at {plan.jd_url or row.get('url') or 'the posting'}")
-                failed.append(f"{row['job_id']}: {plan.ats} form cannot be "
-                              f"filled automatically, apply by hand")
-                continue
             print(f"  REFUSING to send: {why}")
-            if apply:
+            # Whether the POSTING has gone is a separate question from whether
+            # its form could be parsed, and it is asked of the board rather
+            # than guessed from the parse. A first attempt at this listed the
+            # ats names that mean "cannot enumerate" and missed the branch
+            # that carries the real name, so "no form adapter for lever yet;
+            # the posting is READABLE but its form is not" was read as death
+            # and retired two live roles he had approved.
+            gone = posting_is_gone(row) if apply else None
+            if gone:
                 retire_dead_posting(cfg, canon, sheet, row["job_id"],
-                                    company=role.company, role=role.title, why=why)
+                                    company=role.company, role=role.title,
+                                    why=why)
+                continue
+            where = plan.jd_url or row.get("url") or "the posting"
+            print(f"    the row stays: hunter could not read the form, and the "
+                  f"posting is {'still live' if gone is False else 'not known to be gone'}. "
+                  f"Apply by hand at {where}")
+            failed.append(f"{row['job_id']}: form cannot be filled "
+                          f"automatically ({plan.ats}), apply by hand")
             continue
         if not plan.ready:
             print(f"  REFUSING to send: {len(plan.blocking)} required field(s) "
@@ -5536,7 +5572,6 @@ def cmd_retire(job_ids: str, apply: bool = False) -> int:
     is refused, whatever was typed, because "he named it" is authority to
     retire a dead role and not a licence to delete a live one.
     """
-    from .ats import ashby, greenhouse, lever, workday
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     named = [j.strip() for j in (job_ids or "").split(",") if j.strip()]
@@ -5547,9 +5582,6 @@ def cmd_retire(job_ids: str, apply: bool = False) -> int:
                   {"select": "job_id,company,title,url,job_url,status,"
                              "package_status,krish_verdict", "limit": ALL_ROWS})
     by_id = {r.get("job_id"): r for r in rows}
-    fetchers = {"greenhouse": greenhouse.fetch_posting,
-                "lever": lever.fetch_posting, "ashby": ashby.fetch_posting,
-                "workday": workday.fetch_posting}
     plan: list[tuple[dict, str]] = []
     for jid in named:
         row = by_id.get(jid)
@@ -5560,19 +5592,18 @@ def cmd_retire(job_ids: str, apply: bool = False) -> int:
             return 1
         key = ats_key(row.get("url") or row.get("job_url") or "")
         if key:
-            ats, slug, pid = key
-            try:
-                live, _, _ = fetch_with_retry(fetchers[ats], slug, pid)
-            except Exception as e:
-                # Unreadable is not dead, and must never be reported as such.
-                print(f"REFUSING {jid}: could not reach {ats} to check whether "
-                      f"the posting is live ({e.__class__.__name__})")
+            # One liveness rule, shared with the approvals refusal branch.
+            gone = posting_is_gone(row)
+            if gone is None:
+                print(f"REFUSING {jid}: could not reach the board to check "
+                      f"whether the posting is live")
                 return 1
-            if live:
+            if not gone:
                 print(f"REFUSING {jid}: the posting is still live on "
-                      f"{ats}/{slug}. Retiring it would be a lie on the sheet.")
+                      f"{key[0]}/{key[1]}. Retiring it would be a lie on "
+                      f"the sheet.")
                 return 1
-            why = f"posting gone from {ats}/{slug}"
+            why = f"posting gone from {key[0]}/{key[1]}"
         elif (row.get("status") or "") == "dead":
             # No ATS link to re-check, but hunter already recorded it dead.
             why = "posting recorded dead and carries no ATS link to re-check"

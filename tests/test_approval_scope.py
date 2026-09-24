@@ -115,28 +115,57 @@ def test_an_unreadable_sheet_refuses_the_batch_rather_than_mailing_it(monkeypatc
 
 # ---------- unreadable is not dead ----------
 
-def test_a_linkedin_only_posting_is_not_retired_as_dead():
-    """BOI (Board of Innovation) is a role Krish approved whose only URL is a
-    LinkedIn job view. apply/fetch returns unreadable because LinkedIn needs an
-    authenticated session, NOT because the posting has gone. The refusal branch
-    retired every unreadable form, so it would have written "Declined - dead
-    posting" onto his sheet about a job that is very likely still open.
+def test_an_unparseable_form_is_never_by_itself_evidence_of_death():
+    """2026-09-24, and this one reached his sheet.
+
+    The approvals refusal branch retired every unreadable form as a dead
+    posting. The first fix listed the ats names that mean "cannot enumerate"
+    (linkedin, google, unknown) and missed the branch that carries the REAL
+    ats name: apply/fetch returns
+
+        unreadable("lever", "no form adapter for lever yet; the posting is
+                             readable but its form is not")
+
+    so a live Lever posting was read as death. Versapay and Rembrand, both
+    roles Krish had said Yes to, were marked "Declined - dead posting" on his
+    sheet. Versapay he had approved an hour earlier.
+
+    The rule is no longer a list of names. Liveness is ASKED of the board.
     """
-    assert "linkedin" in R.CANNOT_ENUMERATE
-    assert "google" in R.CANNOT_ENUMERATE
-    assert "unknown" in R.CANNOT_ENUMERATE
-    # A real ATS that answered "gone" is still retired.
-    assert "ashby" not in R.CANNOT_ENUMERATE
-    assert "greenhouse" not in R.CANNOT_ENUMERATE
-    assert "lever" not in R.CANNOT_ENUMERATE
+    import inspect
+    src = inspect.getsource(R.cmd_approvals)
+    assert "posting_is_gone(row)" in src, \
+        "the refusal branch must ask the board, not inspect the ats name"
+    # and the retire call has to be gated on that answer being True
+    i = src.index("posting_is_gone(row)")
+    j = src.index("retire_dead_posting", i)
+    assert "if gone:" in src[i:j], "retire is not gated on the board's answer"
 
 
-def test_the_set_matches_what_fetch_actually_returns():
-    """Written by reading apply/fetch.py, so a new unreadable kind added there
-    without thinking about this branch shows up as a failure here rather than
-    as a false 'dead posting' on his sheet."""
-    import pathlib
-    src = pathlib.Path(R.__file__).parent.joinpath("apply/fetch.py").read_text()
-    for kind in ("linkedin", "google", "unknown"):
-        assert f'unreadable(\n            "{kind}"' in src or \
-               f'unreadable("{kind}"' in src, kind
+def test_a_board_that_cannot_be_reached_is_not_dead():
+    """None is a third answer and never collapses into either of the others."""
+    assert R.posting_is_gone({"url": ""}) is None
+    assert R.posting_is_gone({"url": "https://example.com/careers/123"}) is None
+
+
+def test_the_liveness_answer_comes_from_the_board(monkeypatch):
+    live_row = {"url": "https://jobs.lever.co/rembrand/"
+                       "ea63ab95-1d16-4f01-abf9-1c114bff7eee"}
+    monkeypatch.setattr(R, "fetch_with_retry", lambda fn, s, p: (True, "", ""))
+    assert R.posting_is_gone(live_row) is False
+    monkeypatch.setattr(R, "fetch_with_retry", lambda fn, s, p: (False, "", ""))
+    assert R.posting_is_gone(live_row) is True
+
+    def boom(fn, s, p):
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr(R, "fetch_with_retry", boom)
+    assert R.posting_is_gone(live_row) is None
+
+
+def test_retire_and_approvals_share_one_liveness_rule():
+    """Two copies of this rule is how the second one drifts. The first fix
+    put the check in cmd_retire and left cmd_approvals guessing from names."""
+    import inspect
+    assert "posting_is_gone(" in inspect.getsource(R.cmd_retire)
+    assert "posting_is_gone(" in inspect.getsource(R.cmd_approvals)
