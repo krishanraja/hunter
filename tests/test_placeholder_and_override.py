@@ -162,11 +162,19 @@ def test_a_row_he_names_is_removed_whatever_column_a_says(monkeypatch, capsys):
     monkeypatch.setattr(R, "db_get", lambda cfg, table, params: db)
     monkeypatch.setattr(R, "match_rows",
                         lambda s, d: (list(zip(rows, db)), [], [], []))
+    patched: list = []
+    monkeypatch.setattr(R, "db_patch",
+                        lambda cfg, t, match, values: patched.append(
+                            (match["job_id"], values)))
 
     assert R.cmd_prune_sheet(apply=True, job_ids="confidential:svp") == 0
     assert deleted == [3], "only the row he named"
     out = capsys.readouterr().out
     assert "removed by name" in out
+    # Deleting the sheet row is only half of it. Without this marker reconcile
+    # reads the row as missing from the sheet and appends it again, which is
+    # exactly what happened to Confidential and Strativ Group on 2026-09-24.
+    assert patched == [("confidential:svp", {"status": R.REMOVED_STATUS})]
 
     # And an id that matches nothing stops, rather than reporting success while
     # the row he wanted gone is still there.

@@ -81,6 +81,23 @@ NOW = lambda: datetime.datetime.utcnow().isoformat() + "Z"
 # cmd_close_submitted treated only "submitted" as done. So the next full pass
 # relabelled the row, close-submitted stopped recognising it, and record_applied
 # ran again: a duplicate Submitted receipt for every applied role, every hour.
+# A posting whose sheet row he had REMOVED by name, as opposed to one hunter
+# dropped on a gate. reconcile must not put it back.
+#
+# 2026-09-24: two rows were removed by name at 17:57 and confirmed gone at
+# 18:12. The 19:15 process run put both back. reconcile treats a database row
+# with no matching sheet row as a row missing from the sheet and appends it,
+# and its "he deleted this, respect it" branch is gated on `not decided`:
+#
+#     decided = bool(krish_verdict) or package_status != "none"
+#     if presented_at and not decided: ...skip
+#
+# Both rows carried his verdict "Yes" and a built package, so decided was
+# True, the protection did not apply, and they came back. Keeping the verdict
+# while removing the row, which is what he asked for, is exactly the case that
+# branch does not cover. Nothing recorded that the removal was deliberate, so
+# this does.
+REMOVED_STATUS = "removed"
 APPLIED_STATE = "Applied"
 # Both spellings count as written, so rows already carrying the old one are not
 # re-processed.
@@ -339,7 +356,9 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet,
         "select": "job_id,company,title,url,job_url,score,status,krish_verdict,"
                   "rejection_reason,package_status,package_cv_url,package_letter_url,"
                   "presented_at,source,location,comp,why_it_fits,sweep_date",
-        "status": "neq.duplicate",
+        # duplicate is the same application twice; removed is a row he had
+        # taken off the sheet by name and must not be appended back.
+        "status": f"not.in.(duplicate,{REMOVED_STATUS})",
         "limit": ALL_ROWS})
     pairs, sheet_only, db_only, ambiguous = match_rows(sheet_rows, db_rows)
     ledger.matched = [(s.row_number, d["job_id"]) for s, d in pairs]
@@ -1524,6 +1543,19 @@ def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False,
     removed = sheet.delete_rows(sorted(plan), named=named_rows)
     print(f"\ndeleted {removed} rows; sheet now has "
           f"{len(sheet.read_pipeline(canon.sheet_headers))} data rows")
+    # Record that the rows he NAMED were removed on purpose, or reconcile
+    # appends them again on the next run. His verdict is left exactly as it
+    # is: he chose to keep it, and this says nothing about the role, only
+    # that its row is off the sheet by his instruction.
+    for jid in sorted(named):
+        try:
+            db_patch(cfg, "hunter_seen_roles", {"job_id": jid},
+                     {"status": REMOVED_STATUS})
+            print(f"  {jid}: recorded as removed, reconcile will not re-add it")
+        except Exception as e:
+            print(f"  {jid}: could NOT be recorded as removed "
+                  f"({e.__class__.__name__}); reconcile will put the row back")
+            return 1
     return 0
 
 
