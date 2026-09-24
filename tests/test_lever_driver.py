@@ -151,3 +151,31 @@ def test_the_delivery_mints_no_token(monkeypatch):
     import hunter.run as R
     src = inspect.getsource(R.send_apply_by_hand)
     assert "new_token" not in src and "record_sent" not in src
+
+
+# ---------- a delivered application is not a failing run ----------
+
+def test_apply_by_hand_does_not_paint_the_run_red():
+    """A LinkedIn Easy Apply role is unfillable on every run for ever. Counting
+    it as a failure means the workflow is permanently red and the colour stops
+    meaning anything, which is worse than not having the signal."""
+    import inspect
+    import hunter.run as R
+    src = inspect.getsource(R.cmd_approvals)
+    assert "by_hand: list[str] = []" in src
+    tail = src[src.index("return 1 if failed else 0") - 900:]
+    assert "return 1 if failed else 0" in tail
+    # the delivered list must not feed the exit code
+    assert "if failed or by_hand" not in src
+    assert "return 1 if by_hand" not in src
+
+
+def test_a_delivery_that_failed_to_send_is_still_a_failing_run():
+    """The email not arriving is the one thing this step exists to prevent."""
+    import inspect
+    import hunter.run as R
+    src = inspect.getsource(R.cmd_approvals)
+    i = src.index("could not email the documents")
+    window = src[i:i + 400]
+    assert "failed.append" in window, \
+        "a send failure is recorded as delivered-by-hand, so the run goes green"

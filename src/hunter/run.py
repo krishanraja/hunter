@@ -4363,6 +4363,11 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
     # is the thing being applied to, so its URL is what has to be unique.
     taken = live_postings(cfg)
     failed: list[str] = []
+    # Delivered, just not fillable. Kept apart from `failed` because these two
+    # things exit differently: a red run has to mean something went wrong, and
+    # a LinkedIn Easy Apply role will be unfillable on every run for ever. One
+    # permanently red workflow teaches him to stop reading the colour.
+    by_hand: list[str] = []
     for row in rows:
         key = posting_key(row)
         if key and key in taken:
@@ -4517,11 +4522,16 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
                         attachments=attachments or None)
                     print(f"    documents emailed to {to} to apply by hand")
                 except Exception as e:
+                    # The send failing IS a failure: the application did not
+                    # reach him, which is the only thing this step is for.
+                    # Only a delivered one is allowed to keep the run green.
                     print(f"    could not email the documents: "
                           f"{e.__class__.__name__}: {e}")
-            failed.append(f"{row['job_id']}: form cannot be filled "
-                          f"automatically ({plan.ats}), documents emailed to "
-                          f"apply by hand")
+                    failed.append(f"{row['job_id']}: documents could not be "
+                                  f"emailed: {e.__class__.__name__}")
+                    continue
+            by_hand.append(f"{row['job_id']}: {plan.ats} form cannot be "
+                           f"filled automatically, documents emailed")
             continue
         if not plan.ready:
             print(f"  REFUSING to send: {len(plan.blocking)} required field(s) "
@@ -4550,8 +4560,16 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
               f"were sent anyway:")
         for line in failed:
             print(f"  {line}")
-    # A failure that stopped some applications reaching him is a failing run,
-    # but only after every one that could be sent has been.
+    if by_hand:
+        print(f"\n{len(by_hand)} posting(s) hunter cannot fill; the documents "
+              f"were emailed so he can apply himself:")
+        for line in by_hand:
+            print(f"  {line}")
+    # A failure that stopped an application reaching him is a failing run, but
+    # only after every one that could be sent has been. A role he was sent the
+    # documents for is NOT a failure: it reached him, which is the whole job,
+    # and a LinkedIn Easy Apply posting would otherwise paint the run red on
+    # every run for ever until the colour meant nothing.
     return 1 if failed else 0
 
 
