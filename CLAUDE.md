@@ -210,9 +210,19 @@ So:
 The steps to give him, every time:
 
 1. Download <https://github.com/krishanraja/hunter/releases/download/extension/hunter-extension.zip>
-2. Extract it over the `hunter` folder, replacing the files
-3. At `chrome://extensions`, press the reload arrow on the Hunter card
-4. Reopen the link from the email
+2. Extract it. Inside is a folder called `extension`, holding `manifest.json`
+3. Copy that `extension` folder over the one Chrome already points at and press
+   the reload arrow on the Hunter card at `chrome://extensions`. Extracted
+   somewhere new instead: remove the card, Load unpacked, pick the new folder
+4. Check the card reads the new version. Still the old one means Chrome is
+   pointing at the old copy and the reload did nothing
+5. Reopen the link from the email
+
+The zip holds five text files and no scripts, on purpose. The whole repo
+archive stopped being downloadable on 2026-09-24 when Windows Defender refused
+it, and `windows/setup.bat` copying itself into the Startup folder is the
+likely reason. Nothing executable may reach him through that link, and the
+publishing workflow refuses to publish if anything does.
 
 ---
 

@@ -63,9 +63,10 @@
     'Your Hunter extension is version ' + MINE + ' and this application needs ' +
     '%NEED%. It has filled what it can, and parts of this form are probably ' +
     'empty. Download https://github.com/krishanraja/hunter/releases/download/' +
-    'extension/hunter-extension.zip, extract it over your hunter folder, then ' +
-    'press the reload arrow on the Hunter card at chrome://extensions and ' +
-    'reopen this link.';
+    'extension/hunter-extension.zip and extract it: inside is a folder called ' +
+    'extension. Copy it over the one Chrome points at, press the reload arrow ' +
+    'on the Hunter card at chrome://extensions, check the card now reads ' +
+    '%NEED%, then reopen this link.';
 
   // ---- The watch, and why it lives in storage ------------------------------
   //
