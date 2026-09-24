@@ -4812,33 +4812,45 @@ def score_coverage_lines(cfg: Config, batches: int = 4) -> list[str]:
         if not day:
             continue
         b = per.setdefault(day, {"companies": set(), "scored": set(),
-                                 "totals": []})
+                                 "actionable": set(), "totals": []})
         name = (r.get("company") or "").strip()
         if not name:
             continue
         k = company_key(name) or slugify(name)
         b["companies"].add(k)
         row = known.get(k) or {}
-        if row.get("total") is not None:
-            b["scored"].add(k)
-            try:
-                b["totals"].append(float(row["total"]))
-            except (TypeError, ValueError):
-                pass
+        if row.get("total") is None:
+            continue
+        b["scored"].add(k)
+        # Having a number is not the same as the gate being able to use it.
+        # G14 blocks only a company hunter has READ; one marked needs
+        # evidence is ranked lower and still reaches him, which is the
+        # correct policy and also means the gate is a no-op for it. Counting
+        # only "has a score" hid that distinction completely.
+        if (row.get("status") or "") != comp_score.NEEDS_EVIDENCE:
+            b["actionable"].add(k)
+        try:
+            b["totals"].append(float(row["total"]))
+        except (TypeError, ValueError):
+            pass
     if not per:
         return []
     days = sorted(per)[-batches:]
     out = [f"company score coverage, last {len(days)} batch(es) "
            f"(gate floor {comp_score.SWEEP_FLOOR}):",
-           f"  {'batch':12} {'companies':>9} {'scored':>7} {'cover':>6} {'mean':>6}"]
+           f"  {'batch':12} {'companies':>9} {'scored':>7} {'gate can act':>13} "
+           f"{'mean':>6}"]
     for d in days:
         b = per[d]
-        n, sc = len(b["companies"]), len(b["scored"])
-        cover = f"{round(100 * sc / n)}%" if n else "-"
+        n, sc, act = len(b["companies"]), len(b["scored"]), len(b["actionable"])
+        cover = f"{sc}/{n}" if n else "-"
+        can = f"{act}/{n} ({round(100 * act / n)}%)" if n else "-"
         mean = f"{sum(b['totals']) / len(b['totals']):.1f}" if b["totals"] else "-"
-        out.append(f"  {d:12} {n:9} {sc:7} {cover:>6} {mean:>6}")
+        out.append(f"  {d:12} {n:9} {cover:>7} {can:>13} {mean:>6}")
     out.append("  a batch before 2026-09-20 predates the gate; zero there is "
                "history, not a fault")
+    out.append("  scored but not actionable means needs evidence: ranked lower, "
+               "never blocked, by design")
     return out
 
 
