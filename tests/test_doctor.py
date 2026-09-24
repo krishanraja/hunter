@@ -149,3 +149,62 @@ def test_the_doctor_never_writes_anything():
         assert forbidden not in src, forbidden
     # POST is allowed, and only to probe the route with an empty body.
     assert src.count("requests.post") == 1
+
+
+class _KeyCfg:
+    def __init__(self, order="anthropic,openai"):
+        self._order = order
+
+    def optional(self, name, default=""):
+        return self._order if name == "hunter_model_order" else default
+
+
+def test_a_dead_anthropic_key_is_not_hidden_by_the_openai_fallback(monkeypatch):
+    """Krish, 2026-09-24: "need to split all usage of Anthropic API out for
+    better monitoring". With OpenAI behind Anthropic a dead Anthropic key
+    costs nothing visible: every call quietly routes to OpenAI, every run goes
+    green, and the split stops being true without an error anywhere. Nothing
+    checked this at all."""
+    import hunter.doctor as D
+    from hunter import llm
+    monkeypatch.setattr(llm, "probe", lambda cfg, name: (
+        (False, "AuthenticationError: invalid x-api-key")
+        if name == "anthropic" else (True, "ok")))
+    c = D.check_model_keys(_KeyCfg())
+    assert c.state == D.WARN, "a run carried by the fallback is not healthy"
+    assert "anthropic did NOT" in c.detail
+    assert "openai answered" in c.detail
+
+
+def test_both_providers_answering_is_the_only_ok(monkeypatch):
+    import hunter.doctor as D
+    from hunter import llm
+    monkeypatch.setattr(llm, "probe", lambda cfg, name: (True, "ok"))
+    c = D.check_model_keys(_KeyCfg())
+    assert c.state == D.OK and "anthropic" in c.detail and "openai" in c.detail
+
+
+def test_nobody_answering_is_a_failure_not_a_warning(monkeypatch):
+    import hunter.doctor as D
+    from hunter import llm
+    monkeypatch.setattr(llm, "probe", lambda cfg, name: (False, "no key"))
+    c = D.check_model_keys(_KeyCfg())
+    assert c.state == D.FAIL
+
+
+def test_the_probe_never_returns_the_key(monkeypatch):
+    """A check that leaks a credential into a run log is worse than no check."""
+    from hunter import llm
+    secret = "sk-ant-api03-" + "x" * 90
+
+    class Cfg:
+        def optional(self, name, default=""):
+            return secret if name.endswith("_api_key") else default
+
+    def boom(cfg, prompt, **kw):
+        raise RuntimeError(f"invalid x-api-key: {secret}")
+
+    monkeypatch.setitem(llm.PROVIDERS, "anthropic", boom)
+    ok, detail = llm.probe(Cfg(), "anthropic")
+    assert ok is False
+    assert secret not in detail, "the key must never reach a log line"

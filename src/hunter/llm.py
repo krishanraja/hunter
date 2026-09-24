@@ -203,3 +203,46 @@ def json_object(text: str) -> dict | None:
         return json.loads(m.group(0))
     except json.JSONDecodeError:
         return None
+
+
+# An authentication error echoes the request, and the request carries the key.
+# Truncating the message is not redaction: "invalid x-api-key: sk-ant-..." is
+# well inside any sane truncation, so a check written to make a dead key
+# visible would have written the live one into a GitHub Actions log instead.
+SECRETISH = re.compile(r"\b(sk-[A-Za-z0-9_\-]{8,})")
+
+
+def redact(text: str) -> str:
+    """Anything key shaped, reduced to its first eight characters."""
+    return SECRETISH.sub(lambda m: m.group(1)[:8] + "...redacted", text or "")
+
+
+def probe(cfg: Config, provider: str) -> tuple[bool, str]:
+    """Ask one provider, by name, whether its key actually works.
+
+    complete() exists to get an answer from whoever will give one, which is
+    right for the work and useless for a check: with a fallback behind it, a
+    dead Anthropic key is invisible. Every call quietly goes to OpenAI, every
+    run looks healthy, and the reason Krish split the key in the first place,
+    "need to split all usage of Anthropic API out for better monitoring",
+    silently stops being true.
+
+    Deliberately not routed through complete(), and deliberately never
+    returns or logs the key: the point is to name WHICH provider answered.
+    """
+    fn = PROVIDERS.get(provider)
+    if fn is None:
+        return False, f"no provider called {provider!r}"
+    try:
+        text = fn(cfg, "Reply with the single word: ok", max_tokens=8,
+                  schema=None, system=None, web_search=False, history=None)
+    except Unavailable as e:
+        return False, redact(str(e))
+    except Exception as e:
+        # The SDK raises its own types for a bad key, and the message is the
+        # useful part. Truncated, because an auth error can echo the request.
+        return False, redact(f"{e.__class__.__name__}: {str(e)}")[:160]
+    got = (text or "").strip()
+    if not got:
+        return False, "answered with nothing"
+    return True, got[:40]

@@ -210,6 +210,45 @@ def check_browser() -> Check:
     return Check("browser", OK, "launches and renders")
 
 
+def check_model_keys(cfg) -> Check:
+    """Each provider's key, asked directly, because the fallback hides a dead one.
+
+    Krish, 2026-09-24: "need to split all usage of Anthropic API out for
+    better monitoring". With OpenAI behind Anthropic, a dead Anthropic key
+    costs nothing visible: every call quietly routes to OpenAI, every run
+    goes green, and the split he wants stops being true without a single
+    error anywhere. Nothing checked this at all.
+
+    Never prints a key. It names which provider answered.
+    """
+    from . import llm
+    order = [p.strip() for p in
+             cfg.optional("hunter_model_order", llm.DEFAULT_ORDER).split(",")
+             if p.strip() in llm.PROVIDERS]
+    if not order:
+        return Check("model keys", FAIL, "hunter_model_order names no provider")
+    results = []
+    for name in order:
+        ok, detail = llm.probe(cfg, name)
+        results.append((name, ok, detail))
+    good = [n for n, ok, _ in results if ok]
+    bad = [(n, d) for n, ok, d in results if not ok]
+    if not good:
+        return Check("model keys", FAIL,
+                     "no provider answered: "
+                     + "; ".join(f"{n} ({d})" for n, d in bad),
+                     "check hunter_anthropic_api_key and hunter_openai_api_key")
+    if bad:
+        # The run will still work, on the other provider, which is exactly
+        # the failure that is worth saying out loud rather than tolerating.
+        return Check("model keys", WARN,
+                     f"{', '.join(good)} answered; "
+                     + "; ".join(f"{n} did NOT ({d})" for n, d in bad),
+                     "the fallback is carrying the run, so usage is on the "
+                     "wrong provider")
+    return Check("model keys", OK, f"{', '.join(good)} answered")
+
+
 def run(cfg, run_source: str, *, offline: bool = False) -> list[Check]:
     checks = [check_branch_reaches_main(), check_extension_on_main(),
               check_scheduled_commands(run_source)]
@@ -219,7 +258,8 @@ def run(cfg, run_source: str, *, offline: bool = False) -> list[Check]:
                            name="payload endpoint"),
             check_endpoint(SUBMITTED_URL, method="POST", expect=400,
                            name="submitted endpoint"),
-            check_table_columns(cfg), check_live_payloads(cfg), check_browser(),
+            check_table_columns(cfg), check_live_payloads(cfg),
+            check_model_keys(cfg), check_browser(),
         ]
     return checks
 

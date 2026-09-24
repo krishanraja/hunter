@@ -177,3 +177,26 @@ def test_json_object_finds_the_object_a_model_wrapped_in_prose():
     assert llm.json_object("no object here") is None
     assert llm.json_object('{"a": broken}') is None
     assert llm.json_object("") is None
+
+
+def test_a_key_shaped_string_never_survives_an_error_message():
+    """An authentication error echoes the request and the request carries the
+    key. Truncating is not redaction: "invalid x-api-key: sk-ant-..." sits well
+    inside any sane truncation, so the check written to make a dead key visible
+    would have written the live one into a run log instead. Caught by its own
+    test before it shipped, 2026-09-24."""
+    from hunter import llm
+    anth = "sk-ant-api03-" + "q" * 95
+    oai = "sk-proj-" + "z" * 150
+    out = llm.redact(f"invalid x-api-key: {anth} and also {oai}")
+    assert anth not in out and oai not in out
+    # Enough left to tell which key it was, never enough to use.
+    assert "sk-ant-a...redacted" in out
+    assert "sk-proj-...redacted" in out
+
+
+def test_redaction_leaves_ordinary_text_alone():
+    """A blunt scrub that eats the error is a different way to be unreadable."""
+    from hunter import llm
+    msg = "AuthenticationError: your credit balance is too low"
+    assert llm.redact(msg) == msg
