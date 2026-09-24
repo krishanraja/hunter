@@ -32,7 +32,7 @@ on:
         default: process
         options: [process, run, source, packages, drain, approvals, approvals-drain, submit,
                   close-submitted, confirmations, applied, stats, prune-sheet, bridges,
-                  reconcile, recon, verify, retire,
+                  reconcile, recon, verify, retire, unretire,
                   migrate-columns]
       extra:
         description: "extra arguments, for example --max 2 or --apply"

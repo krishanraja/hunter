@@ -5626,6 +5626,84 @@ def cmd_retire(job_ids: str, apply: bool = False) -> int:
     return 0
 
 
+def cmd_unretire(job_ids: str, apply: bool = False) -> int:
+    """Undo a retirement that should never have happened.
+
+    The inverse of cmd_retire, and it exists because on 2026-09-24 hunter
+    retired Versapay and Rembrand, two live Lever postings Krish had marked
+    Yes, on the strength of a message that said in its own words "the posting
+    is readable but its form is not". The rule that did that is fixed. This
+    puts the rows back, and it will be needed again the next time something
+    is retired wrongly.
+
+    It REFUSES a posting the board says is really gone, which is the same
+    evidence check cmd_retire makes, pointing the other way. Un-retiring a
+    genuinely dead role would put a row he cannot act on back in front of him.
+
+    His verdict is restored from krish_verdict, which survives a retirement
+    because it was written from column A and retire only rewrites the sheet.
+    """
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    named = [j.strip() for j in (job_ids or "").split(",") if j.strip()]
+    if not named:
+        print("nothing named; pass --job-id a,b")
+        return 2
+    rows = db_get(cfg, "hunter_seen_roles",
+                  {"select": "job_id,company,title,url,job_url,status,"
+                             "package_status,krish_verdict,package_cv_url,"
+                             "package_letter_url", "limit": ALL_ROWS})
+    by_id = {r.get("job_id"): r for r in rows}
+    srows = sheet.read_pipeline(canon.sheet_headers)
+    plan: list[tuple[dict, int, str, str]] = []
+    for jid in named:
+        row = by_id.get(jid)
+        if row is None:
+            print(f"no role matched job id {jid!r}")
+            return 1
+        gone = posting_is_gone(row)
+        if gone:
+            print(f"REFUSING {jid}: the board says this posting really has "
+                  f"gone. Putting it back would hand him a row he cannot act on.")
+            return 1
+        want = ((row.get("company") or "").strip().lower(),
+                (row.get("title") or "").strip().lower())
+        hits = [r for r in srows
+                if ((r.company or "").strip().lower(),
+                    (r.role or "").strip().lower()) == want]
+        if len(hits) != 1:
+            print(f"REFUSING {jid}: {len(hits)} Pipeline rows match; "
+                  f"this needs a person")
+            return 1
+        verdict = (row.get("krish_verdict") or "").strip() or verdicts.BUILD
+        built = bool(row.get("package_cv_url") and row.get("package_letter_url"))
+        plan.append((row, hits[0].row_number, verdict, "built" if built else "none"))
+    print(f"{len(plan)} row(s) to put back:")
+    for row, rn, verdict, pkg in plan:
+        print(f"  row {rn:>3}  {row['company'][:22]:24} "
+              f"{row['title'][:34]:36} -> {verdict} ({pkg})")
+    if not apply:
+        print("\ndry run. add --apply to put these back")
+        return 0
+    for row, rn, verdict, pkg in plan:
+        sheet.set_verdicts({rn: verdict})
+        if pkg == "built":
+            sheet.update_package_status(rn, sheet_mod.PKG_BUILT_DIRECT)
+        db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
+                 {"status": "staging", "package_status": pkg,
+                  "rejection_reason": None, "rejection_code": None})
+        print(f"  row {rn} restored to {verdict}, package_status {pkg}")
+    # Read it back rather than trusting the writes above.
+    fresh = {r.row_number: r for r in sheet.read_pipeline(canon.sheet_headers)}
+    bad = [rn for _, rn, verdict, _ in plan
+           if (fresh.get(rn).verdict if fresh.get(rn) else "") != verdict]
+    if bad:
+        print(f"rows {bad} did not read back with the verdict written")
+        return 1
+    print(f"put back {len(plan)} row(s), all read back correct")
+    return 0
+
+
 def cmd_close_submitted(apply: bool = False) -> int:
     """Do the sheet work for applications Krish pressed Submit on himself.
 
@@ -5945,6 +6023,16 @@ def main(argv: list[str]) -> int:
             print("usage: python -m hunter.run retire --job-id a,b [--apply]")
             return 2
         return cmd_retire(jids, apply="--apply" in argv)
+    if cmd == "unretire":
+        jids = ""
+        if "--job-id" in argv:
+            i = argv.index("--job-id")
+            if i + 1 < len(argv):
+                jids = argv[i + 1]
+        if not jids:
+            print("usage: python -m hunter.run unretire --job-id a,b [--apply]")
+            return 2
+        return cmd_unretire(jids, apply="--apply" in argv)
     if cmd == "bank-seed":
         return cmd_bank_seed(apply="--apply" in argv)
     if cmd == "gtm-seed":
