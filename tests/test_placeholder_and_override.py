@@ -120,3 +120,87 @@ def test_a_new_miss_is_written_with_its_date(monkeypatch):
     entry = cache[disc.slugify("Nowhere Ltd")]
     assert disc.is_miss(entry) and entry.get("missed_at"), entry
     assert not disc._miss_is_stale(entry), "a miss just written is not stale"
+
+
+def test_a_row_he_names_is_removed_whatever_column_a_says(monkeypatch, capsys):
+    """2026-09-24: he asked for two rows off the sheet by name, and had already
+    marked both of them Yes.
+
+    prune-sheet refuses any row that is not still "New", on purpose, so that
+    nothing HUNTER decides can delete a row he has written on. That guard is
+    not weakened here. Naming the job id is the only way past it, because then
+    the judgement is his and not the machine's.
+    """
+    import hunter.run as R
+    from hunter.sheet import SheetRow, N_COLS
+
+    rows = [SheetRow(row_number=3, cells=[""] * N_COLS, verdict="Yes",
+                     company="Confidential", role="SVP Revenue", jd_url=None),
+            SheetRow(row_number=4, cells=[""] * N_COLS, verdict="Yes",
+                     company="Keepme", role="Head of GTM", jd_url=None)]
+    db = [{"job_id": "confidential:svp", "company": "Confidential",
+           "title": "SVP Revenue", "krish_verdict": "Yes", "location": "London"},
+          {"job_id": "keepme:head", "company": "Keepme", "title": "Head of GTM",
+           "krish_verdict": "Yes", "location": "London"}]
+    deleted: list = []
+
+    class FakeSheet:
+        def read_pipeline(self, headers):
+            return rows
+
+        def delete_rows(self, ns):
+            deleted.extend(ns)
+            return len(ns)
+
+    monkeypatch.setattr(R, "build_context", lambda: (None, type("C", (), {
+        "sheet_headers": []})()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet())
+    monkeypatch.setattr(R, "GoogleServiceAccount",
+                        lambda cfg: type("T", (), {"access_token": ""})())
+    monkeypatch.setattr(R, "db_get", lambda cfg, table, params: db)
+    monkeypatch.setattr(R, "match_rows",
+                        lambda s, d: (list(zip(rows, db)), [], [], []))
+
+    assert R.cmd_prune_sheet(apply=True, job_ids="confidential:svp") == 0
+    assert deleted == [3], "only the row he named"
+    out = capsys.readouterr().out
+    assert "removed by name" in out
+
+    # And an id that matches nothing stops, rather than reporting success while
+    # the row he wanted gone is still there.
+    deleted.clear()
+    assert R.cmd_prune_sheet(apply=True, job_ids="typo:nothing") == 1
+    assert deleted == []
+
+
+def test_prune_still_refuses_a_judged_row_it_was_not_given(monkeypatch):
+    """The guard itself. Without a named id, a row carrying his verdict is
+    untouchable however bad hunter thinks it is."""
+    import hunter.run as R
+    from hunter.sheet import SheetRow, N_COLS
+    rows = [SheetRow(row_number=3, cells=[""] * N_COLS, verdict="Yes",
+                     company="Confidential", role="SVP Revenue", jd_url=None)]
+    db = [{"job_id": "confidential:svp", "company": "Confidential",
+           "title": "SVP Revenue", "krish_verdict": "Yes",
+           "location": "Brazil"}]
+    deleted: list = []
+
+    class FakeSheet:
+        def read_pipeline(self, headers):
+            return rows
+
+        def delete_rows(self, ns):
+            deleted.extend(ns)
+            return len(ns)
+
+    monkeypatch.setattr(R, "build_context", lambda: (None, type("C", (), {
+        "sheet_headers": []})()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet())
+    monkeypatch.setattr(R, "GoogleServiceAccount",
+                        lambda cfg: type("T", (), {"access_token": ""})())
+    monkeypatch.setattr(R, "db_get", lambda cfg, table, params: db)
+    monkeypatch.setattr(R, "match_rows",
+                        lambda s, d: (list(zip(rows, db)), [], [], []))
+    # Brazil would normally be pruned as outside canon geography.
+    assert R.cmd_prune_sheet(apply=True) == 0
+    assert deleted == [], "a row he has judged is never deleted by machine"
