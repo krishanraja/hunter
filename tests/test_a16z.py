@@ -141,12 +141,34 @@ def test_the_probe_plan_takes_companies_that_are_hiring_and_unknown():
     assert [c["slug"] for c in plan] == ["big", "small"]
 
 
-def test_a_company_already_probed_and_missed_is_not_probed_again():
-    """A miss is remembered as None so the budget goes to companies hunter
-    has not tried, rather than the same seventeen every week."""
+def test_a_company_missed_recently_is_not_probed_again():
+    """A miss is remembered so the budget goes to companies hunter has not
+    tried, rather than the same seventeen every week."""
+    from datetime import datetime, timezone
     from hunter.sources.a16z import board_probe_plan
     companies = [{"slug": "nope", "name": "Nope", "job_count": 9}]
-    assert board_probe_plan(companies, {"nope": None}) == []
+    now = datetime.now(timezone.utc).isoformat()
+    assert board_probe_plan(companies, {"nope": {"missed_at": now}}) == []
+
+
+def test_a_company_missed_long_ago_gets_another_chance():
+    """The miss was remembered for ever, and that turned a quiet week into a
+    permanent exclusion. A company with no open jobs the day it was probed
+    reads exactly like a company with no board, and one of them starts hiring.
+    """
+    from hunter.sources.a16z import board_probe_plan
+    companies = [{"slug": "nope", "name": "Nope", "job_count": 9}]
+    stale = {"missed_at": "2020-01-01T00:00:00+00:00"}
+    assert [c["slug"] for c in board_probe_plan(companies, {"nope": stale})] == ["nope"]
+
+
+def test_the_null_misses_already_in_the_cache_are_retried():
+    """Every miss recorded before this rule existed is a null with no date,
+    and it has been in there for an unknown length of time. Leaving them
+    unreadable would keep the exclusion that the fix is removing."""
+    from hunter.sources.a16z import board_probe_plan
+    companies = [{"slug": "nope", "name": "Nope", "job_count": 9}]
+    assert [c["slug"] for c in board_probe_plan(companies, {"nope": None})] == ["nope"]
 
 
 def test_the_plan_is_capped_and_works_the_busiest_first():

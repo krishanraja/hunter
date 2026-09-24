@@ -841,3 +841,68 @@ def test_the_advert_hunter_already_holds_reaches_the_company_scorer(monkeypatch)
     assert run_mod.company_key("Tiny") not in got, "a stub is not evidence"
     assert run_mod.company_key("Bare") not in got, \
         "an absent description must not become an empty claim"
+
+
+def test_an_exceptional_role_does_not_open_a_disqualified_company(monkeypatch):
+    """Strativ Group, 2026-09-24. It scored 0.0 with "staffing (Recruitment
+    Agency) (-5)", which is the company scorer working, and staged anyway
+    because its role cleared EXCEPTIONAL_MERIT.
+
+    That override is Krish's own ruling on Citi ("I'd reject that company
+    unless the role was ideal, which that one was") and it needs the company to
+    BE the employer. A recruitment agency is not: the seat belongs to somebody
+    else, so an ideal role advertised by an agency is an ideal role somewhere
+    unknown. The ordinary low score keeps the override, which the second half
+    of this test holds.
+    """
+    from hunter import company as comp
+    from hunter.sources import RolePosting
+
+    def score(name, *, disq):
+        comps = [comp.Component("category", 0.0, True, "staffing", "https://x")]
+        if disq:
+            comps.append(comp.Component("disqualifier", comp.DISQUALIFIER_PENALTY,
+                                        True, "staffing (Recruitment Agency)",
+                                        "https://x"))
+        return comp.CompanyScore(slug=name.lower(), name=name, total=0.0,
+                                 components=comps, status="")
+
+    seen = {}
+
+    def fake_scores(cfg, names, sheet=None, summary=None, **kw):
+        return {run_mod.company_key(n) or run_mod.slugify(n):
+                score(n, disq=n.startswith("Strativ")) for n in names}
+
+    monkeypatch.setattr(run_mod, "company_scores", fake_scores)
+    monkeypatch.setattr(run_mod, "seen_identity_keys", lambda cfg: set())
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: [])
+    monkeypatch.setattr(run_mod, "db_insert",
+                        lambda cfg, table, rows, **kw: seen.setdefault("rows", rows))
+    monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
+    import hunter.ats.discover as disc
+    monkeypatch.setattr(disc, "load_cache", lambda cfg: {})
+    monkeypatch.setattr(disc, "save_cache", lambda cfg, cache: None)
+    monkeypatch.setattr(run_mod, "fetch_with_retry",
+                        lambda fetch, slug, pid: (True, "x" * 900, "https://x/1"))
+    # Whatever the seat scores, merit is exceptional for both of them.
+    monkeypatch.setattr(run_mod, "score_role", lambda role, **kw: type(
+        "R", (), {"score": 9, "merit": 10, "auto_rejected": False,
+                  "rejection_reason": "", "why_it_fits": "why"})())
+    monkeypatch.setattr(run_mod, "run_gates", lambda *a, **kw: type(
+        "Rep", (), {"passed": True, "failures": lambda self: []})())
+
+    posts = [RolePosting(company="Strativ Group", title="Chief Revenue Officer",
+                         location="London", url="https://jobs.ashbyhq.com/s/1",
+                         source="apify_linkedin", ats="ashby", ats_slug="s",
+                         ats_posting_id="1"),
+             RolePosting(company="Citi", title="Chief Revenue Officer",
+                         location="London", url="https://jobs.ashbyhq.com/c/1",
+                         source="apify_linkedin", ats="ashby", ats_slug="c",
+                         ats_posting_id="1")]
+    run_mod.stage_postings(Cfg({"hunter_never_apply": "[]"}), FakeCanon(),
+                           FakeSheet([list(HEADERS), [""] * N_COLS]), posts, [])
+    by_company = {r["company"]: r for r in seen["rows"]}
+    assert by_company["Strativ Group"]["status"] == "blocked"
+    assert "disqualified" in by_company["Strativ Group"]["rejection_reason"]
+    assert by_company["Citi"]["status"] == "staging", \
+        "an ordinary low score still opens on merit, which is his own ruling"

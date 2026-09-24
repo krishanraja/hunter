@@ -186,8 +186,16 @@ def board_probe_plan(companies: list[dict], cache: dict, *,
         # `in`, not `.get()`. A remembered miss is stored as None, which is
         # falsy, so a get-based test would re-probe the same seventeen
         # companies every single run and never reach the rest of the index.
-        if not slug or slug in cache:
+        if not slug:
             continue
+        # A hit is settled and a FRESH miss is settled. A stale miss is not:
+        # a company probed in a quiet week, or under a slug the guesser did not
+        # try, was written off for ever. See discover.RETRY_MISS_DAYS.
+        if slug in cache:
+            from ..ats import discover as _disc
+            entry = cache[slug]
+            if not _disc.is_miss(entry) or not _disc._miss_is_stale(entry):
+                continue
         if not (c.get("job_count") or 0):
             continue
         out.append(c)

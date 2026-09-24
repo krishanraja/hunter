@@ -591,6 +591,29 @@ INTRO = re.compile(
     r"provides?)\s+(?:the\s+|a\s+|an\s+)?[^.]{25,320}\.)")
 
 
+
+# A posting whose employer field is a placeholder names no company at all.
+# "Confidential" scored 6.7 on 2026-09-24 and cleared the 6.0 floor, on
+# evidence reading "in ai infrastructure (inference and confidential GPU)":
+# the advert path matched the WORD confidential in somebody else's posting and
+# attached it to a company that does not exist. That is the same failure as
+# resolving Perplexity to a domain registrar, and it earns a row on his sheet
+# he can do nothing with.
+PLACEHOLDER_NAMES = frozenset({
+    "confidential", "confidential company", "undisclosed", "undisclosed company",
+    "stealth", "stealth startup", "stealth mode", "private", "private company",
+    "n/a", "na", "none", "unknown", "company", "client", "our client",
+    "a client", "recruiter", "anonymous", "tbc", "tbd",
+})
+
+
+def is_placeholder(name: str) -> bool:
+    """True when the employer field names no identifiable company."""
+    n = SPACE.sub(" ", (name or "")).strip().strip(".,-").lower()
+    if not n:
+        return True
+    return n in PLACEHOLDER_NAMES
+
 # The verb that separates a business from what it does. The same list the
 # INTRO pattern starts its description on, so the two cannot drift.
 SUBJECT_VERB = re.compile(
@@ -600,6 +623,10 @@ SUBJECT_VERB = re.compile(
 def from_posting(jd_text: str, url: str, company: str = "") -> dict:
     """A description of the business, taken from its own job posting."""
     if not jd_text or not url:
+        return {}
+    if is_placeholder(company):
+        # Nothing read here could be about this employer, because there is no
+        # employer named. Anything stored would be a fact about somebody else.
         return {}
     head = SPACE.sub(" ", jd_text[:2500]).strip()
     best = ""

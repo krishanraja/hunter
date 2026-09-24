@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import config as config_mod
+from . import companyintel as companyintel_mod
 from .canon import Canon, CanonError, load_canon
 from .config import (ALL_ROWS, Config, GoogleOAuth, GoogleServiceAccount,
                      db_get, db_insert, db_patch, load)
@@ -2562,7 +2563,7 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
             if not hit:
                 # Remember the miss so the next run spends its budget on
                 # companies it has not tried, not on the same 17 every week.
-                cache[c["slug"]] = None
+                cache[c["slug"]] = {"missed_at": NOW()}
         if probed:
             disc.save_cache(cfg, cache)
             # `name` is NOT NULL with no default, and a PostgREST upsert is an
@@ -2623,7 +2624,7 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
             # Descript, Gamma and Luma AI were all sitting in this cache.
             # The exclusion is now what was actually swept, not what was
             # hoped to be.
-            if not hit or ck in swept_slugs or hit["ats"] not in fns:
+            if disc.is_miss(hit) or ck in swept_slugs or hit["ats"] not in fns:
                 continue
             try:
                 board = fns[hit["ats"]](hit["slug"])
@@ -3115,6 +3116,11 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     for p in fresh:
         # G12 before any fetch or paid probe: a company Krish declined is
         # recorded as blocked with the dated reason and never staged.
+        # No employer named, nothing to judge, and a row he cannot act on is
+        # worse than no row. "Confidential" reached his sheet on 2026-09-24.
+        if companyintel_mod.is_placeholder(p.company):
+            counts["placeholder"] = counts.get("placeholder", 0) + 1
+            continue
         hit = learn.declined_company(company_declines, p.company)
         if hit:
             reason = f"G12: company declined by Krish on {hit['date']} ({hit['code']})"
@@ -3210,7 +3216,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             status = "blocked"
             reason = "; ".join(f"{g.gate}: {g.reason}" for g in report.failures())
         elif (cscore is not None and cscore.status != COMPANY_UNKNOWN
-              and cscore.total < COMPANY_FLOOR and result.merit < EXCEPTIONAL):
+              and cscore.total < COMPANY_FLOOR
+              and (result.merit < EXCEPTIONAL or disqualified(cscore))):
             # The company question, asked before the seat. A company hunter
             # has NOT been able to read is not blocked here, only ranked
             # lower: refusing on an absent observation is the thing this
@@ -3218,7 +3225,9 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             # written into CLAUDE.md for roles.
             status = "blocked"
             reason = (f"G14: company scores {cscore.total} of 10, below the "
-                      f"{COMPANY_FLOOR:g} floor ({cscore.why(2) or 'no evidence'})")
+                      f"{COMPANY_FLOOR:g} floor ({cscore.why(2) or 'no evidence'})"
+                      + ("; an exceptional role does not open a disqualified "
+                         "company" if disqualified(cscore) else ""))
             counts["g14_blocked"].append(role.company)
         else:
             # The score no longer blocks (canon 9.2 as amended 2026-09-03):
@@ -4744,6 +4753,29 @@ def send_applied_digest(cfg: Config, rows: list[tuple[str, str, str]],
            for c, r, conf in rows])
     notify.send_email(cfg, f"Submitted: {len(rows)} application(s)", html,
                       to=notify.mailbox(cfg), text=text)
+
+
+def disqualified(cscore) -> bool:
+    """Does this company carry the scorer's own disqualifier penalty.
+
+    EXCEPTIONAL_MERIT exists for Krish's ruling on Citi, 2026-09-20: "I'd
+    reject that company unless the role was ideal, which that one was". That
+    reasoning needs the company to BE the employer. A recruitment agency is
+    not: the seat belongs to somebody else, the agency's score says nothing
+    about the workplace, and an ideal role advertised by an agency is an ideal
+    role somewhere unknown.
+
+    Strativ Group, 2026-09-24, scored 0.0 with "staffing (Recruitment Agency)
+    (-5)" and staged anyway on merit.
+
+    Read off the scorer's own components rather than matching the word
+    "staffing", so this follows company.py instead of drifting from it.
+    """
+    from .company import DISQUALIFIER_PENALTY
+    for c in getattr(cscore, "components", None) or []:
+        if getattr(c, "name", "") == "disqualifier" and getattr(c, "evidenced", False):
+            return c.points <= DISQUALIFIER_PENALTY
+    return False
 
 
 # The same supply leg has reached the sheet under four different labels:

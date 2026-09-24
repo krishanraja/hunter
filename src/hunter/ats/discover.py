@@ -143,6 +143,40 @@ def save_cache(cfg: Config, cache: dict) -> None:
               on_conflict="key", merge=True)
 
 
+# When a company that could not be read is worth trying again.
+#
+# A miss was written as null and never retried: no TTL, no staleness check, no
+# invalidation anywhere. companyintel has exactly this rule and says why, and
+# the board cache had nothing. So a company probed in a quiet week with no open
+# jobs, a slug the 2 to 5 candidate spellings missed, or a careers page that
+# happened to be down became a PERMANENT exclusion from the sweep. On
+# 2026-09-24 fourteen of Krish's own target companies sat in that state,
+# including Anysphere (Cursor), Beehiiv, Every and Lindy.
+#
+# Shorter than companyintel's 14 days because a board is one cheap request and
+# a company that starts hiring is exactly what hunter exists to notice.
+RETRY_MISS_DAYS = 7
+
+
+def _miss_is_stale(entry, *, now=None) -> bool:
+    """A recorded miss old enough to be worth one more probe."""
+    from datetime import datetime, timedelta, timezone
+    now = now or datetime.now(timezone.utc)
+    # null is the old shape, written before misses carried a date. It has been
+    # in the cache for an unknown length of time, so it gets its retry now.
+    if not isinstance(entry, dict):
+        return True
+    when = entry.get("missed_at") or ""
+    if not when:
+        return True
+    return when < (now - timedelta(days=RETRY_MISS_DAYS)).isoformat()
+
+
+def is_miss(entry) -> bool:
+    """A cache entry that records failure rather than a board."""
+    return not (isinstance(entry, dict) and entry.get("ats") and entry.get("slug"))
+
+
 def discover(cfg: Config, company: str, cache: dict | None = None,
              careers_url: str = "") -> tuple[str, str] | None:
     """(ats, slug) for a company, from cache, its careers page, or by probing.
@@ -150,10 +184,15 @@ def discover(cfg: Config, company: str, cache: dict | None = None,
     None means the company boards somewhere hunter cannot read, which is not
     the same as the role being dead and is never reported as such.
     """
+    from datetime import datetime, timezone
     key = slugify(company)
     if cache is not None and key in cache:
         hit = cache[key]
-        return (hit["ats"], hit["slug"]) if hit else None
+        if not is_miss(hit):
+            return (hit["ats"], hit["slug"])
+        if not _miss_is_stale(hit):
+            return None
+        # Stale miss: fall through and probe again.
     found = None
     # The careers page first, because it is an answer rather than a guess.
     if careers_url:
@@ -169,5 +208,6 @@ def discover(cfg: Config, company: str, cache: dict | None = None,
                 found = (hit[0], slug)
                 break
     if cache is not None:
-        cache[key] = {"ats": found[0], "slug": found[1]} if found else None
+        cache[key] = ({"ats": found[0], "slug": found[1]} if found else
+                      {"missed_at": datetime.now(timezone.utc).isoformat()})
     return found
