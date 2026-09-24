@@ -1426,7 +1426,8 @@ def cmd_prune_orphans(apply: bool = False) -> int:
     return 0
 
 
-def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False) -> int:
+def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False,
+                    job_ids: str = "") -> int:
     """Remove rows this system should never have written.
 
     Only rows where column A still reads exactly "New", so nothing Krish has
@@ -1456,6 +1457,25 @@ def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False) -> int:
     untouched = lambda s: (s.verdict or "").strip() == "New"
     plan: dict[int, str] = {}
     first: dict[tuple, int] = {}
+
+    # Rows he named, removed whatever column A says.
+    #
+    # The "New only" rule above exists so nothing HUNTER decides can delete a
+    # row he has written on, and it stays exactly as it is. This is the other
+    # case: on 2026-09-24 he asked for two rows off the sheet by name, and he
+    # had already marked both of them Yes. A judgement of his is not something
+    # to work around, so the only way past the guard is him naming the row.
+    named = {j.strip() for j in (job_ids or "").split(",") if j.strip()}
+    if named:
+        by_id = {d.get("job_id"): srow for srow, d in pairs}
+        for jid in sorted(named):
+            srow = by_id.get(jid)
+            if srow is None:
+                # Never a silent skip: a typo here leaves a row he asked to be
+                # rid of sitting on the sheet while the run reports success.
+                print(f"no Pipeline row matched job id {jid!r}")
+                return 1
+            plan[srow.row_number] = f"removed by name ({jid})"
     for s in srows:
         k = ident(s)
         if k in first:
@@ -5817,7 +5837,8 @@ def main(argv: list[str]) -> int:
         return cmd_prune_orphans(apply="--apply" in argv)
     if cmd == "prune-sheet":
         return cmd_prune_sheet(apply="--apply" in argv,
-                               include_ungated="--incumbent" in argv)
+                               include_ungated="--incumbent" in argv,
+                               job_ids=_flag("--job-id"))
     if cmd == "layout":
         cfg = load()
         sheet = Sheet(GoogleServiceAccount(cfg).access_token)
