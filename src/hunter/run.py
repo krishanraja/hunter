@@ -2833,7 +2833,8 @@ def known_company_keys(cfg: Config) -> set[str]:
 
 def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
                    summary: list[str] | None = None, *,
-                   budget: int | None = None) -> dict:
+                   budget: int | None = None,
+                   postings: dict[str, tuple[str, str]] | None = None) -> dict:
     """slug -> CompanyScore for every company in this batch.
 
     Cached in hunter_company_intel and re-gathered only for companies hunter
@@ -2846,6 +2847,18 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
     spent it first: on 2026-09-20 the run staged PayPal, Google, CreatorIQ,
     vivenu and openrouter, all of which score zero and would have been
     blocked, simply because nothing had got round to scoring them.
+
+    postings is {company key: (job description, url)}, the posting hunter is
+    already holding for that company. Measured 2026-09-24: half the companies
+    in a batch were marked needs evidence, most of them with nothing gathered
+    at all, which means G14 cannot refuse them however poor they are. The
+    reason was narrow. from_posting existed and read a company's description
+    out of its own job advert, and it was reachable only when a company
+    already had a known ATS board. A company the keyword sweep dragged in has
+    no board, no resolvable domain and therefore no evidence, while its job
+    description sat in hand the whole time. This is not a new source and it
+    costs no request; it is a citation hunter already had and was throwing
+    away.
     """
     from . import company as comp_score
     from . import companyintel as intel
@@ -2955,6 +2968,13 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
                             break
             except Exception:
                 pass
+        # The company's own posting, last, because its homepage and its board
+        # are better evidence of what the business is than one advert. Still
+        # cited to the posting URL, so nothing here is uncited.
+        if "what_it_does" not in got and postings:
+            jd, jurl = postings.get(k, ("", ""))
+            if jd and jurl:
+                got.update(intel.from_posting(jd, jurl, name))
         if "what_it_does" not in got and a16z_markets is not None:
             got["what_it_does"] = a16z_markets
         a16z_member = bool(got.pop("a16z_portfolio", False))
@@ -3063,8 +3083,28 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     # spent earlier in the run. This is the gate that decides what he looks
     # at, and it cannot be the thing that runs out of budget.
     live_companies = sorted({p.company for p in fresh if p.company})
+    # The description the sweep already carried, one per company, so a company
+    # with no board and no resolvable domain can still be read out of its own
+    # advert. Longest wins: a two line advert says less about the business than
+    # a full one, and this is the only shot each company gets.
+    company_postings: dict[str, tuple[str, str]] = {}
+    for p in fresh:
+        if not p.company:
+            continue
+        text = (p.raw.get("descriptionPlain") or p.raw.get("description")
+                or p.raw.get("jd_text") or "")
+        if not isinstance(text, str) or len(text) < 120 or not p.url:
+            continue
+        k = company_key(p.company) or slugify(p.company)
+        if len(text) > len(company_postings.get(k, ("", ""))[0]):
+            company_postings[k] = (text, p.url)
     company_view = company_scores(cfg, live_companies, sheet, summary,
-                                  budget=max(len(live_companies), 1))
+                                  budget=max(len(live_companies), 1),
+                                  postings=company_postings)
+    if company_postings:
+        summary.append(
+            f"{len(company_postings)} company description(s) available from "
+            f"the postings already in hand")
 
     never = cfg.require_json("hunter_never_apply")
     opens = learn.open_applications(db_get(cfg, "hunter_seen_roles", {
