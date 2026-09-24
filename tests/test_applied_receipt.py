@@ -403,3 +403,144 @@ def test_a_sibling_stays_open_when_the_write_failed(monkeypatch):
     monkeypatch.setattr(R, "record_applied", lambda *a, **k: False)
     assert R.cmd_close_submitted(apply=True) == 0
     assert patched == [], "nothing closes on the back of a write that did not happen"
+
+
+def test_his_word_is_recorded_as_his_word_not_as_the_form_speaking(monkeypatch):
+    """Krish applied to six more roles on 2026-09-24 that the extension never
+    reported, so their rows still read Not applied and no receipt was ever sent.
+    Marking them is his say so, and the receipt has to say that. "the form said"
+    is a quote from the employer's page and this is not one; substituting it
+    would be the manufactured confirmation the whole confirmation field exists
+    to prevent."""
+    rows = [{"token": "t1", "job_id": "udio:x", "company": "udio",
+             "role": "Head of Artist Partnerships", "state": "awaiting"}]
+    states: list[tuple] = []
+    recorded: list[dict] = []
+    monkeypatch.setattr(R, "db_get", lambda cfg, table, params: rows)
+    monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "GoogleServiceAccount",
+                        lambda cfg: type("T", (), {"access_token": ""})())
+    monkeypatch.setattr(R, "cmd_archive", lambda apply=False: 0)
+    monkeypatch.setattr(R, "record_applied",
+                        lambda *a, **k: recorded.append(k) or True)
+    from hunter.apply import approval as ap
+    monkeypatch.setattr(ap, "set_state",
+                        lambda cfg, token, state, **kw: states.append((token, state, kw)))
+    assert R.cmd_applied(job_ids="udio:x") == 0
+    assert states[0][1] == ap.SUBMITTED
+    assert states[0][2]["failure_reason"] == R.SAID_SO
+    assert "said he submitted" in R.SAID_SO
+    assert "the form said" not in R.SAID_SO
+    assert recorded[0]["confirmation"] == R.SAID_SO
+    # The batch archives once, at the end, not once per role.
+    assert recorded[0]["archive"] is False
+
+
+def test_an_id_that_names_nothing_stops_rather_than_skipping(monkeypatch):
+    """A typo in a job id must not pass quietly: the role he actually sent would
+    be left reading Not applied while the run says it succeeded."""
+    monkeypatch.setattr(R, "db_get", lambda cfg, table, params: [])
+    monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "GoogleServiceAccount",
+                        lambda cfg: type("T", (), {"access_token": ""})())
+    called: list = []
+    monkeypatch.setattr(R, "record_applied", lambda *a, **k: called.append(a))
+    assert R.cmd_applied(job_ids="typo:nothing") == 1
+    assert called == [], "nothing may be recorded off an id that matched no row"
+
+
+def _applied_harness(monkeypatch, ledger_rows, seen_rows=None):
+    queries: list[dict] = []
+
+    def fake_db_get(cfg, table, params):
+        """Honours job_id, state and limit the way PostgREST does, so the test
+        measures what the query actually returns rather than restating it."""
+        queries.append(params)
+        if not table.endswith("approvals"):
+            return seen_rows or []
+        out = list(ledger_rows)
+        jid = (params.get("job_id") or "")
+        if jid.startswith("eq."):
+            out = [r for r in out if r["job_id"] == jid[3:]]
+        st = (params.get("state") or "")
+        if st.startswith("in."):
+            allowed = set(st[3:].strip("()").split(","))
+            out = [r for r in out if r["state"] in allowed]
+        elif st.startswith("eq."):
+            out = [r for r in out if r["state"] == st[3:]]
+        lim = params.get("limit")
+        return out[:int(lim)] if lim else out
+
+    monkeypatch.setattr(R, "db_get", fake_db_get)
+    monkeypatch.setattr(R, "db_patch", lambda *a, **k: None)
+    monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "GoogleServiceAccount",
+                        lambda cfg: type("T", (), {"access_token": ""})())
+    monkeypatch.setattr(R, "cmd_archive", lambda apply=False: 0)
+    from hunter.apply import approval as ap
+    monkeypatch.setattr(ap, "set_state", lambda *a, **k: None)
+    return queries
+
+
+def test_one_job_id_records_once_however_many_tokens_it_has(monkeypatch):
+    """Five identical Submitted receipts per role, in his inbox, 2026-09-24.
+
+    A job id collects a ledger row every time an approval is sent, and the 21
+    resent that morning gave most of them several. Taking every row for the id
+    recorded the same application once per token and emailed him once per
+    token. It also flipped tokens that had been cancelled on purpose back to
+    submitted."""
+    rows = [{"token": f"t{i}", "job_id": "foundry:svp", "company": "Foundry",
+             "role": "SVP", "state": "awaiting"} for i in range(5)]
+    queries = _applied_harness(monkeypatch, rows)
+    recorded: list = []
+    monkeypatch.setattr(R, "record_applied", lambda *a, **k: recorded.append(a[3]) or True)
+    sent: list = []
+    monkeypatch.setattr(R, "send_applied_digest", lambda cfg, rows_, **k: sent.append(rows_))
+
+    assert R.cmd_applied(job_ids="foundry:svp") == 0
+    # The query itself is the guard: one row, the newest still in play.
+    q = [x for x in queries if x.get("job_id") == "eq.foundry:svp"][0]
+    assert q["limit"] == "1", "more than one ledger row per job id was read"
+    assert "awaiting" in q.get("state", ""), "a cancelled token must not be reopened"
+    assert len(recorded) == 1, "one application, one record"
+    assert len(sent) == 1 and len(sent[0]) == 1
+
+
+def test_a_batch_sends_one_email_not_one_per_role(monkeypatch):
+    """His words: "you dont need to send tons and tons of emails for every
+    single application complete"."""
+    rows = [{"token": "t1", "job_id": "a:x", "company": "A", "role": "r1",
+             "state": "awaiting"},
+            {"token": "t2", "job_id": "b:x", "company": "B", "role": "r2",
+             "state": "awaiting"}]
+    _applied_harness(monkeypatch, rows)
+    calls: list = []
+    monkeypatch.setattr(R, "record_applied", lambda *a, **k: calls.append(k) or True)
+    sent: list = []
+    monkeypatch.setattr(R, "send_applied_digest", lambda cfg, rows_, **k: sent.append(rows_))
+
+    assert R.cmd_applied(job_ids="a:x,b:x") == 0
+    assert all(k["receipt"] is False for k in calls), \
+        "no role may send its own receipt inside a batch"
+    assert len(sent) == 1, "exactly one email for the batch"
+
+
+def test_the_digest_never_dresses_his_word_up_as_the_form_speaking(monkeypatch):
+    """The single receipt keeps "the form acknowledged it" for a real quote and
+    says so plainly when there is none. The digest may not lose that."""
+    sent: dict = {}
+    from hunter import notify as notify_mod
+    monkeypatch.setattr(notify_mod, "send_email",
+                        lambda cfg, subject, html, **k: sent.update(
+                            subject=subject, html=html, text=k.get("text", "")))
+    monkeypatch.setattr(notify_mod, "mailbox", lambda cfg: "krish@example.com")
+    R.send_applied_digest(None, [("udio", "Head of Artist Partnerships", R.SAID_SO),
+                                 ("Clay", "Head of GTM", "")], when="2026-09-24")
+    assert "2 application(s)" in sent["subject"]
+    assert R.SAID_SO in sent["html"]
+    assert "no confirmation recorded" in sent["html"]
+    assert "The form acknowledged it" not in sent["html"]
