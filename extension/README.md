@@ -6,10 +6,13 @@ filled and your CV attached, for you to read and press Submit.
 
 ## Install, once
 
-1. Download this `extension` folder to your PC.
+1. Download
+   <https://github.com/krishanraja/hunter/releases/download/extension/hunter-extension.zip>
+   and extract it. Inside is a folder called `extension`.
 2. Open Chrome and go to `chrome://extensions`
 3. Turn on **Developer mode** (top right).
-4. Click **Load unpacked** and choose the folder.
+4. Click **Load unpacked** and choose the `extension` folder, the one holding
+   `manifest.json`. Not the folder above it.
 
 That is all. There is nothing to configure.
 
@@ -21,9 +24,14 @@ newer than the copy you have, the bar at the top turns red and says so by
 version number. Then:
 
 1. Download <https://github.com/krishanraja/hunter/releases/download/extension/hunter-extension.zip>
-2. Extract it over your `hunter` folder, replacing the files.
-3. At `chrome://extensions`, press the **reload** arrow on the Hunter card.
-4. Reopen the link from the email.
+2. Extract it. Inside is a folder called `extension`, holding `manifest.json`.
+3. Copy that `extension` folder over the one Chrome already points at,
+   replacing the files, and press the **reload** arrow on the Hunter card at
+   `chrome://extensions`. If you extracted somewhere new instead, remove the
+   old card, press **Load unpacked**, and pick the new `extension` folder.
+4. Check the card reads the new version number. If it still reads the old one,
+   Chrome is pointing at the old copy and the reload did nothing.
+5. Reopen the link from the email.
 
 You will not have to guess. An out of date copy says so instead of quietly
 leaving part of the form empty.

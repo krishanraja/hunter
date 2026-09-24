@@ -188,3 +188,34 @@ def lines(batches: list[Batch]) -> list[str]:
     if warn:
         out.append(warn)
     return [x for x in out if x]
+
+
+def by_source(batches: list[Batch]) -> list[tuple[str, int, int]]:
+    """[(source, accepted, verdicted)] across every batch, worst rate last.
+
+    measure() has collected this since the day it was written and nothing ever
+    printed it. Krish, 2026-09-24: "there are still way too many boring
+    financial services and healthcare jobs being put in here". Which supply leg
+    is producing them is the whole question, and the answer was already in
+    memory, thrown away at the end of every run.
+    """
+    total: dict[str, dict] = {}
+    for b in batches:
+        for src, v in b.by_source.items():
+            t = total.setdefault(src, {"verdicted": 0, "accepted": 0})
+            t["verdicted"] += v["verdicted"]
+            t["accepted"] += v["accepted"]
+    rows = [(s, v["accepted"], v["verdicted"]) for s, v in total.items()]
+    # Most judged first, so a leg with two verdicts does not head the table.
+    return sorted(rows, key=lambda r: (-r[2], r[0]))
+
+
+def source_lines(batches: list[Batch]) -> list[str]:
+    rows = by_source(batches)
+    if not rows:
+        return []
+    out = ["accept rate by source, all batches:"]
+    for src, acc, jud in rows:
+        pct = f"{round(100 * acc / jud)}%" if jud else "no verdicts"
+        out.append(f"  {src:<28} {acc:>3}/{jud:<4} {pct}")
+    return out
