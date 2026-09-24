@@ -4699,6 +4699,51 @@ def send_applied_digest(cfg: Config, rows: list[tuple[str, str, str]],
                       to=notify.mailbox(cfg), text=text)
 
 
+def staged_company_lines(cfg: Config, limit: int = 25) -> list[str]:
+    """Which companies actually fill his sheet, and what he said about them.
+
+    The accept rate says the funnel is drifting. This says who is doing the
+    drifting, by name, which is the difference between "sourcing is bad" and a
+    change somebody can make.
+    """
+    roles = db_get(cfg, "hunter_seen_roles",
+                   {"select": "job_id,company,presented_at,source", "limit": ALL_ROWS})
+    try:
+        events = db_get(cfg, "hunter_verdict_events",
+                        {"select": "job_id,verdict,source,recorded_at",
+                         "limit": ALL_ROWS})
+    except Exception:
+        events = []
+    ruled: dict[str, str] = {}
+    for e in sorted(events, key=lambda x: x.get("recorded_at") or ""):
+        src = (e.get("source") or "").lower()
+        if ("krish" in src or "column a" in src) and e.get("job_id"):
+            ruled[e["job_id"]] = e.get("verdict") or ""
+    seen: dict[str, dict] = {}
+    for r in roles:
+        if not (r.get("presented_at") or ""):
+            continue
+        name = (r.get("company") or "unknown").strip() or "unknown"
+        c = seen.setdefault(name, {"staged": 0, "yes": 0, "no": 0,
+                                   "sources": set()})
+        c["staged"] += 1
+        c["sources"].add((r.get("source") or "unknown").strip() or "unknown")
+        v = (ruled.get(r.get("job_id") or "") or "").strip().lower()
+        if v in ("yes", "go", "approved"):
+            c["yes"] += 1
+        elif v and not v.startswith("new"):
+            c["no"] += 1
+    if not seen:
+        return []
+    rows = sorted(seen.items(), key=lambda kv: (-kv[1]["staged"], kv[0]))[:limit]
+    out = [f"companies that have filled the sheet, top {len(rows)}:",
+           f"  {'company':<26} {'staged':>6} {'yes':>4} {'no':>4}  source"]
+    for name, c in rows:
+        out.append(f"  {name[:26]:<26} {c['staged']:>6} {c['yes']:>4} "
+                   f"{c['no']:>4}  {','.join(sorted(c['sources']))[:40]}")
+    return out
+
+
 def cmd_submit(token: str, confirm: bool = False) -> int:
     """Fill one approved application. Press submit only with --confirm.
 
@@ -5534,6 +5579,12 @@ def main(argv: list[str]) -> int:
             print(f"{b.key:12} {b.staged:7} {b.verdicted:6} {b.accepted:4} {rate:>6}")
         print()
         for line in batchstats.lines(batches):
+            print(line)
+        print()
+        for line in batchstats.source_lines(batches):
+            print(line)
+        print()
+        for line in staged_company_lines(cfg, limit=25):
             print(line)
         if "--apply" in argv:
             batchstats.save(cfg, batches)
