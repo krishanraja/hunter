@@ -32,24 +32,82 @@ def dbrow(job_id, company, title):
             "krish_verdict": "Yes"}
 
 
+def ident_set(srows):
+    """Exactly what the guard in cmd_approvals computes."""
+    return {R.sheet_identity(r.company, r.role) for r in srows}
+
+
+def is_gone(row, on_sheet):
+    return R.sheet_identity(row.get("company"), row.get("title")) not in on_sheet
+
+
 def test_a_built_package_whose_row_has_left_the_sheet_is_not_sent():
-    on_sheet = [srow(3, "Profound", "VP, Strategic Partnerships")]
-    built = [dbrow("profound:vp", "Profound", "VP, Strategic Partnerships"),
-             dbrow("strativ:cro", "Strativ Group", "Chief Revenue Officer")]
-    paired, _, _, _ = R.match_rows(on_sheet, list(built))
-    keep = {d["job_id"] for _, d in paired}
-    assert "profound:vp" in keep
-    assert "strativ:cro" not in keep
+    on_sheet = ident_set([srow(3, "Profound", "VP, Strategic Partnerships")])
+    assert not is_gone(dbrow("profound:vp", "Profound",
+                             "VP, Strategic Partnerships"), on_sheet)
+    assert is_gone(dbrow("strativ:cro", "Strativ Group",
+                         "Chief Revenue Officer"), on_sheet)
 
 
 def test_the_row_that_is_still_there_is_untouched_by_the_rule():
     """The guard must not become a reason nothing ever sends."""
-    on_sheet = [srow(3, "Profound", "VP, Strategic Partnerships"),
-                srow(4, "openrouter", "Director, Channel Partnerships")]
-    built = [dbrow("profound:vp", "Profound", "VP, Strategic Partnerships"),
-             dbrow("openrouter:dir", "openrouter", "Director, Channel Partnerships")]
-    paired, _, _, _ = R.match_rows(on_sheet, list(built))
-    assert len(paired) == 2
+    on_sheet = ident_set([srow(3, "Profound", "VP, Strategic Partnerships"),
+                          srow(4, "openrouter", "Director, Channel Partnerships")])
+    for jid, co, ti in (("profound:vp", "Profound", "VP, Strategic Partnerships"),
+                        ("openrouter:dir", "openrouter",
+                         "Director, Channel Partnerships")):
+        assert not is_gone(dbrow(jid, co, ti), on_sheet)
+
+
+def test_the_guard_does_not_depend_on_match_rows():
+    """2026-09-24: the first version called match_rows(srows, list(rows)), and
+    Confidential and Strativ Group got past it.
+
+    Why is not established. A fuzzy-mispairing reproduction was written and did
+    NOT reproduce, so this test does not assert a cause. What it pins is that
+    the guard no longer asks match_rows a question it was not written for: that
+    function pairs the sheet against the whole database and has a fuzzy phase,
+    and its answer changes with the size of the list it is handed. An identity
+    comparison cannot pair anything to anything.
+    """
+    import inspect
+    src = inspect.getsource(R.cmd_approvals)
+    head = src[:src.index("to = notify.mailbox")]
+    code = "\n".join(l for l in head.splitlines()
+                     if not l.lstrip().startswith("#"))
+    assert "match_rows" not in code, \
+        "the sheet-membership guard is using match_rows again"
+    assert "sheet_identity(" in code
+
+
+def test_the_pruner_and_the_approver_agree_what_the_same_row_is():
+    """Two definitions of identity is how the second one drifts. cmd_approvals
+    also locally imports a different slugify, which merely happens to agree
+    with the module one on today's company names."""
+    import inspect
+    assert "sheet_identity(" in inspect.getsource(R.cmd_prune_sheet)
+    assert "sheet_identity(" in inspect.getsource(R.cmd_approvals)
+
+
+def test_the_guard_answer_does_not_change_with_the_size_of_the_list():
+    """The property that failed. Whatever the guard is handed, one role's
+    answer must not depend on which other roles came with it."""
+    sheet = [srow(3, "Profound", "VP, Strategic Partnerships"),
+             srow(4, "openrouter", "Director, Channel Partnerships"),
+             srow(5, "Versapay", "VP of Strategic Partnerships & Ecosystems")]
+    on_sheet = ident_set(sheet)
+    absent = dbrow("strativ:cro", "Strativ Group", "Chief Revenue Officer")
+    present = dbrow("profound:vp", "Profound", "VP, Strategic Partnerships")
+    for extras in ([], [present], [present] * 6):
+        assert is_gone(absent, on_sheet) is True
+        assert is_gone(present, on_sheet) is False
+
+
+def test_case_and_spacing_do_not_decide_whether_an_email_goes_out():
+    """His sheet says "openrouter", the database says "OpenRouter"."""
+    on_sheet = ident_set([srow(3, "openrouter", "Director,  Channel Partnerships")])
+    assert not is_gone(dbrow("openrouter:dir", "OpenRouter",
+                             "Director, Channel Partnerships"), on_sheet)
 
 
 def test_cmd_approvals_reads_the_sheet_before_it_sends(monkeypatch):

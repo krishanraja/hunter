@@ -1452,7 +1452,7 @@ def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False,
     pairs, sheet_only, _, _ = match_rows(srows, db)
 
     def ident(s: SheetRow):
-        return (slugify(s.company), _norm_title(s.role))
+        return sheet_identity(s.company, s.role)
 
     untouched = lambda s: (s.verdict or "").strip() == "New"
     plan: dict[int, str] = {}
@@ -4201,6 +4201,18 @@ def live_postings(cfg: Config) -> dict[str, tuple[str, str]]:
     return out
 
 
+def sheet_identity(company: str, role: str) -> tuple[str, str]:
+    """How a row on the sheet and a row in the database are decided to be the
+    same posting, without pairing, fuzz, or any dependence on what else is in
+    the list.
+
+    One definition, because cmd_approvals and cmd_prune_sheet both need it and
+    cmd_approvals locally imports a DIFFERENT slugify (package.build's) that
+    merely happens to agree with this one on today's company names.
+    """
+    return (slugify(company or ""), _norm_title(role or ""))
+
+
 def posting_is_gone(row: dict) -> bool | None:
     """Has the board stopped serving this posting. None means hunter cannot
     tell, which is a third answer and never collapses into either of the
@@ -4278,15 +4290,31 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
     # A sheet hunter cannot read refuses the whole batch rather than mailing
     # it: the failure mode this prevents is sending, and sending cannot be
     # undone.
+    # Identity, not match_rows.
+    #
+    # The first version of this guard called match_rows(srows, list(rows)), and
+    # on 2026-09-24 Confidential and Strativ Group got past it and were only
+    # stopped further down by the LinkedIn branch. Why they got past it is NOT
+    # established: a fuzzy-mispairing reproduction was written and did not
+    # reproduce, and invariants has no path that re-adds a row. So this does
+    # not claim a cause.
+    #
+    # What it does is stop depending on match_rows here at all. That function
+    # has a fuzzy phase and is built to pair the sheet against the WHOLE
+    # database; handed only the handful of built packages, it is being asked a
+    # question it was not written for. The comparison below is the exact one
+    # cmd_prune_sheet uses, it cannot pair anything to anything, and it does
+    # not change behaviour with the size of the list it is given.
     srows = sheet.read_pipeline(canon.sheet_headers)
-    paired, _, _, _ = match_rows(srows, list(rows))
-    on_sheet = {d.get("job_id") for _, d in paired if d.get("job_id")}
-    gone = [r for r in rows if r.get("job_id") not in on_sheet]
+    on_sheet = {sheet_identity(r.company, r.role) for r in srows}
+    gone = [r for r in rows
+            if sheet_identity(r.get("company"), r.get("title")) not in on_sheet]
     if gone:
         for r in gone:
             print(f"skip {r['job_id']}: no longer on the Pipeline sheet "
                   f"({r.get('company')} / {r.get('title')})")
-        rows = [r for r in rows if r.get("job_id") in on_sheet]
+        drop = {r.get("job_id") for r in gone}
+        rows = [r for r in rows if r.get("job_id") not in drop]
     if not rows:
         print("every built package belongs to a row that has left the sheet")
         return 1
