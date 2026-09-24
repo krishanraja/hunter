@@ -28,7 +28,7 @@ OK, WARN, FAIL = "ok", "warn", "fail"
 PAYLOAD_URL = "https://controlcenter.krishraja.com/api/hunter/payload"
 SUBMITTED_URL = "https://controlcenter.krishraja.com/api/hunter/submitted"
 
-DOWNLOAD = "https://github.com/krishanraja/hunter/archive/refs/heads/main.zip"
+DOWNLOAD = "https://github.com/krishanraja/hunter/releases/download/extension/hunter-extension.zip"
 
 
 @dataclass

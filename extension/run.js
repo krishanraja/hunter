@@ -62,9 +62,10 @@
   const STALE =
     'Your Hunter extension is version ' + MINE + ' and this application needs ' +
     '%NEED%. It has filled what it can, and parts of this form are probably ' +
-    'empty. Download https://github.com/krishanraja/hunter/archive/refs/heads/' +
-    'main.zip, extract it over your hunter folder, then press the reload arrow ' +
-    'on the Hunter card at chrome://extensions and reopen this link.';
+    'empty. Download https://github.com/krishanraja/hunter/releases/download/' +
+    'extension/hunter-extension.zip, extract it over your hunter folder, then ' +
+    'press the reload arrow on the Hunter card at chrome://extensions and ' +
+    'reopen this link.';
 
   // ---- The watch, and why it lives in storage ------------------------------
   //

@@ -228,7 +228,7 @@ def test_a_stale_extension_says_so_rather_than_claiming_success():
     green = body.index("Filled all ")
     assert stale < green
     # And it must say what to do, not merely that something is wrong.
-    assert "main.zip" in RUN
+    assert "hunter-extension.zip" in RUN
     assert "chrome://extensions" in RUN
     assert "reload" in RUN.lower()
 
