@@ -21,6 +21,7 @@ Phases of a full run, in order:
 from __future__ import annotations
 
 import datetime
+import json
 import re
 from functools import lru_cache
 import requests
@@ -4854,6 +4855,65 @@ def score_coverage_lines(cfg: Config, batches: int = 4) -> list[str]:
     return out
 
 
+def unreadable_lines(cfg: Config, limit: int = 15) -> list[str]:
+    """The companies the gate cannot act on, and what hunter failed to learn.
+
+    Half the funnel's companies are marked needs evidence, which means G14
+    cannot refuse them however poor they are. Knowing that is not enough to
+    fix it: "could not read it" covers a missing domain, a site that refused
+    the fetch, and a homepage that never says what the business does, and
+    those are three different repairs. This prints which.
+    """
+    from . import companyintel as intel
+    from . import company as comp_score
+    roles = db_get(cfg, "hunter_seen_roles",
+                   {"select": "company,presented_at", "limit": ALL_ROWS})
+    days = sorted({(r.get("presented_at") or "")[:10] for r in roles
+                   if r.get("presented_at")})
+    if not days:
+        return []
+    latest = days[-1]
+    want: dict[str, str] = {}
+    for r in roles:
+        if (r.get("presented_at") or "")[:10] != latest:
+            continue
+        name = (r.get("company") or "").strip()
+        if name:
+            want[company_key(name) or slugify(name)] = name
+    try:
+        known = intel.load(cfg)
+    except Exception as e:
+        return [f"unreadable companies unavailable: {e.__class__.__name__}"]
+    out = [f"companies the gate cannot act on, batch {latest}:"]
+    n = 0
+    for k, name in sorted(want.items(), key=lambda kv: kv[1].lower()):
+        row = known.get(k)
+        if row is None:
+            out.append(f"  {name[:26]:<26} never scored")
+            n += 1
+            continue
+        if (row.get("status") or "") != comp_score.NEEDS_EVIDENCE:
+            continue
+        got = []
+        try:
+            for c in json.loads(row.get("components") or "[]"):
+                if c.get("evidenced"):
+                    got.append(c.get("name") or "?")
+        except Exception:
+            pass
+        out.append(f"  {name[:26]:<26} evidenced {row.get('evidenced') or 0}"
+                   f" ({', '.join(got) or 'nothing'})"
+                   f"  {(row.get('why') or '')[:60]}")
+        n += 1
+        if n >= limit:
+            break
+    if n == 0:
+        out.append("  none; the gate can act on every company in this batch")
+    out.append("  category is the prerequisite: without it the score is absent, "
+               "not low, and absent may never refuse")
+    return out
+
+
 def staged_company_lines(cfg: Config, limit: int = 25) -> list[str]:
     """Which companies actually fill his sheet, and what he said about them.
 
@@ -5743,6 +5803,9 @@ def main(argv: list[str]) -> int:
             print(line)
         print()
         for line in score_coverage_lines(cfg):
+            print(line)
+        print()
+        for line in unreadable_lines(cfg):
             print(line)
         print()
         for line in staged_company_lines(cfg, limit=25):
