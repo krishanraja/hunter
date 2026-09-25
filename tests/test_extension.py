@@ -51,15 +51,59 @@ def test_it_waits_for_the_form_before_filling():
     assert "querySelector('input, textarea, select')" in RUN
 
 
+def driver_hosts() -> set[str]:
+    """The host of every ATS hunter has a driver for, asked of the drivers.
+
+    Derived rather than listed, because the listed version could only catch
+    someone editing the list. See the test below for what that cost.
+    """
+    from urllib.parse import urlparse
+
+    from hunter.apply.fill import FillPlan
+    from hunter.apply.submit import DRIVERS
+    hosts = set()
+    for ats, cls in DRIVERS.items():
+        plan = FillPlan(ats=ats, slug="s", posting_id="p", company="C", role="R")
+        hosts.add(urlparse(cls(None, plan).apply_url()).netloc)
+    return hosts
+
+
+def test_every_ats_hunter_can_fill_is_one_the_extension_runs_on():
+    """2026-09-24, and it reached him.
+
+    A Lever form adapter and a LeverDriver were written, approval emails went
+    out pointing at jobs.lever.co, and the manifest was never told Lever
+    exists. Chrome only injects a content script on a matched host, so both
+    applications opened EMPTY, and he was told nothing needed re-downloading.
+
+    The test that stood here asserted the two hosts as a literal list. It would
+    have caught someone EDITING that list and could never catch someone adding
+    a driver without it, which is the mistake that actually happened. So the
+    expectation now comes from the drivers themselves: the next adapter fails
+    here rather than in his browser.
+    """
+    manifest = json.loads((EXT / "manifest.json").read_text())
+    matches = set(manifest["content_scripts"][0]["matches"])
+    permitted = set(manifest["host_permissions"])
+    for host in driver_hosts():
+        assert f"https://{host}/*" in matches, (
+            f"{host} has a driver but no content script match; the form will "
+            f"open empty")
+        assert f"https://{host}/*" in permitted, (
+            f"{host} has a driver but no host permission")
+
+
 def test_the_manifest_reaches_only_the_boards_it_fills():
     manifest = json.loads((EXT / "manifest.json").read_text())
     assert manifest["manifest_version"] == 3
-    matches = manifest["content_scripts"][0]["matches"]
-    assert matches == ["https://jobs.ashbyhq.com/*",
-                       "https://job-boards.greenhouse.io/*"]
-    # No <all_urls>, no broad tabs or history permission: it can read the two
-    # job boards it fills and nothing else of his browsing.
+    matches = set(manifest["content_scripts"][0]["matches"])
+    # Exactly the boards it fills, and nothing wider.
+    assert matches == {f"https://{h}/*" for h in driver_hosts()}
+    # No <all_urls>, no broad tabs or history permission: it can read the job
+    # boards it fills, Control Center, and nothing else of his browsing.
     assert manifest["permissions"] == ["storage"]
+    assert set(manifest["host_permissions"]) == matches | {
+        "https://controlcenter.krishraja.com/*"}
     for host in manifest["host_permissions"]:
         assert host.startswith("https://")
         assert "<all_urls>" not in host
