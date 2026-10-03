@@ -6,7 +6,9 @@ changes. The run summary puts the two lists side by side, so he can see what the
 old rules staged and what the judge would have.
 
 gate: the judge decides. A role reaches his sheet only when the judge presents
-it at fit 8 or more, at most ten a run, plus up to two roles the judge HELD,
+it at fit 6 or more (the threshold judge-eval chose on the development window,
+see tests/fixtures/judge_dev.json), at most twenty a run, plus up to two roles
+the judge HELD,
 labelled as an audit, so what the judge hides is measured continuously rather
 than assumed. Switched on only on his word, after judge-eval and the blind set.
 
@@ -74,8 +76,10 @@ def run(cfg: Config, canon, sheet, candidates: list[Candidate], *, mode: str,
         return out
     limit = int(cfg.optional("hunter_judge_max_per_run", "60"))
     max_usd = float(cfg.optional("hunter_judge_max_usd_per_run", "8"))
-    min_fit = int(cfg.optional("hunter_judge_min_fit", "8"))
-    cap = int(cfg.optional("hunter_judge_max_present", "10"))
+    min_fit = int(cfg.optional("hunter_judge_min_fit", str(judge.MIN_FIT)))
+    # He reads a long list easily, and on the holdout the judge presented 29
+    # percent of what it judged; ten a run would cut roles it had shown.
+    cap = int(cfg.optional("hunter_judge_max_present", "20"))
     workers = int(cfg.optional("hunter_judge_workers", "6"))
 
     ranked = sorted(candidates, key=lambda c: c.rank)

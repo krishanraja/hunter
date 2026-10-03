@@ -35,10 +35,17 @@ from dataclasses import dataclass, field
 from .config import Config
 from .package import rationale
 
-PROMPT_VERSION = "2026-10-03.1"
+PROMPT_VERSION = "2026-10-03.2"
 DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_EFFORT = "high"
 MAX_TOKENS = 16000
+# A posting this long is the posting; shorter is a snippet the sheet kept.
+FULL_POSTING_CHARS = 400
+# The presenting threshold, chosen by judge-eval on the development window
+# (examples before 7 September, scored on 7 to 16 September) as the strictest
+# that keeps the most of his Yes roles, then scored once on the holdout. Fit 8,
+# the first guess, would have shown none of his 13 held-out Yes roles.
+MIN_FIT = 6
 
 # Published per-million-token prices for the default model, used only to turn
 # a call's usage into dollars for hunter_judge_calls. Cache writes are 1.25x
@@ -83,55 +90,84 @@ SCHEMA = _obj({
         "pay": STR,
         "pay_meets_floor": {"type": "string", "enum": ["yes", "no", "unknown"]},
         "quote": STR}),
+    # The case for and the case against are written before the verdict, so the
+    # verdict weighs both. v1 asked only for the case against, and rejected
+    # every one of his 13 held-out Yes roles.
+    "strongest_reason_he_says_yes": STR,
+    "most_likely_reason_he_says_no": STR,
+    "red_flags": {"type": "array", "items": STR},
     "verdict": {"type": "string", "enum": ["present", "hold", "reject"]},
     "fit": {"type": "integer"},
     "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
     "likely_decline_code": {"type": "string", "enum": DECLINE_CODES},
-    "most_likely_reason_he_says_no": STR,
-    "red_flags": {"type": "array", "items": STR},
     # The rationale parts, validated exactly as rationale.py validates them.
     "mandate": STR, "fit_text": STR, "risk": STR, "archetype": STR, "snippet": STR,
 })
 
-INSTRUCTIONS = """You decide whether one job posting should be put in front of Krish Raja.
+INSTRUCTIONS = """You decide whether one job posting should be put in front of Krish Raja,
+and where it sits in his list.
 
-He reviews a short list twice a week. A role you present costs him attention he
-would rather spend selling and writing; a great role you hide may cost him the
-job. Present a role only when, having read everything below, you believe he
-would say Yes. Hold it when it could be right but something material is
-unclear. Reject it when his own rulings or stated policy rule it out. An empty
-week is a correct outcome; filling the list is not your job.
+What each mistake costs. He reads his list on a spreadsheet, quickly, and
+declining a role there costs him seconds. Hiding a role he would have wanted
+may cost him the job, and nobody ever finds out. So the expensive mistake is
+the hidden Yes. Present a role when there is a real chance he says Yes, about
+one in five or better. Reject it only when his rulings or his canon clearly
+rule it out. Hold it only when one missing fact would decide it either way.
 
 How he decides, in this order, as his rulings show:
-1. The business. Would he join this company at all: what it sells, to whom, how
-   it is backed, whether it is in or near his five categories. Most of his
-   declines are about the business, not the seat.
+1. The business. Would he join this company at all: what it sells, to whom,
+   how it is backed, whether it is in or near his five categories. Most of his
+   declines are about the business, not the seat, and this is where a reject
+   usually comes from.
 2. The function. Is the seat one of his five role families, or something else
-   wearing a senior title (data governance, revenue cycle, a quota-carrying
-   sales seat with no build mandate, an individual contributor role).
-3. Level and scope. Who it reports to, what it owns, whether there is a
-   mandate to build.
-4. Requirements he lacks. A language, a domain credential, years inside an
-   industry he has not worked in.
+   wearing a senior title (data governance, revenue cycle, growth marketing,
+   sales analytics, engineering leadership).
+3. Level and scope. Who it reports to, what it owns, whether there is room to
+   build. Titles mislead in both directions: he has applied for seats titled
+   Lead and declined seats titled Head of.
+4. Requirements he lacks.
 5. Logistics. City (NYC, London, US-remote, UK-remote) and pay.
 
-Name these explicitly when you see them:
+What his Yes rulings show, which a careful reader of his declines tends to miss:
+- He applies for stretch roles at businesses he wants. In August and early
+  September he applied for enterprise sales leadership at Sierra and at
+  Anthropic, business development at Harvey and enterprise GTM at a blockchain
+  company, none of which matched his background line by line. At a business he
+  wants, a requirement he lacks lowers fit by a point or so. It is a reason to
+  reject mainly where the business is ordinary to him, or where the domain is
+  regulated and deep (canon 5 names insurance, clinical and banking back-office)
+  or a specialist channel such as hyperscaler alliances.
+- Revenue-carrying seats are fine. Canon 5: engine-builder over quota-carrier
+  is a scoring preference, not a cut, and he has applied for quota-carrying
+  seats.
+- Pay. A range meets the $200,000 floor when its top is at or above $200,000;
+  never count the bottom of a range against a role. He has said Yes to
+  $180,000 to $250,000 and to $165,000 to $280,000. Pay not stated is the
+  normal case and is neutral, never a flag on its own. A stated ceiling under
+  $200,000 is a real flag, and so is pay that is implausible as written (an
+  hourly or monthly figure shown as a salary, a range that spans 100x, a
+  currency mix-up), which you report as unknown, never as meeting the floor.
+- Canon 5 names AI transformation and AI Chief of Staff as a target family. A
+  seat whose mandate is AI transformation is in-family wherever it sits;
+  whether he wants that employer is the business question, answered from his
+  rulings and canon.
+
+Weigh these and name them when you see them; only his rulings make one decisive:
 - A posting by a recruiter or staffing agency, where the employer is unknown.
-- Agency holding companies and consultancies: he has said yes to some and no to
-  most; weigh his rulings, not a rule.
-- Nonprofits, consumer goods, healthcare providers, and banks, insurers and asset
-  managers (for those, his words: "I'd reject that company unless the role was
-  ideal").
-- Pay that is implausible as written (an hourly or monthly figure presented as
-  a salary, a range that spans 100x, a currency mix-up). Report it as unknown,
-  never as meeting the floor.
-- Pay whose stated ceiling is under $200,000.
+- Agency holding companies, consultancies, private equity firms and PE-owned
+  businesses: he has said yes to some and no to most.
+- Nonprofits, consumer goods, healthcare providers, and banks, insurers and
+  asset managers (for those, his words: "I'd reject that company unless the
+  role was ideal").
 
 Quotes. Every answer section has a quote field. Copy the shortest phrase from the
 posting, character for character, that supports the answer. If the posting is
 silent on that point, leave the quote empty and say "not stated" in the answer.
 Never paraphrase inside a quote. Quotes are checked against the posting, and an
-answer whose quote is not in the posting is thrown away.
+answer whose quote is not in the posting is thrown away. When the posting text
+is short or missing, judge from the company, the title and his rulings, leave
+the quotes empty and set confidence low; never reject a role only because its
+posting is thin.
 
 His rulings are the best evidence of his taste, better than any policy line.
 Where the documents below disagree with each other, his canon wins over the
@@ -139,8 +175,15 @@ sheet tabs, and a recent ruling wins over an old one. Some sheet lines are out
 of date: the Profile tab's "Never present a role <9/10" was replaced on
 2026-09-03 by canon 9.2, under which the score orders and does not block.
 
-Fit, 0 to 10: 9 or 10 he would be excited; 8 a clear yes; 7 plausible but he
-may well decline; 5 or 6 probably no; 0 to 4 no.
+Before the verdict, write the strongest reason he would say Yes and the most
+likely reason he would say No, each from the posting and his rulings. Then
+decide.
+
+Fit, 0 to 10, is the chance he says Yes, and it orders his list: 9 or 10, very
+likely yes; 8, more likely yes than no; 7, a real chance, about one in three;
+6, possible, about one in five; 5, unlikely, about one in ten; 0 to 4, his
+rulings or canon rule it out. A role you present has fit 6 or more; a role you
+reject has fit 4 or less. Use the whole range.
 
 The written parts (mandate, fit_text, risk, archetype, snippet) go on his sheet:
 - mandate: what the seat actually is, in the posting's own terms, one sentence.
@@ -296,9 +339,13 @@ def quote_problems(answers: dict, posting: str) -> list[str]:
         if q not in hay:
             bad.append(f"the {section} quote is not in the posting: "
                        f"{(answers[section]['quote'] or '')[:80]!r}")
-    for section in ("business", "function"):
-        if not fold((answers.get(section) or {}).get("quote", "")).strip():
-            bad.append(f"the {section} answer has no quote from the posting")
+    # On a full posting the business and the function must be quoted. On a
+    # snippet there may be nothing to quote, and a thin posting is never a
+    # reason to refuse a judgement: v1 left ten roles pending for it.
+    if len(posting or "") >= FULL_POSTING_CHARS:
+        for section in ("business", "function"):
+            if not fold((answers.get(section) or {}).get("quote", "")).strip():
+                bad.append(f"the {section} answer has no quote from the posting")
     return bad
 
 
@@ -404,6 +451,7 @@ def interpret(role: Role, message, *, model: str, batch: bool = False,
         confidence=answer.get("confidence", ""),
         answers={k: answer.get(k) for k in ("business", "function", "level_scope",
                                             "requirements_he_lacks", "logistics",
+                                            "strongest_reason_he_says_yes",
                                             "most_likely_reason_he_says_no")},
         red_flags=list(answer.get("red_flags") or []),
         likely_decline_code=answer.get("likely_decline_code", "none"),
@@ -452,7 +500,7 @@ def judge_role(cfg: Config, system: str, role: Role, *, client=None,
 
 # ---------- what a judgement means for staging ----------
 
-def disposition(j: Judgement, *, min_fit: int = 8) -> str:
+def disposition(j: Judgement, *, min_fit: int = MIN_FIT) -> str:
     """staging | held | blocked | judge_pending."""
     if j.verdict == "pending":
         return "judge_pending"

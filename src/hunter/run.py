@@ -3907,12 +3907,14 @@ def settle_step(cfg: Config, canon: Canon, sheet: Sheet,
     return out
 
 
-def cmd_judge_eval() -> int:
-    """Measure the judge against his rulings. Spends money (capped at $25)."""
+def cmd_judge_eval(dev: bool = False, threshold: int | None = None) -> int:
+    """Measure the judge against his rulings. Spends money (capped at $25).
+    --dev scores the development window; --threshold N scores the holdout at a
+    threshold chosen there, never one chosen on the holdout itself."""
     from . import judge_eval
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    result = judge_eval.run(cfg, sheet, canon)
+    result = judge_eval.run(cfg, sheet, canon, dev=dev, threshold=threshold)
     print("\n".join(judge_eval.report(result)))
     return 0
 
@@ -6587,7 +6589,8 @@ def main(argv: list[str]) -> int:
     if cmd == "settle":
         return cmd_settle(apply="--apply" in argv)
     if cmd == "judge-eval":
-        return cmd_judge_eval()
+        t = _flag("--threshold")
+        return cmd_judge_eval(dev="--dev" in argv, threshold=int(t) if t else None)
     if cmd == "close-submitted":
         return cmd_close_submitted(apply="--apply" in argv)
     if cmd == "confirmations":

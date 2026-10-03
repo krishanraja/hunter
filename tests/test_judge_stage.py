@@ -56,26 +56,28 @@ def test_shadow_records_the_judgement_and_changes_no_status(monkeypatch, quiet):
     cands, out = run(monkeypatch, TABLE, "shadow")
     assert all(c.row["status"] == "staging" for c in cands)
     assert all(c.row["judge_verdict"] for c in cands)
-    assert [c.role.job_id for c in out.present] == ["a", "e"]
+    assert [c.role.job_id for c in out.present] == ["a", "e", "b"], "best fit first"
 
 
-def test_gate_presents_fit_8_or_more_and_holds_the_rest(monkeypatch, quiet):
-    cands, out = run(monkeypatch, TABLE, "gate", hunter_judge_audit_per_run="0")
+def test_gate_presents_at_the_measured_fit_and_holds_the_rest(monkeypatch, quiet):
+    table = {**TABLE, "f": ("present", 5)}
+    cands, out = run(monkeypatch, table, "gate", hunter_judge_audit_per_run="0")
     judge_stage.apply_gate(out, cands)
     status = {c.role.job_id: c.row["status"] for c in cands}
-    assert status == {"a": "staging", "b": "held", "c": "held", "d": "blocked", "e": "staging"}
+    assert judge.MIN_FIT == 6
+    assert status == {"a": "staging", "b": "staging", "c": "held", "d": "blocked",
+                      "e": "staging", "f": "held"}
     assert cands[3].row["rejection_reason"].startswith("JUDGE reject")
 
 
 def test_a_held_row_is_never_left_at_staging(monkeypatch, quiet):
     """Reconcile appends any staging row the sheet lacks, so a held role left at
     'staging' would reach his sheet the next day."""
-    table = {f"r{i}": ("present", 9) for i in range(14)}
-    cands, out = run(monkeypatch, table, "gate", hunter_judge_max_present="10",
-                     hunter_judge_audit_per_run="0")
+    table = {f"r{i}": ("present", 9) for i in range(24)}
+    cands, out = run(monkeypatch, table, "gate", hunter_judge_audit_per_run="0")
     judge_stage.apply_gate(out, cands)
     staged = [c for c in cands if c.row["status"] == "staging"]
-    assert len(staged) == 10
+    assert len(staged) == 20
     assert all(c.row["status"] == "held" for c in cands if c not in staged)
 
 

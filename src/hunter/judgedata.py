@@ -21,7 +21,7 @@ from __future__ import annotations
 import datetime
 from dataclasses import asdict, dataclass
 
-from . import verdicts
+from . import judge, verdicts
 from .config import ALL_ROWS, Config, db_get
 
 CLEARING = "sourced before the bar was fixed"
@@ -57,7 +57,7 @@ class Ruled:
 
     @property
     def has_jd(self) -> bool:
-        return len(self.jd_text or "") >= 400
+        return len(self.jd_text or "") >= judge.FULL_POSTING_CHARS
 
     def to_dict(self) -> dict:
         return asdict(self)

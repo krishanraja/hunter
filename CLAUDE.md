@@ -152,6 +152,35 @@ The rules this layer must keep:
   purpose: if the tab supplied both, the test would measure his enthusiasm
   reflected back.
 
+## 3b. The judge decides fit, and is measured before it decides anything
+
+`judge.py` is one Claude call per role that reads everything he has written
+(canon 2 to 6, Profile, Interview Answers, Scoring Reference, Target Companies)
+and every ruling he has made, quotes the posting for each answer, and returns a
+verdict and a fit. `judge_stage.py` runs it inside staging in one of three
+modes, `hunter_judge_mode`: off, shadow (judges and records, changes nothing
+he sees), gate (decides). It is in shadow until he says otherwise.
+
+- **Measure on a window the prompt was not tuned on.** `judge-eval --dev`
+  scores rulings 7 to 16 September with examples from before; the threshold is
+  chosen there; `judge-eval --threshold N` scores the 17 September onward
+  holdout once. v1 was scored on the holdout and rejected all 13 of his Yes
+  roles; re-tuning on those same roles would have measured nothing.
+- **The asymmetry is the design.** A decline costs him seconds on a list he
+  reads easily; a hidden Yes may cost the job. v1 was told to present only
+  likely Yes roles and hid every one. Requirements he lacks, the bottom of a
+  pay range, unstated pay and quota lines lower fit; his rulings, mostly about
+  the business, are what reject.
+- **The record is the bar.** `tests/test_judge_eval.py` reads
+  `tests/fixtures/judge_eval.json`: today 7 of 13 Yes shown at fit 6,
+  precision 22 percent against 11 for the old system, AUC 0.75. A prompt change
+  must re-run judge-eval (the test fails on a version mismatch) and must not do
+  worse.
+- **What it cannot know.** The six Yes it hides on the holdout are at kinds of
+  business he had declined before 17 September (an agency holding company, a
+  PE firm, finance software). Rulings lag taste. His new verdicts feed the next
+  run's prompt automatically; the audit sample measures what the gate hides.
+
 ## 4. The Target Companies tab is his, and it is policy
 
 53 companies, five categories, a tier each, and a TIER LEGEND in his own
@@ -313,6 +342,11 @@ src/hunter/
     essays.py         drafts the open questions
     approval.py       tokens, states, the plan hash
     infobank.py       his recorded answers
+  judge.py          would he want this role: one model call, quoted, checked
+  judge_stage.py    the judge inside staging: off, shadow or gate
+  judge_eval.py     the judge measured against his rulings, chronologically
+  judgedata.py      every role he ruled on, with the posting, for the judge
+  schedule.py       which batch is owed, decided from the run record
   company.py        is the BUSINESS worth his time. Five components, evidenced
   companyintel.py   where those facts come from, free, and always cited
   prospect.py       companies he has not named, found in what hunter discards
@@ -329,7 +363,7 @@ src/hunter/
     tailor.py       block selection, the hook
     voicegate.py    every generated string passes this
 extension/            loaded unpacked in his Chrome. main is what he downloads
-tests/                1041 tests, offline
+tests/                1296 tests, offline
   test_taste.py       the bar, measured against his own verdicts
   test_company_taste.py          the company bar, against the companies he chose
   fixtures/krish_verdicts.json   154 roles he ruled on. Ground truth

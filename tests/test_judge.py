@@ -12,7 +12,9 @@ POSTING = (
     "KBRA is a credit ratings agency. The Head of Data Management will define and run "
     "the enterprise data management strategy, reporting to the CTO, leading Data "
     "Operations, governance, quality and taxonomy. Salary range $225,000 - $300,000. "
-    "New York, NY.")
+    "New York, NY. You will partner with Technology, Ratings and Compliance to build "
+    "the data catalogue, lineage and stewardship model, and report on data quality to "
+    "the Data Governance Council every quarter.")
 
 
 def answer(**over):
@@ -28,10 +30,11 @@ def answer(**over):
         "requirements_he_lacks": {"items": [], "quote": ""},
         "logistics": {"location": "New York", "location_ok": "yes", "pay": "$225K to $300K",
                       "pay_meets_floor": "yes", "quote": "Salary range $225,000 - $300,000"},
-        "verdict": "reject", "fit": 1, "confidence": "high",
-        "likely_decline_code": "business_uninteresting",
+        "strongest_reason_he_says_yes": "a head-of seat in New York over the floor",
         "most_likely_reason_he_says_no": "a ratings agency data seat",
         "red_flags": ["ratings agency", "data governance function"],
+        "verdict": "reject", "fit": 1, "confidence": "high",
+        "likely_decline_code": "business_uninteresting",
         "mandate": "Run enterprise data management under the CTO at a ratings agency.",
         "fit_text": "It does not fit: the seat is data governance, not one of his five "
                     "families, inside a regulated financial incumbent.",
@@ -83,9 +86,34 @@ def test_quotes_survive_typography_but_not_paraphrase():
 
 
 def test_business_and_function_must_be_quoted():
+    assert len(POSTING) >= judge.FULL_POSTING_CHARS
     unquoted = answer(function={**answer()["function"], "quote": ""})
     _, j = judge.interpret(ROLE, message(unquoted), model="claude-opus-5-5")
     assert j.verdict == "pending"
+
+
+def test_a_thin_posting_is_judged_without_quotes_rather_than_left_pending():
+    """v1 left ten roles pending because a sheet snippet had nothing to quote.
+    Never block on no evidence: the judge answers from company, title and his
+    rulings, and a quote it does give is still checked."""
+    thin = judge.Role(job_id="s:1", company="Sierra", title="Global Head of Sales Enablement",
+                      posting="Sierra builds AI agents for customer service.")
+    empty = {k: {**v, "quote": ""} if isinstance(v, dict) and "quote" in v else v
+             for k, v in answer(verdict="present", fit=6).items()}
+    _, j = judge.interpret(thin, message(empty), model="claude-opus-5-5")
+    assert j.verdict == "present" and j.fit == 6
+    wrong = answer(business={**answer()["business"], "quote": "a fintech unicorn"})
+    _, j2 = judge.interpret(thin, message(wrong), model="claude-opus-5-5")
+    assert j2.verdict == "pending"
+
+
+def test_the_case_for_is_written_before_the_verdict():
+    """v1 asked only for the case against and rejected all 13 of his held-out
+    Yes roles. The order of the schema is the order the answer is written in."""
+    keys = list(judge.SCHEMA["properties"])
+    assert keys.index("strongest_reason_he_says_yes") < keys.index("verdict")
+    assert keys.index("most_likely_reason_he_says_no") < keys.index("verdict")
+    assert "a range meets the $200,000 floor when its top" in judge.INSTRUCTIONS.lower()
 
 
 def test_a_refusal_a_cutoff_and_bad_json_are_pending_never_a_default():
@@ -114,11 +142,11 @@ def test_a_figure_from_nowhere_drops_the_sheet_text_but_keeps_the_verdict():
 
 
 @pytest.mark.parametrize("verdict,fit,want", [
-    ("present", 9, "staging"), ("present", 8, "staging"), ("present", 7, "held"),
+    ("present", 9, "staging"), ("present", 6, "staging"), ("present", 5, "held"),
     ("hold", 9, "held"), ("reject", 9, "blocked")])
 def test_what_a_verdict_means_for_staging(verdict, fit, want):
     _, j = judge.interpret(ROLE, message(answer(verdict=verdict, fit=fit)), model="claude-opus-5-5")
-    assert judge.disposition(j, min_fit=8) == want
+    assert judge.disposition(j) == want
 
 
 def test_the_context_is_byte_identical_for_the_same_inputs():
@@ -129,7 +157,7 @@ def test_the_context_is_byte_identical_for_the_same_inputs():
               rulings=["[2026-09-10] YES | Clay | Head of GTM | his words: Yes"])
     a, b = judge.build_system(**kw), judge.build_system(**kw)
     assert a == b
-    assert a.index("canon 2") < a.index("canon 5")
+    assert a.index("--- canon 2 ---") < a.index("--- canon 5 ---")
     assert "Never present a role <9/10" in a, "the stale line is named as stale"
 
 

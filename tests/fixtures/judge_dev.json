@@ -1,0 +1,1510 @@
+{
+ "auc": 0.8295,
+ "baseline": {
+  "declines_blocked": [
+   0.0,
+   0.0,
+   0.1043
+  ],
+  "precision": [
+   0.2667,
+   0.1596,
+   0.4104
+  ],
+  "presented": 45,
+  "yes_recall": [
+   1.0,
+   0.7575,
+   1.0
+  ]
+ },
+ "chosen_threshold": 6,
+ "decline_codes": [
+  0.3636,
+  0.2219,
+  0.5338
+ ],
+ "meta": {
+  "batch": false,
+  "batch_id": null,
+  "cutoff": "2026-09-07T00:00:00+00:00",
+  "effort": "high",
+  "holdout_no": 33,
+  "holdout_with_jd": 29,
+  "holdout_yes": 12,
+  "model": "claude-opus-5-5",
+  "n_examples": 38,
+  "n_holdout": 45,
+  "prompt_version": "2026-10-03.2",
+  "replicas": 1,
+  "run_at": "2026-10-03T19:09:40.965669+00:00",
+  "scored_to": "2026-09-17T00:00:00+00:00",
+  "skipped": {
+   "duplicate": 3,
+   "no_verdict": 0,
+   "system_or_clearing": 160
+  },
+  "undated_left_out": 12,
+  "usd": 2.5235,
+  "window": "development"
+ },
+ "metrics": {
+  "5": {
+   "declines_blocked": [
+    0.697,
+    0.5266,
+    0.8262
+   ],
+   "declines_presented": [
+    "Synthesia / Director, Sales Strategy and Operations",
+    "Flex / Senior Director, GTM Strategy & Operations",
+    "amperity / Head of Partnerships & Alliances",
+    "Asana / GM, Product - Command",
+    "kustomer / Head of GTM Strategy and Operations",
+    "flex / Chief of Staff (Executive Office) and VP of Strategy & Operations",
+    "flex / Vice President, Business Development & Strategic Partnerships",
+    "ripple / Director, Ecosystem Growth",
+    "flex / Senior Director, Strategic Partnerships",
+    "ThoughtSpot / Founding GTM Lead, AgentSpot"
+   ],
+   "judged": 45,
+   "pending": 0,
+   "precision": [
+    0.5,
+    0.2993,
+    0.7007
+   ],
+   "presented": 20,
+   "threshold": 5,
+   "yes_blocked": [
+    "banyansoftware / WIZE Managing Director UK",
+    "Foundry / Senior Vice President & General Manager, Audience & Growth"
+   ],
+   "yes_recall": [
+    0.8333,
+    0.552,
+    0.953
+   ]
+  },
+  "6": {
+   "declines_blocked": [
+    0.697,
+    0.5266,
+    0.8262
+   ],
+   "declines_presented": [
+    "Synthesia / Director, Sales Strategy and Operations",
+    "Flex / Senior Director, GTM Strategy & Operations",
+    "amperity / Head of Partnerships & Alliances",
+    "Asana / GM, Product - Command",
+    "kustomer / Head of GTM Strategy and Operations",
+    "flex / Chief of Staff (Executive Office) and VP of Strategy & Operations",
+    "flex / Vice President, Business Development & Strategic Partnerships",
+    "ripple / Director, Ecosystem Growth",
+    "flex / Senior Director, Strategic Partnerships",
+    "ThoughtSpot / Founding GTM Lead, AgentSpot"
+   ],
+   "judged": 45,
+   "pending": 0,
+   "precision": [
+    0.5,
+    0.2993,
+    0.7007
+   ],
+   "presented": 20,
+   "threshold": 6,
+   "yes_blocked": [
+    "banyansoftware / WIZE Managing Director UK",
+    "Foundry / Senior Vice President & General Manager, Audience & Growth"
+   ],
+   "yes_recall": [
+    0.8333,
+    0.552,
+    0.953
+   ]
+  },
+  "7": {
+   "declines_blocked": [
+    0.9394,
+    0.8039,
+    0.9832
+   ],
+   "declines_presented": [
+    "amperity / Head of Partnerships & Alliances",
+    "kustomer / Head of GTM Strategy and Operations"
+   ],
+   "judged": 45,
+   "pending": 0,
+   "precision": [
+    0.8,
+    0.4902,
+    0.9433
+   ],
+   "presented": 10,
+   "threshold": 7,
+   "yes_blocked": [
+    "Revin / Head of Partnerships",
+    "banyansoftware / WIZE Managing Director UK",
+    "January / Chief of Staff",
+    "Foundry / Senior Vice President & General Manager, Audience & Growth"
+   ],
+   "yes_recall": [
+    0.6667,
+    0.3906,
+    0.8619
+   ]
+  },
+  "8": {
+   "declines_blocked": [
+    1.0,
+    0.8957,
+    1.0
+   ],
+   "declines_presented": [],
+   "judged": 45,
+   "pending": 0,
+   "precision": [
+    1.0,
+    0.4385,
+    1.0
+   ],
+   "presented": 3,
+   "threshold": 8,
+   "yes_blocked": [
+    "Cohere / Head of Corporate Development",
+    "Fleek / Chief of Staff",
+    "Revin / Head of Partnerships",
+    "Cloudflare / Chief of Staff to Chief Strategy Officer",
+    "banyansoftware / WIZE Managing Director UK",
+    "January / Chief of Staff",
+    "Foundry / Senior Vice President & General Manager, Audience & Growth",
+    "Trulioo / Senior Director, Corporate Strategy & Development",
+    "Higgsfield AI / Head of Entertainment GTM"
+   ],
+   "yes_recall": [
+    0.25,
+    0.0889,
+    0.5323
+   ]
+  },
+  "9": {
+   "declines_blocked": [
+    1.0,
+    0.8957,
+    1.0
+   ],
+   "declines_presented": [],
+   "judged": 45,
+   "pending": 0,
+   "precision": [
+    NaN,
+    NaN,
+    NaN
+   ],
+   "presented": 0,
+   "threshold": 9,
+   "yes_blocked": [
+    "Mutiny / Head of GTM (Path to COO)",
+    "Cohere / Head of Corporate Development",
+    "Fleek / Chief of Staff",
+    "Revin / Head of Partnerships",
+    "OpenAI / Head of Partnerships, Digital Natives",
+    "Clay / Head of GTM Strategy & Ops",
+    "Cloudflare / Chief of Staff to Chief Strategy Officer",
+    "banyansoftware / WIZE Managing Director UK",
+    "January / Chief of Staff",
+    "Foundry / Senior Vice President & General Manager, Audience & Growth",
+    "Trulioo / Senior Director, Corporate Strategy & Development",
+    "Higgsfield AI / Head of Entertainment GTM"
+   ],
+   "yes_recall": [
+    0.0,
+    0.0,
+    0.2425
+   ]
+  }
+ },
+ "retest": [
+  NaN,
+  NaN,
+  NaN
+ ],
+ "rows": [
+  {
+   "batch": "2026-09-07",
+   "comp": "Not disclosed (est. $250K+)",
+   "company": "The Trade Desk",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 4,
+   "fit2": null,
+   "for": "His background matches almost line by line: programmatic adtech at Captify, Nexxen and Nine, a $55M automated marketplace, enterprise partner deals, and P&L ownership, in a NYC seat framed as a GM-style partnership owner rather than a quota role.",
+   "has_jd": true,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "Mature adtech with no AI angle in the posting is the business canon 5 screens out, and he declined Criteo's comparable commerce-media commercialization seat as business uninteresting; this seat is also one client account, not a business to build.",
+   "red_flags": [
+    "Adtech without an AI angle at a company well over five years old (canon 5)",
+    "Closest ruling, Criteo, declined as business uninteresting",
+    "Scope is a single client relationship, closer to strategic account management than building an engine"
+   ],
+   "seen_company": false,
+   "title": "GM, Business Development, Enterprise",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "not posted",
+   "company": "Synthesia",
+   "confidence": "medium",
+   "decline_code": "requirements_mismatch",
+   "fit": 6,
+   "fit2": null,
+   "for": "Synthesia is a tier 1 target, and the seat explicitly asks for someone who builds and ships AI agent workflows into a live sales motion, which is exactly his 14-agent production OS; he has applied to RevOps and GTM Ops seats at businesses he wants.",
+   "has_jd": true,
+   "his_code": "seniority_below",
+   "his_words": "Declined - seniority below",
+   "label": "no",
+   "problems": [],
+   "reason": "It is a Director-level sales ops seat reporting to a VP RevOps with heavy hands-on Salesforce and SE-coverage requirements, closer to the Common Room seniority decline and the Salesforce sales analytics decline than to a commercial strategy mandate.",
+   "red_flags": [
+    "Reports two levels below the CRO to VP of Revenue Operations",
+    "Player/coach with hands-on Salesforce admin depth expected",
+    "Pay not posted"
+   ],
+   "seen_company": false,
+   "title": "Director, Sales Strategy and Operations",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "Flex",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 6,
+   "fit2": null,
+   "for": "A true engine-builder seat: build the GTM infrastructure for new verticals from scratch, own planning, operating model and go/no-go business cases, and grow a team, in NYC at $265K-$315K plus equity. He has applied to GTM ops seats (Notion, Render) and fintech commercial seats (Ramp, Phantom, Socure).",
+   "has_jd": true,
+   "his_code": "requirements_mismatch",
+   "his_words": "Declined - requirements mismatch",
+   "label": "no",
+   "problems": [],
+   "reason": "The business: a non-AI consumer rent-payment fintech outside his categories, close to the Airwallex, Deel and Faire declines on domain and finance-heavy work, and the seat sits under a Head of GTM Ops rather than at exec level.",
+   "red_flags": [
+    "Consumer credit-adjacent fintech, not AI-native and outside his five categories",
+    "Reports to a Head of GTM Ops, so two layers below the commercial exec",
+    "Function leans toward forecasting and RevOps reporting, similar to work he has declined"
+   ],
+   "seen_company": false,
+   "title": "Senior Director, GTM Strategy & Operations",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "amperity",
+   "confidence": "low",
+   "decline_code": "domain_expertise",
+   "fit": 7,
+   "fit2": null,
+   "for": "Amperity sells customer data unification and identity to brands, which is the exact data and identity terrain of AdFixus, Captify and his advisory practice, and the seat is a Head of Partnerships in NYC, a family he confirmed on 2026-09-03 and said yes to at Profound.",
+   "has_jd": false,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "If Alliances means managing hyperscaler and data-cloud co-sell (Snowflake, Databricks, AWS) or SI partners, it mirrors the Gong partnerships role he declined for domain expertise; CDP may also read as an ordinary martech business without a strong AI angle.",
+   "red_flags": [
+    "Posting no longer available; only the company intro survives",
+    "Alliances may be hyperscaler or SI channel work, a specialist channel per his Gong decline",
+    "Pay not stated"
+   ],
+   "seen_company": false,
+   "title": "Head of Partnerships & Alliances",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "flex",
+   "confidence": "medium",
+   "decline_code": "domain_expertise",
+   "fit": 4,
+   "fit2": null,
+   "for": "A true engine-builder partnerships seat in NYC: zero-to-one function build, build-buy-partner decisions and playbooks, which matches his Captify partner channel work (30% of revenue, $1.5M Microsoft deal) and his advisory work, with OTE well above the floor.",
+   "has_jd": true,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "The seat is a specialist payments and credit-bureau partnerships role at a consumer rent fintech with no AI angle; he declined Airwallex for lacking payments domain expertise, Gong hyperscaler partnerships for domain, and Deel for not wanting finance-team work.",
+   "red_flags": [
+    "Deep regulated domain (payments networks, credit bureaus, underwriting) he has never worked in",
+    "Business outside his five categories and not AI-native",
+    "Partners closely with Risk and Finance, which he said he does not want (Deel)",
+    "Commission earning role with base not stated"
+   ],
+   "seen_company": false,
+   "title": "Senior Director, Product Partnerships",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "Asana",
+   "confidence": "low",
+   "decline_code": "domain_expertise",
+   "fit": 6,
+   "fit2": null,
+   "for": "A true GM seat owning strategy, operating model and business outcomes for a product line at a NYC software company, the same shape as the MongoDB GM and Suno Songkick GM seats he applied for, with Asana close to Notion, where he also applied.",
+   "has_jd": false,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "The seat leads Product, Engineering and Design for a developer-tools product, so it may read as product leadership in a domain he has not worked in (as with Wiley GM and the Scale AI product role), and Asana may feel like an ordinary mature SaaS business.",
+   "red_flags": [
+    "Posting no longer available; only a truncated excerpt survives",
+    "Product and engineering-heavy GM for software development teams, outside his domain",
+    "Pay not stated"
+   ],
+   "seen_company": false,
+   "title": "GM, Product - Command",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "Headway",
+   "confidence": "high",
+   "decline_code": "function_wrong",
+   "fit": 3,
+   "fit2": null,
+   "for": "Series D, a16z-backed, remote NYC Chief of Staff seat beside a C-suite exec; pay top clears the floor, and he applied at Talkspace in mental health.",
+   "has_jd": true,
+   "his_code": "domain_expertise",
+   "his_words": "Declined - domain expertise",
+   "label": "no",
+   "problems": [],
+   "reason": "It is a program-management Chief of Staff seat in insurance and clinical operations with no AI-transformation mandate and no ownership, the high-admin work he names as his weakness, in a domain he has said he lacks.",
+   "red_flags": [
+    "Healthcare payer and clinical domain, named in canon 5 exclusions",
+    "Explicitly ops over commercial experience",
+    "No revenue or program ownership",
+    "Not an AI-transformation Chief of Staff mandate"
+   ],
+   "seen_company": false,
+   "title": "Chief of Staff, Payer",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-14",
+   "comp": "$220K \u2013 $260K \u2022 Offers Equity \u2022 Offers Bonus \u2022 OTE: 265-315k",
+   "company": "kustomer",
+   "confidence": "low",
+   "decline_code": "business_uninteresting",
+   "fit": 7,
+   "fit2": null,
+   "for": "An AI-led customer experience platform sits next to the agentic CX companies he has pursued (Sierra applied, Decagon and Cresta on his list) and his Meliora Gen AI CX advisory; the seat matches GTM ops heads he applied for at Notion and Render, with pay above his floor and US remote.",
+   "has_jd": false,
+   "his_code": "domain_expertise",
+   "his_words": "Declined - domain expertise",
+   "label": "no",
+   "problems": [],
+   "reason": "Kustomer is a CRM incumbent rather than an AI-native hypergrowth name, and a GTM strategy and ops seat can turn into forecasting and sales analytics work, which he declined at Salesforce, or sit below his level, as at Common Room.",
+   "red_flags": [
+    "Full posting no longer available; mandate and reporting line unknown",
+    "CRM business may read as ordinary to him (Salesforce decline)"
+   ],
+   "seen_company": false,
+   "title": "Head of GTM Strategy and Operations",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "monstro",
+   "confidence": "low",
+   "decline_code": "domain_expertise",
+   "fit": 4,
+   "fit2": null,
+   "for": "It is an AI-native startup in NYC commercialising AI for enterprise buyers. He has applied for enterprise sales leadership at Sierra and Anthropic, and said yes to Socure, which sells into financial services.",
+   "has_jd": false,
+   "his_code": "domain_expertise",
+   "his_words": "Declined - domain expertise",
+   "label": "no",
+   "problems": [],
+   "reason": "The seat is an enterprise account-selling role into banks and wealth managers. That is a regulated, deep domain where he has no relationships. The company is not one of his targets. His Airwallex, CoreWeave and Gong declines show he passes on seats like this where the domain or the precise requirements are not his.",
+   "red_flags": [
+    "Full posting no longer available",
+    "Selling into banking, a regulated domain canon 5 excludes",
+    "Sales title with no visible build or strategy mandate",
+    "Prior rubric score of 8 had no grounded rationale"
+   ],
+   "seen_company": false,
+   "title": "Managing Director, Enterprise Accounts, Financial Services AI",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "monstro",
+   "confidence": "high",
+   "decline_code": "domain_expertise",
+   "fit": 2,
+   "fit2": null,
+   "for": "An early-stage AI company in NYC paying $225,000 to $275,000 base with meaningful equity, where the hire writes the first strategic GTM playbook and could grow into a sales leader.",
+   "has_jd": true,
+   "his_code": "domain_expertise",
+   "his_words": "Declined - domain expertise",
+   "label": "no",
+   "problems": [],
+   "reason": "The seat is built entirely around deep, current bank executive relationships and bank procurement fluency he does not have, in a regulated domain his canon excludes and where he has declined comparable fintech and domain-specific seats.",
+   "red_flags": [
+    "Banking is a deep regulated domain named in canon 5 exclusions",
+    "Diligence explicitly tests a live, current bank network",
+    "Senior IC quota-carrier, not an engine-builder seat at the outset",
+    "Substantial US travel required"
+   ],
+   "seen_company": false,
+   "title": "Managing Director Strategic Banking Accounts",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "oscar",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 3,
+   "fit2": null,
+   "for": "It is a partnerships seat in NYC on a strategic planning team at a technology-led public company, and partnerships is a confirmed target family backed by his 30% partner-channel revenue at Captify.",
+   "has_jd": false,
+   "his_code": "domain_expertise",
+   "his_words": "Declined - domain expertise",
+   "label": "no",
+   "problems": [],
+   "reason": "Oscar is a health insurer, an industry canon 5 excludes. The marketplace growth mandate sits in deep regulated healthcare distribution, where he has said he has no expertise (Abridge). There is no AI-transformation mandate to trigger the exception.",
+   "red_flags": [
+    "Insurance industry, excluded by canon 5",
+    "Healthcare domain, which he has declined for lack of expertise",
+    "Full posting no longer available",
+    "Prior sheet score of 8 had no grounded rationale"
+   ],
+   "seen_company": false,
+   "title": "Senior Director, Marketplace Growth and Partnerships",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "oscar",
+   "confidence": "medium",
+   "decline_code": "domain_expertise",
+   "fit": 3,
+   "fit2": null,
+   "for": "It is a VP GM seat building a new marketplace storefront, the same build-from-zero P&L shape as Captify APAC and Nine's $55M automated marketplace.",
+   "has_jd": false,
+   "his_code": "domain_expertise",
+   "his_words": "Declined - domain expertise",
+   "label": "no",
+   "problems": [],
+   "reason": "Oscar is a health insurer and ICHRA is a regulated, specialist insurance and benefits domain. Canon 5 excludes insurance and clinical, and he declined both Abridge (no healthcare expertise) and Airwallex GM (not his domain for a GM role).",
+   "red_flags": [
+    "Insurance and healthcare domain, which canon 5 excludes",
+    "GM seat in a regulated specialist domain, matching the Airwallex domain decline",
+    "Posting text truncated; mandate and pay not stated",
+    "No AI angle visible"
+   ],
+   "seen_company": false,
+   "title": "VP, Marketplace ICHRA General Manager - Lucie",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "patientpoint",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 3,
+   "fit2": null,
+   "for": "It is a partnerships seat in NYC built on programmatic demand mechanics he knows from Nexxen platform sales, Nine's automated marketplace and Captify's partner channel, and the pay top clears the floor.",
+   "has_jd": true,
+   "his_code": "domain_expertise",
+   "his_words": "Declined - domain expertise",
+   "label": "no",
+   "problems": [],
+   "reason": "The business is a mature healthcare point-of-care ad network with no AI angle, which canon 5 excludes for adtech and which echoes his Abridge healthcare decline and Criteo 'business uninteresting' ruling.",
+   "red_flags": [
+    "Adtech with no AI angle at an established company (canon 5 exclusion)",
+    "Healthcare and pharma media domain",
+    "Director title, reporting line not stated",
+    "Largely managing an existing partner book rather than building an engine"
+   ],
+   "seen_company": false,
+   "title": "Director, Programmatic Demand Partnerships",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "flex",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 6,
+   "fit2": null,
+   "for": "A VP-level seat reporting directly to the CEO in his home city at $320K to $400K, owning strategy, operating model and a team, with explicit AI fluency expectations; he said Yes to the similar Lightning AI VP Strategy and Operations seat and has applied at fintechs like Ramp and Socure.",
+   "has_jd": true,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "Consumer rent-payment fintech sits outside his five categories and is not AI-native; he declined the comparable Duolingo VP Strategy seat and Hearst SVP Strategy as business uninteresting, and the CoS mandate is not AI transformation.",
+   "red_flags": [
+    "Business outside his categories, consumer credit-adjacent fintech",
+    "Chief of Staff mandate is general operations, not AI transformation",
+    "Asks for management consulting or titled CoS/S&O background he lacks"
+   ],
+   "seen_company": false,
+   "title": "Chief of Staff (Executive Office) and VP of Strategy & Operations",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "flex",
+   "confidence": "low",
+   "decline_code": "function_wrong",
+   "fit": 4,
+   "fit2": null,
+   "for": "NYC growth-stage fintech, and he has applied at fintechs like Ramp and Phantom; if the seat turned out to run AI transformation for the housing unit it would sit in his AI Chief of Staff family.",
+   "has_jd": false,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "A Chief of Staff seat one level down to a business-unit GM, with no AI mandate, at a rent payments business near the real estate category canon 5 excludes; similar to his Deel and Airwallex declines on domain and his Common Room decline on seniority.",
+   "red_flags": [
+    "Posting no longer available",
+    "Chief of Staff to a GM, not the CEO, likely below his level",
+    "Housing and rent sits next to the excluded real estate category",
+    "No AI mandate recorded"
+   ],
+   "seen_company": false,
+   "title": "Chief of Staff to the GM of Housing",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "flex",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 6,
+   "fit2": null,
+   "for": "A VP Strategic Partnerships seat at a well-funded NYC-headquartered growth company with $336K-$420K OTE and equity; he has said yes to VP Strategic Partnerships at Profound and to BD at Phantom, and partner channel building (30% of Captify APAC revenue) is his record.",
+   "has_jd": true,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "The business is consumer rent-payment fintech sold through proptech, with no AI angle and close to the real estate and finance domains he has declined (Airwallex, Deel); the seat is a hunter role reporting to an SVP that asks for >$20M deals he has not closed.",
+   "red_flags": [
+    "No AI angle; outside his five categories",
+    "Proptech/real estate adjacent channel, which canon 5 excludes",
+    "Hunter/closer framing reporting to an SVP, closer to quota-carrier than engine-builder",
+    "Pay stated as OTE; base split unknown"
+   ],
+   "seen_company": false,
+   "title": "Vice President, Business Development & Strategic Partnerships",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "ripple",
+   "confidence": "low",
+   "decline_code": "domain_expertise",
+   "fit": 6,
+   "fit2": null,
+   "for": "He applied to two crypto ecosystem roles within days of each other (Aptos Labs enterprise GTM and Phantom business and corporate development), so Ripple's crypto business is one he has shown he will join, and an NYC ecosystem growth seat sits in his partnerships family.",
+   "has_jd": false,
+   "his_code": "seniority_below",
+   "his_words": "Declined - seniority below",
+   "label": "no",
+   "problems": [],
+   "reason": "Ripple sells into banks and payment rails, closer to the finance domain he declined at Airwallex and Deel, and a Director ecosystem seat may be developer-community or grants work without the build mandate or level he wants.",
+   "red_flags": [
+    "Full posting no longer available; role may be closed",
+    "Director title; scope and reporting line unknown",
+    "Finance and banking-adjacent buyer base",
+    "Pay not stated"
+   ],
+   "seen_company": false,
+   "title": "Director, Ecosystem Growth",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "Gusto",
+   "confidence": "high",
+   "decline_code": "business_uninteresting",
+   "fit": 2,
+   "fit2": null,
+   "for": "It is an AI seat in NYC at a well-known, well-funded software company, and he runs a 14-agent production AI OS, so the AI label could catch his eye.",
+   "has_jd": false,
+   "his_code": "requirements_mismatch",
+   "his_words": "Declined - requirements mismatch",
+   "label": "no",
+   "problems": [],
+   "reason": "He has explicitly said he has no interest in payroll (Deel decline), and the seat is engineering leadership rather than any of his five commercial and strategy role families.",
+   "red_flags": [
+    "Payroll/HR business, directly matching his Deel decline",
+    "Engineering leadership function, outside his role families",
+    "Posting no longer available; thin record"
+   ],
+   "seen_company": false,
+   "title": "Head of AI and Machine Learning Engineering",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "flex",
+   "confidence": "low",
+   "decline_code": "business_uninteresting",
+   "fit": 6,
+   "fit2": null,
+   "for": "It is a partnerships seat, a family he confirmed on 2026-09-03, at an NYC-headquartered growth-stage fintech, and he has said yes to fintech seats at Ramp, Phantom and Socure; his 30% partner-channel build at Captify maps directly.",
+   "has_jd": false,
+   "his_code": "seniority_below",
+   "his_words": "Declined - seniority below",
+   "label": "no",
+   "problems": [],
+   "reason": "The business is consumer rent payments with no AI angle, close to the real estate exclusion in canon 5, and his Airwallex and Deel declines show he passes on finance-domain seats that need domain depth.",
+   "red_flags": [
+    "Full posting no longer available; scope unverified",
+    "Real-estate-adjacent domain (rent, property managers), excluded by canon 5 unless AI mandate",
+    "No AI angle stated",
+    "Senior Director title, below VP"
+   ],
+   "seen_company": false,
+   "title": "Senior Director, Strategic Partnerships",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "oscar",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 3,
+   "fit2": null,
+   "for": "NYC-based, technology-led insurer with a strategy title at Director level, and his corp strategy family is a target.",
+   "has_jd": false,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "Health insurance is an excluded industry in canon 5 and he declined Abridge for lack of healthcare expertise; a business-ops seat without an AI-transformation mandate is not the ideal role that would override that.",
+   "red_flags": [
+    "Insurance industry, excluded by canon 5",
+    "Healthcare domain he has said he lacks",
+    "Business operations function, similar to a seat he declined as below his level",
+    "Director title with no visible build mandate"
+   ],
+   "seen_company": false,
+   "title": "Director, Business Operations & Strategy",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "Forvis Mazars US",
+   "confidence": "high",
+   "decline_code": "domain_expertise",
+   "fit": 2,
+   "fit2": null,
+   "for": "The seat has an AI and agentic workflow mandate in NYC, with practice-building scope that echoes his production AI OS and advisory work.",
+   "has_jd": true,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "It is an insurance consulting partner seat at an accounting firm requiring 15+ years of insurance expertise; canon 5 excludes insurance and he has repeatedly declined roles outside his domain.",
+   "red_flags": [
+    "Insurance is an excluded industry in canon 5 and named as a deep regulated domain",
+    "Consultancy employer, not an internet-native or technology company",
+    "Hard requirement of 15+ years insurance consulting he does not have",
+    "Pay not stated"
+   ],
+   "seen_company": false,
+   "title": "Managing Director, Insurance Transformation & AI",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "Janus Henderson Investors",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 4,
+   "fit2": null,
+   "for": "A newly created Head of AI seat reporting to the CEO with a firm-wide transformation mandate and room to build a team is squarely his AI transformation family, in NYC.",
+   "has_jd": true,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "An asset manager is outside his internet-native categories and he has said he would reject such companies unless the role was ideal; this one also loads cyber security, infrastructure and data governance plus a quantitative Master's he lacks.",
+   "red_flags": [
+    "Asset manager: canon 5 internet-native rule and his stated reluctance on asset managers",
+    "Seat bundles cyber security, data management and technology infrastructure, closer to a technical CTO/CAIO than a commercial transformation seat",
+    "Hard requirement for a quantitative Master's and 10+ years in AI strategy",
+    "Over 200 applicants already"
+   ],
+   "seen_company": false,
+   "title": "Head of AI",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "ThoughtSpot",
+   "confidence": "low",
+   "decline_code": "geo_language",
+   "fit": 6,
+   "fit2": null,
+   "for": "A founding GTM seat for a new agentic AI product inside an established enterprise software company is the engine-builder shape he favours, and he applied for the similar Cloudflare Head of GTM, AI Inference and MongoDB Head of AI Platform roles.",
+   "has_jd": false,
+   "his_code": "seniority_below",
+   "his_words": "Declined - seniority below",
+   "label": "no",
+   "problems": [],
+   "reason": "The seat is listed in Mountain View, outside NYC, London or remote, and ThoughtSpot is a BI analytics vendor, close to the Tableau business he declined as uninteresting.",
+   "red_flags": [
+    "Location Mountain View, CA; he is open to the Bay Area only for exceptional roles",
+    "Full posting no longer available; scope, level and pay unknown",
+    "BI analytics vendor, near the Salesforce Tableau decline"
+   ],
+   "seen_company": false,
+   "title": "Founding GTM Lead, AgentSpot",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "StartX Med",
+   "confidence": "medium",
+   "decline_code": "domain_expertise",
+   "fit": 4,
+   "fit2": null,
+   "for": "It is a true zero-to-one partnerships seat, his named target family, and he took partner channel to 30% of Captify APAC revenue by building it from nothing.",
+   "has_jd": false,
+   "his_code": "seniority_below",
+   "his_words": "Declined - seniority below",
+   "label": "no",
+   "problems": [],
+   "reason": "The channel is a specialist cybersecurity one (security VARs, MSSPs, MDRs, SIEM) with hard-gated domain requirements, the same shape as the Gong hyperscaler partnerships seat he declined for domain expertise, at a security business not among his categories and based in SF.",
+   "red_flags": [
+    "Company name StartX Med does not match the posting body, which describes Scanner",
+    "Posting no longer available; facts are from the sheet record only",
+    "Hard-gated cybersecurity channel requirements he does not have",
+    "San Francisco location; he is NYC-based and open to SF only for exceptional roles"
+   ],
+   "seen_company": false,
+   "title": "Director of Channels & Alliances",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "BNY",
+   "confidence": "high",
+   "decline_code": "business_uninteresting",
+   "fit": 2,
+   "fit2": null,
+   "for": "Partnerships title in NYC with a range topping $280,000 and an emerging-technology pilot pipeline that touches data and AI.",
+   "has_jd": true,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "It is a bank, which canon 5 excludes and he rejects unless the role is ideal, and the seat is buy-side vendor management and sourcing governance rather than building a commercial partner channel.",
+   "red_flags": [
+    "Bank employer, excluded industry in canon 5",
+    "Procurement and vendor governance function, not revenue partnerships",
+    "Sits inside Engineering, cost-reduction framing",
+    "Requirements centre on sourcing and vendor management he has not done"
+   ],
+   "seen_company": false,
+   "title": "Senior Director, Technology Partnerships",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "Citi",
+   "confidence": "high",
+   "decline_code": "function_wrong",
+   "fit": 2,
+   "fit2": null,
+   "for": "The seat carries an MD-level AI transformation mandate in NYC at $250,000 to $500,000. It includes a build vs buy vs partner strategy for agentic tooling, and that echoes his 14-agent production AI OS and his tool-rationalisation work at a legacy broadcaster.",
+   "has_jd": true,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "Citi is a bank, and canon 5 excludes banking unless the seat is AI transformation at a technology company. The seat itself is engineering leadership, a developer platform for tens of thousands of engineers, and he has never run engineering at that scale.",
+   "red_flags": [
+    "Bank employer, outside his internet-native categories",
+    "Engineering leadership function wearing an AI transformation title",
+    "Hard requirement to have run a developer platform serving thousands of engineers",
+    "Regulated banking risk and controls context"
+   ],
+   "seen_company": false,
+   "title": "Head of AI-First Development (Firmwide AI) - Managing Director",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "Citi",
+   "confidence": "medium",
+   "decline_code": "requirements_mismatch",
+   "fit": 4,
+   "fit2": null,
+   "for": "The mandate is literally his thesis: make AI strategy reach production and the P&L, redesign processes around agents, and own the adoption scorecard, at MD level in NYC paying $250K to $500K.",
+   "has_jd": true,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "It is a bank, which his canon excludes outside tech companies, and the seat is an engineering delivery org needing hundreds-of-practitioner scale plus banking risk and regulatory depth he does not have, the same mismatch he declined at Samsara and Scale AI.",
+   "red_flags": [
+    "Bank employer; canon 5 excludes banking unless AI transformation at a known technology company",
+    "Job family is Technology / Applications Development: engineering leadership wearing a transformation title",
+    "Requires delivery orgs of hundreds and financial services regulatory depth",
+    "Over 200 applicants, posted 4 weeks ago"
+   ],
+   "seen_company": false,
+   "title": "Head of Applied AI & Agent Factory - Managing Director",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "TIAA",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 4,
+   "fit2": null,
+   "for": "The seat is a pure AI transformation mandate (canon 5 family) at Senior Managing Director level in NYC paying $304K to $352K, with real build scope: roadmap, operating rhythms, portfolio and Agentic AI deployment.",
+   "has_jd": true,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "TIAA is a legacy retirement and asset management firm, exactly the kind of business canon 5 excludes outside known technology companies, and the posting asks for two decades spanning AI and financial services, a regulated deep domain he does not have.",
+   "red_flags": [
+    "Financial services employer outside his five categories; canon 5 exception requires a known technology company",
+    "Requirement of two decades across AI technology and financial services",
+    "Collaborative in-office environment",
+    "Heavy governance and risk framing in a regulated institution"
+   ],
+   "seen_company": false,
+   "title": "Senior Managing Director - AI Strategy & Enterprise Applications",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-14",
+   "comp": "",
+   "company": "Black Duck",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 3,
+   "fit2": null,
+   "for": "It is a true build-from-zero partnerships seat in NYC with a build-buy-partner framework and an AI partner ecosystem (Anthropic, OpenAI named), matching his Captify partner channel build to 30% of revenue and the partnerships family he confirmed on 2026-09-03.",
+   "has_jd": true,
+   "his_code": "business_uninteresting",
+   "his_words": "Declined - business uninteresting",
+   "label": "no",
+   "problems": [],
+   "reason": "The business: a PE-owned application security vendor is ordinary and outside his categories, the same shape as LogicGate which he declined as business uninteresting, and the seat leans on hyperscaler and AppSec ecosystem alliances, the specialist channel he declined at Gong for domain expertise.",
+   "red_flags": [
+    "PE-owned business (Black Duck was carved out of Synopsys by private equity)",
+    "Application security domain, regulated-adjacent and deep, outside his categories",
+    "Hard requirement for prior AppSec or enterprise software alliance program build",
+    "Hyperscaler/developer ecosystem alliances are a specialist channel he has declined before"
+   ],
+   "seen_company": false,
+   "title": "Sr Director, Technology Partner Alliances Development",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "Pfizer",
+   "confidence": "high",
+   "decline_code": "business_uninteresting",
+   "fit": 2,
+   "fit2": null,
+   "for": "It is a senior NYC strategy and operating-model seat reporting to an SVP, with a transformation agenda and pay well above his floor.",
+   "has_jd": true,
+   "his_code": "domain_expertise",
+   "his_words": "Declined - domain expertise",
+   "label": "no",
+   "problems": [],
+   "reason": "Pfizer is a pharmaceutical manufacturer, outside his internet-native categories. The seat is internal IT portfolio governance for a CISO org, not commercial strategy or AI transformation, and his healthcare and Hearst/Duolingo declines show he passes on businesses like this.",
+   "red_flags": [
+    "Pharma and manufacturing: the canon 5 industry exclusion applies",
+    "Internal IT PMO and business-ops function, not one of his five families",
+    "Asks for 12+ years of pharma, healthcare or project management experience",
+    "No AI or commercial mandate"
+   ],
+   "seen_company": false,
+   "title": "Senior Director, Strategy and Portfolio Management",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-14",
+   "comp": "",
+   "company": "PointClickCare",
+   "confidence": "medium",
+   "decline_code": "domain_expertise",
+   "fit": 3,
+   "fit2": null,
+   "for": "It is a true GM seat with full P&L and GTM ownership, the shape he did at Captify APAC from zero to $12M ARR, and he has said yes to GM seats such as Suno Songkick.",
+   "has_jd": false,
+   "his_code": "domain_expertise",
+   "his_words": "Declined - domain expertise",
+   "label": "no",
+   "problems": [],
+   "reason": "The business is healthcare vertical software for senior living, a regulated clinical-adjacent domain he has explicitly said he has no expertise in, and he declined the Airwallex GM seat for domain expertise; the seat also sits in Canada, outside his cities.",
+   "red_flags": [
+    "Healthcare / clinical-adjacent domain, excluded by canon 5",
+    "GM seat in a domain he lacks, matching the Airwallex decline",
+    "Location Mississauga hybrid or Canada remote, outside NYC, London, US-remote, UK-remote",
+    "Wants deep existing Senior Living industry credibility"
+   ],
+   "seen_company": false,
+   "title": "Senior Vice President & General Manager, Senior Living",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "Morgan Stanley",
+   "confidence": "high",
+   "decline_code": "domain_expertise",
+   "fit": 2,
+   "fit2": null,
+   "for": "It is a Head of Partnerships seat in NYC at a young (2023) ETF business with build language and pay that clears his floor, and he took partner channel to 30% of Captify APAC revenue.",
+   "has_jd": true,
+   "his_code": "requirements_mismatch",
+   "his_words": "Declined - requirements mismatch",
+   "label": "no",
+   "problems": [],
+   "reason": "A bank-owned asset manager is a business he rejects unless the role is ideal, and this one demands deep ETF and wealth-distribution domain expertise he does not have, with half the seat being marketing.",
+   "red_flags": [
+    "Bank / asset manager employer, excluded by canon 5 absent an AI-transformation mandate",
+    "Regulated, deep financial-services domain requirement (10 years ETF or asset management)",
+    "Marketing-heavy function, which he has declined before",
+    "No AI angle"
+   ],
+   "seen_company": false,
+   "title": "Executive Director & Head, Global ETF Marketing & Direct Partnerships",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "Soni",
+   "confidence": "high",
+   "decline_code": "function_wrong",
+   "fit": 2,
+   "fit2": null,
+   "for": "It is an AI agent and workflow orchestration seat in NYC paying up to $240,000, and he runs a 14-agent production AI OS himself.",
+   "has_jd": true,
+   "his_code": "requirements_mismatch",
+   "his_words": "Declined - requirements mismatch",
+   "label": "no",
+   "problems": [],
+   "reason": "It is engineering leadership at an unnamed insurer via a recruiter, outside his role families and in an industry canon 5 excludes, with core requirements he does not have.",
+   "red_flags": [
+    "Recruiter posting, employer unnamed",
+    "Industry listed as Insurance, excluded by canon 5",
+    "Engineering leadership function, not one of his five families",
+    "Requires significant experience leading software engineering organizations"
+   ],
+   "seen_company": false,
+   "title": "Head of AI Platform Engineering, Execution Services",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "Mutiny",
+   "confidence": "medium",
+   "decline_code": "function_wrong",
+   "fit": 8,
+   "fit2": null,
+   "for": "An AI-native GTM agent company backed by Sequoia, YC and Insight, with a founder-level engine-builder seat: own revenue end-to-end, build the agent-powered GTM stack, set pricing, sit in board conversations and convert to COO. It matches his AI GTM thesis and his Captify zero-to-one build directly, and he lives in NYC.",
+   "has_jd": true,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "The posting tilts toward PLG and demand-gen marketing (distribution savant, LinkedIn posts that move pipeline, SQL), and he has said he does not want growth marketing; five days in office and unstated pay at an early-stage company could also weigh.",
+   "red_flags": [
+    "Heavy PLG and demand-generation emphasis, adjacent to growth marketing he declined",
+    "Pay not stated at an early-stage startup; equity versus base unknown",
+    "Five days in office"
+   ],
+   "seen_company": false,
+   "title": "Head of GTM (Path to COO)",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "Cohere",
+   "confidence": "medium",
+   "decline_code": "requirements_mismatch",
+   "fit": 7,
+   "fit2": null,
+   "for": "Cohere is a frontier AI-native enterprise company squarely in his AI-Native Enterprise category, and this is an in-family corp dev seat with an explicit build-from-zero mandate spanning partnerships, M&A and market entry; he said Yes to corp dev at Phantom and stretch BD at Harvey, and he has telco (SingTel) and Microsoft partnership history.",
+   "has_jd": true,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "The requirements lean heavily on deal-lead M&A, government and sovereign AI partnerships and export-control regulation, a specialist domain he lacks, similar to his Gong hyperscaler-alliances decline; and the listed location is San Francisco rather than NYC.",
+   "red_flags": [
+    "Listed location is San Francisco; NYC or remote eligibility needs confirming though posting says remote-friendly and has an NYC office",
+    "Government, sovereign AI and export-control requirements are a specialist domain",
+    "12+ years in corp dev or IB is a hard-sounding bar",
+    "Pay not stated"
+   ],
+   "seen_company": false,
+   "title": "Head of Corporate Development",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "Fleek",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 7,
+   "fit2": null,
+   "for": "This is the AI Chief of Staff archetype from canon 5 almost word for word. It asks for an ex-founder who can show the systems and prompts behind how they work and will build agents to run repeated processes. His production multi-agent AI operating system is the exact proof, and the seat sits at a fast-growing a16z and YC backed company that is building from zero.",
+   "has_jd": true,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "The business is secondhand fashion supply chain, outside his five categories. He has declined well-funded companies that did not interest him (Duolingo, Deel). A London Chief of Staff salary could also come in under his $200K floor.",
+   "red_flags": [
+    "Pay not stated; London CoS bands often sit below $200K equivalent, so equity may need to carry it",
+    "Fully in-office in London while he is based in Brooklyn",
+    "Business category (fashion resale supply chain) is outside his target list"
+   ],
+   "seen_company": false,
+   "title": "Chief of Staff",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "Revin",
+   "confidence": "low",
+   "decline_code": "domain_expertise",
+   "fit": 6,
+   "fit2": null,
+   "for": "It is a partnerships seat, a confirmed target family, at an AI-native company in NYC. It is the same shape as the Profound VP Strategic Partnerships role he said Yes to, and it plays to his Captify partner channel build.",
+   "has_jd": false,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "The vertical is home services and construction, far from media and adtech. He has declined roles for lack of domain expertise (Airwallex, Faire, Gong partnerships), and partner relationships in the trades may be a specialist channel.",
+   "red_flags": [
+    "Posting no longer available; only a fragment survives",
+    "Vertical (home services, construction) is outside his named categories",
+    "Stage, backing and pay not stated"
+   ],
+   "seen_company": false,
+   "title": "Head of Partnerships",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "$333,000-$445,000",
+   "company": "OpenAI",
+   "confidence": "medium",
+   "decline_code": "domain_expertise",
+   "fit": 8,
+   "fit2": null,
+   "for": "A Head of Partnerships seat at OpenAI in NYC is a confirmed target family at a frontier AI business he wants; his two OpenAI declines were about function, not the company, and he applied for comparable seats at Anthropic, Harvey and Profound.",
+   "has_jd": false,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "The posting has been taken down, and if the partner set turns out to be a specialist channel or a sector he has no domain in, he may decline as he did for Gong's hyperscaler partnerships.",
+   "red_flags": [
+    "Full posting no longer available; role may be closed",
+    "Sector focus of Digital Natives partner set not confirmed"
+   ],
+   "seen_company": true,
+   "title": "Head of Partnerships, Digital Natives",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "$230K \u2013 $330K \u2022 Offers Equity",
+   "company": "Clay",
+   "confidence": "high",
+   "decline_code": "none",
+   "fit": 8,
+   "fit2": null,
+   "for": "Clay is a tier 1 target he personally uses, the seat is an engine-builder mandate to design the revenue engine, and he has applied to near-identical seats at Notion and Render; NYC and $230K to $330K plus equity clear his floor.",
+   "has_jd": true,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "The seat leans toward RevOps mechanics (territories, deal splits, comp rollout, forecast inspection), which could read as operations support rather than commercial strategy, as with his Common Room and Salesforce sales analytics declines.",
+   "red_flags": [
+    "Reporting line not stated",
+    "Heavy RevOps requirement he does not hold by title"
+   ],
+   "seen_company": false,
+   "title": "Head of GTM Strategy & Ops",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "$211,000-$290,000 (NYC)",
+   "company": "Cloudflare",
+   "confidence": "medium",
+   "decline_code": "seniority_below",
+   "fit": 7,
+   "fit2": null,
+   "for": "Cloudflare is a business he already applied to two days earlier, the seat sits beside a CSO who owns corp dev, partnerships, international expansion and the new business model of the Internet, and the posting explicitly wants an AI-native operator using agentic workflows, which is his 14-agent OS story.",
+   "has_jd": true,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "It is a staff seat with no P&L, team or build mandate, so it may read as below his level (as with the Common Room Business Operations decline), and 30 to 50 percent travel adds friction.",
+   "red_flags": [
+    "Seat is support and surrogate work with no owned outcome or team",
+    "Travel requirement of 30 to 50 percent",
+    "Requirement for IB or management consulting pedigree he does not hold",
+    "AI mandate is operational tooling, not an AI transformation charter"
+   ],
+   "seen_company": true,
+   "title": "Chief of Staff to Chief Strategy Officer",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-10",
+   "comp": "",
+   "company": "banyansoftware",
+   "confidence": "high",
+   "decline_code": "domain_expertise",
+   "fit": 3,
+   "fit2": null,
+   "for": "It is the shape he has most directly done: a first-hire country MD building a new geography from zero, with P&L, partner channel and an AI repositioning mandate, much like Captify APAC.",
+   "has_jd": true,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "The business is niche Swiss wealth-management back-office software under a PE-style acquirer, outside his internet-native categories. The seat demands deep UK wealth-industry relationships, which mirrors his Airwallex GM and LogicGate MD EMEA declines.",
+   "red_flags": [
+    "Regulated, deep domain (wealth management, private banks, asset managers) that canon 5 excludes",
+    "PE-style permanent-capital owner (Banyan)",
+    "Hard requirement for an existing UK wealth-industry network and competitor experience",
+    "Small company of 30 to 80 people; pay not stated"
+   ],
+   "seen_company": false,
+   "title": "WIZE Managing Director UK",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "January",
+   "confidence": "medium",
+   "decline_code": "business_uninteresting",
+   "fit": 6,
+   "fit2": null,
+   "for": "It is exactly the AI Chief of Staff shape canon 5 names and he has been offered before: CEO's right hand at an AI-native NYC company, driving a multi-product transformation and building the AI workflows the whole company runs on.",
+   "has_jd": true,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "Debt collections and consumer credit is outside his categories and close to the regulated finance back-office he excludes; his Deel and Airwallex declines show he passes on finance-domain businesses, and the 4+ years bar hints at a junior-pitched seat and pay.",
+   "red_flags": [
+    "Collections and consumer credit: regulated finance domain outside his five categories",
+    "4+ years of experience bar may signal seniority and pay below his floor",
+    "Pay not stated",
+    "Five days a week in office"
+   ],
+   "seen_company": false,
+   "title": "Chief of Staff",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "Foundry",
+   "confidence": "high",
+   "decline_code": "function_wrong",
+   "fit": 2,
+   "fit2": null,
+   "for": "SVP/GM title in NYC at $300,000 plus bonus with portfolio-wide revenue ownership, at a publisher type he knows from AdFixus and Nine.",
+   "has_jd": true,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "It is a growth marketing and audience development seat at a legacy media publisher; he declined Hearst's SVP Strategy as business uninteresting and Abridge growth marketing as a function he does not want.",
+   "red_flags": [
+    "Function is growth marketing and audience/SEO, which he has explicitly declined",
+    "Legacy publisher business mirrors the declined Hearst and Wiley seats",
+    "Foundry is understood to be PE-owned (not stated in posting)",
+    "No AI angle in the mandate"
+   ],
+   "seen_company": false,
+   "title": "Senior Vice President & General Manager, Audience & Growth",
+   "verdict": "reject",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "",
+   "company": "Trulioo",
+   "confidence": "medium",
+   "decline_code": "requirements_mismatch",
+   "fit": 7,
+   "fit2": null,
+   "for": "It is a corporate development and strategy seat, a named target family, at an identity verification company much like Socure, where he applied, and the posting asks for a builder who deploys AI agents and tools to transform how strategy and diligence work, which matches his production AI operating system and his advisory build-buy-partner work.",
+   "has_jd": true,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "The seat leans toward governance, PMO and finance-style strategy support under a Chief Risk & Strategy Officer, with heavy M&A diligence and fintech or RegTech sector requirements, rather than building a commercial engine; like Duolingo and Hearst strategy seats, he may find it less his thing than commercial building.",
+   "red_flags": [
+    "Title is Senior Director, below VP; reports into a Chief Risk & Strategy Officer rather than the CEO",
+    "Much of the language is support and coordination rather than ownership of outcomes",
+    "Regulated identity and compliance domain with risk and regulatory flavour",
+    "Pay not stated"
+   ],
+   "seen_company": false,
+   "title": "Senior Director, Corporate Strategy & Development",
+   "verdict": "present",
+   "verdict2": null
+  },
+  {
+   "batch": "2026-09-07",
+   "comp": "$300K+ (based on $500M ARR scale)",
+   "company": "Higgsfield AI",
+   "confidence": "medium",
+   "decline_code": "geo_language",
+   "fit": 7,
+   "fit2": null,
+   "for": "A target-list creative GenAI company at huge scale asking someone to build a new entertainment business from the ground up, with partnerships, operating cadence and forecasting in scope, and his Nine Entertainment broadcaster build plus BBC background speak directly to media buyers.",
+   "has_jd": true,
+   "his_code": null,
+   "his_words": "Applied",
+   "label": "yes",
+   "problems": [],
+   "reason": "Location: the seat is SF hybrid or LA remote only, and he lives in Brooklyn; his profile allows SF only for exceptional roles.",
+   "red_flags": [
+    "Location limited to SF Bay Area hybrid or LA remote; no NYC or general US-remote option",
+    "Asks for an existing US studio and streaming network",
+    "Travel expected for industry events and festivals"
+   ],
+   "seen_company": false,
+   "title": "Head of Entertainment GTM",
+   "verdict": "present",
+   "verdict2": null
+  }
+ ],
+ "slices": {
+  "company he had ruled on": {
+   "declines_blocked": [
+    NaN,
+    NaN,
+    NaN
+   ],
+   "declines_presented": [],
+   "judged": 2,
+   "pending": 0,
+   "precision": [
+    1.0,
+    0.3424,
+    1.0
+   ],
+   "presented": 2,
+   "threshold": 6,
+   "yes_blocked": [],
+   "yes_recall": [
+    1.0,
+    0.3424,
+    1.0
+   ]
+  },
+  "company new to him": {
+   "declines_blocked": [
+    0.697,
+    0.5266,
+    0.8262
+   ],
+   "declines_presented": [
+    "Synthesia / Director, Sales Strategy and Operations",
+    "Flex / Senior Director, GTM Strategy & Operations",
+    "amperity / Head of Partnerships & Alliances",
+    "Asana / GM, Product - Command",
+    "kustomer / Head of GTM Strategy and Operations",
+    "flex / Chief of Staff (Executive Office) and VP of Strategy & Operations",
+    "flex / Vice President, Business Development & Strategic Partnerships",
+    "ripple / Director, Ecosystem Growth",
+    "flex / Senior Director, Strategic Partnerships",
+    "ThoughtSpot / Founding GTM Lead, AgentSpot"
+   ],
+   "judged": 43,
+   "pending": 0,
+   "precision": [
+    0.4444,
+    0.2456,
+    0.6628
+   ],
+   "presented": 18,
+   "threshold": 6,
+   "yes_blocked": [
+    "banyansoftware / WIZE Managing Director UK",
+    "Foundry / Senior Vice President & General Manager, Audience & Growth"
+   ],
+   "yes_recall": [
+    0.8,
+    0.4902,
+    0.9433
+   ]
+  },
+  "full posting": {
+   "declines_blocked": [
+    0.7895,
+    0.5667,
+    0.9149
+   ],
+   "declines_presented": [
+    "Synthesia / Director, Sales Strategy and Operations",
+    "Flex / Senior Director, GTM Strategy & Operations",
+    "flex / Chief of Staff (Executive Office) and VP of Strategy & Operations",
+    "flex / Vice President, Business Development & Strategic Partnerships"
+   ],
+   "judged": 29,
+   "pending": 0,
+   "precision": [
+    0.6667,
+    0.3906,
+    0.8619
+   ],
+   "presented": 12,
+   "threshold": 6,
+   "yes_blocked": [
+    "banyansoftware / WIZE Managing Director UK",
+    "Foundry / Senior Vice President & General Manager, Audience & Growth"
+   ],
+   "yes_recall": [
+    0.8,
+    0.4902,
+    0.9433
+   ]
+  },
+  "sheet text only": {
+   "declines_blocked": [
+    0.5714,
+    0.3259,
+    0.7862
+   ],
+   "declines_presented": [
+    "amperity / Head of Partnerships & Alliances",
+    "Asana / GM, Product - Command",
+    "kustomer / Head of GTM Strategy and Operations",
+    "ripple / Director, Ecosystem Growth",
+    "flex / Senior Director, Strategic Partnerships",
+    "ThoughtSpot / Founding GTM Lead, AgentSpot"
+   ],
+   "judged": 16,
+   "pending": 0,
+   "precision": [
+    0.25,
+    0.0715,
+    0.5907
+   ],
+   "presented": 8,
+   "threshold": 6,
+   "yes_blocked": [],
+   "yes_recall": [
+    1.0,
+    0.3424,
+    1.0
+   ]
+  }
+ },
+ "threshold_from": "this window"
+}
