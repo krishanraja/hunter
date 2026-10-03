@@ -41,10 +41,13 @@ class ResolvedRole:
     # URL has no ATS key and no board was found, so nothing could answer;
     # live stays False, and G1 says so honestly instead of calling it dead.
     liveness: str = "checked"
+    # Set when this role's bare job id already belongs to the same title in
+    # another country (placed_identity_keys): "-south-korea", "-uk".
+    id_suffix: str = ""
 
     @property
     def job_id(self) -> str:
-        return job_id(self.company, self.title)
+        return job_id(self.company, self.title) + self.id_suffix
 
 
 def slugify(text: str) -> str:
@@ -102,6 +105,86 @@ def identity_keys(company: str, title: str) -> list[tuple[str, str]]:
     (Anysphere)" and "Anysphere" share the token that names them."""
     nt = norm_title(title)
     return [(tok, nt) for tok in sorted(distinctive_tokens(company, title))]
+
+
+# Where a posting is, at country level, read from its location string. Same
+# company and title in a different COUNTRY is a different role: Sierra's
+# Regional VP, Sales in London was filed as a duplicate of the one in South
+# Korea and never reached him (2026-10-03). A different city in the same
+# country stays one role, because that is usually one job listed in several
+# offices, and an unknown location matches anything, so a LinkedIn copy of a
+# board posting still collapses into it.
+_US = re.compile(
+    r"\b(united states|usa|u\.s\.a?\.?|us|america|americas|amer|north america|new york|nyc|"
+    r"brooklyn|manhattan|san francisco|bay area|los angeles|seattle|boston|chicago|"
+    r"austin|denver|miami|atlanta|dallas|houston|washington|palo alto|mountain view|"
+    r"menlo park|san mateo|san jose|sunnyvale|oakland|berkeley|foster city|"
+    r"redwood city|cupertino|santa clara|columbus|philadelphia|pittsburgh|portland|"
+    r"phoenix|salt lake|minneapolis|detroit|nashville|raleigh|charlotte|san diego)\b")
+# A state abbreviation counts only when no other country is named: "CA" and
+# "IN" are also Canada's and India's codes ("Toronto, CA", "Bangalore, IN").
+_US_STATE = re.compile(
+    r"[a-z ]+, (?:al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|"
+    r"ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy|dc)\b")
+_UK = re.compile(r"\b(united kingdom|uk|england|scotland|wales|london|manchester|"
+                 r"edinburgh|bristol|cambridge, uk|oxford, uk|great britain|gb)\b")
+_ELSEWHERE = re.compile(
+    r"\b(canada|toronto|vancouver|montreal|ireland|dublin|france|paris|germany|berlin|"
+    r"munich|netherlands|amsterdam|spain|madrid|barcelona|portugal|lisbon|italy|milan|"
+    r"switzerland|zurich|sweden|stockholm|denmark|copenhagen|norway|oslo|finland|"
+    r"poland|warsaw|czech|prague|austria|vienna|belgium|brussels|israel|tel aviv|"
+    r"india|bangalore|bengaluru|mumbai|delhi|hyderabad|singapore|japan|tokyo|"
+    r"south korea|korea|seoul|china|shanghai|beijing|hong kong|taiwan|australia|"
+    r"sydney|melbourne|new zealand|brazil|sao paulo|mexico|argentina|colombia|chile|"
+    r"uae|dubai|saudi|riyadh|qatar|south africa|nigeria|kenya|egypt|turkey|istanbul|"
+    r"indonesia|philippines|vietnam|thailand|malaysia)\b")
+_CITY_COUNTRY = {"toronto": "canada", "vancouver": "canada", "montreal": "canada",
+                 "dublin": "ireland", "paris": "france", "berlin": "germany",
+                 "munich": "germany", "amsterdam": "netherlands", "madrid": "spain",
+                 "barcelona": "spain", "lisbon": "portugal", "milan": "italy",
+                 "zurich": "switzerland", "stockholm": "sweden", "copenhagen": "denmark",
+                 "oslo": "norway", "warsaw": "poland", "prague": "czech", "vienna": "austria",
+                 "brussels": "belgium", "tel aviv": "israel", "bangalore": "india",
+                 "bengaluru": "india", "mumbai": "india", "delhi": "india",
+                 "hyderabad": "india", "tokyo": "japan", "seoul": "south korea",
+                 "korea": "south korea", "shanghai": "china", "beijing": "china",
+                 "sydney": "australia", "melbourne": "australia", "sao paulo": "brazil",
+                 "dubai": "uae", "riyadh": "saudi", "istanbul": "turkey"}
+
+
+def country_of(location: str) -> frozenset:
+    """The countries a location string names, or empty when it names none."""
+    loc = " ".join((location or "").lower().replace("_", " ").split())
+    if not loc:
+        return frozenset()
+    out = set()
+    for m in _ELSEWHERE.finditer(loc):
+        out.add(_CITY_COUNTRY.get(m.group(1), m.group(1)))
+    if _UK.search(loc):
+        out.add("uk")
+    if _US.search(loc) or (not out and _US_STATE.search(loc)):
+        out.add("us")
+    return frozenset(out)
+
+
+def placed_identity_keys(company: str, title: str, location: str, *,
+                         seen: bool) -> list[tuple[str, str, str]]:
+    """Identity keys that know the country.
+
+    seen=True: the keys a role already on record contributes, one per country
+    it names ("" when it names none) and a "*" key meaning "any country".
+    seen=False: the keys a new posting is looked up under. A posting in a
+    named country matches a role in that country or a role of unknown
+    country; a posting of unknown country matches any role with its title."""
+    base = identity_keys(company, title)
+    countries = country_of(location)
+    if seen:
+        out = [(t, nt, "*") for t, nt in base]
+        out += [(t, nt, c) for t, nt in base for c in (countries or {""})]
+        return out
+    if countries:
+        return [(t, nt, c) for t, nt in base for c in countries] + [(t, nt, "") for t, nt in base]
+    return [(t, nt, "*") for t, nt in base]
 
 
 def company_key(company: str, title: str = "") -> str:

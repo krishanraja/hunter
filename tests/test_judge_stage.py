@@ -127,7 +127,7 @@ def test_only_clear_cut_gates_stop_a_role_before_the_judge():
 def test_a_pending_role_is_seen_again():
     import inspect
     from hunter import run as R
-    assert '"judge_pending"' in inspect.getsource(R.seen_identity_keys)
+    assert '"judge_pending"' in inspect.getsource(R.seen_identity)
 
 
 def test_a_judge_that_did_not_run_stages_nothing_in_gate_mode():

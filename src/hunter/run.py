@@ -45,7 +45,8 @@ from .router import classify_verdict, is_warm_path, route_status, select_for_bui
 from .score import BAR, score_role
 from . import sheet as sheet_mod
 from .sheet import Sheet, SheetError, SheetRow, make_row
-from .sources import (ResolvedRole, company_key, distinctive_tokens, identity_keys,
+from .sources import (ResolvedRole, company_key, country_of, distinctive_tokens,
+                      identity_keys, placed_identity_keys,
                       job_id, slugify)
 from .notify import send_summary
 from .llm import redact as llm_redact
@@ -2363,13 +2364,21 @@ def cmd_build(target_job_id: str) -> int:
 
 
 def seen_identity_keys(cfg: Config) -> set:
-    """Every identity under which a role is already known: job_id, ATS key,
-    normalized URL, and (company-slug, normalized title). Duplicate-marked
-    rows count too; a role once seen stays seen."""
+    return seen_identity(cfg)[0]
+
+
+def seen_identity(cfg: Config) -> tuple[set, dict]:
+    """(every key under which a recorded role counts as seen, {job_id: the
+    countries its location names} for every row). Identity is company, title
+    AND country (sources.placed_identity_keys): until 2026-10-03 it was
+    company and title alone, and Sierra's Regional VP, Sales in London was
+    filed as the South Korea one and never reached him."""
     keys: set = set()
+    id_countries: dict = {}
     rows = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,url,job_url,company,title,status", "limit": ALL_ROWS})
+        "select": "job_id,url,job_url,company,title,location,status", "limit": ALL_ROWS})
     for r in rows:
+        id_countries[r["job_id"]] = country_of(r.get("location") or "")
         # A row hunter could not resolve was never actually assessed. Counting
         # it as seen means it can never be reconsidered once resolution
         # improves, and 1451 LinkedIn postings were sitting in exactly that
@@ -2379,14 +2388,58 @@ def seen_identity_keys(cfg: Config) -> set:
             # its checks. It is judged again next time it is seen.
             continue
         keys.add(r["job_id"])
-        keys.update(identity_keys(r.get("company") or "", r.get("title") or ""))
+        keys.update(placed_identity_keys(r.get("company") or "", r.get("title") or "",
+                                         r.get("location") or "", seen=True))
         u = r.get("url") or r.get("job_url") or ""
         if u.startswith("http"):
             keys.add(norm_url(u))
             ak = ats_key(u)
             if ak:
                 keys.add(ak)
-    return keys
+    return keys, id_countries
+
+
+def fresh_postings(postings: list, seen_keys: set, id_countries: dict) -> list:
+    """The postings not already on record, each counted once. Identity is
+    company, title and country, never the bare job id: that id is company and
+    title only, and matching on it would undo the country. A posting whose
+    bare id belongs to the same title in another country gets a suffixed id."""
+    fresh = []
+    for p in postings:
+        keys = placed_identity_keys(p.company, p.title, p.location or "", seen=False)
+        exact = []
+        if p.url:
+            exact.append(norm_url(p.url))
+            ak = ats_key(p.url)
+            if ak:
+                exact.append(ak)
+        if any(k in seen_keys for k in keys + exact):
+            continue
+        countries = country_of(p.location or "")
+        base = job_id(p.company, p.title)
+        suffix = place_suffix(base, countries, p.location or "", p.url or "", id_countries)
+        if suffix:
+            p.raw = dict(p.raw or {}, id_suffix=suffix)
+        id_countries[base + suffix] = countries
+        seen_keys.update(placed_identity_keys(p.company, p.title, p.location or "", seen=True))
+        seen_keys.update(exact + [base + suffix])
+        fresh.append(p)
+    return fresh
+
+
+def place_suffix(base: str, countries: frozenset, location: str, url: str,
+                 id_countries: dict) -> str:
+    """'' when the bare job id is free or held by the same role; otherwise a
+    suffix naming this role's country, so a London seat and a Seoul seat with
+    one title are two rows rather than one silently dropped insert."""
+    held = id_countries.get(base)
+    if held is None or not held or not countries or (held & countries):
+        return ""
+    suffix = "-" + slugify(sorted(countries)[0])
+    if base + suffix in id_countries:
+        import hashlib
+        suffix += "-" + hashlib.sha1((url or location).encode()).hexdigest()[:6]
+    return suffix
 
 
 def cmd_dedupe_db() -> int:
@@ -2399,7 +2452,7 @@ def cmd_dedupe_db() -> int:
     cfg = load()
     rows = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,krish_verdict,package_status,"
-                  "presented_at,status,url,job_url",
+                  "presented_at,status,url,job_url,location",
         "status": "neq.duplicate", "limit": ALL_ROWS})
     groups: dict = {}
     exact: set = set()
@@ -2409,8 +2462,12 @@ def cmd_dedupe_db() -> int:
         key = ats_key(r.get("url") or r.get("job_url"))
         if key:
             exact.add(key)
+        # ...and the country: the same title in London and in Seoul is two
+        # roles. A row whose place names no country groups on its own, so
+        # nothing is marked on a guess.
         groups.setdefault(
-            key or (_squash(r.get("company") or ""), _norm_title(r.get("title") or "")),
+            key or (_squash(r.get("company") or ""), _norm_title(r.get("title") or ""),
+                    "|".join(sorted(country_of(r.get("location") or "")))),
             []).append(r)
     marked, held = 0, 0
     for ident, group in sorted(groups.items(), key=lambda kv: str(kv[0])):
@@ -3241,20 +3298,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     # forever (the 2026-08-31 DB near-duplicates). A second posting with the
     # same company and title is the same application target for Krish even
     # when the ATS ids differ.
-    seen_keys = seen_identity_keys(cfg)
-    fresh = []
-    for p in senior:
-        keys = [job_id(p.company, p.title)] + identity_keys(p.company, p.title)
-        if p.url:
-            keys.append(norm_url(p.url))
-            ak = ats_key(p.url)
-            if ak:
-                keys.append(ak)
-        if any(k in seen_keys for k in keys):
-            continue
-        for k in keys:
-            seen_keys.add(k)
-        fresh.append(p)
+    seen_keys, id_countries = seen_identity(cfg)
+    fresh = fresh_postings(senior, seen_keys, id_countries)
     counts["fresh"] = len(fresh)
     # The company question is asked once per company, after dedupe, so a run
     # pays for the companies that actually have a live candidate rather than
@@ -3401,7 +3446,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         role = ResolvedRole(company=p.company, title=p.title, url=jd_url,
                             jd_url=jd_url, jd_text=jd, live=live,
                             source=p.source, location=p.location or "",
-                            comp=band, liveness=liveness)
+                            comp=band, liveness=liveness,
+                            id_suffix=(p.raw or {}).get("id_suffix", ""))
         # Score BEFORE gating. G12 and G13 need the role's merit, which is
         # its score with the employer left out, to decide whether a company
         # he declined is overridden by an exceptional role.

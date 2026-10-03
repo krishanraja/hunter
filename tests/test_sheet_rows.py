@@ -721,10 +721,13 @@ def test_sourcing_identity_dedupe_catches_hash_suffixed_rows(monkeypatch):
            "url": "https://writer.example/careers", "job_url": None}]
     monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: db)
     keys = run_mod.seen_identity_keys(None)
-    assert (slugify("Writer"), run_mod._norm_title("VP, Customer Success (EMEA)")) in keys
     assert job_id("Writer", "VP, Customer Success (EMEA)") not in keys  # bare id differs
-    # the sourcing filter still drops it via the (company, title) key
-    assert ("writer", "vp customer success emea") in keys
+    # the sourcing filter still drops it via the company and title key, now
+    # with the country attached: a row of unknown place matches any posting
+    from hunter.sources import placed_identity_keys
+    again = placed_identity_keys("Writer", "VP, Customer Success (EMEA)", "London", seen=False)
+    assert any(k in keys for k in again)
+    assert ("writer", "vp customer success emea", "*") in keys
 
 
 def test_unmatched_both_directions_surface():

@@ -369,6 +369,12 @@ what he asked for.
 - **One approval per posting, not per row.** The job id scheme changed once and he
   received the same application twice. `posting_key` and `live_postings` exist for
   that.
+- **A role is company, title and country** (`sources.placed_identity_keys`). On
+  company and title alone, Sierra's London Regional VP was filed as the Seoul one,
+  and the Suno London role he asked about as the New York one he had declined:
+  22 roles in all, none ever shown. A different city in the same country stays one
+  role, an unknown place matches anything, and a second country gets its own row
+  id (`place_suffix`), because the bare job id is company and title only.
 - **Dates written to Sheets use `valueInputOption: RAW`.** An ISO date otherwise
   arrives as the number 46280.
 
@@ -431,7 +437,7 @@ src/hunter/
     tailor.py       block selection, the hook
     voicegate.py    every generated string passes this
 extension/            loaded unpacked in his Chrome. main is what he downloads
-tests/                1381 tests, offline
+tests/                1399 tests, offline
   test_taste.py       the bar, measured against his own verdicts
   test_company_taste.py          the company bar, against the companies he chose
   fixtures/krish_verdicts.json   154 roles he ruled on. Ground truth

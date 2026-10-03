@@ -24,7 +24,7 @@ import json
 import re
 
 from .config import ALL_ROWS, Config, db_get, db_insert, db_patch
-from .sources import distinctive_tokens, norm_title, slugify
+from .sources import country_of, distinctive_tokens, norm_title, slugify
 from . import verdicts
 
 # The two codes that are statements about the company, not the role. "Not
@@ -248,6 +248,11 @@ def _identity_twin(role: dict, roles: list[dict]) -> dict | None:
             continue
         if not (toks & distinctive_tokens(other.get("company") or "",
                                           other.get("title") or "")):
+            continue
+        # A known different country is a different role (sources.country_of):
+        # Sierra's London seat was not the Seoul one.
+        mine, theirs = country_of(role.get("location") or ""), country_of(other.get("location") or "")
+        if mine and theirs and not (mine & theirs):
             continue
         ont = norm_title(other.get("title") or "")
         if ont == nt or _jaccard(nt, ont) >= 0.65:
