@@ -3919,6 +3919,40 @@ def cmd_judge_eval(dev: bool = False, threshold: int | None = None) -> int:
     return 0
 
 
+def cmd_blind_set() -> int:
+    """Draw the blind set and write its tab. Spends money (capped at $10)."""
+    from . import blindset
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    rec = blindset.draw(cfg, sheet, canon)
+    print(f"blind set: {len(rec['picks'])} roles on the {blindset.TAB} tab, drawn from "
+          f"{rec['judged']} judged of {rec['pool']} blocked, ${rec['usd']:.2f}; "
+          f"strata {rec['strata']}")
+    return 0
+
+
+def cmd_blind_eval(apply: bool = False) -> int:
+    """Score the blind set from his column A; --apply puts his Yes roles on
+    Pipeline. Quiet when there is no blind set."""
+    from . import blindset
+    if not blindset.RECORD.exists():
+        print("blind set: none drawn")
+        return 0
+    record = json.loads(blindset.RECORD.read_text())
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    try:
+        labels = blindset.read(sheet)
+    except Exception as e:
+        print(f"blind set: the {blindset.TAB} tab could not be read ({e.__class__.__name__})")
+        return 0
+    print("\n".join(blindset.report(record, blindset.evaluate(record, labels))))
+    if apply:
+        moved = blindset.apply_yes(cfg, sheet, record, labels)
+        print(f"blind set: {len(moved)} Yes role(s) moved onto Pipeline")
+    return 0
+
+
 def cmd_settle(apply: bool = False) -> int:
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
@@ -6588,6 +6622,10 @@ def main(argv: list[str]) -> int:
                          profile_dir=_flag("--profile"))
     if cmd == "settle":
         return cmd_settle(apply="--apply" in argv)
+    if cmd == "blind-set":
+        return cmd_blind_set()
+    if cmd == "blind-eval":
+        return cmd_blind_eval(apply="--apply" in argv)
     if cmd == "judge-eval":
         t = _flag("--threshold")
         return cmd_judge_eval(dev="--dev" in argv, threshold=int(t) if t else None)

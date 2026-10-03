@@ -29,7 +29,7 @@ on:
         type: choice
         default: process
         options: [process, run, source, packages, drain, approvals, approvals-drain, submit,
-                  close-submitted, confirmations, settle, judge-eval, applied, stats, prune-sheet, bridges,
+                  close-submitted, confirmations, settle, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
                   migrate-columns]
       extra:
@@ -132,6 +132,13 @@ jobs:
       - name: Settle what he decided
         if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run settle --apply
+
+      # The blind set (blindset.py): each role he marks Yes on the Blind Set tab
+      # is a lead the old rules had hidden, and goes onto Pipeline within the
+      # hour. Does nothing when there is no blind set.
+      - name: Move his blind-set Yes roles onto Pipeline
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
+        run: python -u -m hunter.run blind-eval --apply
 
       # Is the loop still turning. Reads only, and every condition is
       # deduplicated on the condition rather than the moment, so running this
