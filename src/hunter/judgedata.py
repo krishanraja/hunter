@@ -127,7 +127,39 @@ def collect(cfg: Config, sheet, canon) -> tuple[list[Ruled], dict]:
             why=_clean(s.cell("Why It Fits"), "Not assessed"),
             source=d.get("source") or s.cell("Source") or "",
             archived=s.archived))
-    return out, skipped
+    blind = blind_rulings(sheet, {d["job_id"]: d for d in db}, seen)
+    skipped["blind_set"] = len(blind)
+    return out + blind, skipped
+
+
+def blind_rulings(sheet, db_by_id: dict, seen: set) -> list[Ruled]:
+    """His verdicts on the Blind Set tab, which are rulings like any other. A
+    Yes there moves onto Pipeline and is read from there; the declines live
+    only on the tab, and without this they would never reach the judge."""
+    from . import blindset
+    import json
+    if not blindset.RECORD.exists():
+        return []
+    try:
+        record = json.loads(blindset.RECORD.read_text())
+        given = blindset._raw_verdicts(sheet)
+    except Exception:
+        return []
+    out = []
+    for p in record.get("picks", []):
+        words = given.get(p["job_id"], "")
+        label, code = label_of(words)
+        if label is None or p["job_id"] in seen:
+            continue
+        seen.add(p["job_id"])
+        d = db_by_id.get(p["job_id"]) or {}
+        out.append(Ruled(
+            job_id=p["job_id"], company=p["company"], title=p["title"], label=label,
+            words=words, code=code, comp=p.get("comp", ""), location=p.get("location", ""),
+            url=p.get("url", ""), presented_at=record.get("drawn_at"),
+            jd_text=d.get("jd_text") or "", snippet=p.get("snippet", ""),
+            why=p.get("why", ""), source="blind set", archived=False))
+    return out
 
 
 def split(rows: list[Ruled], cutoff: datetime.datetime

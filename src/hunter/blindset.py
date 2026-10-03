@@ -459,26 +459,36 @@ def report(record: dict, result: dict) -> list[str]:
 
 
 def apply_yes(cfg: Config, sheet, record: dict, labels: dict[str, str]) -> list[str]:
-    """Each Yes goes onto Pipeline as the same row he said Yes to, with Yes in
-    column A and its source "blind set", so the ordinary path builds its
-    package. A role already staged or on the sheet is left alone."""
+    """Each Yes goes onto Pipeline as the same row he said Yes to, sourced
+    "blind set", so the ordinary path builds its package. Pipeline takes a new
+    row only as "New" with a whole-number score (sheet.validate_row), so the
+    row is appended that way, with the score hunter holds for it, and then his
+    Yes is written into column A and read back. A role already on the sheet is
+    left alone."""
+    import re
     from .sheet import COLS
     from .run import NOW
     on_sheet = {r["job_id"] for r in db_get(cfg, "hunter_seen_roles", {
         "select": "job_id", "presented_at": "not.is.null", "limit": ALL_ROWS})}
-    moved, rows = [], []
-    for p in record["picks"]:
-        if labels.get(p["job_id"]) != "yes" or p["job_id"] in on_sheet:
-            continue
+    todo = [p for p in record["picks"]
+            if labels.get(p["job_id"]) == "yes" and p["job_id"] not in on_sheet]
+    if not todo:
+        return []
+    held = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,score", "job_id": f"in.({','.join(p['job_id'] for p in todo)})",
+        "limit": ALL_ROWS})
+    scores = {r["job_id"]: int(r.get("score") or 0) for r in held}
+    rows = []
+    for p in todo:
         row = row_for(dict(p, source=SOURCE))
-        row[COLS["Verdict"]] = "Yes"
+        row[COLS["Score"]] = str(scores.get(p["job_id"], 0))
         rows.append(row)
-        moved.append(p["job_id"])
-    if rows:
-        sheet.append_rows(rows)
-        for jid in moved:
-            # His verdict is recorded the one way verdicts are: reconcile reads
-            # the Yes in column A. Writing it here too would be a second path.
-            db_patch(cfg, "hunter_seen_roles", {"job_id": jid},
-                     {"status": "staging", "presented_at": NOW()})
-    return moved
+    rng = sheet.append_rows(rows)
+    first = int(re.search(r"!A(\d+):", rng).group(1))
+    # His own word, typed on the Blind Set: reconcile reading it back as his
+    # verdict is exactly right here.
+    sheet.set_verdicts({first + i: "Yes" for i in range(len(todo))})
+    for p in todo:
+        db_patch(cfg, "hunter_seen_roles", {"job_id": p["job_id"]},
+                 {"status": "staging", "presented_at": NOW()})
+    return [p["job_id"] for p in todo]

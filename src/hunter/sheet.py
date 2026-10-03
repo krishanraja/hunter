@@ -207,14 +207,30 @@ def plain_text(text: str) -> str:
     return (text or "").replace("\u2014", " - ").replace("\u2013", " - ")
 
 
+# What Sheets turns into something else under USER_ENTERED: a formula, a
+# number, money, a percentage, a date. "$225,000" in Comp landed as the number
+# 225000 on 2026-10-03, and the append's read-back refused the batch. Such a
+# value is written with a leading apostrophe, which Sheets keeps as text and
+# does not show; row_diff compares without it.
+_COERCED = re.compile(
+    r"^\s*([=+@]|-\S|\$?\(?-?[\d,]+(\.\d+)?\)?%?\s*$|\d{4}-\d{2}-\d{2}|"
+    r"\d{1,2}/\d{1,2}/\d{2,4}\s*$)")
+
+
+def as_text(value: str) -> str:
+    """The value, kept as text when Sheets would parse it."""
+    v = value or ""
+    return "'" + v if v and _COERCED.match(v) else v
+
+
 def make_row(*, company: str, role: str, jd_url: str, score: int,
              why_it_fits: str = "", sector: str = "", stage: str = "",
              location: str = "", comp: str = "", source: str = "",
              jd_verified: bool = True, jd_snippet: str = "",
              warm_path: str = "", path_evidence: str = "") -> list[str]:
     cells = list(DEFAULT_CELLS)
-    cells[COLS["Business"]] = plain_text(company)
-    cells[COLS["Role"]] = plain_text(role)
+    cells[COLS["Business"]] = as_text(plain_text(company))
+    cells[COLS["Role"]] = as_text(plain_text(role))
     cells[COLS["Job Link"]] = hyperlink(jd_url, "JD")
     cells[COLS["Score"]] = str(score)
     if why_it_fits.strip():
@@ -222,7 +238,7 @@ def make_row(*, company: str, role: str, jd_url: str, score: int,
     for name, value in (("Sector", sector), ("Stage", stage), ("Location", location),
                         ("Comp", comp), ("Source", source)):
         if value.strip():
-            cells[COLS[name]] = plain_text(value).strip()
+            cells[COLS[name]] = as_text(plain_text(value).strip())
     cells[COLS["JD URL Verified"]] = "TRUE" if jd_verified else "FALSE"
     if jd_snippet.strip():
         cells[COLS["JD Snippet"]] = plain_text(jd_snippet).strip()[:500]
@@ -275,7 +291,8 @@ def row_diff(expected: list[str], actual: list[str]) -> list[tuple[str, str, str
     out = []
     for i, (e, a) in enumerate(zip(expected, actual)):
         pe, pa = parse_hyperlink(e), parse_hyperlink(a)
-        same = (pe == pa) if (pe or pa) else (str(e).strip() == str(a).strip())
+        e_text = str(e)[1:] if str(e).startswith("'") else str(e)
+        same = (pe == pa) if (pe or pa) else (e_text.strip() == str(a).strip())
         if not same:
             name = HEADERS[i] if i < len(HEADERS) else f"column {i}"
             out.append((name, str(e)[:120], str(a)[:120]))

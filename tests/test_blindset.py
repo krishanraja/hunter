@@ -157,7 +157,15 @@ class Sheet:
         self.writes.append((blocks, raw))
 
     def append_rows(self, rows):
+        from hunter.sheet import validate_row
+        for r in rows:
+            assert not validate_row(r, is_append=True), validate_row(r, is_append=True)
         self.appended.extend(rows)
+        return f"Pipeline!A12:AD{11 + len(rows)}"
+
+    def set_verdicts(self, mapping):
+        self.verdicts = mapping
+        return len(mapping)
 
 
 def ref_row(verdict, ref):
@@ -196,7 +204,12 @@ def test_a_tab_that_does_not_read_back_is_an_error():
 def test_his_yes_reaches_pipeline_once_as_the_same_row(monkeypatch):
     from hunter.sheet import COLS
     patched = []
-    monkeypatch.setattr(blindset, "db_get", lambda *a, **k: [{"job_id": "j2"}])
+
+    def db_get(cfg, table, params):
+        if "presented_at" in params:
+            return [{"job_id": "j2"}]
+        return [{"job_id": "j1", "score": 6}]
+    monkeypatch.setattr(blindset, "db_get", db_get)
     monkeypatch.setattr(blindset, "db_patch", lambda cfg, t, key, body: patched.append((key, body)))
     rec = {"picks": [dict(row(1), stratum="far", old_gate="G11", why="The case. FIT: x. RISK: y.",
                           snippet="snip"),
@@ -206,8 +219,28 @@ def test_his_yes_reaches_pipeline_once_as_the_same_row(monkeypatch):
     moved = blindset.apply_yes(object(), s, rec, {"j1": "yes", "j2": "yes", "j3": "no"})
     assert moved == ["j1"], "j2 is already on his sheet; j3 he declined"
     r = s.appended[0]
-    assert r[COLS["Verdict"]] == "Yes" and r[COLS["Source"]] == blindset.SOURCE
+    assert r[COLS["Verdict"]] == "New", "Pipeline takes a new row only as New"
+    assert s.verdicts == {12: "Yes"}, "then his Yes is written onto the row it landed on"
+    assert r[COLS["Score"]] == "6" and r[COLS["Source"]] == blindset.SOURCE
     assert r[COLS["Why It Fits"]] == "The case. FIT: x. RISK: y."
     assert r[COLS["JD Snippet"]] == "snip"
     assert patched == [({"job_id": "j1"}, {"status": "staging",
                                           "presented_at": patched[0][1]["presented_at"]})]
+
+
+def test_his_blind_set_declines_become_rulings_the_judge_reads(monkeypatch, tmp_path):
+    import json
+    from hunter import judgedata
+    rec = {"drawn_at": "2026-10-03T20:00:00+00:00",
+           "picks": [dict(row(1), stratum="far", old_gate="G11"),
+                     dict(row(2), stratum="near", old_gate="G11"),
+                     dict(row(3), stratum="present", old_gate="G11")]}
+    f = tmp_path / "blind.json"
+    f.write_text(json.dumps(rec))
+    monkeypatch.setattr(blindset, "RECORD", f)
+    s = Sheet(grid=[ref_row("Declined - business uninteresting", "j1"), ref_row("Yes", "j2"),
+                    ref_row("New", "j3")])
+    got = judgedata.blind_rulings(s, {"j1": {"jd_text": "posting"}}, seen={"j2"})
+    assert [(r.job_id, r.label, r.code) for r in got] == [("j1", "no", "business_uninteresting")]
+    assert got[0].presented_at == rec["drawn_at"] and got[0].source == "blind set"
+    assert got[0].jd_text == "posting"

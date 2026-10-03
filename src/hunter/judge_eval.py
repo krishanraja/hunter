@@ -183,6 +183,10 @@ def run(cfg: Config, sheet, canon, *, dev: bool = False, replicas: int | None = 
     replica, direct calls (minutes, not a batch queue). Otherwise the holdout:
     examples before CUTOFF, scored after it, twice, through the Batches API."""
     rows, skipped = judgedata.collect(cfg, sheet, canon)
+    # The blind set is a different population (roles the old gates threw
+    # away) with its own measure (blindset.evaluate); mixing it in would make
+    # this record incomparable with the last.
+    rows = [r for r in rows if r.source != "blind set"]
     if dev:
         before, later, undated = judgedata.split(rows, DEV_CUTOFF)
         after = [r for r in later if r.when < CUTOFF]
