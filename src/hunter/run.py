@@ -3460,8 +3460,12 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         staged_rows = []
         if judged is not None:
             judge_stage.apply_gate(judged, candidates)
+            cases, case_usd = judge_stage.cases_for(
+                cfg, judged.system, [c.role for c in judged.present + judged.audit])
+            summary.append(f"judge: the case written for {len(cases)} row(s), ${case_usd:.2f}")
             for c in judged.present + judged.audit:
-                why, snippet = c.judgement.why_it_fits, c.judgement.snippet
+                why, snippet = cases.get(c.role.job_id) or (
+                    c.judgement.why_it_fits, c.judgement.snippet)
                 if not why:
                     why, snippet, _ = write_rationale_and_snippet(
                         cfg, canon, company=c.role.company, title=c.role.title,
@@ -3469,7 +3473,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                         score_reason=c.result.why_it_fits,
                         location=c.role.location, comp=c.role.comp)
                 if c in judged.audit:
-                    why = judge_stage.audit_why(c.judgement)
+                    why = f"{judge_stage.AUDIT_PREFIX} (fit {c.judgement.fit}). {why}"[:900]
                 note = open_application_note(opens, c.role.company)
                 if note:
                     why = f"{why} {note}"[:900]
@@ -3576,6 +3580,23 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                 f"staging capped at {cap}: {held} more role(s) passed every "
                 f"gate and are held at score {cut} or below. They keep their "
                 f"database row; raise hunter_max_staged_per_run to see them.")
+        # The rows that reach his sheet get their case from everything he has
+        # written, when the judge's context is in hand; the text written above
+        # stays wherever a case fails its checks.
+        if judged is not None and judged.system:
+            cases, case_usd = judge_stage.cases_for(
+                cfg, judged.system, [role for role, _, _, _ in staged_rows])
+            summary.append(f"the case written for {len(cases)} of {len(staged_rows)} "
+                           f"row(s) from his whole record, ${case_usd:.2f}")
+            rewritten = []
+            for role, result, snippet, why in staged_rows:
+                if role.job_id in cases:
+                    why, snippet = cases[role.job_id]
+                    note = open_application_note(opens, role.company)
+                    if note:
+                        why = f"{why} {note}"[:900]
+                rewritten.append((role, result, snippet, why))
+            staged_rows = rewritten
         new_rows = [make_row(company=role.company, role=role.title,
                              jd_url=role.jd_url, score=result.score,
                              why_it_fits=why,
@@ -3584,9 +3605,9 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                              jd_verified=(role.liveness != "unverified"))
                     for role, result, snippet, why in staged_rows]
         sheet.append_rows(new_rows)
-        for role, _, _, _ in staged_rows:
+        for role, _, _, why in staged_rows:
             db_patch(cfg, "hunter_seen_roles", {"job_id": role.job_id},
-                     {"presented_at": NOW()})
+                     {"presented_at": NOW(), "why_it_fits": why})
         counts["staged"] = len(staged_rows)
 
     return counts
@@ -3919,11 +3940,18 @@ def cmd_judge_eval(dev: bool = False, threshold: int | None = None) -> int:
     return 0
 
 
-def cmd_blind_set() -> int:
-    """Draw the blind set and write its tab. Spends money (capped at $10)."""
+def cmd_blind_set(refresh: bool = False) -> int:
+    """Draw the blind set and write its tab. Spends money (capped at $10).
+    --refresh rewrites the drawn set as a Pipeline tab without judging again."""
     from . import blindset
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    if refresh:
+        rec = blindset.refresh(cfg, sheet, canon)
+        weak = [p["company"] for p in rec["picks"] if p.get("case_problems")]
+        print(f"blind set: {len(rec['picks'])} roles rewritten as a Pipeline tab; "
+              f"{len(weak)} without a grounded case" + (f" ({', '.join(weak)})" if weak else ""))
+        return 0
     rec = blindset.draw(cfg, sheet, canon)
     print(f"blind set: {len(rec['picks'])} roles on the {blindset.TAB} tab, drawn from "
           f"{rec['judged']} judged of {rec['pool']} blocked, ${rec['usd']:.2f}; "
@@ -6623,7 +6651,7 @@ def main(argv: list[str]) -> int:
     if cmd == "settle":
         return cmd_settle(apply="--apply" in argv)
     if cmd == "blind-set":
-        return cmd_blind_set()
+        return cmd_blind_set(refresh="--refresh" in argv)
     if cmd == "blind-eval":
         return cmd_blind_eval(apply="--apply" in argv)
     if cmd == "judge-eval":

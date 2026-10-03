@@ -441,7 +441,7 @@ def interpret(role: Role, message, *, model: str, batch: bool = False,
     except (ValueError, TypeError):
         pending.problems = ["the answer was not valid JSON"]
         return None, pending
-    critical, text = check(answer, role.posting, evidence)
+    critical, text = check(answer, role.posting, user_prompt(role) + "\n" + evidence)
     if critical:
         pending.problems = critical + text
         pending.answers = answer
@@ -496,6 +496,94 @@ def judge_role(cfg: Config, system: str, role: Role, *, client=None,
         problems = j.problems
     j.usd, j.usage = round(spent, 6), total_usage or j.usage
     return j
+
+
+# ---------- the case for a role, for his sheet ----------
+
+CASE_PROMPT = """This time you are not deciding whether he should see this role: it is
+already on his list. Write the text of its row, so he can decide in one read
+whether to say Yes.
+
+- mandate: what the seat actually is, in the posting's own terms, one sentence.
+- fit: the strongest honest case that this role suits what he wants. Name the
+  role family from canon 5, the specific proof from his record (canon 3, his
+  Profile, his Interview Answers) that matches what the posting asks for, and
+  what in the posting should make him want it: the scope, the mandate, the
+  company, the pay, the place. Where one of his past rulings is a close match,
+  say so. Two or three sentences. Persuade with facts; where the case is thin,
+  say what it rests on rather than stretching it.
+- risk: the one thing most likely to make him say no, in one sentence.
+- archetype: the role family in plain words.
+- snippet: what the company sells and what the seat is, under 240 characters.
+
+mandate, fit and risk together must stay under 750 characters: it is one cell
+he reads at a glance. Every number must appear in the posting or in his record.
+No em dashes; never the words leverage, synergy, passionate, rockstar,
+world-class."""
+
+
+def case_params(system: str, role: Role, *, model: str, effort: str,
+                problems: list[str] | None = None) -> dict:
+    """Same cached context as the judge, so the case costs a cache read."""
+    from .package.rationale import RATIONALE_SCHEMA
+    content = user_prompt(role) + "\n\n" + CASE_PROMPT
+    if problems:
+        content += ("\n\nA previous answer was thrown away for these reasons. "
+                    "Fix them:\n- " + "\n- ".join(problems))
+    return {"model": model, "max_tokens": MAX_TOKENS,
+            "system": [{"type": "text", "text": system,
+                        "cache_control": {"type": "ephemeral"}}],
+            "output_config": {"effort": effort,
+                              "format": {"type": "json_schema", "schema": RATIONALE_SCHEMA}},
+            "messages": [{"role": "user", "content": content}]}
+
+
+def thin_case(role: Role) -> str:
+    """The honest fallback: says what is known and that no case was written."""
+    return (f"{role.title} at {role.company}. FIT: no grounded case could be "
+            f"written for this role, so read the JD before you decide. "
+            f"RISK: unknown until you have read it.")
+
+
+def make_the_case(cfg: Config, system: str, role: Role, *, client=None,
+                  model: str | None = None, effort: str | None = None
+                  ) -> tuple[str, str, list[str], float]:
+    """(Why It Fits, JD Snippet, problems, usd) for a row on his sheet, in the
+    shape Pipeline uses (mandate, FIT, RISK), written from everything he has
+    written rather than canon 5 alone. Never told what the judge decided, so
+    a list can carry it without giving the judgement away. Every figure is
+    checked against the posting and his record; a case that fails twice is
+    replaced by an honest stub, never shipped."""
+    model = model or cfg.optional("hunter_judge_model", DEFAULT_MODEL)
+    effort = effort or cfg.optional("hunter_judge_effort", DEFAULT_EFFORT)
+    client = client or _client(cfg)
+    snippet_fallback = rationale.deterministic_snippet(role.company, role.title, role.posting)
+    problems: list[str] | None = None
+    usd = 0.0
+    for _attempt in (1, 2):
+        try:
+            msg = client.messages.create(**case_params(system, role, model=model,
+                                                       effort=effort, problems=problems))
+        except Exception as e:
+            return thin_case(role), snippet_fallback, [f"the call failed: {e.__class__.__name__}"], usd
+        usd += usd_of(model, usage_of(msg))
+        if getattr(msg, "stop_reason", "") in ("refusal", "max_tokens"):
+            problems = [f"the answer stopped: {msg.stop_reason}"]
+            continue
+        try:
+            parts = json.loads(text_of(msg))
+        except (ValueError, TypeError):
+            problems = ["the answer was not valid JSON"]
+            continue
+        # Figures may come from anything the writer was shown: the role's own
+        # pay and location fields, the posting, his record. The pay field is
+        # often all a stored posting has of the band, because the posting
+        # text is kept to its first 6,000 characters.
+        problems = rationale.validate(parts, user_prompt(role) + "\n" + system)
+        if not problems:
+            snippet = " ".join(parts["snippet"].split())
+            return rationale.assemble(parts), snippet, [], round(usd, 6)
+    return thin_case(role), snippet_fallback, problems or [], round(usd, 6)
 
 
 # ---------- what a judgement means for staging ----------

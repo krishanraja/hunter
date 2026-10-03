@@ -55,6 +55,7 @@ class Outcome:
     held: list = field(default_factory=list)
     audit: list = field(default_factory=list)
     lines: list = field(default_factory=list)
+    system: str = ""        # the cached context, reused to write the rows' case
 
 
 def mode_of(cfg: Config) -> str:
@@ -86,6 +87,7 @@ def run(cfg: Config, canon, sheet, candidates: list[Candidate], *, mode: str,
     todo, over = ranked[:limit], ranked[limit:]
     if system is None:
         system = live_context(cfg, sheet, canon)
+    out.system = system
     client = client or judge._client(cfg)
 
     def one(c: Candidate) -> judge.Judgement:
@@ -204,3 +206,28 @@ def apply_gate(out: Outcome, candidates: list[Candidate]) -> None:
 def audit_why(j: judge.Judgement) -> str:
     return (f"{AUDIT_PREFIX} (fit {j.fit}). Your verdict tells hunter what it is "
             f"hiding. {j.why_it_fits or judge.reason_line(j)}")[:900]
+
+
+def cases_for(cfg: Config, system: str, roles: list, *, client=None
+              ) -> tuple[dict, float]:
+    """{job_id: (Why It Fits, JD Snippet)} for the rows about to reach his
+    sheet, from everything he has written, and what it cost. A role whose case
+    failed its checks is left out, so the caller keeps the text it had. His
+    words, 2026-10-03: "You need to convince me to say yes to these roles
+    because of how well suited they are to what I want"."""
+    if not roles or not system:
+        return {}, 0.0
+    client = client or judge._client(cfg)
+
+    def one(r):
+        return r.job_id, judge.make_the_case(cfg, system, judge.Role(
+            job_id=r.job_id, company=r.company, title=r.title, location=r.location,
+            comp=r.comp, url=r.jd_url or r.url, posting=r.jd_text or "",
+            source=r.source), client=client)
+    out, usd = {}, 0.0
+    with cf.ThreadPoolExecutor(max_workers=6) as pool:
+        for jid, (why, snippet, problems, cost) in pool.map(one, roles):
+            usd += cost
+            if not problems:
+                out[jid] = (why, snippet)
+    return out, round(usd, 4)

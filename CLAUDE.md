@@ -181,6 +181,27 @@ he sees), gate (decides). It is in shadow until he says otherwise.
   PE firm, finance software). Rulings lag taste. His new verdicts feed the next
   run's prompt automatically; the audit sample measures what the gate hides.
 
+## 3c. Every list he reads is a Pipeline tab
+
+His words, 2026-10-03, on a facts-only list: "We need this in the same column
+format and rich formatting as the Pipeline tab, always ... You need to
+convince me to say yes to these roles because of how well suited they are to
+what I want".
+
+- **Same columns, same look, read from Pipeline.** `blindset.write_tab` copies
+  Pipeline's layout off Pipeline itself every time (widths, hidden columns,
+  frozen panes, header, banding, colours, the column A dropdown) and reads it
+  back. The format paste brings the colours and banding and does NOT bring
+  the dropdown, whatever the API reference says; adding colours again
+  duplicates them. Rows come from `sheet.make_row`, as on Pipeline.
+- **Why It Fits makes the case.** `judge.make_the_case` writes mandate, FIT
+  and RISK from everything he has written, names his proof points and the
+  rulings that match, and says so plainly when the case is thin. Figures are
+  checked against the posting, its pay field and his record. It writes
+  Pipeline's rows too whenever the judge has run.
+- **A blind test hides the judgement, not the information.** The case writer
+  is never told the judge's call, and Score stays empty on the blind set.
+
 ## 4. The Target Companies tab is his, and it is policy
 
 53 companies, five categories, a tier each, and a TIER LEGEND in his own
@@ -346,6 +367,7 @@ src/hunter/
   judge_stage.py    the judge inside staging: off, shadow or gate
   judge_eval.py     the judge measured against his rulings, chronologically
   judgedata.py      every role he ruled on, with the posting, for the judge
+  blindset.py       roles he has never seen, ruled on blind, to measure the judge
   schedule.py       which batch is owed, decided from the run record
   company.py        is the BUSINESS worth his time. Five components, evidenced
   companyintel.py   where those facts come from, free, and always cited
@@ -363,7 +385,7 @@ src/hunter/
     tailor.py       block selection, the hook
     voicegate.py    every generated string passes this
 extension/            loaded unpacked in his Chrome. main is what he downloads
-tests/                1296 tests, offline
+tests/                1316 tests, offline
   test_taste.py       the bar, measured against his own verdicts
   test_company_taste.py          the company bar, against the companies he chose
   fixtures/krish_verdicts.json   154 roles he ruled on. Ground truth

@@ -207,3 +207,56 @@ def test_the_split_never_shows_the_judge_a_ruling_from_after_the_cutoff():
     assert [r.job_id for r in before] == ["j10", "j16"]
     assert [r.job_id for r in after] == ["j17", "j24"]
     assert all(r.when < judge_eval.CUTOFF for r in before)
+
+
+class CaseClient:
+    """Answers the case writer with the given parts, one per call."""
+    def __init__(self, *answers):
+        self.answers, self.calls = list(answers), []
+        self.messages = self
+
+    def create(self, **params):
+        self.calls.append(params)
+        return message(self.answers.pop(0))
+
+
+GOOD_CASE = {"mandate": "Define and run enterprise data management under the CTO.",
+             "fit": "It sits next to the build he did at Captify, taking a function from "
+                    "nothing to a running engine, and the seat reports to the CTO in New York.",
+             "risk": "The seat is data governance, which is not one of his five families.",
+             "archetype": "data leadership", "snippet": "KBRA rates credit; this seat runs data."}
+
+
+def test_the_case_is_pipeline_shaped_and_never_told_the_judgement():
+    client = CaseClient(GOOD_CASE)
+    why, snippet, problems, usd = judge.make_the_case(object.__new__(type("C", (), {
+        "optional": lambda self, k, d="": d})), "CONTEXT", ROLE, client=client)
+    assert why.startswith("Define and run") and " FIT: " in why and " RISK: " in why
+    assert snippet == "KBRA rates credit; this seat runs data." and not problems
+    sent = client.calls[0]["messages"][0]["content"]
+    assert POSTING in sent and "not deciding" in sent
+    assert client.calls[0]["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_a_case_with_a_figure_from_nowhere_is_retried_then_replaced_by_a_stub():
+    bad = dict(GOOD_CASE, fit=GOOD_CASE["fit"] + " He grew it to $999M.")
+    cfg = object.__new__(type("C", (), {"optional": lambda self, k, d="": d}))
+    client = CaseClient(bad, bad)
+    why, _, problems, _ = judge.make_the_case(cfg, "CONTEXT", ROLE, client=client)
+    assert len(client.calls) == 2 and "Fix them" in client.calls[1]["messages"][0]["content"]
+    assert why == judge.thin_case(ROLE) and problems
+    # the same figure is fine when his record holds it
+    client = CaseClient(bad)
+    why, _, problems, _ = judge.make_the_case(cfg, "Captify: $999M", ROLE, client=client)
+    assert "$999M" in why and not problems
+
+
+def test_the_pay_field_is_evidence_for_a_figure():
+    """Sonos's band, $267,000 to $334,000, sat in the pay field and not in the
+    stored posting, and a case quoting it was thrown away."""
+    paid = judge.Role(job_id="s", company="Sonos", title="VP, Business Development",
+                      comp="$267,000 - $334,000", posting=POSTING)
+    case = dict(GOOD_CASE, fit=GOOD_CASE["fit"] + " The band is $267,000 to $334,000.")
+    cfg = object.__new__(type("C", (), {"optional": lambda self, k, d="": d}))
+    why, _, problems, _ = judge.make_the_case(cfg, "CONTEXT", paid, client=CaseClient(case))
+    assert not problems and "$267,000" in why

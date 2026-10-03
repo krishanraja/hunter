@@ -9,10 +9,13 @@
    "job_id": "clear:head-of-revenue-operations-clear1-b2b",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "CLEAR sells secure identity to 43 million Members; CLEAR1 is its B2B identity verification arm. Seat owns the revenue operating model, forecasting and Board reporting as the CRO's partner.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "Head of Revenue Operations (CLEAR1 - B2B)",
    "url": "https://www.linkedin.com/jobs/view/head-of-revenue-operations-clear1-b2b-at-clear-4471129431?position=3&pageNum=12&refId=JSDQ8jTmQZhq9xmYYP9qdw%3D%3D&trackingId=wyegmHA1osONIrJP%2FQhwRw%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Revenue Operations Leader for CLEAR1, CLEAR's B2B identity verification business, owning the revenue operating model, forecasting, metrics and Board reporting as the CRO's partner. FIT: Chief commercial and strategy family (VP Revenue Strategy shape) in identity verification, his AdFixus lane; his Yes to Socure (twice), Trulioo and Render's Head of Revenue Operations are close matches. He built the operating model and forecast behind Captify APAC's $12M ARR, and his 14-agent AI OS meets the ask for agents. NYC, $225,000-275,000 base plus RSUs. RISK: It asks for 8+ years in RevOps with 3+ leading the function, and it is an operations seat under the CRO rather than the commercial engine itself."
   },
   {
    "comp": "",
@@ -21,10 +24,13 @@
    "job_id": "and-digital:solution-director-cost-takeout-technology-transformation",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "AND Digital, a 1,300-person digital delivery consultancy; Solution Director leading enterprise cost takeout, cloud, AI and operating model transformation pursuits and delivery.",
+   "source": "apify_linkedin",
    "stratum": "near",
    "title": "Solution Director: Cost Takeout & Technology Transformation",
    "url": "https://www.linkedin.com/jobs/view/solution-director-cost-takeout-technology-transformation-at-and-digital-4470963021?position=2&pageNum=11&refId=xTvNlOxftB69SKL4Rb%2BNIA%3D%3D&trackingId=RJQBSnmCT8vnFQpZRTCYrw%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Lead and shape Cost Takeout and Technology Transformation engagements for enterprise clients, from executive business cases and RFP pursuits through delivery oversight. FIT: AI transformation family, client-side: the seat sells and runs \"Automation and AI adoption\" and vendor consolidation. That matches his legacy broadcaster engagement (killed 11 tools, approved 3, first production AI workflow in 90 days) and his 14-vendor RFP stopped in 45 days. His Yes to BOI's AI Transformation Director is the closest ruling. RISK: This is a consultancy seat focused on IT cost reduction that asks for 12+ years in consulting or enterprise architecture, and he declined EY-Parthenon, West Monroe and Ankura."
   },
   {
    "comp": "$300,000",
@@ -33,10 +39,13 @@
    "job_id": "innovamat:head-of-sales",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "Innovamat, founded in Barcelona in 2017, sells a research-based K-12 math program to 3,300+ schools in 9 countries. This seat leads US enterprise sales to large districts, reporting to the CRO.",
+   "source": "apify_linkedin",
    "stratum": "far",
    "title": "Head of Sales",
    "url": "https://www.linkedin.com/jobs/view/head-of-sales-at-innovamat-4472562283?position=39&pageNum=0&refId=b0hZI7txI%2F6m8OksL3Avgw%3D%3D&trackingId=OSZMpi2xJSNRkz3WGZfQwA%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Lead Innovamat's US enterprise sales, reporting to the CRO, winning large school district and charter network partnerships and shaping the US enterprise go-to-market strategy. FIT: Chief commercial family, revenue-carrying: the posting asks for someone \"building Innovamat's US enterprise business from the ground up\", and he did that at Captify APAC as first hire, taking it from $0 to $12M ARR while closing enterprise deals up to $600K. The closest past Yes is Talkspace Head of Commercial Sales, another seat that sells into institutions. RISK: K-12 math curriculum sold to school districts is a public-sector education domain he has never worked in, a type of role he has repeatedly declined on domain expertise, and the seat also requires 40 to 50% travel."
   },
   {
    "comp": "",
@@ -45,10 +54,13 @@
    "job_id": "foster-mckay:director-of-strategic-finance",
    "location": "New York City Metropolitan Area",
    "old_gate": "G11",
+   "snippet": "Recruiter Foster McKay, for an unnamed branded consumer company (apparel, footwear, beauty preferred). Director, Strategic Finance owns the long-range plan, M&A and licensing finance, and Board reporting.",
+   "source": "apify_linkedin",
    "stratum": "far",
    "title": "Director of Strategic Finance",
    "url": "https://www.linkedin.com/jobs/view/director-of-strategic-finance-at-foster-mckay-4473950881?position=10&pageNum=9&refId=9G5cJqNq7akPwFUxxim5ow%3D%3D&trackingId=kKZxSHelJBg8eZ1OIx6SJQ%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Director reporting to the SVP of Finance who owns the integrated financial model and long-range plan, leads the finance workstream for M&A, licensing and joint ventures, and owns Board and lender reporting. FIT: The closest family is corporate development and strategy: the M&A, licensing and joint-venture workstream echoes his two technology M&A integrations at Nexxen and Meliora Fund One. The case is thin, since the seat is finance-led with regular CFO, CEO and Board exposure. RISK: This is a corporate finance seat asking for 6+ years of finance, three-statement modeling and credit agreement expertise at a recruiter-posted branded consumer business, close to his Cloudflare finance declines for requirements mismatch."
   },
   {
    "comp": "",
@@ -57,10 +69,13 @@
    "job_id": "photoroom:vp-sales-global",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "Photoroom sells visual creation tools for e-commerce via app, web and API to brands like Amazon and DoorDash. VP Sales owns global sales-led revenue and builds the engine from $5-6M.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "VP Sales (Global)",
    "url": "https://www.linkedin.com/jobs/view/vp-sales-global-at-photoroom-4472791918?position=24&pageNum=0&refId=b0hZI7txI%2F6m8OksL3Avgw%3D%3D&trackingId=CtJSQZc7xBvEf1XkRW%2FI5g%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Build Photoroom's global sales-led business from roughly $5-6M toward $100M, owning the revenue number, ICP, pricing input, sales operating system and a team of 14 across New York and Paris. FIT: Chief commercial family, engine-builder shape: the posting asks him to decide where to play, sharpen the ICP, shape pricing and build the sales system, which matches his Captify APAC build from $0 to $12M ARR and the AdFixus ICP and pricing redesign. It is a Series B company with NYC as the preferred base, close to his Yes on sales leadership at Sierra and Anthropic. RISK: It is a VP Sales seat asking for proof of scaling through $5M to $50M+, a revenue ownership step past his $12M; he declined Pika's Head of Sales as the wrong function."
   },
   {
    "comp": "$300,000.00/yr - $500,000.00/yr",
@@ -69,10 +84,13 @@
    "job_id": "harnham:director-of-product-development",
    "location": "United States",
    "old_gate": "G11",
+   "snippet": "Recruiter Harnham, for a confidential private equity firm building its core AI platform: Director or VP of Product who sets the platform's value thesis and prototypes AI workflows. Fully remote US.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "Director of Product Development",
    "url": "https://www.linkedin.com/jobs/view/director-of-product-development-at-harnham-4471135207?position=2&pageNum=57&refId=QKfNT1e2a8FfZKYh%2BquIOQ%3D%3D&trackingId=vu0HTOioDbE1Y0W%2Bg7Oeyw%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Define what a confidential private equity firm's new AI platform is for: own its value thesis, a ranked set of AI product hypotheses, and prototypes built in Claude Code before engineering commits. FIT: AI transformation family: an enablement mandate across deal, portfolio and operating workflows, built from nothing, which matches the production AI operating system he runs on Anthropic and OpenAI and the broadcaster work where he killed weak tools and shipped a first production AI workflow. Closest ruling is his Yes to Vista Equity Partners, SVP Data & AI Transformation; fully remote US. RISK: Asks for significant Director or VP product leadership in private equity, a seat he has never held, at a PE firm that recruiter Harnham does not name."
   },
   {
    "comp": "",
@@ -81,10 +99,13 @@
    "job_id": "syntrace:chief-of-staff",
    "location": "New York, NY",
    "old_gate": "G7",
+   "snippet": "Syntrace turns institutional investors' private conversations into source-backed knowledge. Founding Chief of Staff to the CEO: investor reporting, next round, talent inflow, unowned work. NYC or Stockholm.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "Chief of Staff",
    "url": "https://www.linkedin.com/jobs/view/chief-of-staff-at-syntrace-4469166830?position=9&pageNum=9&refId=pteaR5sFU4b4IOBjvMob2g%3D%3D&trackingId=wWTPETRNwSFKbTwrXwMbdg%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Founding Chief of Staff working directly with the CEO across people, capital, customers and strategy: owning the corporate side, investor reporting, the next round and talent inflow. FIT: Chief of Staff with a corporate development and strategy core: he co-launched Meliora Fund One and built Captify APAC from first hire to an 18-person team, which matches the next-round, investor reporting and talent-inflow scope. A founding seat at about ten people with real ownership mirrors his Yes on the Fleek and January Chief of Staff roles. RISK: Syntrace sells to institutional investors, a finance domain where he declined Hebbia and Rogo for domain expertise, and the mandate is fundraising and corporate admin rather than AI transformation."
   },
   {
    "comp": "$200,000 - $275,000",
@@ -93,10 +114,13 @@
    "job_id": "later:vp-creator-growth-slg",
    "location": "Remote",
    "old_gate": "G11",
+   "snippet": "Later sells an AI-powered influencer marketing platform with managed campaigns. VP Creator Growth owns sales-led creator acquisition for Mavely: strategy, deal structuring, and the team.",
+   "source": "greenhouse:later",
    "stratum": "present",
    "title": "VP, Creator Growth (SLG)",
    "url": "https://job-boards.greenhouse.io/later/jobs/8552394002",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Own Later's sales-led creator acquisition motion for the Mavely affiliate network end to end, reporting to the GM of Creator and leading a player-coach team against quota. FIT: Chief commercial family, scoped as an engine build: define the SLG strategy, deal economics and playbooks, then hire the team, which mirrors his Captify APAC build from first hire to an 18-person team and $0 to $12M ARR. Creator economy sits in his target categories and echoes his Yes on CreatorIQ VP GTM Operations, with remote work and a $200,000 - $275,000 range clearing his floor. RISK: It is a player-coach acquisition seat carrying team quota, and the posting wants someone who has operated inside a social or creator-economy platform, which he has not."
   },
   {
    "comp": "$149,340 - $239,148",
@@ -105,10 +129,13 @@
    "job_id": "publicis-media:vp-performance-content-geo-and-ai-search",
    "location": "New York, NY",
    "old_gate": "G4",
+   "snippet": "Publicis Media's investment arm PMX serves agencies like Starcom, Zenith and Spark Foundry; this VP builds and sells its GEO and AI Search practice to agencies and clients.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "VP, Performance Content GEO and AI Search",
    "url": "https://www.linkedin.com/jobs/view/vp-performance-content-geo-and-ai-search-at-publicis-media-4470719139?position=3&pageNum=7&refId=MyLMzdnxcXAcHfelMjFx1A%3D%3D&trackingId=%2FcbbuhxFPwpQDmxuSFR6Vg%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Senior leader in the PMX Performance team advancing the Performance Content practice across GEO, AI Search and organic discovery, spanning practice leadership, client advisory, solution development, revenue growth and team building. FIT: Nearest family is AI transformation and commercial strategy: a practice to build and sell, with scopes, value narratives and partner deals, like his AdFixus reposition and the 45-day AI editorial-ops pipeline at a top-10 US content business. He said Yes to Publicis Groupe VP and SVP Commercial Strategy on 2026-10-01; pay tops at $239,148, in NYC. RISK: The core is SEO and content practice work inside an agency network, close to the growth marketing he declined at Abridge."
   },
   {
    "comp": "$500K \u2013 $520K \u2022 Offers Equity \u2022 Offers Commission",
@@ -117,10 +144,13 @@
    "job_id": "sierra:area-vice-president-public-sector",
    "location": "US - Remote",
    "old_gate": "G11",
+   "snippet": "Sierra sells customer-facing AI agents to major brands and now government. This seat builds and leads the founding public sector sales team, owning revenue, capture strategy and prime partner relationships.",
+   "source": "ashby:sierra",
    "stratum": "near",
    "title": "Area Vice President, Public Sector",
    "url": "https://jobs.ashbyhq.com/sierra/89b2027d-d019-46ca-8071-f8a1a4e647d8",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Build and lead Sierra's founding public sector sales team, owning revenue growth, territory and capture strategy, and prime contractor and partner relationships across federal, state and local accounts. FIT: Closest to regional GM: a founding team and a repeatable GTM motion to build, which matches his Captify APAC build from first hire to an 18-person team and $12M ARR, with partners at 30% of revenue. Sierra is on his target list, he applied for its Enterprise Sales Leader seat, and the pay is $500K \u2013 $520K plus equity, US remote. RISK: It asks for 15+ years of selling and deep government procurement (GSA schedules, GWACs, IDIQs), which he lacks, and he declined over a dozen Sierra sales seats for requirements mismatch."
   },
   {
    "comp": "$175,000.00/yr - $200,000.00/yr",
@@ -129,10 +159,13 @@
    "job_id": "bay-colony-search:vice-president",
    "location": "New York City Metropolitan Area",
    "old_gate": "G11",
+   "snippet": "Unnamed B2B media and events company (via Bay Colony Search) hiring a GM to own the P&L of its $2-3M digital portfolio and rebuild it around subscribers, email and AI.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "Vice President",
    "url": "https://www.linkedin.com/jobs/view/vice-president-at-bay-colony-search-4472444936?position=8&pageNum=6&refId=rmk48DiV%2B%2BXd%2FYvarWd%2B8A%3D%3D&trackingId=JFkpn5p5vOaXHzyTvDXwKw%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "General Manager with full P&L ownership of an established $2-3M B2B digital media portfolio, reporting to the parent company President, rebuilding it around owned audiences, email and AI. FIT: Country and regional GM family: a rebuild mandate with full P&L, the shape of his Captify APAC build and his $9M to $61M Nine data and automation turnaround. The brief to design AI into content, acquisition and monetization matches his 14-agent OS. His closest ruling is Foundry SVP & GM, Audience & Growth, which he applied for. Pay tops at $200,000, exactly his floor. RISK: A recruiter posting for an unnamed parent with a small $2-3M legacy trade media and events business, in the office most days, may read to him as a business he does not want."
   },
   {
    "comp": "$200,000.00/yr - $250,000.00/yr",
@@ -141,10 +174,13 @@
    "job_id": "jobot:head-of-growth",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "Unnamed AI-native platform automating complex operational workflows for frontier tech companies (via Jobot). Founding Head of Growth building demand, outbound and GTM systems.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "Head of Growth",
    "url": "https://www.linkedin.com/jobs/view/head-of-growth-at-jobot-4466978288?position=1&pageNum=20&refId=KP6u7DvL5LO%2B2V05Ihm%2BCA%3D%3D&trackingId=Jag5ttdyU53CdkG23saeRQ%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Founding GTM Lead / Head of Growth who will build the demand engine from the ground up, working directly with the CEO. FIT: Chief commercial family as a founding commercial build. The posting asks him to define the ICP, build signal-based outbound and set up attribution, which mirrors AdFixus, where he designed a new ICP and four personas and ran 43 outbound campaigns. It is close to his Yes on DiligenceSquared Head of GTM, and the $200,000 - $250,000 range in New York meets his floor. RISK: This is a hands-on demand-gen seat behind a Jobot recruiter post with the employer hidden, close to the growth marketing he declined at Abridge."
   },
   {
    "comp": "$250,000 - $330,000",
@@ -153,10 +189,13 @@
    "job_id": "slalom:managing-director-go-to-market-customer-experience-for-north-america",
    "location": "New York, NY",
    "old_gate": "G7",
+   "snippet": "Slalom sells business and technology consulting; this MD runs national go-to-market for its Customer Experience practice, owning pipeline, pursuits and the commercial operating model.",
+   "source": "apify_linkedin",
    "stratum": "near",
    "title": "Managing Director, Go-To-Market \u2014 Customer Experience for North America",
    "url": "https://www.linkedin.com/jobs/view/managing-director-go-to-market-%E2%80%94-customer-experience-for-north-america-at-slalom-4469483623?position=42&pageNum=0&refId=pNDl022BsFnjVRfbYvbSzA%3D%3D&trackingId=fLS2rOhRmHKWd%2FZlp26APg%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Managing Director who owns the national go-to-market motion for Slalom's CX practice of 400+ consultants, managing three regional GTM leaders and leading pursuits from qualification through close. FIT: Chief commercial family: he would craft the commercial operating model and lead three regional GTM leaders, a match for his Nine restructure of a 100+ person sales org ($9M to $61M). Pay of $250,000 to $330,000 in New York clears his target, and his Yes to Publicis SVP Commercial Strategy shows he will take services-firm commercial seats. RISK: Slalom is a consultancy, and he has declined most of those (EY-Parthenon, West Monroe, Ankura); the ask for 15+ years in consulting is a background he lacks."
   },
   {
    "comp": "",
@@ -165,10 +204,13 @@
    "job_id": "swooped:director-of-ops-technology",
    "location": "United States",
    "old_gate": "G11",
+   "snippet": "Swooped job listing for an unnamed US remote employer; Director of Ops Technology owns the ops tech stack and teams, redesigning the go-to-market stack for an AI-first environment.",
+   "source": "apify_linkedin",
    "stratum": "near",
    "title": "Director of Ops Technology",
    "url": "https://www.linkedin.com/jobs/view/director-of-ops-technology-at-swooped-4469570524?position=7&pageNum=83&refId=Hm%2FO4xOHcfJsK7vbboSW3g%3D%3D&trackingId=WbjJqpggXCYObwqw5kNNMA%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Lead the operational technology stack and systems teams, redesigning the go-to-market stack for an AI-first environment and driving AI-native transformation, with hands-on building. FIT: AI transformation family (Head of AI Operations): the posting asks for AI-native workflows that created step-function change, and he runs a 14-agent, 45-workflow AI OS in production. It also echoes his Yes to Notion Head of GTM Operations and Render Head of Revenue Operations. The case rests on mandate alone, since the employer is unnamed. RISK: The employer is hidden behind Swooped, and the seat leans to Salesforce-style systems administration, close to the Harris Allied Head of AI Operations and Systems role he declined."
   },
   {
    "comp": "",
@@ -177,10 +219,13 @@
    "job_id": "accordion:senior-director",
    "location": "London",
    "old_gate": "G11",
+   "snippet": "Accordion, a PE-backed financial consultancy serving private equity sponsors and CFOs. The seat is a London Senior Director advising portfolio company finance functions on operating model, process and technology.",
+   "source": "greenhouse:accordion",
    "stratum": "far",
    "title": "Senior Director",
    "url": "https://job-boards.greenhouse.io/accordion/jobs/7493864",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Senior Director in Accordion's Transformation Practice in London, advising the office of the CFO at private equity backed portfolio companies on operating model design, finance processes and technology roadmaps. FIT: The nearest family is AI transformation, but this mandate is finance transformation. The case rests on operating model design and on helping build the London footprint, which echoes his Captify APAC build from first hire. His Yes to BOI's AI Transformation Director and Vista's Data & AI Transformation seats shows he will take consultancy and PE-adjacent transformation roles. RISK: It asks for 12+ years at an accounting or financial advisory firm and expertise in order-to-cash and FP&A, close to the Portage Point Office of the CFO seat he declined."
   },
   {
    "comp": "$150,000 - $200,000",
@@ -189,10 +234,13 @@
    "job_id": "influential:vice-president-strategy-analytics",
    "location": "New York City Metropolitan Area",
    "old_gate": "G11",
+   "snippet": "Influential, a Publicis Groupe influencer marketing agency for Fortune 500 brands, seeks a VP to lead its Strategy & Analytics team, planning process and client pitches.",
+   "source": "apify_linkedin",
    "stratum": "near",
    "title": "Vice President, Strategy & Analytics",
    "url": "https://www.linkedin.com/jobs/view/vice-president-strategy-analytics-at-influential-4470034019?position=6&pageNum=6&refId=rmk48DiV%2B%2BXd%2FYvarWd%2B8A%3D%3D&trackingId=Jy3dXshk2PefGLNPgr%2Brjw%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Lead the Strategy & Analytics team at a Publicis-owned influencer agency, setting the strategic planning process and pitching insights to Fortune 500 brands. FIT: Corporate strategy family, client-side. He said Yes to two Publicis Groupe commercial strategy seats on 2026-10-01, and his Nine data build ($9M to $61M, 70+ products) matches the data-to-strategy brief. Pay tops at $200,000, exactly his floor. RISK: It is an agency insights and campaign-strategy seat, close to the Omnicom VP Strategy Director role he declined as business uninteresting."
   },
   {
    "comp": "$275,000",
@@ -201,10 +249,13 @@
    "job_id": "comscore-inc:senior-vice-president-business-development",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "Comscore (NASDAQ: SCOR) sells cross-platform media measurement; this SVP Business Development seat leads platform partnerships, revenue-share and data licensing deals as a senior IC.",
+   "source": "apify_linkedin",
    "stratum": "near",
    "title": "Senior Vice President, Business Development",
    "url": "https://www.linkedin.com/jobs/view/senior-vice-president-business-development-at-comscore-inc-4468005920?position=5&pageNum=29&refId=spkz%2BbAOXtaVaQFvDwW5fA%3D%3D&trackingId=uesuPlob3bNlqefw0Yr4Ow%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Senior individual contributor leading Comscore's platform partnership strategy to expand distribution, adoption and monetization of its measurement products through third-party media and ad platforms. FIT: Partnerships and alliances family: he took partner channel to 30% of Captify APAC revenue and closed a $1.5M Microsoft partnership. The seat asks for revenue-share and data licensing deals across programmatic and measurement, his adtech home ground, plus an operating-model mandate, in NYC at up to $275K. RISK: Comscore is a legacy public measurement business with no AI angle, the kind of adtech he declined at Criteo, The Trade Desk and Ogury as uninteresting, and the seat is a senior individual contributor."
   },
   {
    "comp": "",
@@ -213,10 +264,13 @@
    "job_id": "encord:director-of-business-development",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "Encord sells a data platform that curates, annotates and evaluates AI training data for 300+ AI teams. Seat leads BDRs and Commercial Associates and builds the outbound pipe generation motion.",
+   "source": "apify_linkedin",
    "stratum": "near",
    "title": "Director of Business Development",
    "url": "https://www.linkedin.com/jobs/view/director-of-business-development-at-encord-4472799746?position=58&pageNum=0&refId=ajihHHmm3gPxsjixeIBRlg%3D%3D&trackingId=BQ0iv2CWzY%2F1fpqLFWToYw%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Own and build Encord's outbound pipe generation machine, leading the Commercial Associate and BDR team alongside Sales, Marketing, CS leadership and the co-founders. FIT: Closest family is chief commercial (GTM engine build): the posting offers autonomy to build the engine, test messaging and run new campaigns, which matches his AdFixus rebuild of ICP, personas and 43 outbound campaigns. Encord is an AI data layer for 300+ AI teams, Series C at $60M, NYC based and near his AI infrastructure category. RISK: This is a BDR team lead seat that hints at a junior hire ('make up for any potential lack of experience'), like the ThoughtSpot and Synthesia roles he declined as seniority below."
   },
   {
    "comp": "$190,000 - $270,000",
@@ -225,10 +279,13 @@
    "job_id": "anthropic:strategy-operations-office-of-the-cco",
    "location": "San Francisco, CA | New York City, NY",
    "old_gate": "G14",
+   "snippet": "Anthropic builds Claude AI models. Strategy and ops seat in the Office of the CCO: runs GTM initiatives, Board and exec materials, cross-team programs. NYC or SF, $190,000 to $270,000.",
+   "source": "greenhouse:anthropic",
    "stratum": "present",
    "title": "Strategy & Operations, Office of the CCO",
    "url": "https://job-boards.greenhouse.io/anthropic/jobs/5432995008",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Internal strategy and operations seat in the Office of the CCO, reporting to the CCO's chief of staff, owning go-to-market workstreams, executive and Board materials, and gaps with no clear owner. FIT: Chief of Staff family at Anthropic, a business he already applied to (Head of Enterprise Sales), and close to his Yes on Cloudflare Chief of Staff to CSO. His Nexxen cross-functional alignment work and 14-agent AI OS match the brief to bridge teams and use Claude daily; pay tops at $270,000, NYC. RISK: Reports to the CCO's chief of staff and asks for 4+ years, which reads below his level, like his seniority-below declines."
   },
   {
    "comp": "",
@@ -237,10 +294,13 @@
    "job_id": "securitas-security-services-usa-inc:vp-commercial-growth",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "Securitas sells protective and security guard services. VP, Commercial Growth supports the SVP on enterprise sales strategy, pipeline and team coaching; fully remote US.",
+   "source": "apify_linkedin",
    "stratum": "far",
    "title": "VP, Commercial Growth",
    "url": "https://www.linkedin.com/jobs/view/vp-commercial-growth-at-securitas-security-services-usa-inc-4466624576?position=3&pageNum=40&refId=QXUZhwcVdWPla0ao2ND%2Flg%3D%3D&trackingId=SJPOx6y%2FxbuJoToUKFTLag%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Remote VP under the SVP, Commercial Growth who helps execute growth plans, supports enterprise sales strategy and pursuits, and coaches commercial teams. FIT: Chief commercial family: it asks for pipeline discipline, forecasting and coaching sales teams, which matches his rebuild of a 100+ person sales org at Nine ($9M to $61M). The case rests on the remote US seat and commercial scope, not the business. RISK: Securitas sells physical guard services, far outside his internet-native canon, and he declines ordinary businesses as uninteresting."
   },
   {
    "comp": "$275,000",
@@ -249,10 +309,13 @@
    "job_id": "comscore-inc:senior-vice-president-product-management-activation",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "Comscore sells cross-platform media measurement. SVP owns the Activation product portfolio, turning audience, TV and CTV data into targeting products, reporting to the EVP Product.",
+   "source": "apify_linkedin",
    "stratum": "far",
    "title": "Senior Vice President, Product Management, Activation",
    "url": "https://www.linkedin.com/jobs/view/senior-vice-president-product-management-activation-at-comscore-inc-4467107603?position=5&pageNum=54&refId=ymavCDdBOU06D77jf59xhg%3D%3D&trackingId=WoY116UA0TR141aO76p8tA%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Functional leader for Comscore's activation product portfolio, reporting to the EVP Product Management, owning roadmap and commercialization across Proximic, audience activation and CTV. FIT: Closest to chief commercial and strategy, via product strategy: he was Head of Product and Platform Strategy at Nexxen and launched 70+ products at Nine. The posting's DSP, SSP, clean room and CTV demands match his record, and pay is $275K in New York. RISK: Adtech with no AI angle at a mature measurement company, like the Criteo and Trade Desk seats he called business uninteresting."
   },
   {
    "comp": "",
@@ -261,10 +324,13 @@
    "job_id": "fortune-500:vp-of-ai-center-of-excellence",
    "location": "New York, United States",
    "old_gate": "G11",
+   "snippet": "Unnamed Fortune 500, likely IT services with global delivery units. VP of AI CoE: owns enterprise AI roadmap, agentic platforms, governance, and an AI engineering team. Remote NY.",
+   "source": "apify_linkedin",
    "stratum": "near",
    "title": "VP of AI Center of Excellence",
    "url": "https://www.linkedin.com/jobs/view/vp-of-ai-center-of-excellence-at-fortune-500-4472304190?position=1&pageNum=0&refId=h9hIk1HvQlHNgTUaeV7r7g%3D%3D&trackingId=CP7uSKnDJt2Zzvo9GhJeTQ%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Lead the enterprise AI roadmap, CoE governance and operating model, scale agentic and generative AI across SDLC and business operations, and act as chief AI evangelist to executives and clients. FIT: AI transformation family from canon 5. His 14-agent, 45-workflow production AI OS answers the agentic ask, and the 45-day AI editorial-ops pipeline answers the C-suite value-narrative ask. Close rulings are BOI AI Transformation Director and Vista SVP Data & AI Transformation, both Yes, with remote NY in scope. RISK: This is an engineering leadership seat at an unnamed firm that reads like IT services, requiring 5+ years in senior AI/ML leadership plus deep cloud and MLOps architecture, which is close to his Gusto requirements-mismatch decline."
   },
   {
    "comp": "$175K \u2013 $260K \u2022 Offers Equity \u2022 Multiple Ranges",
@@ -273,10 +339,13 @@
    "job_id": "kindred:director-lifecycle-marketing",
    "location": "Remote - US",
    "old_gate": "G11",
+   "snippet": "Kindred runs a members-only home swapping platform with 300,000 members in 150+ cities. The seat is its first lifecycle marketing hire, owning email, SMS, push and in-app engagement.",
+   "source": "ashby:kindred",
    "stratum": "far",
    "title": "Director, Lifecycle Marketing",
    "url": "https://jobs.ashbyhq.com/kindred/031d501d-998e-47c5-bebf-ad6f1c1b2d95",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "First lifecycle marketing hire, reporting to the Head of Growth, who builds and runs Kindred's email, SMS, push and in-app member communications as a hands-on player-coach. FIT: No canon 5 family fits; the closest is growth marketing, which he declined at Abridge. The case rests on a $150M-backed, a16z and Index marketplace that wants a builder of a function from zero, as he did at Captify, with remote US pay up to $260K. RISK: This is lifecycle CRM work under the Head of Growth, needing 12+ years in lifecycle and Braze, which he has ruled out as a function."
   },
   {
    "comp": "",
@@ -285,10 +354,13 @@
    "job_id": "cfgi:financial-due-diligence-director",
    "location": "London, England",
    "old_gate": "G11",
+   "snippet": "CFGI is a financial consulting firm for CFOs; this Director leads buy-side and sell-side financial due diligence for PE and corporate clients in London.",
+   "source": "lever:cfgi",
    "stratum": "far",
    "title": "Financial Due Diligence - Director",
    "url": "https://jobs.lever.co/cfgi/456379bb-3727-4d99-add3-52cebb6a15ae",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Director in CFGI's UK Transaction Advisory Services practice, leading buy-side and sell-side financial due diligence for private equity firms, strategic buyers and corporate clients. FIT: Thin case, at the far edge of the corporate development family: it rests on his two technology M&A integrations at Nexxen and co-launching Meliora Fund One, plus a London seat helping grow a UK practice. His closest rulings, Portage Point and Ankura Office of the CFO seats, were declined. RISK: It requires at least 12 years of Big 4 assurance or transaction advisory, which he lacks, at a CFO-focused consultancy he would likely find uninteresting."
   },
   {
    "comp": "",
@@ -297,10 +369,13 @@
    "job_id": "staffappmd:chief-revenue-operating-officer-equity-based-co-founder",
    "location": "United States",
    "old_gate": "G11",
+   "snippet": "StaffAppMD builds communications software for medical practices; this is an equity-based co-founder CRO/COO owning go-to-market, sales and operations from pilot to scale.",
+   "source": "apify_linkedin",
    "stratum": "far",
    "title": "Chief Revenue / Operating Officer (Equity-Based Co Founder)",
    "url": "https://www.linkedin.com/jobs/view/chief-revenue-operating-officer-equity-based-co-founder-at-staffappmd-4471976454?position=6&pageNum=88&refId=v2%2BIJ%2B0%2BeA0DmrvDj2cGfA%3D%3D&trackingId=r9O1wRoIRiH1qLx8emFb1w%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Hybrid CRO/COO co-founder who designs and executes go-to-market, owns the full sales cycle and customer pilots, and builds repeatable sales and operations processes. FIT: Chief commercial family (Founding CCO shape): he was first hire at Captify APAC and built it from $0 to $12M ARR. The case rests on founder-level build scope; ColdIQ (no base) is the closest Yes he gave on pay structure. RISK: Equity-only pay in healthcare provider communications, a domain he has repeatedly declined (Abridge, Headway, Cedar)."
   },
   {
    "comp": "$173,500 - $270,000",
@@ -309,10 +384,13 @@
    "job_id": "blackrock:ai-strategy-transformation-director-rqa",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "BlackRock, asset manager and Aladdin fintech provider. Director running AI transformation and Private Markets risk programs inside Risk & Quantitative Analysis, NYC.",
+   "source": "apify_linkedin",
    "stratum": "far",
    "title": "AI Strategy & Transformation, Director - RQA",
    "url": "https://www.linkedin.com/jobs/view/ai-strategy-transformation-director-rqa-at-blackrock-4471163113?position=18&pageNum=0&refId=ax4DoV%2FwHmeOpY8Ay8olQw%3D%3D&trackingId=aCh%2FRYvRKBK7JQ4g8OYOTA%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Director on RQA's Strategy & AI Transformation team, leading day-to-day execution of AI transformation, operating model redesign and Private Markets risk programs. FIT: AI transformation family: scale AI-enabled workflows and track value realization, matching his 45-day AI editorial pipeline (40% production-time cut) and 14-agent AI OS. Close to his Vista Equity Data & AI Transformation Yes; NYC, top of range $270,000. RISK: BlackRock is an asset manager, and he declined Janus Henderson, TIAA and Citi AI seats as business uninteresting."
   },
   {
    "comp": "$259,300 - $350,800",
@@ -321,10 +399,13 @@
    "job_id": "groq:director-revenue-operations",
    "location": "New York City Metropolitan Area",
    "old_gate": "G11",
+   "snippet": "Groq sells AI inference compute billed on GPU-hours and tokens; this Director builds Revenue Operations across Deal Desk, revenue systems, billing and Sales Ops.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "Director, Revenue Operations",
    "url": "https://www.linkedin.com/jobs/view/director-revenue-operations-at-groq-4473997205?position=3&pageNum=19&refId=02gdCwR5HTcYQgGJ9kGikg%3D%3D&trackingId=wfqyEwIeB0IjElNr8BexGA%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Build and lead Groq's Revenue Operations function, owning Deal Desk, CRM/CPQ/CLM/billing systems, usage-to-invoice operations and core Sales Operations. FIT: Chief commercial and strategy family, operating-model side: he built Nine's $55M automated marketplace with pricing, attribution and incentive architecture, and he applied to Render's Head of Revenue Operations. Groq is AI infrastructure, a build-from-scratch mandate in NYC at $259,300-$350,800. RISK: The posting asks for deep hands-on Deal Desk, CPQ/CLM and usage-billing operations, a back-office systems seat he has never run."
   },
   {
    "comp": "",
@@ -333,10 +414,13 @@
    "job_id": "google:head-of-strategy-and-operations-search-partnerships",
    "location": "New York, NY",
    "old_gate": "G14",
+   "snippet": "Google Search Partnerships: head of strategy and operations shaping partner and ecosystem strategy, GTM and planning for Search, alongside Gemini and GenAI partnerships, leading a strategy team in NYC.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "Head of Strategy and Operations, Search Partnerships",
    "url": "https://www.linkedin.com/jobs/view/head-of-strategy-and-operations-search-partnerships-at-google-4469465258?position=21&pageNum=0&refId=ax4DoV%2FwHmeOpY8Ay8olQw%3D%3D&trackingId=6NMmJC3yFbbNHyTO8eKNUQ%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Lead Strategy and Operations for Google Search Partnerships, shaping ecosystem strategy, GTM and the business plan with VPs and Directors while running a strategy team. FIT: Corporate strategy plus partnerships family. It matches his partner architecture at Captify (30% of APAC revenue, a $1.5M Microsoft deal), and his Yes votes for OpenAI Head of Partnerships and Cloudflare Chief of Staff to the CSO are the closest comparisons. Pay is $234000 - $325000 plus bonus and equity, in New York, with the GenAI Partnerships lead next door. RISK: A strategy-ops seat inside a mature big-company org may read to him like the Salesforce or ServiceNow ops roles he declined."
   },
   {
    "comp": "$265,000 - $310,000",
@@ -345,10 +429,13 @@
    "job_id": "citizen:head-of-product-applied-ai",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "Citizen, the #1 safety app in the U.S., sells consumer subscriptions and real-time safety products to cities and enterprises; this seat is Head of Product, run with an agent team instead of PMs.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "Head of Product, Applied AI",
    "url": "https://www.linkedin.com/jobs/view/head-of-product-applied-ai-at-citizen-4470039502?position=5&pageNum=13&refId=qx1EumAVu4pGky%2BzhlZwbw%3D%3D&trackingId=xWzhCg5GVT8UjLU0OSQ85Q%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Head of Product for all of Citizen, reporting to the Founder, with no product managers: you build and operate an agent team that does the production work while you own the decisions. FIT: Closest to his AI transformation family (Head of AI Operations): the headcount is agents, and he runs a 14-agent, 45-workflow AI OS in production and launched 70+ products at Nine. Pricing, packaging and enterprise API scope suit his commercial record, at $265,000 - $310,000 in NYC; the case rests on agent-operating proof, not a product title. RISK: It is a hands-on product seat at a consumer safety app, and he has never held a Head of Product title or owned consumer retention numbers."
   },
   {
    "comp": "",
@@ -357,10 +444,13 @@
    "job_id": "accordion:senior-director-ai-solutions",
    "location": "London",
    "old_gate": "G11",
+   "snippet": "Accordion, PE-backed financial consulting for the office of the CFO. Senior Director leading applied AI use cases, POCs and origination across UK and Europe from London.",
+   "source": "greenhouse:accordion",
    "stratum": "near",
    "title": "Senior Director, AI Solutions",
    "url": "https://job-boards.greenhouse.io/accordion/jobs/8010947",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Senior client-facing lead for applied AI across UK and Europe, sizing use cases, running POCs and supporting business development for PE sponsors and portfolio companies. FIT: AI transformation family, close to his Yes on BOI AI Transformation Director and Vista Equity SVP Data & AI Transformation. The 14-vendor RFP he stopped, with an AI pipeline shipped in 45 days, matches the posting's ask to buy before building. RISK: A PE finance consultancy for the office of the CFO, the domain behind his Ankura and Portage Point declines."
   },
   {
    "comp": "$180,000 - $200,000",
@@ -369,10 +459,13 @@
    "job_id": "revel-it:director-data-science",
    "location": "Columbus, OH",
    "old_gate": "G11",
+   "snippet": "Recruiter Revel IT, for an unnamed healthcare technology company: Director of Data Science leading data scientists and ML engineers, fully remote US, $180,000 - $200,000 base.",
+   "source": "apify_linkedin",
    "stratum": "far",
    "title": "Director Data Science",
    "url": "https://www.linkedin.com/jobs/view/director-data-science-at-revel-it-4467718576?position=7&pageNum=54&refId=JtRS5mSSIj3aNdP%2FwxOv0A%3D%3D&trackingId=sounduzIEcZrAN%2Fm5b4uxA%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Lead and grow a team of data scientists and ML engineers at an unnamed healthcare technology company, owning data science strategy and production ML delivery while staying hands-on. FIT: The case is thin. The nearest family is AI transformation from canon 5, resting on his 14-agent AI OS in production and the Nine data and automation build from $9M to $61M. The pay top of $200,000 meets his floor and the seat is fully remote in the US. RISK: This is a hands-on data science leadership seat requiring 7+ years of ML and Python work, at an undisclosed healthcare employer behind a recruiter, and he declines healthcare domains (Abridge, Headway, Cedar) and ML engineering leadership (Gusto)."
   },
   {
    "comp": "$267,000 - $334,000",
@@ -381,10 +474,13 @@
    "job_id": "sonos-inc:vice-president-business-development",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "Sonos sells premium home audio hardware and software. VP Business Development reports to the COO and leads platform and content partnerships, IP licensing and M&A screening.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "Vice President, Business Development",
    "url": "https://www.linkedin.com/jobs/view/vice-president-business-development-at-sonos-inc-4471531422?position=28&pageNum=0&refId=Ny3PgsWS16%2Fbmp0jaDFk5Q%3D%3D&trackingId=QtBqOhk9jtCF%2BN3euDQfOw%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "VP Business Development reporting to the COO, owning strategic partnerships, commercial agreements and an M&A screen, and closing two to three anchor partnerships per year. FIT: Partnerships plus corporate development, two canon 5 families, in an NYC seat at $267,000-$334,000. Media, streaming and advertising partnerships are preferred, matching his 30% partner channel at Captify, the $1.5M Microsoft deal and two M&As at Nexxen; close Yes rulings are Profound VP Strategic Partnerships and Phantom Head of Business and Corporate Development. RISK: Sonos is a consumer hardware brand with no AI angle, like flex and amperity, which he called uninteresting, and the seat prefers Santa Barbara."
   },
   {
    "comp": "",
@@ -393,10 +489,13 @@
    "job_id": "google:strategy-and-operations-principal-lead-gbo-chief-of-staff-team",
    "location": "New York, NY",
    "old_gate": "G14",
+   "snippet": "Google sells Ads products worldwide; this Principal Lead on the GBO Chief of Staff team runs the operating rhythm, OKR planning and executive decision forums for Ads GTM leadership in New York.",
+   "source": "apify_linkedin",
    "stratum": "present",
    "title": "Strategy and Operations Principal Lead, GBO Chief of Staff Team",
    "url": "https://www.linkedin.com/jobs/view/strategy-and-operations-principal-lead-gbo-chief-of-staff-team-at-google-4471554620?position=6&pageNum=29&refId=o1OEnqFpXMEH8aVfhQU7rA%3D%3D&trackingId=pBZsPuyVFIC2EsjOoTJ7wg%3D%3D",
-   "verdict": "present"
+   "verdict": "present",
+   "why": "Chief of Staff team seat for Google's GBO Ads go-to-market org: design and run the operating rhythm and decision forums for GBO & GTM leadership, and turn strategy and OKRs into actionable plans. FIT: Corporate strategy and Chief of Staff family, inside the Ads business he has worked in since Microsoft UK in 2010. Restructuring Nine's sales org of over 100 people while growing revenue from $9M to $61M is his proof of GTM operating-model work. NYC, $186000 - $269000 plus a 20% bonus target and equity; the closest ruling is his Yes to Cloudflare Chief of Staff to CSO. RISK: No AI-transformation or build mandate, and he declined similar big-company GTM Chief of Staff seats at UiPath and ServiceNow as business uninteresting."
   },
   {
    "comp": "$248,000 - $310,000",
@@ -405,10 +504,13 @@
    "job_id": "moloco:director-of-product-management-consumer",
    "location": "New York, NY",
    "old_gate": "G11",
+   "snippet": "Moloco sells AI-powered ad platforms: Moloco Ads for mobile app user acquisition and Moloco Commerce Media for retailers. Seat owns product strategy and the P&L for an ad product in a new demand pool.",
+   "source": "apify_linkedin",
    "stratum": "near",
    "title": "Director of Product Management, Consumer",
    "url": "https://www.linkedin.com/jobs/view/director-of-product-management-consumer-at-moloco-4442125632?position=8&pageNum=82&refId=XIFWygM2Zz04gnvO20J0xg%3D%3D&trackingId=ECdpxOLcmyWMlXGBGSHfGQ%3D%3D",
-   "verdict": "reject"
+   "verdict": "reject",
+   "why": "Own, develop, and execute the product strategy for an end-to-end ads business, including the P&L for an ad product, taking it into a new demand pool and building strategic partnerships. FIT: Closest to the GM family, since the seat carries the P&L for an ad product. It matches his Nine record: a $55M automated marketplace, 70+ commercial products, and Head of Product and Platform Strategy APAC at Nexxen. Moloco is AI-native adtech, which his canon allows, in NYC at $248,000 - $310,000. RISK: This is a product management seat in performance adtech, close to his Scale AI product director decline, and he has also turned down Criteo and The Trade Desk as businesses."
   }
  ],
  "pool": 636,
@@ -419,5 +521,5 @@
   "near": 10,
   "present": 15
  },
- "usd": 6.2824
+ "usd": 8.8908
 }

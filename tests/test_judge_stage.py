@@ -135,3 +135,25 @@ def test_a_judge_that_did_not_run_stages_nothing_in_gate_mode():
     from hunter import run as R
     src = inspect.getsource(R.stage_postings)
     assert 'row["status"] = "judge_pending"' in src
+
+
+def test_the_case_is_written_for_the_rows_that_reach_him_and_a_failed_one_is_left_out(monkeypatch):
+    def fake(cfg, system, role, client=None):
+        if role.job_id == "bad":
+            return judge.thin_case(role), "s", ["a figure does not appear in the JD"], 0.04
+        return f"case for {role.job_id}. FIT: f. RISK: r.", "snip", [], 0.05
+    monkeypatch.setattr(judge, "make_the_case", fake)
+    roles = [cand("good").role, cand("bad").role]
+    cases, usd = judge_stage.cases_for(Cfg(), "ctx", roles, client=object())
+    assert cases == {"good": ("case for good. FIT: f. RISK: r.", "snip")}
+    assert usd == 0.09
+    assert judge_stage.cases_for(Cfg(), "", roles, client=object()) == ({}, 0.0), \
+        "no context, no case: the text already written stays"
+
+
+def test_staging_uses_the_case_in_shadow_and_in_gate():
+    import inspect
+    from hunter import run as R
+    src = inspect.getsource(R.stage_postings)
+    assert src.count("judge_stage.cases_for(") == 2
+    assert '"why_it_fits": why' in src, "the database row carries the text he reads"
