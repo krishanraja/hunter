@@ -541,7 +541,11 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet,
         stored = (d.get("krish_verdict") or "").strip()
         his_override = (learn.is_auto(d) and stored
                         and srow.verdict.strip() != stored)
-        if verdict_kind != "none" and (not stored or his_override):
+        # A verdict that moved on (Yes, then Applied; Yes, then Declined) is a
+        # new ruling. Only the first was ever recorded, so a role he applied to
+        # stayed "Yes" in the database and the learning loop never heard it.
+        moved_on = bool(stored) and learn.classify(stored)[0] != verdict_kind
+        if verdict_kind != "none" and (not stored or his_override or moved_on):
             patch = {"krish_verdict": srow.verdict, "verdict_at": NOW(),
                      "verdict_source": "sheet column A"}
             if reason_code:
@@ -3536,11 +3540,11 @@ def sync_applied_state(cfg: Config, sheet: Sheet, canon: Canon) -> dict:
                                 "" if when.lower() in ("", "n/a") else when)
         out["from_sheet"] += 1
 
-    for a in db_get(cfg, "hunter_application_approvals", {
-            "select": "job_id,state,submitted_at", "state": "eq.submitted",
-            "limit": "1000"}):
-        state[a["job_id"]] = ("Applied", a.get("submitted_at") or "")
-        out["from_ledger"] += 1
+    # The approval ledger is deliberately NOT read here any more. Marking a role
+    # Applied from the ledger, without the sheet, made close-submitted skip it
+    # as already done, so a submission the extension reported between two runs
+    # never reached his sheet. record_applied is the one writer of
+    # ledger-driven state, and it writes the database only after the sheet.
 
     by_id = {r["job_id"]: r for r in db_rows}
     for job_id, (label, when) in state.items():
@@ -3662,6 +3666,145 @@ def archive_decided(sheet: Sheet, canon: Canon) -> tuple[int, list[str]]:
                                archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
                                headers=canon.sheet_headers)
     return moved, lines
+
+
+def settle_step(cfg: Config, canon: Canon, sheet: Sheet,
+                summary: list[str], *, apply: bool = True) -> dict:
+    """What column A asks for that must not wait for the next batch.
+
+    Typing Applied or Declined in column A used to do nothing until the next
+    full run, and a full run could be days away or, on 27 September, never.
+    He marked openrouter and BOI Applied on 3 October and both would have sat
+    on Pipeline reading as live work. This runs hourly. For each decided row,
+    in this order, because each step needs the row still where it is:
+
+    1. his edits to the row are recorded (amend.detect), since an archived row
+       is no longer compared;
+    2. his verdict is recorded. Reconcile only ever recorded a row's FIRST
+       verdict, so a role that went from Yes to Applied stayed Yes in the
+       database and the learning loop never heard he applied;
+    3. an Applied row is marked applied, on the sheet and in the database, and
+       any approval still open for that posting is closed on his word;
+    4. the row moves to the Applied tab, and the sheet is read back.
+    """
+    from .apply import approval
+    out = {"decided": 0, "amendments": 0, "verdicts": 0, "applied": 0,
+           "approvals_closed": 0, "archived": 0}
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    decided = []
+    for r in rows:
+        kind, code = verdicts.parse(r.verdict)
+        if kind in ("applied", "rejection"):
+            decided.append((r, kind, code))
+    out["decided"] = len(decided)
+    if not decided:
+        return out
+    paired = _pair_sheet_to_db(cfg, [r for r, _, _ in decided])
+
+    # 1. his edits, before the row leaves the tab amend reads
+    try:
+        state = amend.load_state(cfg)
+        if state:
+            found = amend.detect([r for r, _, _ in decided], paired, state)
+            out["amendments"] = amend.record(cfg, found) if apply else len(found)
+    except Exception as e:
+        summary.append(f"settle: amendments skipped: {e.__class__.__name__}: {e}")
+
+    # 2. the verdict, including a change from an earlier one
+    unpaired = []
+    for r, kind, code in decided:
+        d = paired.get(r.row_number)
+        if d is None:
+            unpaired.append(r)
+            continue
+        if (d.get("krish_verdict") or "").strip() == r.verdict.strip():
+            continue
+        patch = {"krish_verdict": r.verdict, "verdict_at": NOW(),
+                 "verdict_source": "sheet column A"}
+        if code:
+            patch["rejection_code"] = code
+        if kind == "rejection":
+            patch.update({"rejection_reason": r.verdict, "status": "dropped",
+                          "package_status": "blocked"})
+        if apply:
+            db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]}, patch)
+            record_verdict_event(cfg, d, r.verdict, kind, code)
+        out["verdicts"] += 1
+    events = learn.from_sheet_rows(unpaired, source="sheet column A, settled hourly")
+    if events and apply:
+        db_insert(cfg, "hunter_verdict_events", events,
+                  on_conflict="job_id,verdict,reason_code,reason_text",
+                  ignore_duplicates=True)
+    out["verdicts"] += len(events)
+
+    # 3. applied: the sheet first, then the database, then the open approvals
+    today = datetime.date.today().isoformat()
+    for r, kind, _ in decided:
+        if kind != "applied":
+            continue
+        d = paired.get(r.row_number)
+        if apply:
+            try:
+                if (r.cell("Application Status") or "").strip() != sheet_mod.APPLIED_STATUS:
+                    sheet.mark_applied(r.row_number, when=today)
+            except Exception as e:
+                summary.append(f"settle: {r.company} / {r.role}: Application Status "
+                               f"not written ({e.__class__.__name__}: {e})")
+                continue
+        out["applied"] += 1
+        if not d:
+            continue
+        if apply:
+            db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]},
+                     {"application_state": APPLIED_STATE, "applied_at": NOW()})
+        key = posting_key(d)
+        open_rows = db_get(cfg, approval.TABLE, {
+            "select": "token,job_id,state",
+            "state": f"in.({approval.AWAITING},{approval.APPROVED})", "limit": "500"})
+        same = {d["job_id"]}
+        if key:
+            ids = sorted({o["job_id"] for o in open_rows if o.get("job_id")})
+            if ids:
+                for x in db_get(cfg, "hunter_seen_roles", {
+                        "select": "job_id,job_url,url",
+                        "job_id": f"in.({','.join(ids)})", "limit": "500"}):
+                    if posting_key(x) == key:
+                        same.add(x["job_id"])
+        for o in open_rows:
+            if o.get("job_id") in same:
+                if apply:
+                    approval.set_state(cfg, o["token"], approval.SUBMITTED,
+                                       submitted_at=NOW(),
+                                       failure_reason=f"{SAID_SO} (column A)")
+                out["approvals_closed"] += 1
+
+    # 4. off Pipeline, and read back
+    if apply:
+        moved, _lines = archive_decided(sheet, canon)
+        out["archived"] = moved
+        left = [r for r in sheet.read_pipeline(canon.sheet_headers)
+                if verdicts.parse(r.verdict)[0] in ("applied", "rejection")]
+        if left:
+            summary.append(f"settle: {len(left)} decided row(s) still on Pipeline "
+                           f"after the archive: " + "; ".join(
+                               f"{r.company} / {r.role}" for r in left[:5]))
+    summary.append(
+        f"settle: {out['decided']} decided, {out['verdicts']} verdict(s) recorded, "
+        f"{out['amendments']} edit(s) read, {out['applied']} marked applied, "
+        f"{out['approvals_closed']} approval(s) closed, {out['archived']} moved "
+        f"to {config_mod.ARCHIVE_TAB}")
+    return out
+
+
+def cmd_settle(apply: bool = False) -> int:
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    summary: list[str] = []
+    out = settle_step(cfg, canon, sheet, summary, apply=apply)
+    print("\n".join(summary))
+    if not apply and out["decided"]:
+        print("dry run. add --apply to record and move these rows")
+    return 0
 
 
 def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
@@ -4830,6 +4973,21 @@ def record_applied(cfg: Config, canon, sheet: Sheet, job_id: str, *,
     want = ((company or "").strip().lower(), (role or "").strip().lower())
     hits = [r for r in rows
             if ((r.company or "").strip().lower(), (r.role or "").strip().lower()) == want]
+    if not hits:
+        # The text did not match: a hand edit to Business or Role, or the sheet's
+        # abbreviation of a long title. Fall back to the one thing that is the
+        # same on both sides, the posting itself, and still demand exactly one.
+        try:
+            known = db_get(cfg, "hunter_seen_roles", {
+                "select": "job_id,job_url,url", "job_id": f"eq.{job_id}", "limit": "1"})
+        except Exception:
+            known = []
+        key = posting_key(known[0]) if known else ""
+        if key:
+            hits = [r for r in rows if r.jd_url and posting_key({"url": r.jd_url}) == key]
+            if len(hits) == 1:
+                note.append(f"matched {company} / {role} to sheet row "
+                            f"{hits[0].row_number} by its posting URL")
     target = hits[0] if len(hits) == 1 else None
     # Whether the sheet actually took it. Nothing below may latch on a write that
     # did not happen: the ledger patch used to run either way, and
@@ -4941,7 +5099,14 @@ def send_applied_receipt(cfg: Config, *, company: str, role: str, when: str,
     lines = "".join(f"<li>{_esc(n)}</li>" for n in (notes or []))
     shot = (f"<p><a href=\"{_esc(screenshot)}\">the form as it was submitted</a></p>"
             if screenshot else "")
-    if confirmation:
+    if confirmation.startswith(SAID_SO):
+        # His own word, from column A or the extension's button. True, and worth
+        # recording, but it is not the form speaking and must never read as if it
+        # were.
+        proof = ("<p style='border-left:3px solid #6e7781;background:#f6f8fa;"
+                 "padding:10px 12px;margin:0 0 14px'><strong>Recorded on your "
+                 "word.</strong> The form did not confirm it to hunter.</p>")
+    elif confirmation:
         # Escaped, because this is no longer hunter's own words. The browser
         # extension sends what the employer's page said, so the bytes come from
         # a page hunter does not control, and this receipt is an email Krish
@@ -4966,7 +5131,9 @@ def send_applied_receipt(cfg: Config, *, company: str, role: str, when: str,
             f"<ul style='color:#555'>{lines}</ul></div>")
     text = "\n".join(
         ["[hunter-outbound]", f"Submitted: {role} at {company} on {when}",
-         (f"The form acknowledged it: {confirmation}" if confirmation else
+         ("Recorded on your word. The form did not confirm it to hunter."
+          if confirmation.startswith(SAID_SO) else
+          f"The form acknowledged it: {confirmation}" if confirmation else
           "Pressed, but the form showed no confirmation. See the attached "
           "picture of the page straight after the click. Nothing retried.")]
         + ([f"Form: {screenshot}"] if screenshot else [])
@@ -5011,9 +5178,11 @@ def send_apply_by_hand(cfg: Config, *, company: str, role: str, jd_url: str,
     for q, a in (essays or {}).items():
         bits.append(f"<p><b>{html_mod.escape(str(q))}</b></p>"
                     f"<p>{html_mod.escape(str(a)).replace(chr(10), '<br>')}</p>")
+    # The email used to name a button that never existed. Column A is the one
+    # place he already marks things, and settle reads it every hour.
     bits.append("<p>Nothing was submitted and no approval is pending for this "
-                "one. Mark it applied with the Applied button once you have "
-                "sent it.</p>")
+                "one. Once you have sent it, type <b>Applied</b> in column A of "
+                "its Pipeline row. Hunter moves it within the hour.</p>")
     notify.send_email(
         cfg, f"Apply by hand: {company} {role}",
         "".join(bits), to=notify.mailbox(cfg),
@@ -5039,7 +5208,10 @@ def send_applied_digest(cfg: Config, rows: list[tuple[str, str, str]],
     from .apply.approval import _esc
     items = []
     for company, role, confirmation in rows:
-        said = (f"<span style='color:#1a7f37'>{_esc(confirmation)}</span>"
+        said = (f"<span style='color:#6e7781'>{_esc(confirmation)}; the form "
+                f"did not confirm it</span>"
+                if confirmation.startswith(SAID_SO) else
+                f"<span style='color:#1a7f37'>{_esc(confirmation)}</span>"
                 if confirmation else
                 "<span style='color:#c47f00'>no confirmation recorded</span>")
         items.append(f"<li><strong>{_esc(company)}</strong> {_esc(role)}"
@@ -5925,9 +6097,21 @@ def cmd_close_submitted(apply: bool = False) -> int:
         cfg, "hunter_seen_roles",
         {"select": "job_id,application_state,job_url,url",
          "job_id": f"in.({','.join(ids)})", "limit": "200"})}
+    # Open means the SHEET has not caught up, whatever the database says. The
+    # database used to be marked Applied by a run that never wrote the sheet,
+    # and a check on the database alone then skipped the role for ever: the
+    # submission was recorded and his Pipeline row went on reading Yes.
+    on_pipeline = {((p.company or "").strip().lower(), (p.role or "").strip().lower())
+                   for p in sheet.read_pipeline(canon.sheet_headers)
+                   if (p.cell("Application Status") or "").strip() != sheet_mod.APPLIED_STATUS}
+
+    def sheet_behind(r: dict) -> bool:
+        return ((r.get("company") or "").strip().lower(),
+                (r.get("role") or "").strip().lower()) in on_pipeline
+
     open_ones = [r for r in rows
                  if (state.get(r["job_id"], {}).get("application_state") or "")
-                 not in APPLIED_STATES]
+                 not in APPLIED_STATES or sheet_behind(r)]
 
     # One posting, however many ledger rows point at it. Mutiny reached this
     # function under three job ids on 2026-09-24; the first wrote its Pipeline
@@ -6018,14 +6202,36 @@ def cmd_confirmations(apply: bool = False) -> int:
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     open_rows = []
-    for state in (approval.APPROVED, approval.SUBMITTED):
+    # AWAITING is the normal state of an application he filled through the
+    # extension link without replying APPROVE, which is how he applies. Reading
+    # only APPROVED and SUBMITTED meant an employer's receipt for the most common
+    # case was never even looked at.
+    for state in (approval.AWAITING, approval.APPROVED, approval.SUBMITTED):
         open_rows += db_get(cfg, approval.TABLE,
-                            {"select": "token,company,role,state,job_id,submitted_at",
+                            {"select": "token,company,role,state,job_id,submitted_at,sent_at",
                              "state": f"eq.{state}", "limit": "100"})
-    # A SUBMITTED row with a confirmation already recorded is finished.
-    open_rows = [r for r in open_rows
-                 if r["state"] == approval.APPROVED or not r.get("submitted_at")
-                 or r["state"] == approval.SUBMITTED]
+    # An AWAITING row is closed only on strong evidence: the receipt arrived
+    # after the approval was sent, and it is the only open application at that
+    # company, so one receipt cannot close the wrong role.
+    per_company: dict[str, int] = {}
+    for r in open_rows:
+        if r["state"] != approval.SUBMITTED:
+            k = (r.get("company") or "").strip().lower()
+            per_company[k] = per_company.get(k, 0) + 1
+
+    def awaiting_ok(msg: dict, row: dict) -> bool:
+        if row["state"] != approval.AWAITING:
+            return True
+        if per_company.get((row.get("company") or "").strip().lower(), 0) != 1:
+            return False
+        try:
+            from email.utils import parsedate_to_datetime
+            got = parsedate_to_datetime(msg.get("date") or "")
+            sent = datetime.datetime.fromisoformat(
+                str(row.get("sent_at") or "").replace("Z", "+00:00"))
+            return got >= sent
+        except (TypeError, ValueError):
+            return False
     if not open_rows:
         print("no applications waiting on a receipt")
         return 0
@@ -6040,7 +6246,8 @@ def cmd_confirmations(apply: bool = False) -> int:
     except confirmations.ConfirmError as e:
         print(str(e))
         return 1
-    pairs = confirmations.match(messages, open_rows)
+    pairs = [(m, r) for m, r in confirmations.match(messages, open_rows)
+             if awaiting_ok(m, r)]
     print(f"{len(messages)} candidate message(s), {len(open_rows)} open "
           f"application(s), {len(pairs)} matched"
           f"{'' if apply else ' (dry run, pass --apply to record)'}")
@@ -6256,6 +6463,8 @@ def main(argv: list[str]) -> int:
                          every=int(_flag("--every", "60")),
                          port=int(_flag("--port", "0")),
                          profile_dir=_flag("--profile"))
+    if cmd == "settle":
+        return cmd_settle(apply="--apply" in argv)
     if cmd == "close-submitted":
         return cmd_close_submitted(apply="--apply" in argv)
     if cmd == "confirmations":

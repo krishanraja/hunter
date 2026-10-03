@@ -249,3 +249,35 @@ def test_every_staging_path_is_covered():
     from hunter import run
     for fn in (run.run_command, run.cmd_run):
         assert "send_review_ready" in inspect.getsource(fn), fn.__name__
+
+
+def test_an_opened_application_never_reported_is_asked_about(monkeypatch):
+    """openrouter, 25 September: opened through the extension, sent, and the
+    report never arrived. The role sat at Yes with nothing saying why."""
+    fake = FakeDb(tables={
+        "workflow_runs": [_runs()],
+        "hunter_application_approvals": [
+            {"token": "or1", "company": "openrouter", "role": "Director, Channel Partnerships",
+             "created_at": ago(9), "opened_at": ago(8)}]})
+    monkeypatch.setattr(alerts, "db_get", fake.get)
+    problems = alerts.trouble_checks(None)
+    asked = [p for p in problems if p["kind"] == "did you send these?"]
+    assert asked and "openrouter" in asked[0]["detail"]
+    assert "column A" in asked[0]["detail"]
+    # and it is not ALSO nagged as an unanswered approval
+    assert not any(p["kind"] == "applications waiting on you" for p in problems)
+
+
+def test_a_batch_the_schedule_gave_up_on_is_reported(monkeypatch):
+    import datetime as dt
+    from hunter import schedule
+    slot = schedule.latest_slot(dt.datetime.now(dt.timezone.utc))
+    after = (slot + dt.timedelta(minutes=13)).isoformat()
+    fake = FakeDb(tables={
+        "workflow_runs": [_runs(run_at=(slot - dt.timedelta(days=1)).isoformat())],
+        "hunter_application_approvals": [],
+        "hunter_commands": [{"state": "failed", "requested_at": after},
+                            {"state": "failed", "requested_at": after}]})
+    monkeypatch.setattr(alerts, "db_get", fake.get)
+    problems = alerts.trouble_checks(None)
+    assert any(p["kind"] == "a batch could not run" for p in problems)

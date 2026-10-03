@@ -28,13 +28,26 @@
     return token && key ? { token, key } : null;
   }
 
-  function banner(text, tone) {
+  // A banner, optionally with one button. The button is created with
+  // type="button" and lives on this banner, outside the employer's form, so it
+  // can never submit the form; it only tells hunter something.
+  function banner(text, tone, action) {
     const el = document.createElement('div');
     el.style.cssText =
       'position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:12px 18px;' +
       'font:600 14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;' +
       'color:#fff;background:' + (tone === 'bad' ? '#a4262c' : tone === 'work' ? '#444' : '#1a7f37');
     el.textContent = text;
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = action.label;
+      b.style.cssText =
+        'margin-left:12px;padding:4px 10px;border:1px solid #fff;border-radius:4px;' +
+        'background:transparent;color:#fff;font:inherit;cursor:pointer';
+      b.addEventListener('click', action.onPress);
+      el.appendChild(b);
+    }
     const old = document.getElementById('hunter-banner');
     if (old) old.remove();
     el.id = 'hunter-banner';
@@ -88,10 +101,21 @@
   // confirmation page then read a watch for a different job, failed the origin
   // and path check, and reported nothing. A map, keyed by the job's own page.
   const WATCH = 'hunter_watches';
-  // Enough for any batch he will do in half an hour, and bounded so storage
-  // cannot grow for ever.
+  // Enough for any batch, and bounded so storage cannot grow for ever.
   const MAX_WATCHES = 40;
-  const basePath = () => location.pathname.replace(/\/application\/?$/, '');
+  // How long a stored watch can still be resumed. It was 30 minutes, and
+  // openrouter on 2026-09-25 is what that cost: he read the form properly,
+  // pressed Submit later, and the watch had already gone, so nothing was ever
+  // reported. Seven days covers any real delay between opening and sending.
+  const WATCH_TTL = 7 * 24 * 60 * 60 * 1000;
+  // How long one open page keeps looking for a confirmation. A page left open
+  // stops polling after this; the stored watch lives on for the next page.
+  const POLL_PER_PAGE = 30 * 60 * 1000;
+  // Ashby and Greenhouse put the form at /application, Lever at /apply, and all
+  // three load their confirmation under the posting's own path, so the watch
+  // is keyed on that path. Lever's /apply was not trimmed, so a Lever
+  // confirmation page never matched its watch.
+  const basePath = () => location.pathname.replace(/\/(application|apply)\/?$/, '');
   const watchKey = (w) => (w.origin || '') + (w.path || '');
 
   function marksIn() {
@@ -130,7 +154,7 @@
 
   // A watch only resumes on the SAME job. Same origin and same path prefix, so a
   // watch left over from one application cannot fire on a different job he opens
-  // on the same board within the half hour. The longest matching path wins, so a
+  // on the same board. The longest matching path wins, so a
   // watch on /jobs/4 cannot answer for the page at /jobs/42.
   async function resumable() {
     const all = await allWatches();
@@ -146,6 +170,18 @@
     return best;
   }
 
+  // A report that could not be delivered is kept on its watch and sent again
+  // from the next page he opens on any board. It used to be deleted before it
+  // was sent, so one network blip lost an application for good.
+  async function flushPending() {
+    const all = await allWatches();
+    for (const k of Object.keys(all)) {
+      const w = all[k];
+      if (w && w.pending) await deliver(w, w.pending.why, w.pending.saidSo, false);
+    }
+  }
+  await flushPending();
+
   const cap = capability();
   const resumed = cap ? null : await resumable();
   if (!cap && !resumed) return;
@@ -154,9 +190,11 @@
   const api = (store && store.api) || DEFAULT_API;
 
   if (resumed) {
-    // The page after the submit. Nothing to fill, nothing to say unless a
-    // confirmation appears, and no payload is fetched: the capability is used
-    // only to report, which is all a confirmation page needs it for.
+    // A later page on the same job. Nothing to fill and no payload fetched:
+    // the capability is used only to report. If the form never says anything
+    // recognisable, he can say so himself.
+    banner('Hunter is watching for this application to be confirmed. Already sent it?',
+           'work', markButton(resumed));
     return watchFor(resumed);
   }
 
@@ -190,17 +228,32 @@
   const out = await window.__hunterFill(payload);
   const done = out.filled.length + out.files.length;
   const stale = older(MINE, payload.needs_extension);
+
+  // The watch is stored before any banner offers the button, so a press always
+  // has something to report against.
+  const watch = {
+    token: cap.token,
+    key: cap.key,
+    api: api,
+    origin: location.origin,
+    path: basePath(),
+    baseline: marksIn(),
+    until: Date.now() + WATCH_TTL,
+  };
+  await saveWatch(watch);
+  const mark = markButton(watch);
+
   if (stale) {
     banner(STALE.replace('%NEED%', payload.needs_extension), 'bad');
   } else if (out.required_missed.length) {
     banner('Filled ' + done + '. DO THESE YOURSELF before submitting: ' +
-           out.required_missed.join('; '), 'bad');
+           out.required_missed.join('; '), 'bad', mark);
   } else if (out.missed.length) {
     banner('Filled ' + done + '. Not filled (none required): ' +
-           out.missed.join('; ') + '. Read it and press Submit.', 'work');
+           out.missed.join('; ') + '. Read it and press Submit.', 'work', mark);
   } else {
     banner('Filled all ' + done + ' fields and attached your documents. ' +
-           'Read it and press Submit.', 'good');
+           'Read it and press Submit.', 'good', mark);
   }
 
   // ---- Then watch for him pressing it -------------------------------------
@@ -231,26 +284,55 @@
   // so an earlier version painted the green "Hunter has it" banner over a write
   // that never happened, which is the same lie in the opposite direction.
   async function report(watch, why) {
-    await clearWatch(watch);
+    return deliver(watch, why, false, true);
+  }
+
+  // His own word, for when the form never says anything the extension
+  // recognises. Hunter records it as his word and never as the form speaking.
+  function markButton(watch) {
+    return {
+      label: 'I applied, mark it',
+      onPress: () => deliver(watch, '', true, true),
+    };
+  }
+
+  // The report is written onto the watch BEFORE it is sent, and the watch is
+  // cleared only once the server has it (or has said the application was
+  // replaced). A failed send stays pending and goes again from the next page.
+  async function deliver(watch, why, saidSo, loud) {
+    watch.pending = { why: why, saidSo: !!saidSo };
+    await saveWatch(watch);
     try {
       const res = await fetch(watch.api.replace(/\/payload$/, '/submitted'), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'omit',
-        body: JSON.stringify({ token: watch.token, key: watch.key, evidence: why }),
+        body: JSON.stringify({ token: watch.token, key: watch.key, evidence: why,
+                               said_so: !!saidSo }),
       });
       if (res.status === 410) {
+        await clearWatch(watch);
         const said = await res.json().catch(() => ({}));
-        banner(said.message || 'This application was replaced, so submitting it '
+        if (loud) banner(said.message || 'This application was replaced, so submitting it '
           + 'was not recorded. Open the most recent email for this role.', 'bad');
         return;
       }
+      if (res.status === 404 || res.status === 409) {
+        // Final answers: sending again cannot change them, so the watch goes
+        // and he is told rather than retried at for a week.
+        await clearWatch(watch);
+        if (loud) banner('Hunter did not record this (the server said ' + res.status +
+          '). Type Applied in column A of its Pipeline row.', 'bad');
+        return;
+      }
       if (!res.ok) throw new Error('the server said ' + res.status);
-      banner('Submitted. Hunter has it: the sheet will move this role to '
-             + 'Applied.', 'good');
+      await clearWatch(watch);
+      if (loud) banner(saidSo
+        ? 'Marked as applied on your word. Hunter will move this role to Applied.'
+        : 'Submitted. Hunter has it: the sheet will move this role to Applied.', 'good');
     } catch (e) {
-      banner('Submitted, but hunter could not be told (' + e.message +
-             '). Tell Claude so the sheet gets updated.', 'bad');
+      if (loud) banner('Submitted, but hunter could not be told (' + e.message +
+             '). It will try again the next time you open a job page.', 'bad');
     }
   }
 
@@ -264,24 +346,16 @@
   }
 
   async function watchFor(watch) {
-    while (Date.now() < watch.until) {
+    const stop = Math.min(watch.until, Date.now() + POLL_PER_PAGE);
+    while (Date.now() < watch.until && Date.now() < stop) {
       const why = fresh(watch);
       if (why) return report(watch, why);
       await new Promise((r) => setTimeout(r, 1500));
     }
-    // Out of time. Clear it so a stale watch cannot fire on some later page.
-    await clearWatch(watch);
+    // A stored watch past its life is cleared, so it cannot fire on some later
+    // page. One that is merely past this page's polling stays for the next page.
+    if (Date.now() > watch.until) await clearWatch(watch);
   }
 
-  const watch = {
-    token: cap.token,
-    key: cap.key,
-    api: api,
-    origin: location.origin,
-    path: basePath(),
-    baseline: marksIn(),
-    until: Date.now() + 30 * 60 * 1000,
-  };
-  await saveWatch(watch);
   return watchFor(watch);
 })();

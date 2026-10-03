@@ -279,7 +279,7 @@ def test_a_role_already_written_is_not_written_again(monkeypatch):
     recorded: list[str] = []
     monkeypatch.setattr(R, "db_get", fake_db_get)
     monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
-    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet([]))
     monkeypatch.setattr(R, "GoogleServiceAccount",
                         lambda cfg: type("T", (), {"access_token": ""})())
     monkeypatch.setattr(R, "record_applied",
@@ -361,7 +361,7 @@ def test_two_job_ids_for_one_posting_are_written_once_and_both_close(monkeypatch
     monkeypatch.setattr(R, "db_patch",
                         lambda cfg, table, match, values: patched.append((match, values)))
     monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
-    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet([]))
     monkeypatch.setattr(R, "GoogleServiceAccount",
                         lambda cfg: type("T", (), {"access_token": ""})())
     monkeypatch.setattr(R, "cmd_archive", lambda apply=False: 0)
@@ -396,7 +396,7 @@ def test_a_sibling_stays_open_when_the_write_failed(monkeypatch):
     monkeypatch.setattr(R, "db_patch",
                         lambda cfg, table, match, values: patched.append((match, values)))
     monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
-    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet([]))
     monkeypatch.setattr(R, "GoogleServiceAccount",
                         lambda cfg: type("T", (), {"access_token": ""})())
     monkeypatch.setattr(R, "cmd_archive", lambda apply=False: 0)
@@ -418,7 +418,7 @@ def test_his_word_is_recorded_as_his_word_not_as_the_form_speaking(monkeypatch):
     recorded: list[dict] = []
     monkeypatch.setattr(R, "db_get", lambda cfg, table, params: rows)
     monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
-    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet([]))
     monkeypatch.setattr(R, "GoogleServiceAccount",
                         lambda cfg: type("T", (), {"access_token": ""})())
     monkeypatch.setattr(R, "cmd_archive", lambda apply=False: 0)
@@ -442,7 +442,7 @@ def test_an_id_that_names_nothing_stops_rather_than_skipping(monkeypatch):
     be left reading Not applied while the run says it succeeded."""
     monkeypatch.setattr(R, "db_get", lambda cfg, table, params: [])
     monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
-    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet([]))
     monkeypatch.setattr(R, "GoogleServiceAccount",
                         lambda cfg: type("T", (), {"access_token": ""})())
     called: list = []
@@ -476,7 +476,7 @@ def _applied_harness(monkeypatch, ledger_rows, seen_rows=None):
     monkeypatch.setattr(R, "db_get", fake_db_get)
     monkeypatch.setattr(R, "db_patch", lambda *a, **k: None)
     monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
-    monkeypatch.setattr(R, "Sheet", lambda *a, **k: None)
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet([]))
     monkeypatch.setattr(R, "GoogleServiceAccount",
                         lambda cfg: type("T", (), {"access_token": ""})())
     monkeypatch.setattr(R, "cmd_archive", lambda apply=False: 0)
@@ -544,3 +544,76 @@ def test_the_digest_never_dresses_his_word_up_as_the_form_speaking(monkeypatch):
     assert R.SAID_SO in sent["html"]
     assert "no confirmation recorded" in sent["html"]
     assert "The form acknowledged it" not in sent["html"]
+
+
+def test_a_role_the_database_calls_applied_is_still_written_when_the_sheet_is_behind(monkeypatch):
+    """The database-before-sheet bug. A full run used to mark a role Applied in
+    hunter_seen_roles straight from the approval ledger without touching the
+    sheet; close-submitted then read the database, saw Applied, and never wrote
+    his Pipeline row. Open now means the sheet has not caught up."""
+    seen = {"a": {"job_id": "a", "application_state": "Applied"}}
+    approvals = [{"token": "a", "job_id": "a", "company": "OpenRouter",
+                  "role": "Director, Channel Partnerships",
+                  "submitted_at": "2026-10-03T20:00:00Z", "failure_reason": ""}]
+
+    def fake_db_get(cfg, table, params):
+        return approvals if table.endswith("approvals") else list(seen.values())
+
+    recorded: list[str] = []
+    still_on_pipeline = row(6, "OpenRouter", "Director, Channel Partnerships")
+    monkeypatch.setattr(R, "db_get", fake_db_get)
+    monkeypatch.setattr(R, "build_context", lambda: (None, Canon()))
+    monkeypatch.setattr(R, "Sheet", lambda *a, **k: FakeSheet([still_on_pipeline]))
+    monkeypatch.setattr(R, "GoogleServiceAccount",
+                        lambda cfg: type("T", (), {"access_token": ""})())
+    monkeypatch.setattr(R, "record_applied", lambda *a, **k: recorded.append(a[3]))
+    monkeypatch.setattr(R, "cmd_archive", lambda apply=False: 0)
+    assert R.cmd_close_submitted(apply=True) == 0
+    assert recorded == ["a"]
+
+
+def test_the_ledger_alone_never_marks_a_role_applied(monkeypatch):
+    """sync_applied_state reads the sheet only. The ledger leg is gone."""
+    import inspect
+    src = inspect.getsource(R.sync_applied_state)
+    assert '"state": "eq.submitted"' not in src
+
+
+def test_a_hand_edited_title_is_matched_by_the_posting_itself(wired, monkeypatch):
+    """The sheet abbreviates ("GM, UK") and he edits titles. Exact text was the
+    only key, so an edit stranded a sent application as "Not applied". The
+    posting URL is the same on both sides; it must still match exactly one."""
+    edited = SheetRow(row_number=40, cells=[""] * N_COLS, verdict="Yes",
+                      company="ElevenLabs", role="GM, UK",
+                      jd_url="https://jobs.ashbyhq.com/elevenlabs/abc-123?src=li")
+    other = SheetRow(row_number=41, cells=[""] * N_COLS, verdict="Yes",
+                     company="ElevenLabs", role="GM, Germany",
+                     jd_url="https://jobs.ashbyhq.com/elevenlabs/def-456")
+    sheet = FakeSheet([edited, other])
+    monkeypatch.setattr(R, "db_get", lambda cfg, t, p: [
+        {"job_id": "elevenlabs:gm-uk",
+         "job_url": "https://jobs.ashbyhq.com/elevenlabs/abc-123", "url": ""}])
+    notes: list[str] = []
+    R.record_applied(None, Canon(), sheet, "elevenlabs:gm-uk", company="ElevenLabs",
+                     role="General Manager - UK", summary=notes)
+    assert list(sheet.applied) == [40]
+    assert any("by its posting URL" in n for n in notes)
+
+
+def test_his_own_word_is_never_dressed_up_as_the_form_speaking(monkeypatch):
+    """Column A Applied and the extension's button both record SAID_SO. The
+    receipt said "The form acknowledged it: Krish said he submitted this
+    himself", which is the form being credited with his sentence."""
+    from hunter import notify
+    sent = []
+    monkeypatch.setattr(notify, "send_email", lambda cfg, subj, html, **kw: sent.append((html, kw.get("text"))))
+    monkeypatch.setattr(notify, "mailbox", lambda cfg: "x")
+    R.send_applied_receipt(None, company="BOI", role="AI Transformation Director",
+                           when="2026-10-03", confirmation=f"{R.SAID_SO} (column A)")
+    html, text = sent[0]
+    assert "acknowledged" not in html and "acknowledged" not in text
+    assert "Recorded on your word" in html and "Recorded on your word" in text
+    R.send_applied_digest(None, [("BOI", "AI Transformation Director",
+                                  f"{R.SAID_SO} (extension button)")], when="2026-10-03")
+    assert "the form did not confirm it" in sent[1][0]
+    assert R.SAID_SO in sent[1][0]

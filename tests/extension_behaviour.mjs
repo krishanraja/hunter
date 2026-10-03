@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 
 const SRC = readFileSync(process.argv[2] || 'extension/run.js', 'utf8');
 
-function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/acme/jobs/42/application' }) {
+function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/acme/jobs/42/application', postResults = [] }) {
   const u = new URL(url);
   // Two virtual seconds per Date.now() call, so run.js's 30 minute deadline is
   // reached after ~900 ticks, which is under a second of real time.
@@ -32,12 +32,22 @@ function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/
   const writes = [];
   const posts = [];
   const banners = [];
+  // Every element created, so a banner's button can be found and pressed.
+  const created = [];
   const g = {
     location: { href: url, hash: hash || '', origin: u.origin, pathname: u.pathname },
     document: {
       body: { innerText: bodyText, style: {} },
       documentElement: { appendChild() {} },
-      createElement: () => ({ style: {}, remove() {} }),
+      createElement: (tag) => {
+        const el = {
+          tag, style: {}, remove() {}, children: [],
+          appendChild(c) { this.children.push(c); },
+          addEventListener(type, fn) { if (type === 'click') this.press = fn; },
+        };
+        created.push(el);
+        return el;
+      },
       getElementById: () => null,
       querySelector: () => ({}),
     },
@@ -59,7 +69,9 @@ function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/
     fetch: async (u2, opts) => {
       if (String(u2).includes('/submitted')) {
         posts.push(JSON.parse(opts.body));
-        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        const r = postResults.length ? postResults.shift() : 200;
+        if (r === 'network') throw new Error('Failed to fetch');
+        return { ok: r >= 200 && r < 300, status: r, json: async () => ({}) };
       }
       return { ok: true, status: 200, json: async () => ({ version: 1, fields: [], files: [], demographics: [] }) };
     },
@@ -69,7 +81,7 @@ function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/
   };
   g.window = g;
   g.window.__hunterFill = async () => ({ filled: [], files: [], missed: [], required_missed: [] });
-  return { g, store, saved, writes, posts, banners };
+  return { g, store, saved, writes, posts, banners, created };
 }
 
 async function run(w) {
@@ -212,4 +224,62 @@ const CAP = '#hunter=acme:role-abc123.' + 'a'.repeat(32);
   console.log('ok  a batch keeps a watch per application');
 }
 
-console.log('\nall seven hold');
+// 8. A report that fails to send is kept, and the next page he opens sends it.
+//    It used to be deleted before the send, so one blip lost an application.
+{
+  const w = world({ hash: CAP, bodyText: 'Apply for this role', postResults: ['network'] });
+  const started = run(w);
+  setTimeout(() => { w.g.document.body.innerText = 'Thanks for applying to Acme'; }, 20);
+  await started;
+  assert.equal(w.posts.length, 1, 'one attempt was made');
+  const kept = Object.values(w.store.local.hunter_watches || {});
+  assert.equal(kept.length, 1, 'the watch is kept after a failed send');
+  assert.ok(kept[0].pending, 'carrying the report that did not go');
+
+  // Later, any page on any board: the pending report goes first.
+  const later = world({
+    hash: '', bodyText: 'Some other job', watch: kept,
+    url: 'https://jobs.ashbyhq.com/someone/999',
+  });
+  await run(later);
+  assert.equal(later.posts.length, 1, 'the pending report is sent again');
+  assert.match(later.posts[0].evidence, /thanks for applying/);
+  assert.deepEqual(later.store.local.hunter_watches, {}, 'and cleared once delivered');
+  console.log('ok  a failed report is kept and sent from the next page');
+}
+
+// 9. Lever. The form is at /<company>/<id>/apply and the confirmation under the
+//    posting's own path. Only /application was trimmed, so a Lever watch never
+//    matched its confirmation page.
+{
+  const filling = world({ hash: CAP, bodyText: 'Apply for this role',
+                          url: 'https://jobs.lever.co/versapay/abc-123/apply' });
+  await run(filling);
+  assert.equal(filling.saved[0].path, '/versapay/abc-123', 'the watch is keyed on the posting');
+  const confirming = world({
+    hash: '', bodyText: 'Application submitted! Thanks for applying.',
+    watch: filling.saved[0], url: 'https://jobs.lever.co/versapay/abc-123/thanks',
+  });
+  await run(confirming);
+  assert.equal(confirming.posts.length, 1, 'the Lever confirmation is reported');
+  console.log('ok  a Lever confirmation page resumes its watch');
+}
+
+// 10. The form never says anything he recognises: he says so himself. The press
+//     is recorded as his word, never as the form speaking.
+{
+  const w = world({ hash: CAP, bodyText: 'Apply for this role' });
+  const started = run(w);
+  await new Promise((r) => setTimeout(r, 30));
+  const button = w.created.find((el) => el.tag === 'button');
+  assert.ok(button, 'the banner offers the button');
+  assert.equal(button.type, 'button', 'and it can never submit the employer form');
+  await button.press();
+  await started;
+  const said = w.posts.find((p) => p.said_so === true);
+  assert.ok(said, 'pressing it reports said_so');
+  assert.equal(said.evidence, '', 'with no words attributed to the form');
+  console.log('ok  "I applied, mark it" reports his word');
+}
+
+console.log('\nall ten hold');

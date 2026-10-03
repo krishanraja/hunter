@@ -29,7 +29,7 @@ on:
         type: choice
         default: process
         options: [process, run, source, packages, drain, approvals, approvals-drain, submit,
-                  close-submitted, confirmations, applied, stats, prune-sheet, bridges,
+                  close-submitted, confirmations, settle, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
                   migrate-columns]
       extra:
@@ -123,6 +123,15 @@ jobs:
       - name: Close applications the employer has acknowledged
         if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run confirmations --apply
+
+      # Column A, acted on within the hour: what he marked Applied or Declined
+      # is recorded, his edits to those rows are read, any approval still open
+      # for a role he applied to is closed, and the rows move to the Applied
+      # tab. Until 2026-10-03 nothing hourly read column A, so a role he marked
+      # Applied sat on Pipeline as live work until the next full run.
+      - name: Settle what he decided
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
+        run: python -u -m hunter.run settle --apply
 
       # Is the loop still turning. Reads only, and every condition is
       # deduplicated on the condition rather than the moment, so running this

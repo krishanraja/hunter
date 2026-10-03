@@ -235,16 +235,50 @@ def trouble_checks(cfg: Config) -> list[dict]:
                     "detail": f"{len(fails)} of the last 3 runs failed. {why}"})
 
     awaiting = db_get(cfg, "hunter_application_approvals",
-                      {"select": "token,company,role,created_at",
+                      {"select": "token,company,role,created_at,opened_at",
                        "state": "eq.awaiting", "order": "created_at.asc",
                        "limit": "50"})
-    old = [a for a in awaiting if (_age_days(a.get("created_at")) or 0) > APPROVAL_DAYS]
+    # Opened, filled, and never reported. openrouter on 2026-09-25 is the
+    # shape: he opened the form through the extension, sent it, and the report
+    # never arrived, so the role sat at Yes with nothing saying why. A question
+    # he can answer in one keystroke beats a silence he cannot see.
+    opened = [a for a in awaiting if a.get("opened_at")
+              and (_age_days(a.get("opened_at")) or 0) > 1]
+    if opened:
+        names = ", ".join(f"{a.get('company')} {a.get('role')}" for a in opened[:4])
+        out.append({"kind": "did you send these?",
+                    "fingerprint": "opened:" + ",".join(sorted(a["token"] for a in opened))[:180],
+                    "detail": f"You opened the filled form for {names} more than a day "
+                              f"ago and hunter never heard it was sent. If you sent it, "
+                              f"type Applied in column A of its Pipeline row; hunter "
+                              f"moves it within the hour."})
+    old = [a for a in awaiting if not a.get("opened_at")
+           and (_age_days(a.get("created_at")) or 0) > APPROVAL_DAYS]
     if old:
         names = ", ".join(f"{a.get('company')} {a.get('role')}" for a in old[:4])
         out.append({"kind": "applications waiting on you",
                     "fingerprint": f"awaiting:{len(old)}:{str(old[0].get('created_at'))[:10]}",
                     "detail": f"{len(old)} filled application(s) have been waiting "
                               f"more than {APPROVAL_DAYS} days: {names}"})
+
+    # A batch the schedule could not get through. schedule.decide stops after
+    # two attempts at one slot rather than paying again for a failure nobody
+    # has looked at; this is where he hears about it.
+    try:
+        import datetime as _dt
+        from . import schedule
+        now = _dt.datetime.now(_dt.timezone.utc)
+        since = (now - _dt.timedelta(days=8)).isoformat()
+        cmds = db_get(cfg, "hunter_commands", {
+            "select": "state,requested_at,started_at", "command": "eq.run",
+            "requested_at": f"gte.{since}"})
+        decision = schedule.decide(now, cmds, ok_runs)
+        if decision.stuck:
+            out.append({"kind": "a batch could not run",
+                        "fingerprint": f"stuck:{decision.slot.isoformat()}",
+                        "detail": f"{decision.why}. The run summary emails say why."})
+    except Exception:
+        pass
 
     recent = runs[:4]
     empty = [r for r in recent

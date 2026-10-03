@@ -298,7 +298,7 @@ def test_the_version_compare_gets_the_awkward_cases_right():
 
 
 def test_what_the_extension_decides_when_it_actually_runs():
-    """The seven behaviours that decide whether a role is recorded as applied.
+    """The ten behaviours that decide whether a role is recorded as applied.
 
     Reading the source for the right strings cannot answer any of them, so
     tests/extension_behaviour.mjs builds a page, a chrome API and a fetch, runs the
@@ -325,6 +325,12 @@ def test_what_the_extension_decides_when_it_actually_runs():
       a batch keeps a watch per application. One storage slot held one job and
         every fill overwrote it, so six roles Krish submitted on 2026-09-24 were
         never recorded
+
+      a report that fails to send is kept and sent from the next page he opens
+
+      a Lever confirmation page resumes its watch (only /application was trimmed)
+
+      "I applied, mark it" reports his word, with no words attributed to the form
     """
     import shutil
     import subprocess
@@ -337,4 +343,4 @@ def test_what_the_extension_decides_when_it_actually_runs():
          str(EXT / "run.js")],
         capture_output=True, text=True, timeout=180, cwd=root)
     assert out.returncode == 0, out.stdout + out.stderr
-    assert "all seven hold" in out.stdout, out.stdout
+    assert "all ten hold" in out.stdout, out.stdout
