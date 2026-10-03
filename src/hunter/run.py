@@ -38,7 +38,7 @@ from .config import (ALL_ROWS, Config, GoogleOAuth, GoogleServiceAccount,
 from .docbuild import DocBuild
 from .archetype import archetype
 from .gates import FLOOR, names_foreign_geo, run_gates
-from . import alerts, amend, comp as comp_mod, employer, invariants, layout, learn, preflight
+from . import alerts, amend, comp as comp_mod, employer, invariants, layout, learn, preflight, schedule
 from .report import report_run
 from . import verdicts
 from .router import classify_verdict, is_warm_path, route_status, select_for_build
@@ -1814,6 +1814,12 @@ def cmd_drain(command_id: str | None = None) -> int:
             print("\n".join(newsletter_lines(out)))
     except Exception as e:
         print(f"newsletter check skipped: {e.__class__.__name__}: {e}")
+    if not command_id:
+        # A full run that is owed runs here, whichever trigger woke this drain.
+        # See schedule.py for why the slot is decided from the record.
+        owed = scheduled_full_run(cfg)
+        if owed is not None:
+            return owed
     params = {"select": "id,command,requested_at", "state": "eq.queued",
               "order": "requested_at.asc", "limit": "1"}
     if command_id:
@@ -1829,6 +1835,15 @@ def cmd_drain(command_id: str | None = None) -> int:
     db_patch(cfg, COMMANDS_TABLE, {"id": cid},
              {"state": "running", "started_at": NOW()})
     print(f"running {command} (command {cid})")
+    if command == "run":
+        # The full run does its own reporting and emails; the command row only
+        # needs to say how it ended.
+        rc = cmd_run()
+        db_patch(cfg, COMMANDS_TABLE, {"id": cid},
+                 {"state": "done" if rc == 0 else "failed", "finished_at": NOW(),
+                  "result": ("full run finished" if rc == 0 else
+                             "full run failed; the run summary email says why")})
+        return rc
     try:
         summary = run_command(cfg, command)
         run_url = actions_run_url()
@@ -1847,6 +1862,46 @@ def cmd_drain(command_id: str | None = None) -> int:
                   "error": f"{e.__class__.__name__}: {e}"[:1000]})
         print(f"FAILED {command}: {e.__class__.__name__}: {e}")
         return 1
+
+
+def scheduled_full_run(cfg: Config) -> int | None:
+    """Run the latest slot's full run if it is owed. None means nothing was
+    owed (the reason is printed); an int is the full run's exit code."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    since = (now - datetime.timedelta(days=8)).isoformat()
+    try:
+        commands = db_get(cfg, COMMANDS_TABLE, {
+            "select": "id,state,requested_at,started_at", "command": "eq.run",
+            "requested_at": f"gte.{since}", "order": "requested_at.asc"})
+        runs = db_get(cfg, "workflow_runs", {
+            "select": "run_at,status,metadata", "agent_id": "eq.hunter",
+            "workflow_id": "eq.hunter-run", "run_at": f"gte.{since}"})
+    except Exception as e:
+        # Unable to read the record is not permission to pay for a run.
+        print(f"schedule: could not read the run record ({e.__class__.__name__}); "
+              f"not starting a full run")
+        return None
+    # Only a run that swept counts as the batch. A Process press writes a
+    # workflow_runs row too, without "discovered".
+    full = [r for r in runs if isinstance(r.get("metadata"), dict)
+            and "discovered" in r["metadata"]]
+    decision = schedule.decide(now, commands, full)
+    print(f"schedule: {decision.why}")
+    if not decision.due:
+        return None
+    tag = f"schedule {decision.slot.isoformat()}"
+    db_insert(cfg, COMMANDS_TABLE, [{"command": "run", "state": "running",
+                                     "requested_by": tag, "started_at": NOW()}])
+    claimed = db_get(cfg, COMMANDS_TABLE, {
+        "select": "id", "command": "eq.run", "state": "eq.running",
+        "requested_by": f"eq.{tag}", "order": "requested_at.desc", "limit": "1"})
+    rc = cmd_run()
+    if claimed:
+        db_patch(cfg, COMMANDS_TABLE, {"id": str(claimed[0]["id"])},
+                 {"state": "done" if rc == 0 else "failed", "finished_at": NOW(),
+                  "result": ("full run finished" if rc == 0 else
+                             "full run failed; the run summary email says why")})
+    return rc
 
 
 def actions_run_url() -> str:
@@ -3880,7 +3935,7 @@ def cmd_run() -> int:
             f"{counts.get('from_description', 0)} gated from the sweep's own description, "
             f"{counts['unresolved']} unresolved (never reach the sheet), "
             f"apify spend ${counts['spend_usd']:.2f}")
-        if counts["recorded"] == 0 and not ledger.sheet_to_db:
+        if counts["recorded"] == 0 and not pcounts.get("reconciled"):
             summary.append("FAILED: a run that reads roles and writes no rows has "
                            "failed even with a good summary")
             failed = True

@@ -2,28 +2,26 @@ name: hunter
 
 # The runtime.
 #
-# Sunday 13:00 London and Thursday 08:27 UTC are the full runs (process, then
-# source). Krish moved Monday to Sunday afternoon on 2026-09-19 so the batch is
-# waiting for him at the start of the week rather than during it.
+# Krish's two batches are owed at Sunday 13:00 London and Thursday 08:27 UTC.
+# Whether one is owed is decided by hunter itself on every drain
+# (src/hunter/schedule.py), from the run record, never by when cron fires.
+# GitHub's scheduler ran hours late on this repository: on Sunday 27 September
+# the 12:00 UTC job started at 15:54, the London-clock guard that used to live
+# here read "16:00, not 13:00" and skipped it, and that week had no batch.
 #
-# GitHub cron is UTC and has no notion of London, so 13:00 London is TWO
-# entries, 12:00 UTC for British Summer Time and 13:00 UTC for GMT, with a
-# guard below that reads the real London clock and stops the wrong one. A
-# single 12:00 UTC entry would quietly become a midday run every winter, which
-# is the sort of drift nobody notices for months.
+# The clock that wakes hunter is Control Center's (api/hunter/tick.ts, a Vercel
+# cron that fires on the minute and sends repository_dispatch hunter-drain).
+# The six-hourly entry below is only the fallback if that stops.
 #
-# The hourly drain is the fallback for the Control Center buttons; a button
-# press normally arrives as a repository_dispatch and runs within a minute.
-# One job at a time: two hunters on the same sheet is how rows get duplicated.
+# A button press normally arrives as a repository_dispatch and runs within a
+# minute. One job at a time: two hunters on the same sheet is how rows get
+# duplicated.
 
 on:
   schedule:
-    - cron: "0 12 * * 0"
-    - cron: "0 13 * * 0"
-    - cron: "27 8 * * 4"
-    - cron: "13 * * * *"
+    - cron: "13 */6 * * *"
   repository_dispatch:
-    types: [hunter-process, hunter-source, hunter-packages]
+    types: [hunter-drain, hunter-run, hunter-process, hunter-source, hunter-packages]
   workflow_dispatch:
     inputs:
       command:
@@ -46,7 +44,7 @@ concurrency:
 jobs:
   hunter:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -74,16 +72,9 @@ jobs:
         run: |
           SKIP=""
           if [ "$EVENT" = "schedule" ]; then
-            case "$SCHEDULE" in
-              "0 12 * * 0"|"0 13 * * 0")
-                # One of the pair is the wrong side of British Summer Time.
-                # Ask the London clock which, rather than assuming.
-                HOUR=$(python -c "import datetime, zoneinfo; print(datetime.datetime.now(zoneinfo.ZoneInfo('Europe/London')).hour)")
-                if [ "$HOUR" = "13" ]; then ARGS="run"; else SKIP="London local time is ${HOUR}:00, not 13:00"; ARGS="run"; fi
-                ;;
-              "27 8 * * 4") ARGS="run" ;;
-              *) ARGS="drain" ;;
-            esac
+            # Every scheduled tick is a drain. The drain decides for itself
+            # whether a full run is owed (schedule.py).
+            ARGS="drain"
           elif [ "$EVENT" = "repository_dispatch" ]; then
             if [ -n "$COMMAND_ID" ]; then ARGS="drain --id $COMMAND_ID"; else ARGS="${ACTION#hunter-}"; fi
           else
@@ -126,16 +117,16 @@ jobs:
       # the sheet, because the sheet needs Google credentials that have no
       # business being in a browser. Idempotent, so running it hourly is free.
       - name: Write submitted applications to the sheet
-        if: steps.cmd.outputs.args == 'drain'
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run close-submitted --apply
 
       - name: Close applications the employer has acknowledged
-        if: steps.cmd.outputs.args == 'drain'
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run confirmations --apply
 
       # Is the loop still turning. Reads only, and every condition is
       # deduplicated on the condition rather than the moment, so running this
       # every hour sends at most one mail per distinct problem.
       - name: Tell him when the loop has stopped
-        if: steps.cmd.outputs.args == 'drain'
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run watchdog --send
