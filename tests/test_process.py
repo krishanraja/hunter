@@ -390,7 +390,10 @@ def test_the_sweep_reads_the_salary_field_the_actor_actually_returns(monkeypatch
     monkeypatch.setattr(al, "run_actor", lambda *a, **k: [
         {"companyName": "Viam", "title": "Chief of Staff", "link": "https://l/1",
          "salary": "$250,000 - $300,000", "descriptionText": "x"}])
-    out = al.sweep_linkedin(None, ["u"], spend=al.SpendTracker(cap_usd=1), max_charge_usd=1)
+    class Cfg:
+        def optional(self, k, d=""):
+            return d
+    out = al.sweep_linkedin(Cfg(), ["u"], spend=al.SpendTracker(cap_usd=1), max_charge_usd=1)
     assert out[0].comp_text == "$250,000 - $300,000"
 
 

@@ -114,7 +114,11 @@ def test_forbidden_actors_raise_before_any_http(monkeypatch):
     assert spy.requested == []
 
 
-def test_actor_input_always_carries_charge_cap(monkeypatch):
+def test_the_charge_cap_goes_where_apify_reads_it(monkeypatch):
+    """It went in the actor's INPUT, which the actor ignores. Live runs came
+    back with isMaxTotalChargeUsdSetByUser false and a cap of about $191, the
+    account balance. Apify reads the cap and maxItems from the request's query
+    string, and the token travels in a header, never the URL."""
     import hunter.sources.apify_linkedin as apify
 
     captured = {}
@@ -122,10 +126,22 @@ def test_actor_input_always_carries_charge_cap(monkeypatch):
     class CapSpy(SpyTransport):
         def post(self, url, **kw):
             captured["url"] = url
-            captured["json"] = kw.get("json")
+            captured["params"] = kw.get("params") or {}
+            captured["json"] = kw.get("json") or {}
+            captured["headers"] = kw.get("headers") or {}
             raise RuntimeError("stop after capturing the request")
 
-    monkeypatch.setattr(apify, "requests", CapSpy())
+        def get(self, url, **kw):
+            raise apify.requests.ConnectionError("no network in tests")
+
+    spy = CapSpy()
+    spy.ConnectionError = apify.requests.ConnectionError
+    spy.Timeout = apify.requests.Timeout
+    spy.RequestException = apify.requests.RequestException
+    monkeypatch.setattr(apify, "requests", spy)
+    monkeypatch.setattr(apify, "_db", lambda cfg: (lambda *a, **k: [],
+                                                   lambda *a, **k: None,
+                                                   lambda *a, **k: None))
 
     class FakeCfg:
         def require(self, k):
@@ -136,8 +152,13 @@ def test_actor_input_always_carries_charge_cap(monkeypatch):
 
     with pytest.raises(RuntimeError, match="stop after"):
         apify.run_actor(FakeCfg(), apify.PRIMARY_LINKEDIN,
-                        {"urls": ["https://linkedin.example"]}, max_charge_usd=1.25)
-    assert captured["json"]["maxTotalChargeUsd"] == 1.25
+                        {"urls": ["https://linkedin.example"]}, max_charge_usd=1.25,
+                        max_items=900)
+    assert float(captured["params"]["maxTotalChargeUsd"]) == 1.25
+    assert captured["params"]["maxItems"] == "900"
+    assert "maxTotalChargeUsd" not in captured["json"]
+    assert "token" not in captured["params"] and "token" not in captured["url"]
+    assert captured["headers"]["Authorization"] == "Bearer token-token-token"
 
 
 def test_spend_tracker_soft_stops():

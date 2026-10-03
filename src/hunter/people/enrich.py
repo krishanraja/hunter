@@ -44,8 +44,8 @@ def enrich(cfg: Config, target_slugs: set[str]) -> dict:
     items = run_actor(
         cfg, ENRICHMENT_ACTOR,
         {"profileUrls": [r["linkedin_url"] for r in todo]},
-        max_charge_usd=max_usd, spend=spend,
-        token_key="hunter_apify_enrichment_token")
+        max_charge_usd=max_usd, spend=spend, max_items=len(todo),
+        purpose="profile_enrichment", token_key="hunter_apify_enrichment_token")
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     by_key = {}
     for item in items:

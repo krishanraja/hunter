@@ -145,11 +145,36 @@ def check_sourcing_budget(cfg: Config) -> Check:
     return Check("sourcing credential", OK, "Apify token present")
 
 
+def check_no_keys_on_the_sheet(cfg: Config, read=None) -> Check:
+    """Two live Apify keys sat in plaintext on the Role Targeting tab until
+    2026-10-03, where anyone who could open the workbook could spend on the
+    account. Keys live in system_config. This says so if one comes back, and
+    never prints it."""
+    import re
+    try:
+        if read is None:
+            from .sheet import Sheet
+            read = Sheet(GoogleServiceAccount(cfg).access_token).read_tab_values
+        grid = read("Role Targeting!A1:Z400") or []
+    except Exception as e:
+        return Check("keys on the sheet", WARN, f"could not read Role Targeting "
+                                                f"({e.__class__.__name__})")
+    hits = [f"{chr(ord('A') + j)}{i}" for i, row in enumerate(grid, start=1)
+            for j, cell in enumerate(row) if re.search(r"apify_api_\w+", str(cell))]
+    if hits:
+        return Check("keys on the sheet", WARN,
+                     f"an Apify key is on the Role Targeting tab at {', '.join(hits[:3])}",
+                     "delete it from the sheet, rotate it in the Apify console, and "
+                     "keep the new one only in system_config")
+    return Check("keys on the sheet", OK, "no Apify key on the Role Targeting tab")
+
+
 def run(cfg: Config, *, for_sourcing: bool = False) -> list[Check]:
     checks = [check_database(cfg), check_canon(cfg), check_sheets(cfg),
               check_documents(cfg), check_mail(cfg)]
     if for_sourcing:
         checks.append(check_sourcing_budget(cfg))
+        checks.append(check_no_keys_on_the_sheet(cfg))
     return checks
 
 

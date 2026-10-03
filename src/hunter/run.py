@@ -48,6 +48,7 @@ from .sheet import Sheet, SheetError, SheetRow, make_row
 from .sources import (ResolvedRole, company_key, distinctive_tokens, identity_keys,
                       job_id, slugify)
 from .notify import send_summary
+from .llm import redact as llm_redact
 
 class Summary(list):
     """The run's summary, which also says each line as it happens.
@@ -63,6 +64,10 @@ class Summary(list):
     """
 
     def append(self, line):
+        # Every line can reach an email. An Apify error used to carry the URL,
+        # token and all, so the redaction happens here, once, for every line.
+        from .sources.apify_linkedin import redact as redact_apify
+        line = llm_redact(redact_apify(str(line)))
         print(line, flush=True)
         super().append(line)
 
@@ -2756,24 +2761,49 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     spend = SpendTracker(cap_usd=float(cfg.optional("hunter_apify_max_usd_per_run", "5.00")))
     urls = linkedin_search_urls(cfg, sheet)
     if urls:
-        # One connection reset used to kill the whole paid sourcing leg: the
-        # ATS fetches had fetch_with_retry and this did not, so a transient
-        # network blip cost the entire LinkedIn sweep for the run.
+        from .sources.apify_linkedin import (ApifyStartFailed, last_sweep_started,
+                                             sweep_window)
         cap = float(cfg.optional("hunter_apify_max_usd_per_call", "2.00"))
-        for attempt in (1, 2):
-            try:
-                postings.extend(sweep_linkedin(cfg, urls, spend=spend,
-                                               max_charge_usd=cap))
-                summary.append(f"apify linkedin: {len(urls)} search urls swept")
-                break
-            except Exception as e:
-                transient = isinstance(e, (requests.ConnectionError, requests.Timeout))
-                if transient and attempt == 1:
-                    time.sleep(5)
-                    continue
-                summary.append(
-                    f"apify linkedin sweep failed: {e.__class__.__name__}: {e}")
-                break
+        per_source = int(cfg.optional("hunter_linkedin_limit_per_source", "200"))
+        min_gap = datetime.timedelta(
+            hours=float(cfg.optional("hunter_linkedin_min_hours", "20")))
+        now = datetime.datetime.now(datetime.timezone.utc)
+        try:
+            last = last_sweep_started(cfg, cfg.require("hunter_apify_token"))
+        except Exception:
+            last = None
+        if last is not None and now - last < min_gap:
+            # A second press within the day re-buys the same market. The free
+            # boards above were still swept.
+            summary.append(f"apify linkedin: skipped, the last sweep started "
+                           f"{(now - last).total_seconds() / 3600:.1f}h ago "
+                           f"(minimum gap {min_gap.total_seconds() / 3600:.0f}h)")
+        else:
+            window = sweep_window(last, now)
+            # Only a failed START is retried: no run exists then. Anything after
+            # a run has started is final, because a retry would be a second
+            # paid run of the same searches.
+            for attempt in (1, 2):
+                try:
+                    postings.extend(sweep_linkedin(cfg, urls, spend=spend,
+                                                   max_charge_usd=cap,
+                                                   limit_per_source=per_source,
+                                                   window=window))
+                    summary.append(
+                        f"apify linkedin: {len(urls)} search urls swept, window "
+                        f"{window.total_seconds() / 3600:.0f}h, up to {per_source} "
+                        f"per search, cap ${cap:.2f}")
+                    break
+                except ApifyStartFailed as e:
+                    if attempt == 1:
+                        time.sleep(5)
+                        continue
+                    summary.append(f"apify linkedin sweep failed to start: {e}")
+                    break
+                except Exception as e:
+                    summary.append(
+                        f"apify linkedin sweep failed: {e.__class__.__name__}: {e}")
+                    break
     else:
         summary.append("apify linkedin sweep skipped: no search URLs in the "
                        "Role Targeting tab or hunter_linkedin_search_urls")

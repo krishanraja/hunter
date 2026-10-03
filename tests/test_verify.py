@@ -60,6 +60,7 @@ def test_a_timed_out_run_keeps_what_the_dataset_already_holds(monkeypatch):
     calls = {"abort": 0}
 
     class FakeResp:
+        status_code = 200
         def __init__(self, payload): self._p = payload
         def raise_for_status(self): pass
         def json(self): return self._p
@@ -69,7 +70,9 @@ def test_a_timed_out_run_keeps_what_the_dataset_already_holds(monkeypatch):
             calls["abort"] += 1
             return FakeResp({})
         return FakeResp({"data": {"id": "run1", "status": "RUNNING",
-                                  "defaultDatasetId": "ds1"}})
+                                  "defaultDatasetId": "ds1",
+                                  "options": {"maxTotalChargeUsd": 2.0,
+                                              "isMaxTotalChargeUsdSetByUser": True}}})
 
     def fake_get(url, **kw):
         if "/actor-runs/" in url:
@@ -81,9 +84,13 @@ def test_a_timed_out_run_keeps_what_the_dataset_already_holds(monkeypatch):
     monkeypatch.setattr(ap.requests, "post", fake_post)
     monkeypatch.setattr(ap.requests, "get", fake_get)
     monkeypatch.setattr(ap.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(ap, "_db", lambda cfg: (lambda *a, **k: [],
+                                                lambda *a, **k: None,
+                                                lambda *a, **k: None))
 
     class Cfg:
         def require(self, key): return "token"
+        def optional(self, key, d=""): return d
 
     items = ap.run_actor(Cfg(), "someactor", {"urls": []},
                          max_charge_usd=2.0, poll_seconds=0, timeout_seconds=0)
