@@ -18,7 +18,7 @@ def board(slug: str) -> list[RolePosting]:
             url=j.get("hostedUrl", ""),
             source=f"lever:{slug}",
             location=(j.get("categories") or {}).get("location"),
-            ats="lever", ats_slug=slug, ats_posting_id=j.get("id"), raw={}))
+            ats="lever", ats_slug=slug, ats_posting_id=j.get("id"), raw=j))
     return out
 
 

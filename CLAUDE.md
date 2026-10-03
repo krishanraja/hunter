@@ -202,6 +202,46 @@ what I want".
 - **A blind test hides the judgement, not the information.** The case writer
   is never told the judge's call, and Score stays empty on the blind set.
 
+## 3d. Companies first, and quality is not only the judge's job
+
+His words, 2026-10-03: "why can't you identify the next unicorns in the
+creative industries that are well backed?" and "i need your judging
+methodology to be more cost efficient, and it not to be the only thing holding
+up quality". In the thirty days before, hunter saw 249 roles at the hundred AI
+companies he listed and showed him 3: the location rule blocked 103 before
+anything with judgement read them, and Runway's board was never found.
+
+The layers, cheapest first, each with its own measurement:
+
+1. **Companies he wants** (`universe.py`, `lookalike.py`, `radar.py`). His
+   list (`data/ai_universe.csv`), his Target Companies, his Yes companies, and
+   lookalikes from the a16z, Accel, General Catalyst and Thrive portfolios,
+   each scored once against his list (about a third of a cent, kept 30 days).
+   A one-off Yes makes a company top only if it also scores 5 or more: one Yes
+   had made Citi, PayPal and a job-ad network "top". Keys are whole names,
+   never a single token. The Company Radar tab shows the trail.
+2. **Their own boards, free, every run.** A board found by guessing must name
+   the company in its postings, or its roles do not count.
+3. **His rules at top companies**, decided 2026-10-03 (`gates.run_gates`
+   `top_company=True`): the Bay Area and remote-eligible postings pass, Director
+   and Manager seats in commercial functions pass, pay may start under the floor
+   when the top or OTE reaches $250,000. Nowhere else changes. The gate code
+   already had a variable called `top`; the flag is `top_company` for that
+   reason.
+4. **The company bar** (`companybar.py`): a role at a company scoring 0 or 1
+   is cut with no judge call, except an AI transformation seat and a
+   recruiter's posting. Measured on 242 of his rulings: it loses none of his
+   Yes roles beyond his own cut. At 3 it would lose ColdIQ, which he applied to.
+5. **The judge**, last, on what survives, top companies first, at low effort
+   (measured equal to high on the dev window, 24 percent cheaper), at most 100
+   roles and $5 a run, in gate mode since 2026-10-03.
+6. **The case** for each row that reaches him, at high effort.
+
+Measured and not used: Haiku as a first reader (`triage.py`,
+`tests/fixtures/triage_eval.json`). At the only line that keeps his Yes roles
+it saves about a fifth of the judge's work; one notch stricter it loses a third
+of them, and exactly the less obvious ones (later, Syntrace, Innovamat).
+
 ## 4. The Target Companies tab is his, and it is policy
 
 53 companies, five categories, a tier each, and a TIER LEGEND in his own
@@ -368,6 +408,12 @@ src/hunter/
   judge_eval.py     the judge measured against his rulings, chronologically
   judgedata.py      every role he ruled on, with the posting, for the judge
   blindset.py       roles he has never seen, ruled on blind, to measure the judge
+  universe.py       the companies he wants, and his rules for a role at one
+  lookalike.py      venture-backed companies scored against his list, once
+  radar.py          the Company Radar tab: companies, boards, open roles
+  companybar.py     a business scored once, so a plainly wrong one costs no call
+  triage.py         a cheap first reader, measured and not used, and why
+  data/ai_universe.csv  the hundred AI companies he listed, 2026-10-03
   schedule.py       which batch is owed, decided from the run record
   company.py        is the BUSINESS worth his time. Five components, evidenced
   companyintel.py   where those facts come from, free, and always cited
@@ -385,7 +431,7 @@ src/hunter/
     tailor.py       block selection, the hook
     voicegate.py    every generated string passes this
 extension/            loaded unpacked in his Chrome. main is what he downloads
-tests/                1316 tests, offline
+tests/                1381 tests, offline
   test_taste.py       the bar, measured against his own verdicts
   test_company_taste.py          the company bar, against the companies he chose
   fixtures/krish_verdicts.json   154 roles he ruled on. Ground truth

@@ -1,0 +1,1547 @@
+{
+ "meta": {
+  "context_cutoff": "2026-09-07T00:00:00+00:00",
+  "model": "claude-haiku-4-5-20251001",
+  "n": 192,
+  "run_at": "2026-10-03T22:08:07.984453+00:00",
+  "usd": 0.3565
+ },
+ "rows": [
+  {
+   "company": "Vista Equity Partners",
+   "label": "yes",
+   "reason": "Internal AI platform role reporting to CIO, no commercial P&L or revenue seat despite his top-company status.",
+   "score": 3,
+   "source": "apify_linkedin",
+   "title": "Senior Vice President, Data & AI Transformation"
+  },
+  {
+   "company": "versapay",
+   "label": "yes",
+   "reason": "VP Strategic Partnerships at revenue-scale fintech aligns with his five families and his Captify precedent, though handoff to channel execution may dilute his ownership.",
+   "score": 9,
+   "source": "apify_linkedin",
+   "title": "VP of Strategic Partnerships & Ecosystems"
+  },
+  {
+   "company": "DiligenceSquared (YC F25)",
+   "label": "yes",
+   "reason": "AI-native, well-backed (YC F25), senior GTM seat in right location and pay range, but consulting firm business model he typically avoids unless AI transformation mandate is explicit.",
+   "score": 7,
+   "source": "apify_linkedin",
+   "title": "Head of GTM"
+  },
+  {
+   "company": "ifit",
+   "label": "yes",
+   "reason": "Internal IT enablement role without P&L or commercial scope, and requires software engineering depth he doesn't offer.",
+   "score": 3,
+   "source": "apify_linkedin",
+   "title": "Director, Enterprise AI Enablement"
+  },
+  {
+   "company": "Rembrand",
+   "label": "yes",
+   "reason": "Partnerships and supply-side leadership at a hypergrowth AI-native AdTech company matches his target, but AdTech is a lower-tier category for him and the role skews more operational/supply than his co",
+   "score": 6,
+   "source": "lever:rembrand",
+   "title": "Head of Content Partnerships and Premium Supply"
+  },
+  {
+   "company": "Publicis Groupe",
+   "label": "yes",
+   "reason": "Agency/consultancy business he explicitly doesn't want; commercial strategy role is adjacent but not a senior seat he'd pursue at non-AI-native firm.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Senior Vice President, Commercial Strategy"
+  },
+  {
+   "company": "Publicis Groupe",
+   "label": "yes",
+   "reason": "Publicis is a consultancy and agency, explicitly excluded in his rules unless an AI transformation mandate at a household name; this is standard commercial strategy work at an agency.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Vice President, Commercial Strategy"
+  },
+  {
+   "company": "CLEAR",
+   "label": "yes",
+   "reason": "Revenue Ops is not his function; he needs commercial leadership, strategy, or GM seats, not operational infrastructure roles.",
+   "score": 3,
+   "source": "apify_linkedin",
+   "title": "Head of Revenue Operations (CLEAR1 - B2B)"
+  },
+  {
+   "company": "Innovamat",
+   "label": "yes",
+   "reason": "Educational software company, not AI-native or internet-native; business model doesn't align with his commercial leadership experience trajectory.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Head of Sales"
+  },
+  {
+   "company": "Photoroom",
+   "label": "yes",
+   "reason": "VP Sales is revenue-carrying and below his typical seniority, but Photoroom is AI-native, well-funded, fast-growing with clear product-market fit, in New York, and the scale ambition ($5M to $100M) al",
+   "score": 7,
+   "source": "apify_linkedin",
+   "title": "VP Sales (Global)"
+  },
+  {
+   "company": "Harnham",
+   "label": "yes",
+   "reason": "Product development function outside his wheelhouse; private equity firm not AI-native/internet-native company he targets; no commercial leadership mandate.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Director of Product Development"
+  },
+  {
+   "company": "Syntrace",
+   "label": "yes",
+   "reason": "Chief of Staff at 10-person startup is individual contributor function; business serves financial services institutions which he avoids unless explicit AI transformation mandate.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Chief of Staff"
+  },
+  {
+   "company": "later",
+   "label": "yes",
+   "reason": "Function is growth marketing/SLG rather than commercial leadership; influencer marketing business doesn't match his strategic interests or top company criteria.",
+   "score": 2,
+   "source": "greenhouse:later",
+   "title": "VP, Creator Growth (SLG)"
+  },
+  {
+   "company": "Bay Colony Search",
+   "label": "yes",
+   "reason": "Digital media publishing business doesn't match his AI-native or internet-native commercial growth focus; traditional media industry outside his target domains.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Vice President"
+  },
+  {
+   "company": "Jobot",
+   "label": "yes",
+   "reason": "AI-native, fast-growing, needs senior commercial lead in right geography and pay band, but 'Head of Growth' is ambiguous on seniority and domain fit versus his preferred GM/chief commercial roles.",
+   "score": 8,
+   "source": "apify_linkedin",
+   "title": "Head of Growth"
+  },
+  {
+   "company": "anthropic",
+   "label": "yes",
+   "reason": "Anthropic top company, AI transformation mandate, CCO office strategic operations role perfectly aligned with his stated interests and recent Yes on Head of Enterprise Sales there.",
+   "score": 9,
+   "source": "greenhouse:anthropic",
+   "title": "Strategy & Operations, Office of the CCO"
+  },
+  {
+   "company": "BlackRock",
+   "label": "yes",
+   "reason": "BlackRock is a bank/asset manager, explicitly on his never-list unless explicit AI transformation mandate at household name (which this is), but RQA is risk analytics and quant\u2014not a commercial, GTM, ",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "AI Strategy & Transformation, Director - RQA"
+  },
+  {
+   "company": "Sonos, Inc.",
+   "label": "yes",
+   "reason": "Sonos is a consumer audio hardware company, not AI-native or internet-native; lacks the strategic transformation mandate he seeks.",
+   "score": 3,
+   "source": "apify_linkedin",
+   "title": "Vice President, Business Development"
+  },
+  {
+   "company": "Google",
+   "label": "yes",
+   "reason": "Principal Lead on Chief of Staff team at Google in New York fits his seniority and function, though it's staff rather than commercial-revenue, and Google may not be his preferred type of company.",
+   "score": 7,
+   "source": "apify_linkedin",
+   "title": "Strategy and Operations Principal Lead, GBO Chief of Staff Team"
+  },
+  {
+   "company": "Moloco",
+   "label": "yes",
+   "reason": "Product Management is not a commercial leadership seat he wants; AI advertising, while tech-native, isn't a strategic mandate at a top company.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Director of Product Management, Consumer"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Sales enablement is operations/support function, not commercial leadership; his rulings show he applied for 'Enterprise Sales Leader' at Sierra, not enablement.",
+   "score": 2,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Global Head of Sales Enablement"
+  },
+  {
+   "company": "Reddit",
+   "label": "no",
+   "reason": "Finance function, not commercial or strategy leadership; Krish never wants finance roles.",
+   "score": 1,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Senior Director, Product & Technology Finance"
+  },
+  {
+   "company": "Synthesia",
+   "label": "no",
+   "reason": "Customer success operations is not his function; he wants GM, commercial, strategy, or partnerships roles.",
+   "score": 3,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Director, Customer Success Strategy and Operations"
+  },
+  {
+   "company": "Synthesia",
+   "label": "no",
+   "reason": "Product marketing is not a commercial leadership function he wants; he seeks GM, chief commercial, strategy, partnerships, or AI transformation seats.",
+   "score": 1,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Head of Product Marketing"
+  },
+  {
+   "company": "ElevenLabs",
+   "label": "no",
+   "reason": "He declined a similar GTM Chief of Staff role at ElevenLabs due to not being LATAM-based or native Spanish speaker; GTM Enablement is a different function but his prior ruling signals low interest reg",
+   "score": 2,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Head of GTM Enablement - Global Lead"
+  },
+  {
+   "company": "Suno",
+   "label": "no",
+   "reason": "Senior commercial seat at top-tier AI company in his domain (already applied for GM role), right location, pay in range, partnerships fits his profile.",
+   "score": 8,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Director, Business Development, Publishing Partnerships"
+  },
+  {
+   "company": "Cresta",
+   "label": "no",
+   "reason": "Senior partnership seat at AI-native, well-backed company in his geographic preferences and tier of interest; VP title and EMEA scope align with his stretch ambitions.",
+   "score": 8,
+   "source": "ats_sweep_2026_08_31",
+   "title": "VP of Partnerships, EMEA"
+  },
+  {
+   "company": "Decagon",
+   "label": "no",
+   "reason": "Director of Sales title is individual revenue-carrying, not a strategic seat; customer support agents business is not his domain.",
+   "score": 2,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Director of Sales, Enterprise"
+  },
+  {
+   "company": "Decagon",
+   "label": "no",
+   "reason": "customer support function, not a senior commercial or strategy seat he wants",
+   "score": 2,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Director of Sales, Enterprise - New York"
+  },
+  {
+   "company": "Decagon",
+   "label": "no",
+   "reason": "Director title in commercial is in scope, but customer support agents business is not his domain and doesn't match his senior leadership trajectory.",
+   "score": 2,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Strategic Account Director, Healthcare"
+  },
+  {
+   "company": "Decagon",
+   "label": "no",
+   "reason": "marketing function, not a commercial/strategy/partnerships/CDO/AI transformation seat",
+   "score": 2,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Head of Solutions and Industry Marketing"
+  },
+  {
+   "company": "Modal",
+   "label": "no",
+   "reason": "Finance function is not his; he never wants finance roles.",
+   "score": 1,
+   "source": "ats_sweep_2026_08_31",
+   "title": "VP, Finance"
+  },
+  {
+   "company": "Modal",
+   "label": "no",
+   "reason": "Senior commercial role at respected AI infrastructure company in NYC, but 'Regional Director' title is broad and pay unknown; unclear if this matches his five families or if it's a stretch tier-3 play",
+   "score": 5,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Regional Director"
+  },
+  {
+   "company": "Crusoe",
+   "label": "no",
+   "reason": "Finance function, not commercial or strategy leadership.",
+   "score": 2,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Director, Cloud GTM Finance"
+  },
+  {
+   "company": "Crusoe",
+   "label": "no",
+   "reason": "Finance function, not commercial/strategy/partnerships leadership seat.",
+   "score": 0,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Senior Director, Finance - Business Enablement"
+  },
+  {
+   "company": "Synthesia",
+   "label": "no",
+   "reason": "Regional Director (sales function) in Austin breaks location rules; he needs New York, London, UK/US remote, or SF Bay only at top companies.",
+   "score": 2,
+   "source": "ashby:synthesia",
+   "title": "Regional Director of Sales"
+  },
+  {
+   "company": "Harvey",
+   "label": "no",
+   "reason": "Government Affairs & Public Policy is a function outside his commercial and strategy wheelhouse; he's already applied for Business Development Lead at Harvey.",
+   "score": 2,
+   "source": "ashby:harvey",
+   "title": "Director, Government Affairs & Public Policy"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Top company match (already applied), enterprise sales director with commercial upside at AI-native customer experience platform, compensation and equity aligned, remote eligible.",
+   "score": 9,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director - Majors"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Enterprise Sales Director is individual contributor/IC function, not the senior leadership seat he requires; financial services verticalization doesn't align with his commercial leadership mandate.",
+   "score": 2,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director, Financial Services"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Enterprise Sales Director is a revenue-carrying individual contributor seat, not a senior commercial leadership position; he's already applied to Sierra for a different role (Enterprise Sales Leader).",
+   "score": 2,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director - Majors, Healthcare"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Enterprise Sales Director is individual contributor revenue seat, not senior commercial leadership in his five target families; SF-based not aligned with his location rules.",
+   "score": 2,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director - Majors, Retail"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Canada remote breaks his location rules (NY, London, UK/US remote, or SF Bay only at top companies); Sierra is top-tier but this director-level sales seat conflicts with his strategic/commercial leade",
+   "score": 2,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director - Strategic, Healthcare"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Canada remote breaks his location rules (NY, London, UK/US remote, or SF Bay only at top companies); Enterprise Sales Director is revenue-carrying but he's applied for higher strategic seats at Sierra",
+   "score": 2,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director - Strategic, Retail"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Canada remote violates location rules (NY, London, UK/US remote, or SF Bay only at top companies); director title at tier-2 company acceptable but geography is disqualifying.",
+   "score": 2,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director - Strategic"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Enterprise Sales Director is an individual contributor sales seat, not a senior commercial leader role; Canada remote violates his geography rules (New York, London, UK/US remote, or SF Bay at top com",
+   "score": 2,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director, Healthcare"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Enterprise Sales Director is individual contributor sales function, not senior commercial leadership seat he targets; location Canada-remote breaks his SF/NYC/London/UK-US rule.",
+   "score": 2,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director, Retail"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Consumer Business Services is not his domain; he needs B2B commercial leadership in his core spaces.",
+   "score": 2,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director, Consumer Business Services"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Enterprise Sales Director is individual contributor revenue role, not his senior strategic seat; he already applied for Enterprise Sales Leader at Sierra and got it.",
+   "score": 2,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director - Majors, Consumer Business Services"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Enterprise Sales Director in consumer business services is a revenue-carrying but individual contributor seat; he applied for a different Sierra role (Enterprise Sales Leader) which suggests this vari",
+   "score": 2,
+   "source": "ashby:sierra",
+   "title": "Enterprise Sales Director - Strategic, Consumer Business Services"
+  },
+  {
+   "company": "Harvey",
+   "label": "no",
+   "reason": "Finance function; he never wants pure finance roles.",
+   "score": 0,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Head of GTM Finance"
+  },
+  {
+   "company": "Glean",
+   "label": "no",
+   "reason": "Growth marketing function is explicitly not his domain (see Abridge ruling); Bay Area location only works for top companies but this is growth marketing not commercial leadership.",
+   "score": 2,
+   "source": "ats_sweep_2026_08_31",
+   "title": "VP, Growth Marketing"
+  },
+  {
+   "company": "Writer",
+   "label": "no",
+   "reason": "EMEA regional ops scaling fits his playbook (Captify APAC build), Writer is top-tier, but post-sales retention seat lacks full commercial P&L authority he typically seeks.",
+   "score": 7,
+   "source": "ats_sweep_2026_08_31",
+   "title": "VP, Customer Success (EMEA)"
+  },
+  {
+   "company": "Cresta",
+   "label": "no",
+   "reason": "Partnerships archetype at tier-2 AI company he'd admire, but domain-specific contact center requirement and lack of P&L ownership create friction.",
+   "score": 6,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Partner Success Director"
+  },
+  {
+   "company": "Harvey",
+   "label": "no",
+   "reason": "Marketing operations and analytics is not a commercial or strategy leadership role; reporting to Head of Demand Generation rather than GM or Chief Commercial Officer breaks his pattern.",
+   "score": 3,
+   "source": "ashby:harvey",
+   "title": "Head of Marketing Operations & Analytics"
+  },
+  {
+   "company": "The Trade Desk",
+   "label": "no",
+   "reason": "Strong fit on domain expertise and commercial leadership scope, but adtech sector and undisclosed comp at non-top-tier company make it less certain than pure-plays.",
+   "score": 7,
+   "source": "greenhouse:thetradedesk",
+   "title": "GM, Business Development, Enterprise"
+  },
+  {
+   "company": "UiPath",
+   "label": "no",
+   "reason": "Chief of Staff GTM at top company in his target seat family (commercial strategy), New York location, right pay band; risk is it's optimizing existing machine not building, and he's built rather than ",
+   "score": 7,
+   "source": "ashby",
+   "title": "Chief of Staff, Go to Market"
+  },
+  {
+   "company": "Synthesia",
+   "label": "no",
+   "reason": "Director-level commercial operations at top AI company in right location, but operations support function below his target GM/CCO seniority.",
+   "score": 6,
+   "source": "ats_sweep_2026_08_31",
+   "title": "Director, Sales Strategy and Operations"
+  },
+  {
+   "company": "Ogury",
+   "label": "no",
+   "reason": "GTM vertical leadership in CTV at top adtech company in his preferred location, but title and scope (solutions lead, not country GM) represent a step down from his Captify APAC founder role that seeme",
+   "score": 6,
+   "source": "lever",
+   "title": "Global Solutions Lead, CTV & Video Business"
+  },
+  {
+   "company": "Flex",
+   "label": "no",
+   "reason": "FinTech (rent payments) violates his rule against financial services; staff-support seat under another leader, not owning commercial line.",
+   "score": 3,
+   "source": "apify_linkedin",
+   "title": "Senior Director, GTM Strategy & Operations"
+  },
+  {
+   "company": "amperity",
+   "label": "no",
+   "reason": "Head of Partnerships & Alliances in New York at AI-native data platform; checks his five families and location rules, but needs full JD to confirm scope and seniority level.",
+   "score": 8,
+   "source": "greenhouse:amperity",
+   "title": "Head of Partnerships & Alliances"
+  },
+  {
+   "company": "chartis",
+   "label": "no",
+   "reason": "Healthcare strategy consulting firm; not AI-native, internet-native, or fast-growing tech; he explicitly declines consultancies unless explicit AI transformation mandate at household name.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Head of Strategic Affiliations & Ecosystem Partnerships"
+  },
+  {
+   "company": "flex",
+   "label": "no",
+   "reason": "FinTech in consumer rent payments, not AI-native or internet-native; product partnerships doesn't match his five families; Krish's rules explicitly exclude finance services",
+   "score": 2,
+   "source": "greenhouse:flex",
+   "title": "Senior Director, Product Partnerships"
+  },
+  {
+   "company": "Asana",
+   "label": "no",
+   "reason": "GM title in product at Asana in New York fits his location and seniority preferences, but product-focused rather than commercial/strategy seats he prioritizes; Asana not a tier-1 company; compensation",
+   "score": 6,
+   "source": "apify_linkedin",
+   "title": "GM, Product - Command"
+  },
+  {
+   "company": "Headway",
+   "label": "no",
+   "reason": "Chief of Staff role in healthcare/payer vertical is not a commercial seat; healthcare payer infrastructure falls outside his five target families and domain expertise.",
+   "score": 2,
+   "source": "a16z board",
+   "title": "Chief of Staff, Payer"
+  },
+  {
+   "company": "kustomer",
+   "label": "no",
+   "reason": "GTM Strategy & Operations at conversational CRM fits his skill set and compensation bands, but Kustomer isn't a top-tier company and conversational CRM is crowded; needs JD review to confirm mandate c",
+   "score": 6,
+   "source": "apify_linkedin",
+   "title": "Head of GTM Strategy and Operations"
+  },
+  {
+   "company": "monstro",
+   "label": "no",
+   "reason": "Financial services AI for banks violates his explicit rule against banks unless explicit AI transformation mandate at household name; Managing Director is revenue-carrying but company is not top-tier ",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Managing Director, Enterprise Accounts, Financial Services AI"
+  },
+  {
+   "company": "monstro",
+   "label": "no",
+   "reason": "Banks are explicitly excluded unless AI transformation mandate at household name; this is a banking fintech vendor, not his domain.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Managing Director Strategic Banking Accounts"
+  },
+  {
+   "company": "oscar",
+   "label": "no",
+   "reason": "Oscar is a health insurance company; Krish's rules explicitly exclude insurers unless there's an explicit AI transformation mandate, which isn't evident here.",
+   "score": 1,
+   "source": "greenhouse:oscar",
+   "title": "Senior Director, Marketplace Growth and Partnerships"
+  },
+  {
+   "company": "oscar",
+   "label": "no",
+   "reason": "Healthcare/insurance company; explicitly excluded by his rules unless AI transformation mandate at household name.",
+   "score": 2,
+   "source": "greenhouse:oscar",
+   "title": "VP, Marketplace ICHRA General Manager - Lucie"
+  },
+  {
+   "company": "patientpoint",
+   "label": "no",
+   "reason": "Healthcare services/provider network, not AI-native or internet-native, and partnerships role at non-top company without clear AI transformation mandate.",
+   "score": 2,
+   "source": "greenhouse:patientpoint",
+   "title": "Director, Programmatic Demand Partnerships"
+  },
+  {
+   "company": "Curvion Blue",
+   "label": "no",
+   "reason": "Services firm (RevOps agency); he explicitly excludes agencies unless it's an AI transformation mandate at a household name.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Director of Revenue Strategy & Growth"
+  },
+  {
+   "company": "flex",
+   "label": "no",
+   "reason": "FinTech in consumer payments/rent, not AI-native or internet-native by profile; ruled out by business sector.",
+   "score": 0,
+   "source": "apify_linkedin",
+   "title": "Chief of Staff (Executive Office) and VP of Strategy & Operations"
+  },
+  {
+   "company": "flex",
+   "label": "no",
+   "reason": "FinTech in consumer payments (rent), explicitly ruled out; Chief of Staff is not a senior line seat; no AI transformation mandate at household name.",
+   "score": 2,
+   "source": "greenhouse:flex",
+   "title": "Chief of Staff to the GM of Housing"
+  },
+  {
+   "company": "flex",
+   "label": "no",
+   "reason": "FinTech rent-payment business falls outside his stated domains; he explicitly avoids financial services and payroll-adjacent businesses.",
+   "score": 2,
+   "source": "greenhouse:flex",
+   "title": "Vice President, Business Development & Strategic Partnerships"
+  },
+  {
+   "company": "ripple",
+   "label": "no",
+   "reason": "Crypto/blockchain company outside his investment thesis; ecosystem growth is not a core commercial family seat he targets.",
+   "score": 2,
+   "source": "greenhouse:ripple",
+   "title": "Director, Ecosystem Growth"
+  },
+  {
+   "company": "Gusto",
+   "label": "no",
+   "reason": "Engineering function, not commercial/strategy; payroll/HR domain he explicitly avoids unless AI transformation mandate at household name.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Head of AI and Machine Learning Engineering"
+  },
+  {
+   "company": "flex",
+   "label": "no",
+   "reason": "FinTech (rent payment) is outside his domain; he avoids financial services unless there's an explicit AI transformation mandate at a household name.",
+   "score": 2,
+   "source": "greenhouse:flex",
+   "title": "Senior Director, Strategic Partnerships"
+  },
+  {
+   "company": "oscar",
+   "label": "no",
+   "reason": "Health insurance company; explicitly in his never-wants list unless explicit AI transformation mandate.",
+   "score": 2,
+   "source": "greenhouse:oscar",
+   "title": "Director, Business Operations & Strategy"
+  },
+  {
+   "company": "Portage Point Partners",
+   "label": "no",
+   "reason": "Finance function in a services/consulting firm, outside his five target families and explicitly excluded rule.",
+   "score": 1,
+   "source": "lever:portagepointpartners",
+   "title": "Managing Director, Office of the CFO"
+  },
+  {
+   "company": "Forvis Mazars US",
+   "label": "no",
+   "reason": "Services firm (consulting) explicitly excluded; not a commercial seat in a tech company he'd want.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Managing Director, Insurance Transformation & AI"
+  },
+  {
+   "company": "Vidmob",
+   "label": "no",
+   "reason": "Partnerships/alliances archetype in New York at a growing company, but Vidmob isn't AI-native, and Director title without explicit top-tier status puts this at the borderline of his stretch-role thres",
+   "score": 6,
+   "source": "apify_linkedin",
+   "title": "Director, Data Partnerships"
+  },
+  {
+   "company": "Janus Henderson Investors",
+   "label": "no",
+   "reason": "Asset manager explicitly excluded; AI transformation mandate insufficient without revenue-carrying seat or strategic partnerships/commercial mandate.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Head of AI"
+  },
+  {
+   "company": "ThoughtSpot",
+   "label": "no",
+   "reason": "Founding GTM lead at top AI-native platform in Bay Area on his list, but mountain view location and unconfirmed compensation create minor friction against his rules.",
+   "score": 8,
+   "source": "apify_linkedin",
+   "title": "Founding GTM Lead, AgentSpot"
+  },
+  {
+   "company": "StartX Med",
+   "label": "no",
+   "reason": "Director title at non-top company in Bay Area violates rules; cybersecurity domain expertise requirement is disqualifying mismatch.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Director of Channels & Alliances"
+  },
+  {
+   "company": "Wolters Kluwer",
+   "label": "no",
+   "reason": "Analysis and influence seat with no P&L or commercial engine; Wolters Kluwer is a professional services/information business he'd decline.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Associate Director, Corporate Strategy- Enterprise AI Transformation"
+  },
+  {
+   "company": "New York Life",
+   "label": "no",
+   "reason": "Insurance industry explicitly excluded; role is technical team leadership not commercial; location breaks his rules.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Corporate Vice President, AI Enablement Manager"
+  },
+  {
+   "company": "BNY",
+   "label": "no",
+   "reason": "Bank (excluded category); internal governance role, not revenue-carrying or transformational mandate.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Senior Director, Technology Partnerships"
+  },
+  {
+   "company": "Citi",
+   "label": "no",
+   "reason": "Banking employer he explicitly declines; engineering leadership function, not commercial or strategic seat.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Head of AI-First Development (Firmwide AI) - Managing Director"
+  },
+  {
+   "company": "Citi",
+   "label": "no",
+   "reason": "Bank explicitly on his never-wants list; function is operational transformation delivery, not a commercial or strategy seat.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Head of Applied AI & Agent Factory - Managing Director"
+  },
+  {
+   "company": "TIAA",
+   "label": "no",
+   "reason": "Financial services employer explicitly on his no-list, and internal AI transformation delivery rather than commercial revenue seat he would build.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Senior Managing Director - AI Strategy & Enterprise Applications"
+  },
+  {
+   "company": "TD Securities",
+   "label": "no",
+   "reason": "Bank; Krish explicitly never wants banks unless explicit AI transformation mandate at household name.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Vice President, Partnership Manager Transaction Banking Innovation & Embedded Banking"
+  },
+  {
+   "company": "Black Duck",
+   "label": "no",
+   "reason": "Partnerships and alliances at top company in New York, but AppSec domain and team-building requirement outside his proven zero-to-one experience.",
+   "score": 7,
+   "source": "apify_linkedin",
+   "title": "Sr Director, Technology Partner Alliances Development"
+  },
+  {
+   "company": "Pfizer",
+   "label": "no",
+   "reason": "Internal staff role in pharma infrastructure with no commercial mandate; pharma is outside his pattern and experience is pharmaceutical-specific.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Senior Director, Strategy and Portfolio Management"
+  },
+  {
+   "company": "PointClickCare",
+   "label": "no",
+   "reason": "Location breaks rules (Mississauga/Canada not permitted), and he lacks the deep senior living domain expertise this GM mandate requires.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Senior Vice President & General Manager, Senior Living"
+  },
+  {
+   "company": "Baker Tilly US",
+   "label": "no",
+   "reason": "Services firm he explicitly avoids, not AI-native or internet-native, and dealership/industrial products domain misalignment.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Managing Director, Industrial Products, Managed Services"
+  },
+  {
+   "company": "EY-Parthenon",
+   "label": "no",
+   "reason": "Consulting firm (on his never-want list unless explicit AI transformation at household name) plus advisory not operating seat; he builds and runs businesses, not advises them.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "EY-Parthenon - Strategy and Execution - Commercial Strategy - Director - Multiple Locations"
+  },
+  {
+   "company": "Morgan Stanley",
+   "label": "no",
+   "reason": "Asset management and financial services are explicitly excluded from his never-wants list unless it's an AI transformation mandate; this is traditional ETF distribution, not that.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Executive Director & Head, Global ETF Marketing & Direct Partnerships"
+  },
+  {
+   "company": "Soni",
+   "label": "no",
+   "reason": "engineering leadership seat, not commercial/strategy/partnerships/GM function he targets",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Head of AI Platform Engineering, Execution Services"
+  },
+  {
+   "company": "eliseai",
+   "label": "no",
+   "reason": "Senior commercial strategy seat at well-backed AI-native company in NYC, but product-led role may not be ideal commercial fit; strong on company and location.",
+   "score": 7,
+   "source": "ashby:eliseai",
+   "title": "Product Strategy and Operations, Director - New Verticals | Housing"
+  },
+  {
+   "company": "Pinterest",
+   "label": "no",
+   "reason": "FinServ vertical sales leadership at non-top company doesn't match his senior GM/chief commercial/partnerships mandate.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Managing Director, Sales - FinServ"
+  },
+  {
+   "company": "Ankura",
+   "label": "no",
+   "reason": "Consulting firm violates his explicit exclusion; individual contributor origination seat, not a building mandate.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Senior Managing Director, Digital Transformation, Private Equity"
+  },
+  {
+   "company": "BetaNXT",
+   "label": "no",
+   "reason": "Individual contributor product seat, not a senior commercial or strategy leadership position with P&L ownership.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Head of AI Product"
+  },
+  {
+   "company": "Harris Allied",
+   "label": "no",
+   "reason": "Operations and systems building role, not a senior commercial or strategy seat in his target families.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Head of AI Operations and Systems"
+  },
+  {
+   "company": "TailorMed",
+   "label": "no",
+   "reason": "Healthcare services firm, not AI-native or internet-native, and Director title at non-top company below his seniority threshold.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Director of Partnerships"
+  },
+  {
+   "company": "accordion",
+   "label": "no",
+   "reason": "Services firm (financial consulting with implementation focus) explicitly on his exclusion list; not a seat in his five target families despite the director title.",
+   "score": 2,
+   "source": "greenhouse:accordion",
+   "title": "EMEA Salesforce Sales & Alliances Director"
+  },
+  {
+   "company": "talkiatry",
+   "label": "no",
+   "reason": "regional director-level partnerships role at non-household-name healthtech; territory constraint and individual contributor scope misaligned with his senior seat requirements",
+   "score": 3,
+   "source": "ashby:talkiatry",
+   "title": "Strategic Partnerships Director - Southeast"
+  },
+  {
+   "company": "turquoise-health",
+   "label": "no",
+   "reason": "Director-level strategy role at remote-friendly healthcare/employer solutions company fits location and seniority rules, but Turquoise Health is not a recognized top AI or internet-native company, and",
+   "score": 5,
+   "source": "ashby:turquoise-health",
+   "title": "Strategy & Operations Director, Employer"
+  },
+  {
+   "company": "S&P Global",
+   "label": "no",
+   "reason": "Financial services firm (his never list), influence-only role without P&L ownership, and not his five target families.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Head of AI Product Transformation, Enterprise Solutions"
+  },
+  {
+   "company": "Novartis",
+   "label": "no",
+   "reason": "Pharma/biotech is not his domain; New Jersey on-site only breaks location rules; function is strategic governance/portfolio management, not commercial leadership or AI transformation.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Executive Director, Strategy Prioritization & Governance"
+  },
+  {
+   "company": "JPMorganChase",
+   "label": "no",
+   "reason": "Finance function and bank; both are explicit exclusions per his rules.",
+   "score": 0,
+   "source": "apify_linkedin",
+   "title": "Managing Director, Chief Financial Officer - Global Payments"
+  },
+  {
+   "company": "dailypay",
+   "label": "no",
+   "reason": "Director-level fintech/payroll domain expertise mismatch with his 16-year commercial leadership trajectory; not AI-native, and fintech sits outside his stated interest areas.",
+   "score": 2,
+   "source": "ashby:dailypay",
+   "title": "Director - Business Development & Partnerships - Healthcare"
+  },
+  {
+   "company": "pagaya",
+   "label": "no",
+   "reason": "Financial services domain (fintech/consumer credit) is explicitly ruled out; seat is Chief of Staff/operations-focused rather than a senior commercial family he targets.",
+   "score": 3,
+   "source": "greenhouse:pagaya",
+   "title": "Director, Business Operations and COS to CCO"
+  },
+  {
+   "company": "talkiatry",
+   "label": "no",
+   "reason": "Healthcare services provider partnerships role lacks his commercial scaling scope; regional director title and healthcare focus suggest mismatch with his strategic/GM trajectory.",
+   "score": 3,
+   "source": "ashby:talkiatry",
+   "title": "Area Director, Partnerships Team - Central Region"
+  },
+  {
+   "company": "talkiatry",
+   "label": "no",
+   "reason": "Healthcare services company (telehealth mental health), regional director role in partnerships is below his target seniority; not AI-native or internet-native, and not among his preferred company type",
+   "score": 3,
+   "source": "ashby:talkiatry",
+   "title": "Area Director, Partnerships Team - Midwest Region"
+  },
+  {
+   "company": "zetaglobal",
+   "label": "no",
+   "reason": "Traditional enterprise sales leadership role at a MarTech/AdTech company; not strategic commercial seat he targets, and Zeta Global is neither AI-native nor in his preferred five families.",
+   "score": 3,
+   "source": "greenhouse:zetaglobal",
+   "title": "Vice President, Client Partnerships (Publisher Cloud)"
+  },
+  {
+   "company": "Moody's Corporation",
+   "label": "no",
+   "reason": "Partnerships seat at his target level in NYC, but Moody's is a ratings/risk firm (sector he avoids) and matrixed culture may limit the strategy-building he craves.",
+   "score": 5,
+   "source": "apify_linkedin",
+   "title": "Senior Director - Partnerships Sales Leader"
+  },
+  {
+   "company": "Fitch Group, Inc.",
+   "label": "no",
+   "reason": "Financial services firm (credit ratings, risk analytics) is explicitly excluded unless AI transformation mandate at household name; Fitch Group is not that, and role is structured as M&A support rathe",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Senior Director, Strategic Alliances"
+  },
+  {
+   "company": "David AI",
+   "label": "no",
+   "reason": "Data operations role is not commercial, strategic, or leadership-oriented; he doesn't want research/data infrastructure firms.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "General Manager, Data Operations"
+  },
+  {
+   "company": "Capital One",
+   "label": "no",
+   "reason": "Capital One is a bank, explicitly on his never-wants list unless it's an AI transformation mandate at a household name; this is standard strategy and analytics work.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Sr. Business Director, Strategy and Analytics"
+  },
+  {
+   "company": "Capital One",
+   "label": "no",
+   "reason": "Bank excluded by his rules; analytics/strategy seat lacks revenue P&L ownership he requires.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Business Director, Strategy and Analytics"
+  },
+  {
+   "company": "BMO Capital Markets",
+   "label": "no",
+   "reason": "Bank; explicitly excluded from his target employers.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Director, Strategy & Business Management, Global Equities"
+  },
+  {
+   "company": "Fireblocks",
+   "label": "no",
+   "reason": "Partnerships archetype fits his playbook, but technical depth in Core Banking/ERP/TMS and execution-heavy ecosystem role are risks; also Fireblocks is financial infrastructure, borderline on his servi",
+   "score": 5,
+   "source": "apify_linkedin",
+   "title": "Technology Alliances Director"
+  },
+  {
+   "company": "BMO Capital Markets",
+   "label": "no",
+   "reason": "Bank (explicitly excluded); not AI-native or internet-native; derivative trading expertise irrelevant to his background.",
+   "score": 0,
+   "source": "apify_linkedin",
+   "title": "VP, Strategy & Business Management, Equity Derivatives"
+  },
+  {
+   "company": "Novartis",
+   "label": "no",
+   "reason": "Pharmaceutical company (explicitly excluded), non-remote location requirement in New Jersey contradicts his location rules, and strategic planning/operations function lacks commercial or AI transforma",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Director, Strategy Engagement Lead"
+  },
+  {
+   "company": "West Monroe",
+   "label": "no",
+   "reason": "Consultancy firm explicitly excluded from his never-wants list; not a commercial leadership seat at an AI-native or internet-native company.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Managing Director/Senior Account Partner - Utilities"
+  },
+  {
+   "company": "Ankura",
+   "label": "no",
+   "reason": "Finance function at a services firm; Krish doesn't want consultancies unless explicit AI transformation mandate at household name.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Managing Director, Office of the CFO"
+  },
+  {
+   "company": "DoorDash",
+   "label": "no",
+   "reason": "Director title in operations strategy with AI transformation mandate at a household name fits his rules, but internal ops role lacks revenue ownership he typically wants.",
+   "score": 5,
+   "source": "apify_linkedin",
+   "title": "Director, Customer Experience Strategy & Operations"
+  },
+  {
+   "company": "AS Beauty Group",
+   "label": "no",
+   "reason": "Beauty/consumer goods company without AI transformation mandate; commercial planning and sales operations role, not strategic leadership seat he seeks.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Senior Director, Product Sales Planning & Commercial Strategy"
+  },
+  {
+   "company": "JPMorganChase",
+   "label": "no",
+   "reason": "JPMorganChase is a bank, explicitly on his never list; product partnerships role is not a senior commercial seat he targets.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Vice President - Product Partnerships, Connected Commerce"
+  },
+  {
+   "company": "Grasp",
+   "label": "no",
+   "reason": "Finance and services firm (PE/banking focus) explicitly excluded unless household name AI transformation mandate; lacks senior strategic seat.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "US Managing Director"
+  },
+  {
+   "company": "Samsung Ads",
+   "label": "no",
+   "reason": "Director-level partnerships seat at a large company with strong revenue focus, but Samsung Ads is not AI-native or internet-native enough and the TV/media ecosystem focus may not align with his transf",
+   "score": 5,
+   "source": "apify_linkedin",
+   "title": "Director, Strategic Partnerships"
+  },
+  {
+   "company": "CTB1LLC, a boutique talent and placement company",
+   "label": "no",
+   "reason": "Services firm (talent/placement) with fintech hiring focus, plus the underlying client is fintech (banks/financial services explicitly excluded).",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Founding GTM"
+  },
+  {
+   "company": "Omnicom Precision Marketing",
+   "label": "no",
+   "reason": "Agency services firm explicitly on his never-want list; not a commercial leadership role at his target company types.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "VP Strategy Director"
+  },
+  {
+   "company": "Spectrum Reach",
+   "label": "no",
+   "reason": "Traditional TV advertising business (not AI-native or internet-native), at non-top company, and he explicitly declines measurement/research/agencies unless explicit AI transformation mandate.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Director, Advanced TV Partnerships (Dentsu)"
+  },
+  {
+   "company": "Mutiny",
+   "label": "yes",
+   "reason": "Senior GTM seat with COO path at top AI company in preferred location matches his profile, though lack of stated pay and in-person requirement need clarification.",
+   "score": 8,
+   "source": "Unknown",
+   "title": "Head of GTM (Path to COO)"
+  },
+  {
+   "company": "Cohere",
+   "label": "yes",
+   "reason": "Perfect fit: corporate development and strategic alliances at top-tier AI company, proven M&A and partnerships track record, but SF location and undisclosed comp are minor constraints.",
+   "score": 9,
+   "source": "apify_linkedin",
+   "title": "Head of Corporate Development"
+  },
+  {
+   "company": "Fleek",
+   "label": "yes",
+   "reason": "Chief of Staff at a16z-backed, fast-growing AI/tech company in London fits location and seniority, but fashion supply chain is not his stated domain and seat function needs verification against his fi",
+   "score": 7,
+   "source": "a16z board",
+   "title": "Chief of Staff"
+  },
+  {
+   "company": "Revin",
+   "label": "yes",
+   "reason": "Partnerships at a well-backed AI-native company in his target function and location, but needs JD review to confirm seniority level and scope match his mandate for commercial leadership roles.",
+   "score": 8,
+   "source": "apify_linkedin",
+   "title": "Head of Partnerships"
+  },
+  {
+   "company": "OpenAI",
+   "label": "yes",
+   "reason": "Partnerships mandate at top company in right location and pay, but narrower than his preferred full commercial seat and sector different from his core expertise.",
+   "score": 8,
+   "source": "Apify LinkedIn (2026-09-10 sweep)",
+   "title": "Head of Partnerships, Digital Natives"
+  },
+  {
+   "company": "Clay",
+   "label": "yes",
+   "reason": "Strong fit for GTM strategy & operations at a top company in New York with revenue-carrying mandate, though RevOps framing creates ambiguity about whether he owns the full commercial strategy seat he ",
+   "score": 8,
+   "source": "ashby:claylabs",
+   "title": "Head of GTM Strategy & Ops"
+  },
+  {
+   "company": "CreatorIQ",
+   "label": "yes",
+   "reason": "VP GTM Operations at fast-growing, well-backed, top-tier creator-economy company in New York; strong strategic operations role in his wheelhouse, though operations-heavy rather than pure commercial le",
+   "score": 7,
+   "source": "apify_linkedin",
+   "title": "Vice President, GTM Operations"
+  },
+  {
+   "company": "Anaplan",
+   "label": "yes",
+   "reason": "Perfect fit on partnerships mandate and engine-building capability, but Salesforce ownership and partner-sales risk drops it from 9.",
+   "score": 8,
+   "source": "apify_linkedin",
+   "title": "VP, Technology Partnerships"
+  },
+  {
+   "company": "Cloudflare",
+   "label": "yes",
+   "reason": "AI chief of staff at top company in his preferred seat family, but he prefers owned P&L and strategy mandate over executing someone else's agenda.",
+   "score": 7,
+   "source": "greenhouse",
+   "title": "Chief of Staff to Chief Strategy Officer"
+  },
+  {
+   "company": "udio",
+   "label": "yes",
+   "reason": "Partnerships lead in music is domain-specific and not a senior commercial seat he has applied for; LA location breaks his rules.",
+   "score": 2,
+   "source": "greenhouse:udio",
+   "title": "Head of Artist Partnerships"
+  },
+  {
+   "company": "banyansoftware",
+   "label": "yes",
+   "reason": "Wealth management software and banking relationships are outside his domain expertise; GM mandate is strong but market knowledge gap is disqualifying.",
+   "score": 2,
+   "source": "greenhouse:banyansoftware",
+   "title": "WIZE Managing Director UK"
+  },
+  {
+   "company": "January",
+   "label": "yes",
+   "reason": "AI Chief of Staff archetype at top company in NY, but staff seat without P&L or commercial line sits below his typical scope.",
+   "score": 8,
+   "source": "apify_linkedin",
+   "title": "Chief of Staff"
+  },
+  {
+   "company": "Foundry",
+   "label": "yes",
+   "reason": "Media publishing GM role doesn't match his commercial leadership mandate; audience/growth focus misses his strategy, partnerships, or AI transformation targets.",
+   "score": 3,
+   "source": "apify_linkedin",
+   "title": "Senior Vice President & General Manager, Audience & Growth"
+  },
+  {
+   "company": "Virtuous",
+   "label": "no",
+   "reason": "Phoenix-based hybrid requirement breaks his location rules; nonprofit CRM is outside his domain expertise and interest areas shown in his rulings.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "General Manager, CRM +"
+  },
+  {
+   "company": "Ironclad",
+   "label": "no",
+   "reason": "AI-native commercial strategy and operations at a fast-growing platform company in New York, but reports into ops rather than directly owning revenue.",
+   "score": 7,
+   "source": "apify_linkedin",
+   "title": "Senior Director, Global Sales Strategy and Operations"
+  },
+  {
+   "company": "Cedar",
+   "label": "no",
+   "reason": "Commercial strategy fit and New York location match; Cedar is well-funded and growing, but the role is a support seat without P&L or team ownership, which falls short of his senior seat requirement.",
+   "score": 6,
+   "source": "apify_linkedin",
+   "title": "Sr. Director, Commercial Strategy"
+  },
+  {
+   "company": "LoopMe",
+   "label": "no",
+   "reason": "Adtech/measurement firm with partnerships focus; Krish declines measurement and research firms; Sr. Director is below his target seniority for non-top companies.",
+   "score": 3,
+   "source": "apify_linkedin",
+   "title": "Sr. Director, Agency Partnerships"
+  },
+  {
+   "company": "Selby Jennings",
+   "label": "no",
+   "reason": "Financial services employer explicitly excluded from his never-wants list; CRO title but no AI transformation mandate at household name.",
+   "score": 0,
+   "source": "apify_linkedin",
+   "title": "Chief Revenue Officer"
+  },
+  {
+   "company": "Ladders",
+   "label": "no",
+   "reason": "Finance and insurance portfolio company operations role; explicitly excluded employer category.",
+   "score": 0,
+   "source": "apify_linkedin",
+   "title": "Managing Director, Operations & Strategy"
+  },
+  {
+   "company": "Arcana",
+   "label": "no",
+   "reason": "Financial services/asset management firm explicitly on his never-wants list; domain misaligned with his background and stated preferences.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Head of Partnerships"
+  },
+  {
+   "company": "Azza HealthCare Agency",
+   "label": "no",
+   "reason": "Consulting firm in healthcare; not AI-native, internet-native, or fast-growing tech; domain expertise mismatch with his commercial leadership background.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Director, Payer Innovation and Alliances"
+  },
+  {
+   "company": "Trulioo",
+   "label": "yes",
+   "reason": "Senior Director of Corporate Strategy & Development at a top-tier identity verification company in New York fits his core mandates, but compensation and specific mandate clarity need verification.",
+   "score": 8,
+   "source": "apify_linkedin",
+   "title": "Senior Director, Corporate Strategy & Development"
+  },
+  {
+   "company": "Higgsfield AI",
+   "label": "yes",
+   "reason": "Direct domain fit (entertainment/media GTM), AI-native, fast-scaling, well-backed Accel portfolio company at scale, SF office acceptable for top tier; entertainment media background at Nine is exact m",
+   "score": 9,
+   "source": "ashby:higgsfieldai",
+   "title": "Head of Entertainment GTM"
+  },
+  {
+   "company": "socure",
+   "label": "yes",
+   "reason": "Top company he's said yes to; Head of GTM role in high-growth vertical; right seniority, location, and compensation; AI-native identity verification business aligns with his stated preferences.",
+   "score": 9,
+   "source": "ashby:socure",
+   "title": "Head of GTM, Workforce"
+  },
+  {
+   "company": "openrouter",
+   "label": "yes",
+   "reason": "Director partnerships role at a16z-backed AI infrastructure company he admires, with potential to lead; matches his partnership and GTM profile and location rules, though channel partnerships is tange",
+   "score": 7,
+   "source": "ashby:openrouter",
+   "title": "Director, Channel Partnerships"
+  },
+  {
+   "company": "Rogo",
+   "label": "no",
+   "reason": "Finance vertical AI platform with strong backing and growth trajectory fits his appetite, but partnerships director role is narrower than his preferred GM/chief commercial seats; location and pay unkn",
+   "score": 6,
+   "source": "ashby:rogo",
+   "title": "Director, Content and Data Partnerships"
+  },
+  {
+   "company": "Hebbia",
+   "label": "no",
+   "reason": "Finance/asset management employer violates his explicit no-banks-insurers-asset-managers rule; business operations is not a senior commercial seat he wants.",
+   "score": 2,
+   "source": "ashby:hebbia-ai",
+   "title": "Director, Business Operations"
+  },
+  {
+   "company": "Cloaked",
+   "label": "no",
+   "reason": "Technical Chief of Staff is an engineering function, not commercial leadership; Cloaked is consumer/SMB cybersecurity, not AI-native/internet-native scaling business he targets.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Technical Chief of Staff"
+  },
+  {
+   "company": "KBRA",
+   "label": "no",
+   "reason": "Data management function is engineering-adjacent and outside his commercial/GTM/strategy domains; KBRA is a credit rating agency (financial services) he'd never want.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Head of Data Management - Managing Director (NY)"
+  },
+  {
+   "company": "ENNE Fine Jewelry",
+   "label": "no",
+   "reason": "luxury goods retailer outside his target sectors; function is AI transformation but company lacks scale, backing, and strategic relevance he requires.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Chief AI Transformation Officer"
+  },
+  {
+   "company": "ServiceNow",
+   "label": "no",
+   "reason": "Senior commercial leadership at major AI player with revenue mandate and strategic reach, but ServiceNow's not typically top tier for him and Chief of Staff role differs from his preferred GM/chief co",
+   "score": 6,
+   "source": "apify_linkedin",
+   "title": "Chief of Staff to GVP Moveworks Sales (Director, EX Sales Strategy)"
+  },
+  {
+   "company": "Daily Harvest",
+   "label": "no",
+   "reason": "CPG food business with no AI mandate, domain expertise mismatch despite relevant P&L-building experience.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Director/GM, DTC & New Channel Development"
+  },
+  {
+   "company": "BlackBeltHelp",
+   "label": "no",
+   "reason": "CRO title and revenue leadership fit his profile; AI-native contact center SaaS aligns with his thesis; but higher ed domain focus and not a top-tier company create uncertainty.",
+   "score": 6,
+   "source": "apify_linkedin",
+   "title": "Chief Revenue Officer (Remote, Higher Ed, SaaS, AI, Contact Center) NEW!"
+  },
+  {
+   "company": "BOI (Board of Innovation)",
+   "label": "yes",
+   "reason": "Consultancy delivery role; he explicitly never wants consultancies unless explicit AI transformation mandate at household name, and this is a consulting firm's delivery leadership.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "AI Transformation Director"
+  },
+  {
+   "company": "Alexander Chapman",
+   "label": "no",
+   "reason": "Corporate development fits his profile and New York location works, but the skilled trades sector and PE-heavy focus lack the AI-native or internet-native requirement he prefers.",
+   "score": 5,
+   "source": "apify_linkedin",
+   "title": "Investing & Corporate Development Vice President"
+  },
+  {
+   "company": "Fiscal AI",
+   "label": "no",
+   "reason": "Financial data infrastructure for capital markets is a research/measurement firm, explicitly excluded; location is Toronto-based, not in his approved geographies.",
+   "score": 2,
+   "source": "apify_linkedin",
+   "title": "Head of Go-To-Market"
+  },
+  {
+   "company": "Transportation Alternatives",
+   "label": "no",
+   "reason": "nonprofit advocacy organization, not AI-native or internet-native commercial business; not in any of his five target function families",
+   "score": 0,
+   "source": "apify_linkedin",
+   "title": "Managing Director"
+  },
+  {
+   "company": "Analytic Recruiting Inc.",
+   "label": "no",
+   "reason": "Bank; he never wants financial services unless explicit AI transformation mandate at household name.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "Head of Commercial Banking Growth Analytics"
+  },
+  {
+   "company": "FTI Consulting",
+   "label": "no",
+   "reason": "FTI is a consultancy, which he explicitly avoids; this is a services firm role, not a commercial seat at an AI-native or internet-native company.",
+   "score": 1,
+   "source": "apify_linkedin",
+   "title": "\u2022Managing Director, Healthcare Business Transformation | Corporate Finance"
+  },
+  {
+   "company": "AND Digital",
+   "label": "no",
+   "reason": "Services firm (consulting/implementation delivery), which he explicitly excludes unless it's an AI transformation mandate at a household name, and AND Digital is not a household name.",
+   "score": 2,
+   "source": "blind set",
+   "title": "Solution Director: Cost Takeout & Technology Transformation"
+  },
+  {
+   "company": "Foster McKay",
+   "label": "no",
+   "reason": "Finance function, not commercial leadership or strategy; not in his target seat families.",
+   "score": 1,
+   "source": "blind set",
+   "title": "Director of Strategic Finance"
+  },
+  {
+   "company": "Publicis Media",
+   "label": "no",
+   "reason": "Media agency / consultancy model - explicitly excluded unless AI transformation mandate at household name; function appears marketing-focused rather than commercial leadership; employer not a fit.",
+   "score": 1,
+   "source": "blind set",
+   "title": "VP, Performance Content GEO and AI Search"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "reason": "Public sector sales role doesn't match his commercial leadership, GM, or strategy mandate; too specialized and narrow for his background.",
+   "score": 2,
+   "source": "blind set",
+   "title": "Area Vice President, Public Sector"
+  },
+  {
+   "company": "Slalom",
+   "label": "no",
+   "reason": "Services firm (consulting) explicitly excluded unless AI transformation mandate at household name; Slalom is a consulting firm without AI transformation focus.",
+   "score": 2,
+   "source": "blind set",
+   "title": "Managing Director, Go-To-Market \u2014 Customer Experience for North America"
+  },
+  {
+   "company": "Swooped",
+   "label": "no",
+   "reason": "ops technology and systems infrastructure is outside his core commercial, strategy, and partnerships functions; not a senior commercial seat.",
+   "score": 2,
+   "source": "blind set",
+   "title": "Director of Ops Technology"
+  },
+  {
+   "company": "accordion",
+   "label": "no",
+   "reason": "Services firm (financial consulting) explicitly excluded from his preferences; not AI-native or internet-native; Senior Director title at non-top company falls below his target seniority level.",
+   "score": 1,
+   "source": "blind set",
+   "title": "Senior Director"
+  },
+  {
+   "company": "Influential",
+   "label": "no",
+   "reason": "Analytics and strategy role at non-AI-native firm that looks like a services/consulting business serving marketing clients, not a seat he's indicated interest in.",
+   "score": 2,
+   "source": "blind set",
+   "title": "Vice President, Strategy & Analytics"
+  },
+  {
+   "company": "Comscore, Inc.",
+   "label": "no",
+   "reason": "measurement firm explicitly excluded from his preferences; not AI-native or internet-native; business model uninteresting to him based on rulings pattern",
+   "score": 1,
+   "source": "blind set",
+   "title": "Senior Vice President, Business Development"
+  },
+  {
+   "company": "Securitas Security Services USA, Inc.",
+   "label": "no",
+   "reason": "Security services firm outside his target industries; not AI-native or internet-native; traditional protective services business model incompatible with his strategic focus.",
+   "score": 1,
+   "source": "blind set",
+   "title": "VP, Commercial Growth"
+  },
+  {
+   "company": "Comscore, Inc.",
+   "label": "no",
+   "reason": "Product management function outside his core commercial/strategy/partnerships mandate; measurement and research firm (Comscore) he'd plainly refuse.",
+   "score": 2,
+   "source": "blind set",
+   "title": "Senior Vice President, Product Management, Activation"
+  },
+  {
+   "company": "Fortune 500",
+   "label": "no",
+   "reason": "AI transformation mandate at Fortune 500 in NY, but likely a large enterprise with bureaucracy he has rejected; unclear if truly strategic or operational execution role.",
+   "score": 5,
+   "source": "blind set",
+   "title": "VP of AI Center of Excellence"
+  },
+  {
+   "company": "kindred",
+   "label": "no",
+   "reason": "Director-level marketing function outside his core commercial, strategy, partnerships, or AI transformation mandate.",
+   "score": 2,
+   "source": "blind set",
+   "title": "Director, Lifecycle Marketing"
+  },
+  {
+   "company": "cfgi",
+   "label": "no",
+   "reason": "Services firm (financial consulting) explicitly excluded; function is financial due diligence not commercial leadership.",
+   "score": 0,
+   "source": "blind set",
+   "title": "Financial Due Diligence - Director"
+  },
+  {
+   "company": "Groq",
+   "label": "no",
+   "reason": "Director, Revenue Operations at top AI company Groq in NYC with strong pay and commercial operations focus, but revenue ops is adjacent to his core GM/strategy/partnerships expertise rather than a dir",
+   "score": 7,
+   "source": "blind set",
+   "title": "Director, Revenue Operations"
+  },
+  {
+   "company": "Google",
+   "label": "no",
+   "reason": "Top company, NYC location, senior strategy and partnerships seat, but Google's scale may mean less AI-native focus than his typical targets.",
+   "score": 7,
+   "source": "blind set",
+   "title": "Head of Strategy and Operations, Search Partnerships"
+  },
+  {
+   "company": "Citizen",
+   "label": "no",
+   "reason": "Product function, not commercial/strategy leadership seat he targets.",
+   "score": 2,
+   "source": "blind set",
+   "title": "Head of Product, Applied AI"
+  },
+  {
+   "company": "accordion",
+   "label": "no",
+   "reason": "consulting firm with financial services focus, violates his explicit never-wants list",
+   "score": 1,
+   "source": "blind set",
+   "title": "Senior Director, AI Solutions"
+  },
+  {
+   "company": "Revel IT",
+   "label": "no",
+   "reason": "Individual contributor function (data science/ML engineering) not his domain; healthcare tech employer outside his stated preferences; not a commercial, strategy, partnerships, or AI transformation le",
+   "score": 1,
+   "source": "blind set",
+   "title": "Director Data Science"
+  }
+ ]
+}

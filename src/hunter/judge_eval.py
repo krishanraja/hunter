@@ -187,6 +187,12 @@ def run(cfg: Config, sheet, canon, *, dev: bool = False, replicas: int | None = 
     # away) with its own measure (blindset.evaluate); mixing it in would make
     # this record incomparable with the last.
     rows = [r for r in rows if r.source != "blind set"]
+    # His blind-set Yes roles move onto Pipeline, where they read like any
+    # other row; the record of the draw is what marks them.
+    from . import blindset
+    if blindset.RECORD.exists():
+        drawn = {p["job_id"] for p in json.loads(blindset.RECORD.read_text()).get("picks", [])}
+        rows = [r for r in rows if r.job_id not in drawn]
     if dev:
         before, later, undated = judgedata.split(rows, DEV_CUTOFF)
         after = [r for r in later if r.when < CUTOFF]
@@ -202,9 +208,12 @@ def run(cfg: Config, sheet, canon, *, dev: bool = False, replicas: int | None = 
     model = cfg.optional("hunter_judge_model", judge.DEFAULT_MODEL)
     effort = cfg.optional("hunter_judge_effort", judge.DEFAULT_EFFORT)
 
+    from . import universe
+    notes = universe.top_notes(cfg)
     roles = {r.job_id: judge.Role(job_id=r.job_id, company=r.company, title=r.title,
                                   location=r.location, comp=r.comp, url=r.url,
-                                  posting=judgedata.posting_for(r), source=r.source)
+                                  posting=judgedata.posting_for(r), source=r.source,
+                                  company_note=universe.note_for(notes, r.company))
              for r in after}
     # An estimate before anything is sent, refused over the cap. About 2.4
     # characters per token on this text, measured on the first live call. A

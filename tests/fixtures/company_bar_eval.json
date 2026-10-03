@@ -1,0 +1,2186 @@
+{
+ "meta": {
+  "run_at": "2026-10-03T22:26:32.091756+00:00",
+  "usd": 0.5485
+ },
+ "rows": [
+  {
+   "company": "Profound",
+   "label": "yes",
+   "named": false,
+   "score": 4.0,
+   "title": "VP, Strategic Partnerships",
+   "why": "Description only says \"global partnership strategy across GSIs, agency holding companies, and cloud marketplaces\" and never says what Profound sells, so it is t",
+   "words": "Yes"
+  },
+  {
+   "company": "Vista Equity Partners",
+   "label": "yes",
+   "named": false,
+   "score": 2.0,
+   "title": "Senior Vice President, Data & AI Transformation",
+   "why": "\"Vista Equity Partners is a global technology investor\" makes it an asset manager, not an AI product company.",
+   "words": "Yes"
+  },
+  {
+   "company": "Lightning AI",
+   "label": "yes",
+   "named": false,
+   "score": 4.0,
+   "title": "VP of Strategy and Operations",
+   "why": "The description only says \"Reconciled from hunter_seen_roles\", which is too thin to tell what it sells.",
+   "words": "Yes"
+  },
+  {
+   "company": "versapay",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "VP of Strategic Partnerships & Ecosystems",
+   "why": "\"Automates B2B invoicing, payments and cash application\" describes fintech software, not an AI-native product.",
+   "words": "Yes"
+  },
+  {
+   "company": "DiligenceSquared (YC F25)",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of GTM",
+   "why": "Like Hebbia. It calls itself \"the AI-native consulting firm\" delivering due diligence \"led by experienced consultants\", which makes it a services model despite ",
+   "words": "Yes"
+  },
+  {
+   "company": "ifit",
+   "label": "yes",
+   "named": false,
+   "score": 4.0,
+   "title": "Director, Enterprise AI Enablement",
+   "why": "\"Health and fitness platform with proprietary software and interactive content\" is a tech company, and the role is about moving \"from manual workflows to AI-pow",
+   "words": "Yes"
+  },
+  {
+   "company": "Rembrand",
+   "label": "yes",
+   "named": true,
+   "score": 8.0,
+   "title": "Head of Content Partnerships and Premium Supply",
+   "why": "It \"delivers AI solutions for powering advertising\" via In-Content Advertising and Spaceback, an AI-native creative product, and it is on his target list.",
+   "words": "Yes"
+  },
+  {
+   "company": "Publicis Groupe",
+   "label": "yes",
+   "named": false,
+   "score": 1.0,
+   "title": "Senior Vice President, Commercial Strategy",
+   "why": "\"Global leader in communication\" spanning \"consulting to execution\" with 103,000 people is an agency group.",
+   "words": "Yes"
+  },
+  {
+   "company": "Publicis Groupe",
+   "label": "yes",
+   "named": false,
+   "score": 1.0,
+   "title": "Vice President, Commercial Strategy",
+   "why": "\"Global leader in communication\" spanning \"consulting to execution\" with 103,000 people is an agency group.",
+   "words": "Yes"
+  },
+  {
+   "company": "CLEAR",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of Revenue Operations (CLEAR1 - B2B)",
+   "why": "\"Secure identity platform\" with 43 million Members is a technology company but not AI-native.",
+   "words": "Yes"
+  },
+  {
+   "company": "Innovamat",
+   "label": "yes",
+   "named": false,
+   "score": 3.0,
+   "title": "Head of Sales",
+   "why": "\"Educational organization\" providing a \"research-based math program\" with no AI mentioned.",
+   "words": "Yes"
+  },
+  {
+   "company": "Photoroom",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "VP Sales (Global)",
+   "why": "Like Photoroom. \"The leading visual solution for e-commerce\" processing \"over 5 billion images annually\" is Photoroom itself, which is on his list.",
+   "words": "Yes"
+  },
+  {
+   "company": "Harnham",
+   "label": "yes",
+   "named": false,
+   "score": 2.0,
+   "title": "Director of Product Development",
+   "why": "A recruiter posting for a \"Confidential - Private Equity Firm\" client building an internal AI platform, so it is staffing work for a PE firm.",
+   "words": "Yes"
+  },
+  {
+   "company": "Syntrace",
+   "label": "yes",
+   "named": false,
+   "score": 7.0,
+   "title": "Chief of Staff",
+   "why": "Like Hebbia. It will \"synthesize private conversations into source-backed knowledge\" for institutional investors, which is AI-style knowledge work, though AI is",
+   "words": "Yes"
+  },
+  {
+   "company": "later",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "VP, Creator Growth (SLG)",
+   "why": "An \"influencer marketing company\" mixing \"expert guidance\" with an \"AI-powered platform\" is tech-enabled but not AI-native.",
+   "words": "Yes"
+  },
+  {
+   "company": "Bay Colony Search",
+   "label": "yes",
+   "named": false,
+   "score": 1.0,
+   "title": "Vice President",
+   "why": "A search firm recruiting a GM for a \"$2-3M revenue portfolio\" digital media business.",
+   "words": "Yes"
+  },
+  {
+   "company": "Jobot",
+   "label": "yes",
+   "named": false,
+   "score": 2.0,
+   "title": "Head of Growth",
+   "why": "A Jobot recruiter posting for an unnamed \"AI-native technology company\", so the hiring company cannot be judged.",
+   "words": "Yes"
+  },
+  {
+   "company": "anthropic",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "Strategy & Operations, Office of the CCO",
+   "why": "Like Anthropic. Its mission is to \"create reliable, interpretable, and steerable AI systems\", and it is Anthropic itself.",
+   "words": "Yes"
+  },
+  {
+   "company": "BlackRock",
+   "label": "yes",
+   "named": false,
+   "score": 1.0,
+   "title": "AI Strategy & Transformation, Director - RQA",
+   "why": "\"A fiduciary to investors\" helping people build savings makes it an asset manager.",
+   "words": "Yes"
+  },
+  {
+   "company": "Sonos, Inc.",
+   "label": "yes",
+   "named": false,
+   "score": 4.0,
+   "title": "Vice President, Business Development",
+   "why": "\"The ultimate listening experience\" describes consumer audio hardware, not AI.",
+   "words": "Yes"
+  },
+  {
+   "company": "Google",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "Strategy and Operations Principal Lead, GBO Chief of Staff Team",
+   "why": "The description is only application boilerplate and does not say what it sells.",
+   "words": "Yes"
+  },
+  {
+   "company": "Moloco",
+   "label": "yes",
+   "named": false,
+   "score": 7.0,
+   "title": "Director of Product Management, Consumer",
+   "why": "It \"builds some of the most powerful AI advertising solutions in the world\", with its name short for \"machine learning company\".",
+   "words": "Yes"
+  },
+  {
+   "company": "MongoDB",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of AI Platform, GM",
+   "why": "Like Supabase. The note only mentions a \"0-to-1 AI Applications Platform\" business unit, which is too thin to call the whole company AI-native.",
+   "words": "Applied"
+  },
+  {
+   "company": "Sierra",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Leader",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Applied"
+  },
+  {
+   "company": "Salesforce",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "RVP, Sales Analytics (Tableau)",
+   "why": "The role is \"selling Tableau\" at a legacy SaaS company.",
+   "words": "Declined, not interested in Salesforce as a business nor sal"
+  },
+  {
+   "company": "Talkspace",
+   "label": "yes",
+   "named": false,
+   "score": 3.0,
+   "title": "Head of Commercial Sales",
+   "why": "Talkspace is a mental healthcare provider, with the role only founding \"GTM for new AI Business\".",
+   "words": "Applied"
+  },
+  {
+   "company": "ColdIQ",
+   "label": "yes",
+   "named": false,
+   "score": 2.0,
+   "title": "Head of GTM Engineering",
+   "why": "It builds \"GTM Operating Systems for clients\", which is agency services.",
+   "words": "Applied"
+  },
+  {
+   "company": "Cloudflare",
+   "label": "yes",
+   "named": false,
+   "score": 6.0,
+   "title": "Head of GTM, AI Inference",
+   "why": "Like Fireworks AI. The note says it is positioned to \"break the commoditised GPU/hour model\" through its \"inference advant\", which makes it infrastructure but n",
+   "words": "Applied"
+  },
+  {
+   "company": "Anthropic",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Enterprise Sales, Industries",
+   "why": "Like Anthropic. Its mission is to \"create reliable, interpretable, and steerable AI systems\", and it is Anthropic itself.",
+   "words": "Applied"
+  },
+  {
+   "company": "Ramp",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of Enterprise & Strategic Activations",
+   "why": "\"A category-creating product\" for finance orgs is fintech, with no AI described.",
+   "words": "Applied"
+  },
+  {
+   "company": "Harvey",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "Business Development Lead, Cloud & AI",
+   "why": "Like Harvey. This is Harvey itself, where \"integration depth with the platforms underneath the model\" is the moat.",
+   "words": "Applied"
+  },
+  {
+   "company": "Cursor (Anysphere)",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Regional Director, Commercial",
+   "why": "Like Cursor. This is Cursor itself, \"at the inflection where bottoms-up adoption becomes top-down spend\".",
+   "words": "Role doesnt exist but Cursor is a favourite of mine"
+  },
+  {
+   "company": "Writer",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "Strategic AI Transformation Lead (East)",
+   "why": "Like Writer. This is Writer itself, \"past the experimentation phase\" at a \"$1.9B valuation\".",
+   "words": "Applied"
+  },
+  {
+   "company": "Abridge",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Growth Marketing",
+   "why": "Like Abridge. This is Abridge itself, with \"Linked Evidence mapping every AI summary back to ground truth\".",
+   "words": "I dont want to do growth marketing, I would consider if I wa"
+  },
+  {
+   "company": "Deel",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "General Manager, White Label",
+   "why": "The note only describes a \"channel that started as a feature\" carve-out, with no AI mentioned.",
+   "words": "No interest in payroll or working with finance team"
+  },
+  {
+   "company": "Suno",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "General Manager, Songkick",
+   "why": "Like Suno. Suno is \"the leader in AI music\" and is on his list.",
+   "words": "Applied"
+  },
+  {
+   "company": "ElevenLabs",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "GTM Chief of Staff",
+   "why": "Like ElevenLabs. This is ElevenLabs itself, \"expanding from voice into three platforms\".",
+   "words": "Love this business but I am not based in LATAM or speak nati"
+  },
+  {
+   "company": "Cursor - Regional Director, Commercial Expansion",
+   "label": "no",
+   "named": false,
+   "score": 10.0,
+   "title": "Regional Director, Commercial Expansion",
+   "why": "Like Cursor. This is a Cursor role owning \"a brand-new Commercial segment\", and Cursor is on his list.",
+   "words": "Role doesnt exist but Cursor is a favourite of mine"
+  },
+  {
+   "company": "Notion - Head of GTM Operations",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of GTM Operations",
+   "why": "The note covers only a \"GTM operating-model leadership\" role at Notion and does not describe AI.",
+   "words": "Applied"
+  },
+  {
+   "company": "LangChain - Monetization Programs & Operations Lead",
+   "label": "yes",
+   "named": false,
+   "score": 10.0,
+   "title": "Monetization Programs and Operations Lead",
+   "why": "Like LangChain. This is a LangChain \"Monetization Programs & Operations Lead\" role, and LangChain is on his list.",
+   "words": "Applied"
+  },
+  {
+   "company": "Airwallex - General Manager, North America",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "General Manager, North America",
+   "why": "The note says only \"full regional P&L for North America\" and does not say what Airwallex sells.",
+   "words": "Not my domain expertise for a GM role"
+  },
+  {
+   "company": "Faire - GTM Strategy & Ops Senior Lead (Fulfillment)",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "GTM Strategy & Operations Senior Lead, Fulfillment",
+   "why": "The note describes a \"Senior IC strategy-ops\" fulfillment role and does not describe the product.",
+   "words": "Not my domain expertise for that kind of role"
+  },
+  {
+   "company": "Render - Head of Revenue Operations",
+   "label": "yes",
+   "named": false,
+   "score": 4.0,
+   "title": "Head of Revenue Operations",
+   "why": "Description only says \"Head of Revenue Operations\" and describes Krish, not what Render sells, so too thin to tell.",
+   "words": "Applied"
+  },
+  {
+   "company": "CoreWeave - VP, Americas Sales",
+   "label": "no",
+   "named": false,
+   "score": 10.0,
+   "title": "Vice President, Americas Sales",
+   "why": "Like CoreWeave. CoreWeave is on his list as GPU cloud; posting notes \"solutions architectur\" sales for its compute.",
+   "words": "I dont fit the precise JD requirements"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Global Head of Sales Enablement",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Reddit",
+   "label": "no",
+   "named": true,
+   "score": 4.0,
+   "title": "Senior Director, Product & Technology Finance",
+   "why": "Only \"Reconciled from hunter_seen_roles\" is given, too thin to tell.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Cloudflare",
+   "label": "no",
+   "named": false,
+   "score": 6.0,
+   "title": "Director, Developer GTM Finance",
+   "why": "Like Fireworks AI. The note says it is positioned to \"break the commoditised GPU/hour model\" through its \"inference advant\", which makes it infrastructure but n",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Cloudflare",
+   "label": "no",
+   "named": false,
+   "score": 6.0,
+   "title": "Director, Strategic Finance & Investor Relations",
+   "why": "Like Fireworks AI. The note says it is positioned to \"break the commoditised GPU/hour model\" through its \"inference advant\", which makes it infrastructure but n",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Cloudflare",
+   "label": "no",
+   "named": false,
+   "score": 6.0,
+   "title": "HR M&A Director",
+   "why": "Like Fireworks AI. The note says it is positioned to \"break the commoditised GPU/hour model\" through its \"inference advant\", which makes it infrastructure but n",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Synthesia",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Director, Customer Success Strategy and Operations",
+   "why": "Like Synthesia. Synthesia is named directly on his list as the avatar video leader.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Synthesia",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Product Marketing",
+   "why": "Like Synthesia. Synthesia is named directly on his list as the avatar video leader.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "ElevenLabs",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of GTM Enablement - Global Lead",
+   "why": "Like ElevenLabs. This is ElevenLabs itself, \"expanding from voice into three platforms\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Suno",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Director, Business Development, Publishing Partnerships",
+   "why": "Like Suno. Suno is \"the leader in AI music\" and is on his list.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Cresta",
+   "label": "no",
+   "named": true,
+   "score": 9.0,
+   "title": "VP of Partnerships, EMEA",
+   "why": "Like Sierra. Cresta is on his target list; description itself only says \"Reconciled from hunter_seen_roles\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Decagon",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Director of Sales, Enterprise",
+   "why": "Like Decagon. Decagon appears directly on his list as a customer-support agent platform.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Decagon",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Director of Sales, Enterprise - New York",
+   "why": "Like Decagon. Decagon appears directly on his list as a customer-support agent platform.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Decagon",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Strategic Account Director, Healthcare",
+   "why": "Like Decagon. Decagon appears directly on his list as a customer-support agent platform.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Decagon",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Solutions and Industry Marketing",
+   "why": "Like Decagon. Decagon appears directly on his list as a customer-support agent platform.",
+   "words": "Declined - geo or language"
+  },
+  {
+   "company": "Mercor",
+   "label": "no",
+   "named": true,
+   "score": 9.0,
+   "title": "Head of Operations Planning",
+   "why": "Like Scale AI. Mercor is on his target list; description only says \"Reconciled from hunter_seen_roles\".",
+   "words": "Declined - geo or language"
+  },
+  {
+   "company": "Listen Labs",
+   "label": "no",
+   "named": true,
+   "score": 9.0,
+   "title": "Founding EMEA Marketing Lead",
+   "why": "Like Listen Labs. Listen Labs is on his target list; description only says \"Reconciled from hunter_seen_roles\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Modal",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "VP, Finance",
+   "why": "Like Modal. Modal is named on his list as serverless AI infrastructure.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Modal",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Regional Director",
+   "why": "Like Modal. Modal is named on his list as serverless AI infrastructure.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Fireworks AI",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Sales Strategy & Analytics",
+   "why": "Like Fireworks AI. Fireworks AI is named on his list for model serving.",
+   "words": "Declined - geo or language"
+  },
+  {
+   "company": "Fireworks AI",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of GTM Engineering & Systems",
+   "why": "Like Fireworks AI. Fireworks AI is named on his list for model serving.",
+   "words": "Declined - geo or language"
+  },
+  {
+   "company": "Crusoe",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Director, Cloud GTM Finance",
+   "why": "Like Crusoe. Crusoe is named on his list as AI compute infrastructure.",
+   "words": "Declined - geo or language"
+  },
+  {
+   "company": "Crusoe",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Senior Director, Finance - Business Enablement",
+   "why": "Like Crusoe. Crusoe is named on his list as AI compute infrastructure.",
+   "words": "Declined - geo or language"
+  },
+  {
+   "company": "Synthesia",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Regional Director of Sales",
+   "why": "Like Synthesia. Synthesia is named directly on his list as the avatar video leader.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Harvey",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Director, Government Affairs & Public Policy",
+   "why": "Like Harvey. This is Harvey itself, where \"integration depth with the platforms underneath the model\" is the moat.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director - Majors",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director, Financial Services",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director - Majors, Healthcare",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director - Majors, Retail",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director - Strategic, Healthcare",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director - Strategic, Retail",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director - Strategic",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director, Healthcare",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director, Retail",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director, Consumer Business Services",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director - Majors, Consumer Business Services",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Enterprise Sales Director - Strategic, Consumer Business Services",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Scale AI",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Director of Product Management, Forward Deployed & Strategy",
+   "why": "Like Scale AI. Description calls it an \"AI-infra leader\" and Scale AI is on his list.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Luma AI",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Compute Procurement & Strategic Supply",
+   "why": "Like Luma AI. Luma AI is named on his list for AI video.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Harvey",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of GTM Finance",
+   "why": "Like Harvey. This is Harvey itself, where \"integration depth with the platforms underneath the model\" is the moat.",
+   "words": "Declined - geo or language"
+  },
+  {
+   "company": "Glean",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "VP, Growth Marketing",
+   "why": "Like Glean. Glean is named on his list as the AI layer for company knowledge.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Pika",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Sales (Founding GTM)",
+   "why": "Like Pika. Description cites a \"founding GTM seat in creative AI\" at Pika, which is on his list.",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "Writer",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "VP, Customer Success (EMEA)",
+   "why": "Like Writer. This is Writer itself, \"past the experimentation phase\" at a \"$1.9B valuation\".",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "Harvey",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Customer Success, Enterprise (Americas)",
+   "why": "Like Harvey. This is Harvey itself, where \"integration depth with the platforms underneath the model\" is the moat.",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "Cresta",
+   "label": "no",
+   "named": true,
+   "score": 9.0,
+   "title": "Partner Success Director",
+   "why": "Like Sierra. Cresta is on his target list; description itself only says \"Reconciled from hunter_seen_roles\".",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "Harvey",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Marketing Operations & Analytics",
+   "why": "Like Harvey. This is Harvey itself, where \"integration depth with the platforms underneath the model\" is the moat.",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "OpenAI",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Scaled, Ads Solutions",
+   "why": "Like OpenAI. OpenAI is on his list; role builds \"OpenAI's scaled advertising business\".",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "OpenAI",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Marketplace",
+   "why": "Like OpenAI. OpenAI is on his list; role builds \"OpenAI's scaled advertising business\".",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "The Trade Desk",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "GM, Business Development, Enterprise",
+   "why": "Described as \"the world's leading independent adtech platform\" and \"not pure AI app layer\".",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Wiley",
+   "label": "no",
+   "named": false,
+   "score": 3.0,
+   "title": "Group VP and GM, Applied Research Intelligence",
+   "why": "Wiley sells \"proprietary scientific content + data + AI\", a legacy publisher adding AI.",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "Common Room",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Head of Business Operations",
+   "why": "Only \"Reconciled from hunter_seen_roles\", too thin to tell.",
+   "words": "Declined - seniority below"
+  },
+  {
+   "company": "LogicGate",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Managing Director, EMEA",
+   "why": "Description only mentions a \"First EMEA leader\" role, not what is sold, so too thin.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Duolingo",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "VP of Strategy and Corporate Development",
+   "why": "Description covers a \"VP Strategy and Corporate Development\" role at a consumer tech company, not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "UiPath",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Chief of Staff, Go to Market",
+   "why": "Role runs \"Sales Operations and GTM strategy for the Americas\" at an established automation software company.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Hearst Magazines",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "SVP, Strategy",
+   "why": "Only \"Reconciled from hunter_seen_roles\"; a legacy magazine publisher.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Criteo",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "VP of Commercialization, GO Enterprise",
+   "why": "Role covers \"commercialisation strategy, packaging and pricing\" at an established adtech firm.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Synthesia",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Director, Sales Strategy and Operations",
+   "why": "Like Synthesia. Synthesia is named directly on his list as the avatar video leader.",
+   "words": "Declined - seniority below"
+  },
+  {
+   "company": "Ogury",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Global Solutions Lead, CTV & Video Business",
+   "why": "\"London GM with a business to build\" in CTV advertising, technology but not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Gong",
+   "label": "no",
+   "named": true,
+   "score": 9.0,
+   "title": "Director, Partnerships (AWS, Microsoft, GCP)",
+   "why": "Like Clay. \"Gong harnesses the power of AI to transform how revenue teams win\" with a \"Revenue AI Operating System\".",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Flex",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Senior Director, GTM Strategy & Operations",
+   "why": "\"FinTech company that is creating the best rent payment experience\", not AI-native.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "amperity",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of Partnerships & Alliances",
+   "why": "Addresses that customer \"Data is scattered across a dozen systems\", a data platform not described as AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "chartis",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Head of Strategic Affiliations & Ecosystem Partnerships",
+   "why": "\"We work with more than 1,900 organizations annually to develop and activate transformative strat\", a consultancy.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "flex",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Senior Director, Product Partnerships",
+   "why": "\"FinTech company that is creating the best rent payment experience\", not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Asana",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "GM, Product - Command",
+   "why": "GM for \"Command, Asana's dedicated product for software development teams\", SaaS not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Headway",
+   "label": "no",
+   "named": false,
+   "score": 3.0,
+   "title": "Chief of Staff, Payer",
+   "why": "\"building a new mental healthcare system\" around insurance, close to a healthcare provider network.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "kustomer",
+   "label": "no",
+   "named": false,
+   "score": 6.0,
+   "title": "Head of GTM Strategy and Operations",
+   "why": "Like Intercom. \"conversational CRM platform\" with \"intelligent tools such as AI and Automation\", AI added to SaaS.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "monstro",
+   "label": "no",
+   "named": false,
+   "score": 7.0,
+   "title": "Managing Director, Enterprise Accounts, Financial Services AI",
+   "why": "\"AI-powered Financial Intelligence System for regulated financial institutions\".",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "monstro",
+   "label": "no",
+   "named": false,
+   "score": 7.0,
+   "title": "Managing Director Strategic Banking Accounts",
+   "why": "\"AI-powered Financial Intelligence System for regulated financial institutions\".",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "oscar",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "Senior Director, Marketplace Growth and Partnerships",
+   "why": "\"the first health insurance company built around a full stack technology platform\", an insurer.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "oscar",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "VP, Marketplace ICHRA General Manager - Lucie",
+   "why": "\"the first health insurance company built around a full stack technology platform\", an insurer.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "patientpoint",
+   "label": "no",
+   "named": false,
+   "score": 3.0,
+   "title": "Director, Programmatic Demand Partnerships",
+   "why": "\"digital health company\" selling programmatic media in the doctor's office, not AI-native.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Curvion Blue",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Director of Revenue Strategy & Growth",
+   "why": "\"a high performance RevOps & sales augmentation agency\".",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "flex",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Chief of Staff (Executive Office) and VP of Strategy & Operations",
+   "why": "\"FinTech company that is creating the best rent payment experience\", not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "flex",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Chief of Staff to the GM of Housing",
+   "why": "\"FinTech company that is creating the best rent payment experience\", not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "flex",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Vice President, Business Development & Strategic Partnerships",
+   "why": "\"FinTech company that is creating the best rent payment experience\", not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "ripple",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Director, Ecosystem Growth",
+   "why": "\"crypto solutions for financial institutions\", technology but not AI-native.",
+   "words": "Declined - seniority below"
+  },
+  {
+   "company": "Gusto",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of AI and Machine Learning Engineering",
+   "why": "\"We handle the hard stuff - payroll, health insurance, 401(k)s, and HR\", SaaS not AI-native.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "flex",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Senior Director, Strategic Partnerships",
+   "why": "\"FinTech company that is creating the best rent payment experience\", not AI-native.",
+   "words": "Declined - seniority below"
+  },
+  {
+   "company": "oscar",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "Director, Business Operations & Strategy",
+   "why": "\"the first health insurance company built around a full stack technology platform\", an insurer.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Portage Point Partners",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Managing Director, Office of the CFO",
+   "why": "Featured in \"Consulting Magazine\" and backed by private equity, a consultancy.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Forvis Mazars US",
+   "label": "no",
+   "named": false,
+   "score": 0.0,
+   "title": "Managing Director, Insurance Transformation & AI",
+   "why": "\"sells audit, tax and consulting to financial services clients\".",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Vidmob",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Director, Data Partnerships",
+   "why": "Vidmob \"sells creative scoring and analytics software to large marketers and agencies\", a tech company adjacent to his adtech targets but not AI-native.",
+   "words": "Declined - seniority below"
+  },
+  {
+   "company": "Janus Henderson Investors",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Head of AI",
+   "why": "\"Janus Henderson is an asset manager selling investment funds and advisory to clients.\"",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "ThoughtSpot",
+   "label": "no",
+   "named": false,
+   "score": 6.0,
+   "title": "Founding GTM Lead, AgentSpot",
+   "why": "Like Glean. \"ThoughtSpot is a Data & AI platform\" with an AgentSpot agent product, but it is an established BI vendor rather than AI-native.",
+   "words": "Declined - seniority below"
+  },
+  {
+   "company": "StartX Med",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Director of Channels & Alliances",
+   "why": "The description is of Scanner, which \"sells a security data lake that searches petabytes of logs in seconds\", a tech company not AI-native.",
+   "words": "Declined - seniority below"
+  },
+  {
+   "company": "Wolters Kluwer",
+   "label": "no",
+   "named": false,
+   "score": 3.0,
+   "title": "Associate Director, Corporate Strategy- Enterprise AI Transformation",
+   "why": "\"Wolters Kluwer sells professional software and information to business functions\", a legacy incumbent with an internal AI Transformation Office.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "New York Life",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Corporate Vice President, AI Enablement Manager",
+   "why": "\"New York Life Direct sells life insurance direct to consumers.\"",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "BNY",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Senior Director, Technology Partnerships",
+   "why": "\"BNY is a global financial services company that services and safeguards institutional assets.\"",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Citi",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Head of AI-First Development (Firmwide AI) - Managing Director",
+   "why": "\"Citi is a global bank, now building one firmwide AI organisation.\"",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Citi",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Head of Applied AI & Agent Factory - Managing Director",
+   "why": "\"Citi is a global bank, now building one firmwide AI organisation.\"",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "TIAA",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Senior Managing Director - AI Strategy & Enterprise Applications",
+   "why": "\"TIAA sells retirement and financial services, more than 100 years old.\"",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "TD Securities",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Vice President, Partnership Manager Transaction Banking Innovation & Embedded Banking",
+   "why": "\"TD Securities sells corporate treasury and payments services to large corporate clients.\"",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Black Duck",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Sr Director, Technology Partner Alliances Development",
+   "why": "\"Black Duck sells application security software: SAST, SCA and DAST tools\", a tech company that is not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Pfizer",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Senior Director, Strategy and Portfolio Management",
+   "why": "\"Pfizer sells prescription medicines and vaccines worldwide.\"",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "PointClickCare",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Senior Vice President & General Manager, Senior Living",
+   "why": "\"PointClickCare sells cloud software to long-term and post-acute care providers\", SaaS that is not AI-native.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Baker Tilly US",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Managing Director, Industrial Products, Managed Services",
+   "why": "\"Baker Tilly is an advisory, tax and assurance firm.\"",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "EY-Parthenon",
+   "label": "no",
+   "named": false,
+   "score": 0.0,
+   "title": "EY-Parthenon - Strategy and Execution - Commercial Strategy - Director - Multiple Locations",
+   "why": "\"EY-Parthenon is EY's strategy consulting arm.\"",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Morgan Stanley",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Executive Director & Head, Global ETF Marketing & Direct Partnerships",
+   "why": "\"Morgan Stanley Investment Management runs $1.9 trillion in AUM.\"",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Soni",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Head of AI Platform Engineering, Execution Services",
+   "why": "\"Staffing firm hiring for a client enterprise\", which does not say what the employer sells.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "Samsara",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Head of GTM AI and Engineering",
+   "why": "The description only says \"Reconciled from hunter_seen_roles\", too thin to tell.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "eliseai",
+   "label": "no",
+   "named": false,
+   "score": 8.0,
+   "title": "Product Strategy and Operations, Director - New Verticals | Housing",
+   "why": "Like Sierra. EliseAI integrates \"AI agents deeply into existing workflows\" for renters and property teams, an AI-native agent company for a large market.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Pinterest",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Managing Director, Sales - FinServ",
+   "why": "Pinterest is a \"platform\" for \"creative ideas\", a consumer tech company with no AI-native claim.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Ankura",
+   "label": "no",
+   "named": false,
+   "score": 0.0,
+   "title": "Senior Managing Director, Digital Transformation, Private Equity",
+   "why": "\"Ankura is a consulting firm\" selling advisory.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "BetaNXT",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Head of AI Product",
+   "why": "\"BetaNXT sells wealth management infrastructure: trading and settlement\", fintech infrastructure adding AI features.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Harris Allied",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "Head of AI Operations and Systems",
+   "why": "A recruiter posting for \"a rapidly growing technology organization\" that does not say what it sells.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "TailorMed",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Director of Partnerships",
+   "why": "TailorMed builds \"a new category\" for medication \"affordability to access and adherence\", healthtech without AI-native claims.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "accordion",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "EMEA Salesforce Sales & Alliances Director",
+   "why": "Accordion provides \"financial consulting rooted in data, technology, and AI\" to PE sponsors.",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "talkiatry",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "Strategic Partnerships Director - Southeast",
+   "why": "Talkiatry delivers \"high-quality psychiatric care\", a healthcare provider.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "turquoise-health",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Strategy & Operations Director, Employer",
+   "why": "The description covers a \"Strategy and Operations Director\" role but does not say what Turquoise Health sells, too thin to tell.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "S&P Global",
+   "label": "no",
+   "named": false,
+   "score": 3.0,
+   "title": "Head of AI Product Transformation, Enterprise Solutions",
+   "why": "\"S&P Global sells market data, analytics and workflow software to financial services firms\", a legacy incumbent.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Novartis",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Executive Director, Strategy Prioritization & Governance",
+   "why": "The role \"leads the US Strategy Prioritization & Governance team\" at a pharma company.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "JPMorganChase",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Managing Director, Chief Financial Officer - Global Payments",
+   "why": "The role is \"Chief Financial Officer (CFO) for Global Payments\" at a bank.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "dailypay",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Director - Business Development & Partnerships - Healthcare",
+   "why": "\"DailyPay is the leader in On-Demand Pay\", fintech that is not AI-native.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "pagaya",
+   "label": "no",
+   "named": false,
+   "score": 6.0,
+   "title": "Director, Business Operations and COS to CCO",
+   "why": "Pagaya is \"building a leading artificial intelligence network\" for \"consumer credit\", AI-native but far from his list.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "talkiatry",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "Area Director, Partnerships Team - Central Region",
+   "why": "Talkiatry delivers \"high-quality psychiatric care\", a healthcare provider.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "talkiatry",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "Area Director, Partnerships Team - Midwest Region",
+   "why": "Talkiatry delivers \"high-quality psychiatric care\", a healthcare provider.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "zetaglobal",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Vice President, Client Partnerships (Publisher Cloud)",
+   "why": "Publisher Cloud \"helps publishers acquire, engage, monetize\", adtech near his targets but not AI-native.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Moody's Corporation",
+   "label": "no",
+   "named": false,
+   "score": 3.0,
+   "title": "Senior Director - Partnerships Sales Leader",
+   "why": "\"Moody's sells credit ratings, risk data and analytics to enterprises.\"",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Fitch Group, Inc.",
+   "label": "no",
+   "named": false,
+   "score": 3.0,
+   "title": "Senior Director, Strategic Alliances",
+   "why": "\"Fitch Group sells credit ratings, risk data and analytics.\"",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "David AI",
+   "label": "no",
+   "named": false,
+   "score": 9.0,
+   "title": "General Manager, Data Operations",
+   "why": "Like Scale AI. David AI is \"the first audio data research company\" building datasets because \"high-quality training data is the bottleneck.\"",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Capital One",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Sr. Business Director, Strategy and Analytics",
+   "why": "A \"Senior Business Director at Capital One\" strategy role at a bank.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Capital One",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Business Director, Strategy and Analytics",
+   "why": "A \"Senior Business Director at Capital One\" strategy role at a bank.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "BMO Capital Markets",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Director, Strategy & Business Management, Global Equities",
+   "why": "\"BMO Capital Markets is a leading, full-service financial services provider.\"",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Fireblocks",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Technology Alliances Director",
+   "why": "\"Fireblocks sells digital asset infrastructure to banks, fintechs and payment providers\", tech that is not AI-native.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "BMO Capital Markets",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "VP, Strategy & Business Management, Equity Derivatives",
+   "why": "\"BMO Capital Markets is a leading, full-service financial services provider.\"",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Novartis",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Director, Strategy Engagement Lead",
+   "why": "The role \"leads the US Strategy Prioritization & Governance team\" at a pharma company.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "West Monroe",
+   "label": "no",
+   "named": false,
+   "score": 0.0,
+   "title": "Managing Director/Senior Account Partner - Utilities",
+   "why": "West Monroe is hiring for its \"Utilities Practice\", a consultancy account role.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Ankura",
+   "label": "no",
+   "named": false,
+   "score": 0.0,
+   "title": "Managing Director, Office of the CFO",
+   "why": "\"Ankura is a consulting firm\" selling advisory.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "DoorDash",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Director, Customer Experience Strategy & Operations",
+   "why": "\"runs local delivery and logistics for food and other goods\" is a tech marketplace, not AI-native.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "AS Beauty Group",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Senior Director, Product Sales Planning & Commercial Strategy",
+   "why": "\"family-run business\" developing beauty brands like Laura Geller and Bliss is consumer goods, not tech.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "JPMorganChase",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Vice President - Product Partnerships, Connected Commerce",
+   "why": "The role is \"Chief Financial Officer (CFO) for Global Payments\" at a bank.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Grasp",
+   "label": "no",
+   "named": false,
+   "score": 9.0,
+   "title": "US Managing Director",
+   "why": "Like Hebbia. \"agentic AI platform automating complex research for private equity firms, investment banks\" mirrors Hebbia.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Samsung Ads",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Director, Strategic Partnerships",
+   "why": "\"Samsung's cross-platform service business\" is a large tech incumbent division, not AI-native.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "CTB1LLC, a boutique talent and placement company",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Founding GTM",
+   "why": "\"a boutique talent and placement company\" is staffing, and the client fintech is unnamed.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Omnicom Precision Marketing",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "VP Strategy Director",
+   "why": "Listed as \"Agency Omnicom Precision Marketing\", an agency activation practice.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Spectrum Reach",
+   "label": "no",
+   "named": false,
+   "score": 3.0,
+   "title": "Director, Advanced TV Partnerships (Dentsu)",
+   "why": "Sells \"programmatic, addressable, streaming, and multi-platform TV advertising\" as a legacy media sales arm.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Socure",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of Solution and Commercialization Strategy",
+   "why": "\"the world's most advanced identity platform\" is technology but not described as AI-native.",
+   "words": "Applied"
+  },
+  {
+   "company": "Mutiny",
+   "label": "yes",
+   "named": false,
+   "score": 7.0,
+   "title": "Head of GTM (Path to COO)",
+   "why": "Described as an \"AI personalization platform\", AI-native GTM software.",
+   "words": "Applied"
+  },
+  {
+   "company": "Cohere",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Corporate Development",
+   "why": "Like Cohere. \"the security-first enterprise AI / frontier models company\" is Cohere itself on his list.",
+   "words": "Applied"
+  },
+  {
+   "company": "Fleek",
+   "label": "yes",
+   "named": false,
+   "score": 4.0,
+   "title": "Chief of Staff",
+   "why": "Fixing a supply chain that is \"completely offline\" says little about AI or the product sold.",
+   "words": "Applied"
+  },
+  {
+   "company": "Revin",
+   "label": "yes",
+   "named": false,
+   "score": 7.0,
+   "title": "Head of Partnerships",
+   "why": "\"bring super intelligence to the built world\" for home services operators is AI for a large market.",
+   "words": "Applied"
+  },
+  {
+   "company": "OpenAI",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Partnerships, Digital Natives",
+   "why": "Like OpenAI. OpenAI is on his list; role builds \"OpenAI's scaled advertising business\".",
+   "words": "Applied"
+  },
+  {
+   "company": "Phantom",
+   "label": "yes",
+   "named": false,
+   "score": 4.0,
+   "title": "Head of Business and Corporate Development",
+   "why": "Description covers only \"partnerships, strategic intelligence, and M&A functions\" without saying what Phantom sells, too thin.",
+   "words": "Applied"
+  },
+  {
+   "company": "Harvey",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of GTM Strategy & Operations, AMER",
+   "why": "Like Harvey. This is Harvey itself, where \"integration depth with the platforms underneath the model\" is the moat.",
+   "words": "Applied"
+  },
+  {
+   "company": "Clay",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of GTM Strategy & Ops",
+   "why": "Like Clay. \"Clay's revenue engine\" refers to Clay, which is on his list.",
+   "words": "Applied"
+  },
+  {
+   "company": "CreatorIQ",
+   "label": "yes",
+   "named": false,
+   "score": 6.0,
+   "title": "Vice President, GTM Operations",
+   "why": "\"operating system for creator-led growth\" is creator-economy SaaS but not described as AI-native.",
+   "words": "Applied"
+  },
+  {
+   "company": "Anaplan",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "VP, Technology Partnerships",
+   "why": "\"AI-infused scenario planning platform\" is established SaaS with AI added.",
+   "words": "Applied"
+  },
+  {
+   "company": "Aptos Labs",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of Enterprise GTM - Shelby Platform",
+   "why": "Role positions \"the AI storage platform\" Shelby within a blockchain lab, infrastructure but not AI-native core.",
+   "words": "Applied"
+  },
+  {
+   "company": "Cloudflare",
+   "label": "yes",
+   "named": false,
+   "score": 6.0,
+   "title": "Chief of Staff to Chief Strategy Officer",
+   "why": "Like Fireworks AI. The note says it is positioned to \"break the commoditised GPU/hour model\" through its \"inference advant\", which makes it infrastructure but n",
+   "words": "Applied"
+  },
+  {
+   "company": "udio",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Artist Partnerships",
+   "why": "Like Udio. \"Udio builds extraordinary AI experiences to empower musical artists\" is Udio on his list.",
+   "words": "Applied"
+  },
+  {
+   "company": "banyansoftware",
+   "label": "yes",
+   "named": false,
+   "score": 3.0,
+   "title": "WIZE Managing Director UK",
+   "why": "\"portfolio management system to Swiss boutique wealth managers\" under a software holding company is legacy vertical SaaS.",
+   "words": "Applied"
+  },
+  {
+   "company": "January",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "Chief of Staff",
+   "why": "\"personalizes interactions and optimizes decisions across every stage of consumer credit\" is fintech, not clearly AI-native.",
+   "words": "Applied"
+  },
+  {
+   "company": "Foundry",
+   "label": "yes",
+   "named": false,
+   "score": 3.0,
+   "title": "Senior Vice President & General Manager, Audience & Growth",
+   "why": "\"a portfolio of 10+ global digital media publications\" is a publisher.",
+   "words": "Applied"
+  },
+  {
+   "company": "Virtuous",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "General Manager, CRM +",
+   "why": "\"core fundraising and donor management platform\" is SaaS adding intelligence, not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Ironclad",
+   "label": "no",
+   "named": false,
+   "score": 7.0,
+   "title": "Senior Director, Global Sales Strategy and Operations",
+   "why": "Like Harvey. \"sells an AI contracting platform for creating, managing and analysing agreements\" is legal-adjacent AI.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Cedar",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Sr. Director, Commercial Strategy",
+   "why": "\"patient billing and payments platform\" is healthtech, not AI-native.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "LoopMe",
+   "label": "no",
+   "named": false,
+   "score": 6.0,
+   "title": "Sr. Director, Agency Partnerships",
+   "why": "\"uses AI to change how brand advertising is bought, measured, and optimised\" is AI adtech, far from his core list.",
+   "words": "Declined - seniority below"
+  },
+  {
+   "company": "Selby Jennings",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Chief Revenue Officer",
+   "why": "Recruiter posting for an unnamed \"financial services and technology organization\".",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Ladders",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Managing Director, Operations & Strategy",
+   "why": "\"For our client\" in \"the Finance & Insurance space\" is a staffing posting.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Arcana",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of Partnerships",
+   "why": "\"portfolio intelligence platform used by hedge funds\" is fintech software without an AI-native claim.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Azza HealthCare Agency",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Director, Payer Innovation and Alliances",
+   "why": "\"leading healthcare transformation initiatives within a consulting environment\" is services.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Trulioo",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "Senior Director, Corporate Strategy & Development",
+   "why": "\"global front-runner in... digital identity verification\" is tech, not AI-native.",
+   "words": "Applied"
+  },
+  {
+   "company": "Higgsfield AI",
+   "label": "yes",
+   "named": true,
+   "score": 10.0,
+   "title": "Head of Entertainment GTM",
+   "why": "Like Higgsfield AI. \"fastest-scaling generative AI company\" for \"AI video creation\" is Higgsfield on his list.",
+   "words": "Applied"
+  },
+  {
+   "company": "socure",
+   "label": "yes",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of GTM, Workforce",
+   "why": "\"the world's most advanced identity platform\" is technology but not described as AI-native.",
+   "words": "Applied"
+  },
+  {
+   "company": "openrouter",
+   "label": "yes",
+   "named": false,
+   "score": 9.0,
+   "title": "Director, Channel Partnerships",
+   "why": "Like Together AI. \"open AI routing and infrastructure layer\" for accessing LLMs across providers matches AI infra peers.",
+   "words": "Applied"
+  },
+  {
+   "company": "Rogo",
+   "label": "no",
+   "named": false,
+   "score": 9.0,
+   "title": "Director, Content and Data Partnerships",
+   "why": "Like Hebbia. \"AI that delivers unparalleled speed, accuracy\" for investment banks and PE funds mirrors Hebbia.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Hebbia",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Director, Business Operations",
+   "why": "Like Hebbia. \"The AI platform for investors and bankers\" is Hebbia on his list.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Cloaked",
+   "label": "no",
+   "named": false,
+   "score": 6.0,
+   "title": "Technical Chief of Staff",
+   "why": "\"masked emails... and an AI voice agent that screens calls\" is privacy tech with some AI, far from his list.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "KBRA",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "Head of Data Management - Managing Director (NY)",
+   "why": "Role heads \"Data Management\" at a ratings firm, a legacy financial services business.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "ENNE Fine Jewelry",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Chief AI Transformation Officer",
+   "why": "\"ENNE Fine Jewelry\" seeks AI strategy for a luxury jewelry brand, not a tech company.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "ServiceNow",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Chief of Staff to GVP Moveworks Sales (Director, EX Sales Strategy)",
+   "why": "\"the AI control tower for business reinvention\" is a large incumbent SaaS repositioning around AI.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Daily Harvest",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Director/GM, DTC & New Channel Development",
+   "why": "\"sells frozen better-for-you food\" is consumer food.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "BlackBeltHelp",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "Chief Revenue Officer (Remote, Higher Ed, SaaS, AI, Contact Center) NEW!",
+   "why": "\"Higher Education | SaaS | CCaaS\" CRO role reads as a support services provider, not AI-native.",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "BOI (Board of Innovation)",
+   "label": "yes",
+   "named": false,
+   "score": 2.0,
+   "title": "AI Transformation Director",
+   "why": "Description says \"We partner with ambitious enterprises to define where AI can create real business value\", which is consulting services.",
+   "words": "Applied"
+  },
+  {
+   "company": "Alexander Chapman",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Investing & Corporate Development Vice President",
+   "why": "A recruiter posting for \"an established and rapidly growing company in the commercial and industrial skilled trades\" with no product described.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Fiscal AI",
+   "label": "no",
+   "named": false,
+   "score": 7.0,
+   "title": "Head of Go-To-Market",
+   "why": "Like Hebbia. \"Fiscal.ai is redefining financial data infrastructure for the AI era\" with a research Terminal, fundamentals API and MCP server.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Transportation Alternatives",
+   "label": "no",
+   "named": false,
+   "score": 0.0,
+   "title": "Managing Director",
+   "why": "\"a 501(c)(3) advocacy nonprofit with a 50-year history\" for streets and transit.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Analytic Recruiting Inc.",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Head of Commercial Banking Growth Analytics",
+   "why": "Role is at \"a leading regional financial bank specializing in relationship-driven banking\".",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "FTI Consulting",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "\u2022Managing Director, Healthcare Business Transformation | Corporate Finance",
+   "why": "\"the leading global expert firm for organizations facing crisis and transformation\" is a consultancy.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "AND Digital",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "Solution Director: Cost Takeout & Technology Transformation",
+   "why": "\"supported organisations in building better digital products and stronger digital teams\" describes services work.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Foster McKay",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Director of Strategic Finance",
+   "why": "Description covers only a \"Director, Strategic Finance\" role and does not say what the company sells, too thin to tell.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Publicis Media",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "VP, Performance Content GEO and AI Search",
+   "why": "\"the investment arm of Publicis Media, supercharging our agencies\" is an agency holding business.",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "Sierra",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Area Vice President, Public Sector",
+   "why": "Like Sierra. This is Sierra itself, and the note says it \"Clears comp/seniority/AI-native\".",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Slalom",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Managing Director, Go-To-Market \u2014 Customer Experience for North America",
+   "why": "Leads \"a practice of 400+ consultants\", a consultancy.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Swooped",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Director of Ops Technology",
+   "why": "Only says \"The organization is seeking a Director of Ops Technology\" without naming a product, too thin to tell.",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "accordion",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Senior Director",
+   "why": "Accordion provides \"financial consulting rooted in data, technology, and AI\" to PE sponsors.",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "Influential",
+   "label": "no",
+   "named": false,
+   "score": 3.0,
+   "title": "Vice President, Strategy & Analytics",
+   "why": "Role \"delivers best-in-class strategy and insights\" for \"Fortune 500 brands\", an agency-style service.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Comscore, Inc.",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Senior Vice President, Business Development",
+   "why": "Sells \"digital analytics, activation, targeting, and measurement products\", technology but not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Securitas Security Services USA, Inc.",
+   "label": "no",
+   "named": false,
+   "score": 0.0,
+   "title": "VP, Commercial Growth",
+   "why": "\"a global leader in protective services\" providing guarding.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Comscore, Inc.",
+   "label": "no",
+   "named": false,
+   "score": 4.0,
+   "title": "Senior Vice President, Product Management, Activation",
+   "why": "Sells \"digital analytics, activation, targeting, and measurement products\", technology but not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "Fortune 500",
+   "label": "no",
+   "named": false,
+   "score": 2.0,
+   "title": "VP of AI Center of Excellence",
+   "why": "An unnamed enterprise hiring to lead \"artificial intelligence initiatives across the enterprise\", not an AI product company.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "kindred",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Director, Lifecycle Marketing",
+   "why": "\"a members-only home swapping platform\", a consumer tech company that is not AI-native.",
+   "words": "Declined - business uninteresting"
+  },
+  {
+   "company": "cfgi",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Financial Due Diligence - Director",
+   "why": "\"a dynamic and fast-growing financial consulting firm\".",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Groq",
+   "label": "no",
+   "named": true,
+   "score": 10.0,
+   "title": "Director, Revenue Operations",
+   "why": "Like Groq. Groq is on his list, and the role builds Revenue Operations with \"usage and billing operations\" for its go-to-market.",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "Google",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of Strategy and Operations, Search Partnerships",
+   "why": "The description is only application boilerplate and does not say what it sells.",
+   "words": "Declined - function wrong"
+  },
+  {
+   "company": "Citizen",
+   "label": "no",
+   "named": false,
+   "score": 5.0,
+   "title": "Head of Product, Applied AI",
+   "why": "Says \"Now I build with agents\" internally, but the product itself is not described as AI.",
+   "words": "Declined - requirements mismatch"
+  },
+  {
+   "company": "accordion",
+   "label": "no",
+   "named": false,
+   "score": 1.0,
+   "title": "Senior Director, AI Solutions",
+   "why": "Accordion provides \"financial consulting rooted in data, technology, and AI\" to PE sponsors.",
+   "words": "Declined - domain expertise"
+  },
+  {
+   "company": "Revel IT",
+   "label": "no",
+   "named": false,
+   "score": 3.0,
+   "title": "Director Data Science",
+   "why": "A recruiter \"partnering with an innovative healthcare technology organization\" with no product described.",
+   "words": "Declined - requirements mismatch"
+  }
+ ]
+}

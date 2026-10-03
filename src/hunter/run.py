@@ -2645,6 +2645,36 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     swept_companies = [s.rsplit(":", 1)[0] for s in swept]
     if learned:
         disc.save_cache(cfg, board_cache)
+
+    # The company lane (universe.py, radar.py), decided 2026-10-03: his top
+    # companies' own boards, every run, free. Only roles that pass his
+    # top-company rules join the sweep; the Company Radar tab is rewritten.
+    if cfg.optional("hunter_company_lane", "1") != "0":
+        try:
+            from . import radar
+            from .sources import RolePosting
+            lane = radar.build(cfg, sheet, max_usd=float(
+                cfg.optional("hunter_lookalike_max_usd_per_run", "3")))
+            have = {p.url for p in postings}
+            added = 0
+            for o in lane["openings"]:
+                if not o.url or o.url in have:
+                    continue
+                have.add(o.url)
+                postings.append(RolePosting(
+                    company=o.company.name, title=o.title, url=o.url,
+                    source=f"{o.ats}:{o.slug}", location=o.location, comp_text=o.comp,
+                    ats=o.ats, ats_slug=o.slug, ats_posting_id=o.posting_id,
+                    raw={"descriptionPlain": o.description, "isRemote": o.remote,
+                         "lane": "top company"}))
+                added += 1
+            summary.append(
+                f"company lane: {lane['top']} top companies, {lane['swept']} boards "
+                f"read, {len(lane['openings'])} roles pass his rules, {added} new to "
+                f"this sweep; {lane['scored']} companies scored for ${lane['usd']:.2f}")
+            summary.extend(f"company lane: {p}" for p in lane["problems"][:3])
+        except Exception as e:
+            summary.append(f"company lane failed: {e.__class__.__name__}: {e}")
     summary.append(
         f"target company boards swept: {len(swept)} ({learned} resolved this "
         f"run); still unreadable: {len(gaps)}"
@@ -3266,10 +3296,22 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     judge_mode = judge_stage.mode_of(cfg)
     candidates: list = []
 
+    # His top companies (universe.py): his list, his Target Companies, his Yes
+    # companies and lookalikes. Their roles go through his top-company rules
+    # in the gates and first into the judge's queue.
+    from . import universe as universe_mod
+    try:
+        top_keys = set(universe_mod.top_notes(cfg))
+    except Exception:
+        top_keys = set()
+
+    def is_top(company: str) -> bool:
+        return universe_mod.key_of(company or "") in top_keys
+
     def rank_of(role, result) -> float:
         cs = company_view.get(company_key(role.company) or slugify(role.company))
         company_part = cs.total if cs and cs.status != COMPANY_UNKNOWN else 5.0
-        return -((result.score or 0) + company_part)
+        return -((result.score or 0) + company_part + (100 if is_top(role.company) else 0))
     fetchers = {"greenhouse": greenhouse.fetch_posting,
                 "ashby": ashby.fetch_posting, "lever": lever.fetch_posting}
     for p in fresh:
@@ -3366,7 +3408,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         result = score_role(role, universe=canon.universe,
                             employer_index=employer_index)
         report = run_gates(role, never_apply=never, company_declines=company_declines,
-                           employer_index=employer_index, merit=result.merit)
+                           employer_index=employer_index, merit=result.merit,
+                           top_company=is_top(role.company))
         cscore = company_view.get(company_key(role.company) or slugify(role.company))
         status, reason = "scanned", None
         if result.auto_rejected:
@@ -3434,6 +3477,16 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
 
     judged = None
     if judge_mode != "off" and candidates:
+        # The company bar (companybar.py): a business scored once against his
+        # list, and a role at one that is plainly not his kind costs no call.
+        try:
+            from . import companybar
+            candidates, _, bar_lines = companybar.apply(
+                cfg, candidates, top_keys=top_keys, mark=judge_mode == "gate",
+                max_usd=float(cfg.optional("hunter_company_bar_max_usd", "1")))
+            summary.extend(bar_lines)
+        except Exception as e:
+            summary.append(f"company bar did not run: {e.__class__.__name__}: {e}")
         try:
             judged = judge_stage.run(cfg, canon, sheet, candidates, mode=judge_mode)
             summary.extend(judged.lines)
@@ -3928,14 +3981,16 @@ def settle_step(cfg: Config, canon: Canon, sheet: Sheet,
     return out
 
 
-def cmd_judge_eval(dev: bool = False, threshold: int | None = None) -> int:
+def cmd_judge_eval(dev: bool = False, threshold: int | None = None,
+                   replicas: int | None = None) -> int:
     """Measure the judge against his rulings. Spends money (capped at $25).
     --dev scores the development window; --threshold N scores the holdout at a
     threshold chosen there, never one chosen on the holdout itself."""
     from . import judge_eval
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    result = judge_eval.run(cfg, sheet, canon, dev=dev, threshold=threshold)
+    result = judge_eval.run(cfg, sheet, canon, dev=dev, threshold=threshold,
+                            replicas=replicas)
     print("\n".join(judge_eval.report(result)))
     return 0
 
@@ -6655,8 +6710,9 @@ def main(argv: list[str]) -> int:
     if cmd == "blind-eval":
         return cmd_blind_eval(apply="--apply" in argv)
     if cmd == "judge-eval":
-        t = _flag("--threshold")
-        return cmd_judge_eval(dev="--dev" in argv, threshold=int(t) if t else None)
+        t, n = _flag("--threshold"), _flag("--replicas")
+        return cmd_judge_eval(dev="--dev" in argv, threshold=int(t) if t else None,
+                              replicas=int(n) if n else None)
     if cmd == "close-submitted":
         return cmd_close_submitted(apply="--apply" in argv)
     if cmd == "confirmations":

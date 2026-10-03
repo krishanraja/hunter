@@ -471,3 +471,25 @@ def test_a_base_band_with_variable_on_top_is_not_a_ceiling():
 def test_a_plain_band_still_has_a_ceiling():
     from hunter.gates import band_tops_out_at
     assert band_tops_out_at("$150,000 - $185,000") == 185_000
+
+
+def test_his_top_company_rules_apply_there_and_nowhere_else():
+    """Higgsfield's Director of Partnerships, San Francisco Bay Area, was
+    blocked on location on 7 September. At a top company it passes; the same
+    role anywhere else is still blocked, and a pay band on the role must not
+    switch the rule on (the gate code already had a variable called top)."""
+    from hunter.gates import run_gates
+    role = make_role(title="Director of Partnerships, AI Model and Ecosystem",
+                     location="San Francisco Bay Area, USA",
+                     jd_text="Higgsfield AI builds video models. 5+ years in partnerships.",
+                     comp="$250K - $350K")
+    top = run_gates(role, top_company=True)
+    other = run_gates(role)
+    for gate in ("G3", "G4", "G6", "G11"):
+        assert gate_result(top, gate).passed, gate_result(top, gate)
+    assert not gate_result(other, "G6").passed
+    assert gate_result(top, "G6").reason.startswith("top company")
+    la = make_role(title="Director of Partnerships", location="Los Angeles, CA",
+                   jd_text="On site in LA.", comp="$250K - $350K")
+    assert not gate_result(run_gates(la, top_company=True), "G6").passed, \
+        "the Bay Area is allowed at a top company, not anywhere in the US"

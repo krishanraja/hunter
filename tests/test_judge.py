@@ -99,7 +99,7 @@ def test_a_thin_posting_is_judged_without_quotes_rather_than_left_pending():
     thin = judge.Role(job_id="s:1", company="Sierra", title="Global Head of Sales Enablement",
                       posting="Sierra builds AI agents for customer service.")
     empty = {k: {**v, "quote": ""} if isinstance(v, dict) and "quote" in v else v
-             for k, v in answer(verdict="present", fit=6).items()}
+             for k, v in answer(verdict="present", fit=6, business=STARTUP).items()}
     _, j = judge.interpret(thin, message(empty), model="claude-opus-5-5")
     assert j.verdict == "present" and j.fit == 6
     wrong = answer(business={**answer()["business"], "quote": "a fintech unicorn"})
@@ -123,8 +123,11 @@ def test_a_refusal_a_cutoff_and_bad_json_are_pending_never_a_default():
         assert j.verdict == "pending" and j.problems
 
 
+STARTUP = {**answer()["business"], "employer_type": "startup", "category": "his_category"}
+
+
 def test_an_answer_from_another_model_is_held_never_presented():
-    good = answer(verdict="present", fit=9)
+    good = answer(verdict="present", fit=9, business=STARTUP)
     _, j = judge.interpret(ROLE, message(good, model="claude-opus-4-8"), model="claude-opus-5-5")
     assert j.verdict == "hold"
     assert judge.disposition(j) == "held"
@@ -145,7 +148,8 @@ def test_a_figure_from_nowhere_drops_the_sheet_text_but_keeps_the_verdict():
     ("present", 9, "staging"), ("present", 6, "staging"), ("present", 5, "held"),
     ("hold", 9, "held"), ("reject", 9, "blocked")])
 def test_what_a_verdict_means_for_staging(verdict, fit, want):
-    _, j = judge.interpret(ROLE, message(answer(verdict=verdict, fit=fit)), model="claude-opus-5-5")
+    _, j = judge.interpret(ROLE, message(answer(verdict=verdict, fit=fit, business=STARTUP)),
+                           model="claude-opus-5-5")
     assert judge.disposition(j) == want
 
 
@@ -260,3 +264,52 @@ def test_the_pay_field_is_evidence_for_a_figure():
     cfg = object.__new__(type("C", (), {"optional": lambda self, k, d="": d}))
     why, _, problems, _ = judge.make_the_case(cfg, "CONTEXT", paid, client=CaseClient(case))
     assert not problems and "$267,000" in why
+
+
+@pytest.mark.parametrize("etype,family,cut", [
+    ("consultancy", "partnerships_alliances", True),
+    ("agency_or_holding_company", "chief_commercial_strategy", True),
+    ("bank_insurer_asset_manager", "corp_dev_strategy", True),
+    ("measurement_research_or_services", "partnerships_alliances", True),
+    ("bank_insurer_asset_manager", "ai_chief_of_staff_transformation", False),  # BlackRock
+    ("recruiter_or_staffing", "chief_commercial_strategy", False),  # the client is judged
+    ("startup", "partnerships_alliances", False)])
+def test_his_legacy_cut_holds_whatever_the_judge_says(etype, family, cut):
+    """His rule, 2026-10-03: "Boring old businesses like comscore and obscure
+    consultancies and finance roles should be auto eliminated", with the one
+    exception he kept: an AI transformation seat at a household name."""
+    a = answer(verdict="present", fit=8,
+               business={**answer()["business"], "employer_type": etype},
+               function={**answer()["function"], "family": family})
+    _, j = judge.interpret(ROLE, message(a), model="claude-opus-5-5")
+    assert (j.verdict == "reject") is cut
+    if cut:
+        assert j.fit <= 3 and any("his rule cuts" in p for p in j.problems)
+        assert judge.disposition(j) == "blocked"
+
+
+def test_the_judge_is_told_when_a_company_is_one_of_his_top_companies():
+    top = judge.Role(job_id="h", company="Higgsfield AI", title="Director of Partnerships",
+                     posting=POSTING, company_note="yes: your list (Generative video)")
+    assert "Top company: yes: your list (Generative video)" in judge.user_prompt(top)
+    assert "Top company: no" in judge.user_prompt(ROLE)
+    assert "Bay Area only at a top company" in " ".join(judge.INSTRUCTIONS.split())
+    assert "household name" in judge.INSTRUCTIONS
+
+
+def test_a_quote_from_the_pay_field_counts_and_a_sheet_snippet_is_thin():
+    """Nine holdout roles went pending: the judge quoted a pay band from the
+    role's pay field that the stored posting did not repeat, or could not
+    quote the business from a sheet snippet standing in for a lost posting."""
+    paid = judge.Role(job_id="h", company="Harvey", title="Head of Mid-Market Sales",
+                      comp="$206.8K – $310.2K • Offers Equity", posting=POSTING)
+    a = answer(business=STARTUP, verdict="present", fit=7,
+               logistics={**answer()["logistics"], "quote": "$206.8K – $310.2K • Offers Equity"})
+    _, j = judge.interpret(paid, message(a), model="claude-opus-5-5")
+    assert j.verdict == "present", j.problems
+    snippet = judge.Role(job_id="s", company="Sierra", title="Enterprise Sales Director",
+                         posting=judge.THIN_MARKER + " what the sheet recorded about it:]\n" + "x" * 600)
+    unquoted = {k: {**v, "quote": ""} if isinstance(v, dict) and "quote" in v else v
+                for k, v in answer(verdict="present", fit=6, business=STARTUP).items()}
+    _, j2 = judge.interpret(snippet, message(unquoted), model="claude-opus-5-5")
+    assert j2.verdict == "present", j2.problems

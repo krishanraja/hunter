@@ -29,7 +29,7 @@ def board(slug: str) -> list[RolePosting]:
             location=(j.get("location") or {}).get("name"),
             posted_at=j.get("updated_at"),
             ats="greenhouse", ats_slug=slug,
-            ats_posting_id=str(j.get("id")), raw={"id": j.get("id")}))
+            ats_posting_id=str(j.get("id")), raw=j))
     return out
 
 

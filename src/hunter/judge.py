@@ -35,9 +35,16 @@ from dataclasses import dataclass, field
 from .config import Config
 from .package import rationale
 
-PROMPT_VERSION = "2026-10-03.2"
+PROMPT_VERSION = "2026-10-03.3"
 DEFAULT_MODEL = "claude-opus-5-5"
-DEFAULT_EFFORT = "high"
+# Low, measured 2026-10-03 on the development window: AUC 0.93 against 0.92
+# at high, the same Yes roles shown, 24 percent cheaper. Medium measured worse
+# on those 45 roles (0.88), which at that size is mostly noise. He asked for
+# cheaper; the reasoning a call writes is about 70 percent of its cost.
+DEFAULT_EFFORT = "low"
+# The case for a role on his sheet stays at high: it is what persuades him,
+# and it is written only for the roles that reach him.
+CASE_EFFORT = "high"
 MAX_TOKENS = 16000
 # A posting this long is the posting; shorter is a snippet the sheet kept.
 FULL_POSTING_CHARS = 400
@@ -59,7 +66,16 @@ FAMILIES = ["country_regional_gm", "chief_commercial_strategy",
 EMPLOYER_TYPES = ["startup", "scaleup", "public_company", "pe_owned",
                   "agency_or_holding_company", "consultancy",
                   "recruiter_or_staffing", "nonprofit", "bank_insurer_asset_manager",
-                  "other"]
+                  "measurement_research_or_services", "other"]
+# His cut, decided 2026-10-03, enforced on the judge's own reading of the
+# employer whatever verdict it gives: "Boring old businesses like comscore and
+# obscure consultancies and finance roles should be auto eliminated". The one
+# exception he kept is an AI transformation seat at a household name, so the
+# AI transformation family is spared and the judge's instructions say when.
+# A recruiter's posting is not here: the client is judged, not the recruiter.
+CUT_EMPLOYERS = frozenset({"agency_or_holding_company", "consultancy",
+                           "bank_insurer_asset_manager",
+                           "measurement_research_or_services"})
 DECLINE_CODES = ["none", "domain_expertise", "function_wrong", "business_uninteresting",
                  "seniority_below", "seniority_above", "requirements_mismatch",
                  "geo_language", "comp_below_bar", "stage_wrong", "too_much_travel"]
@@ -126,7 +142,23 @@ How he decides, in this order, as his rulings show:
    build. Titles mislead in both directions: he has applied for seats titled
    Lead and declined seats titled Head of.
 4. Requirements he lacks.
-5. Logistics. City (NYC, London, US-remote, UK-remote) and pay.
+5. Logistics. City and pay, under his rules below.
+
+His rules, decided 2026-10-03. Each role says whether its company is one of
+his TOP companies: his own list of AI companies, his Target Companies, a
+company he has said Yes to, or a close lookalike of those.
+- Where. New York, London, UK remote and US remote, anywhere. The San
+  Francisco Bay Area only at a top company: he would move for the right one.
+  Anywhere else is a reject unless the posting allows one of those.
+- At a top company the bar bends, it never rises: a base below $200,000 is
+  fine when the top of the range or the on-target earnings reach $250,000, and
+  Director and Manager titles in commercial, partnerships, business
+  development, GTM and strategy are in scope.
+- Cut, whatever the seat: banks, insurers and asset managers; consultancies;
+  agencies and holding companies; measurement and research firms; staffing
+  and services firms hiring for themselves. The one exception is an explicit
+  AI transformation mandate at a household name. A recruiter's posting for an
+  unnamed client is judged on the client as the posting describes it.
 
 What his Yes rulings show, which a careful reader of his declines tends to miss:
 - He applies for stretch roles at businesses he wants. In August and early
@@ -206,6 +238,7 @@ class Role:
     url: str = ""
     posting: str = ""      # the text the judge reads and quotes are checked against
     source: str = ""
+    company_note: str = ""  # whether it is one of his top companies, and why
 
 
 @dataclass
@@ -309,7 +342,8 @@ def gather_context(cfg: Config, sheet, canon, *, rulings: list[str]) -> str:
 def user_prompt(role: Role, problems: list[str] | None = None) -> str:
     head = (f"THE ROLE\nCompany: {role.company}\nTitle: {role.title}\n"
             f"Location: {role.location or 'not stated'}\nPay: {role.comp or 'not stated'}\n"
-            f"Where it was found: {role.source or 'unknown'}\n\n"
+            f"Where it was found: {role.source or 'unknown'}\n"
+            f"Top company: {role.company_note or 'no, not on his top list'}\n\n"
             f"THE POSTING (verbatim, the only source of fact about the role):\n"
             f"{role.posting or '(no posting text)'}")
     if problems:
@@ -329,7 +363,7 @@ def fold(text: str) -> str:
     return " ".join(text.split())
 
 
-def quote_problems(answers: dict, posting: str) -> list[str]:
+def quote_problems(answers: dict, posting: str, *, require: bool | None = None) -> list[str]:
     hay = fold(posting)
     bad = []
     for section in ("business", "function", "level_scope", "requirements_he_lacks", "logistics"):
@@ -342,14 +376,33 @@ def quote_problems(answers: dict, posting: str) -> list[str]:
     # On a full posting the business and the function must be quoted. On a
     # snippet there may be nothing to quote, and a thin posting is never a
     # reason to refuse a judgement: v1 left ten roles pending for it.
-    if len(posting or "") >= FULL_POSTING_CHARS:
+    if (require if require is not None else len(posting or "") >= FULL_POSTING_CHARS):
         for section in ("business", "function"):
             if not fold((answers.get(section) or {}).get("quote", "")).strip():
                 bad.append(f"the {section} answer has no quote from the posting")
     return bad
 
 
-def check(answer: dict, posting: str, evidence: str = "") -> tuple[list[str], list[str]]:
+THIN_MARKER = "[The full posting is no longer available"
+
+
+def quotable(role: Role) -> str:
+    """What a quote may come from: the posting, and the role's own title,
+    location and pay fields, which are the posting's too. On the holdout, nine
+    roles went pending because the judge quoted a pay band from the pay field
+    ("$206.8K - $310.2K") that the stored posting text did not repeat. A sheet
+    snippet standing in for a lost posting is thin, whatever its length: the
+    business and the function cannot be required to be quoted from it."""
+    return (role.posting or "") + "\n" + f"{role.title}\n{role.location}\n{role.comp}"
+
+
+def is_thin(role: Role) -> bool:
+    p = role.posting or ""
+    return p.startswith(THIN_MARKER) or len(p) < FULL_POSTING_CHARS
+
+
+def check(answer: dict, posting: str, evidence: str = "", *,
+          thin: bool | None = None) -> tuple[list[str], list[str]]:
     """(critical problems, text problems).
 
     Critical problems void the judgement: a verdict or fit outside its range,
@@ -365,7 +418,8 @@ def check(answer: dict, posting: str, evidence: str = "") -> tuple[list[str], li
     if not isinstance(fit, int) or not 0 <= fit <= 10:
         critical.append(f"fit {fit!r} is not a whole number from 0 to 10")
     if posting.strip():
-        critical += quote_problems(answer, posting)
+        critical += quote_problems(answer, posting, require=not (
+            thin if thin is not None else len(posting) < FULL_POSTING_CHARS))
     parts = {"mandate": answer.get("mandate", ""), "fit": answer.get("fit_text", ""),
              "risk": answer.get("risk", ""), "snippet": answer.get("snippet", "")}
     # A figure may come from the posting or from his own recorded proof points
@@ -441,7 +495,8 @@ def interpret(role: Role, message, *, model: str, batch: bool = False,
     except (ValueError, TypeError):
         pending.problems = ["the answer was not valid JSON"]
         return None, pending
-    critical, text = check(answer, role.posting, user_prompt(role) + "\n" + evidence)
+    critical, text = check(answer, quotable(role), user_prompt(role) + "\n" + evidence,
+                           thin=is_thin(role))
     if critical:
         pending.problems = critical + text
         pending.answers = answer
@@ -460,6 +515,13 @@ def interpret(role: Role, message, *, model: str, batch: bool = False,
         snippet="" if text else answer.get("snippet", ""), model=model, served_model=served,
         usage=usage, usd=usd_of(model, usage, batch=batch),
         problems=[f"sheet text not used: {t}" for t in text])
+    etype = ((answer.get("business") or {}).get("employer_type") or "")
+    family = ((answer.get("function") or {}).get("family") or "")
+    if etype in CUT_EMPLOYERS and family != "ai_chief_of_staff_transformation" \
+            and j.verdict != "reject":
+        j.problems.append(f"his rule cuts a {etype.replace('_', ' ')}; rejected")
+        j.verdict, j.fit = "reject", min(j.fit or 0, 3)
+        j.likely_decline_code = "business_uninteresting"
     if served and not served.startswith(model):
         # Not the judge that was measured. Its reasoning is kept; its say is not.
         j.problems.append(f"answered by {served}, not {model}; held")
@@ -555,7 +617,7 @@ def make_the_case(cfg: Config, system: str, role: Role, *, client=None,
     checked against the posting and his record; a case that fails twice is
     replaced by an honest stub, never shipped."""
     model = model or cfg.optional("hunter_judge_model", DEFAULT_MODEL)
-    effort = effort or cfg.optional("hunter_judge_effort", DEFAULT_EFFORT)
+    effort = effort or cfg.optional("hunter_case_effort", CASE_EFFORT)
     client = client or _client(cfg)
     snippet_fallback = rationale.deterministic_snippet(role.company, role.title, role.posting)
     problems: list[str] | None = None

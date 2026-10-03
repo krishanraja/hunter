@@ -90,12 +90,19 @@ def run(cfg: Config, canon, sheet, candidates: list[Candidate], *, mode: str,
     out.system = system
     client = client or judge._client(cfg)
 
+    from . import universe
+    try:
+        notes = universe.top_notes(cfg)
+    except Exception:
+        notes = {}
+
     def one(c: Candidate) -> judge.Judgement:
         r = c.role
         return judge.judge_role(cfg, system, judge.Role(
             job_id=r.job_id, company=r.company, title=r.title, location=r.location,
             comp=r.comp, url=r.jd_url or r.url, posting=r.jd_text or "",
-            source=r.source), client=client)
+            source=r.source, company_note=universe.note_for(notes, r.company)),
+            client=client)
 
     # The first call writes the cache; the rest read it. Running it alone first
     # is what makes the other calls cheap.

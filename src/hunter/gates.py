@@ -57,6 +57,11 @@ FOREIGN_GEO = re.compile(
     r"switzerland|netherlands|sweden|norway|finland|portugal|india|singapore|"
     r"japan|korea|china|australia|new zealand|dubai|\buae\b|qatar|"
     r"ireland|austria|belgium|czech|romania|turkey|israel|"
+    # Canada added 2026-10-03: "Canada Wide - Excluding Quebec" passed as a
+    # remote posting and the judge presented it.
+    r"canada|quebec|ontario|toronto|vancouver|montreal|argentina|colombia|chile|"
+    r"philippines|indonesia|vietnam|thailand|malaysia|hong kong|taiwan|egypt|"
+    r"nigeria|kenya|south africa|"
     r"latam|\bapj\b|\bapac\b|\bdach\b)\b", re.I)
 GEO_ANCHOR = re.compile(
     r"london|united kingdom|\buk\b|new york|\bnyc\b|united states|"
@@ -193,7 +198,12 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
               package_texts: tuple[str, str] | None = None,
               company_declines: dict | None = None,
               employer_index=None,
-              merit: int | None = None) -> GateReport:
+              merit: int | None = None,
+              top_company: bool = False) -> GateReport:
+    """top_company: the company is one of his top companies (universe.py). His rules
+    there, decided 2026-10-03: the Bay Area and remote-eligible postings pass
+    G6, and Director and Manager seats in commercial functions pass G3, G4 and
+    G11. Nothing else changes, and nothing changes anywhere else."""
     results: list[GateResult] = []
     hay = f"{role.title}\n{role.jd_text}"
 
@@ -231,14 +241,23 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
 
     title_senior = bool(SENIOR_TITLE.search(role.title))
     ic = bool(IC_SIGNALS.search(role.jd_text)) and not LEADERSHIP_SIGNALS.search(role.jd_text)
-    results.append(GateResult(
-        "G3", title_senior and not ic,
-        "senior title with leadership scope" if title_senior and not ic else
-        ("senior individual contributor seat wearing a leadership title" if ic
-         else f"title below the seniority bar: {role.title!r}")))
+    from . import universe
+    top_shape = universe.shape_ok(role.title) if top_company else (False, "")
+    if top_company and top_shape[0]:
+        results.append(GateResult("G3", True, f"top company: {top_shape[1]}"))
+    else:
+        results.append(GateResult(
+            "G3", title_senior and not ic,
+            "senior title with leadership scope" if title_senior and not ic else
+            ("senior individual contributor seat wearing a leadership title" if ic
+             else f"title below the seniority bar: {role.title!r}")))
 
     years = YEARS_RANGE.search(role.jd_text)
-    if years and int(years.group(2)) < 8:
+    if top_company and top_shape[0]:
+        results.append(GateResult(
+            "G4", True, "top company: his Director and Manager flex, so the "
+                        "years a posting asks for do not block it"))
+    elif years and int(years.group(2)) < 8:
         results.append(GateResult(
             "G4", False,
             f"posting demands {years.group(0).strip()}, inconsistent with a "
@@ -256,6 +275,10 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
     if US_RESIDENCE.search(role.jd_text):
         results.append(GateResult(
             "G6", False, "explicit US-residence requirement blocks the role"))
+    elif top_company:
+        ok, why = universe.place_ok(
+            role.location, remote=bool(universe.REMOTE.search(role.jd_text[:400])))
+        results.append(GateResult("G6", ok, f"top company: {why}"))
     else:
         geo_hay = f"{role.location} {role.jd_text[:400]}"
         ok = geography_ok(geo_hay)
@@ -270,6 +293,8 @@ def run_gates(role: ResolvedRole, *, never_apply: list[str] | tuple = (),
     # needs none. Measured on the 419 roles then on record: 419 in, 101 out,
     # and 16 of the 17 he had said go to survive.
     fam = archetype(role.title)
+    if top_company and top_shape[0] and fam is None:
+        fam = "top company flex"
     results.append(GateResult(
         "G11", fam is not None,
         f"canon 5 archetype: {fam}" if fam else
