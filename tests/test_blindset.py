@@ -244,3 +244,22 @@ def test_his_blind_set_declines_become_rulings_the_judge_reads(monkeypatch, tmp_
     assert [(r.job_id, r.label, r.code) for r in got] == [("j1", "no", "business_uninteresting")]
     assert got[0].presented_at == rec["drawn_at"] and got[0].source == "blind set"
     assert got[0].jd_text == "posting"
+
+
+def test_his_verdicts_outlive_the_tab(monkeypatch, tmp_path):
+    """He retired the Blind Set tab on 2026-10-03 once his Yes roles were on
+    Pipeline. His verdicts were saved into the record first, so his declines
+    stay rulings the judge reads with no tab to read them from."""
+    import json
+    from hunter import judgedata
+    rec = {"drawn_at": "2026-10-03T20:00:00+00:00",
+           "picks": [dict(row(1), stratum="far", old_gate="G11", his_verdict="Declined - function wrong")]}
+    f = tmp_path / "blind.json"
+    f.write_text(json.dumps(rec))
+    monkeypatch.setattr(blindset, "RECORD", f)
+
+    class NoTab:
+        def read_tab_values(self, rng):
+            raise AssertionError("the tab is gone and must not be read")
+    got = judgedata.blind_rulings(NoTab(), {}, seen=set())
+    assert [(r.job_id, r.label, r.code) for r in got] == [("j1", "no", "function_wrong")]

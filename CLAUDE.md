@@ -437,7 +437,7 @@ src/hunter/
     tailor.py       block selection, the hook
     voicegate.py    every generated string passes this
 extension/            loaded unpacked in his Chrome. main is what he downloads
-tests/                1399 tests, offline
+tests/                1400 tests, offline
   test_taste.py       the bar, measured against his own verdicts
   test_company_taste.py          the company bar, against the companies he chose
   fixtures/krish_verdicts.json   154 roles he ruled on. Ground truth

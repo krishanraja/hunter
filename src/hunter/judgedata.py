@@ -142,12 +142,19 @@ def blind_rulings(sheet, db_by_id: dict, seen: set) -> list[Ruled]:
         return []
     try:
         record = json.loads(blindset.RECORD.read_text())
-        given = blindset._raw_verdicts(sheet)
     except Exception:
         return []
+    # His verdicts were saved into the record when the tab was retired
+    # (2026-10-03, at his request); the tab is read only if a pick has none.
+    given = {}
+    if any(not p.get("his_verdict") for p in record.get("picks", [])):
+        try:
+            given = blindset._raw_verdicts(sheet)
+        except Exception:
+            given = {}
     out = []
     for p in record.get("picks", []):
-        words = given.get(p["job_id"], "")
+        words = p.get("his_verdict") or given.get(p["job_id"], "")
         label, code = label_of(words)
         if label is None or p["job_id"] in seen:
             continue

@@ -133,13 +133,6 @@ jobs:
         if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run settle --apply
 
-      # The blind set (blindset.py): each role he marks Yes on the Blind Set tab
-      # is a lead the old rules had hidden, and goes onto Pipeline within the
-      # hour. Does nothing when there is no blind set.
-      - name: Move his blind-set Yes roles onto Pipeline
-        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
-        run: python -u -m hunter.run blind-eval --apply
-
       # Is the loop still turning. Reads only, and every condition is
       # deduplicated on the condition rather than the moment, so running this
       # every hour sends at most one mail per distinct problem.
