@@ -38,7 +38,7 @@ from .config import (ALL_ROWS, Config, GoogleOAuth, GoogleServiceAccount,
 from .docbuild import DocBuild
 from .archetype import archetype
 from .gates import FLOOR, names_foreign_geo, run_gates
-from . import alerts, amend, comp as comp_mod, employer, invariants, layout, learn, preflight, schedule
+from . import alerts, amend, comp as comp_mod, employer, invariants, judge, layout, learn, preflight, schedule
 from .report import report_run
 from . import verdicts
 from .router import classify_verdict, is_warm_path, route_status, select_for_build
@@ -2374,7 +2374,9 @@ def seen_identity_keys(cfg: Config) -> set:
         # it as seen means it can never be reconsidered once resolution
         # improves, and 1451 LinkedIn postings were sitting in exactly that
         # state when board discovery arrived.
-        if r.get("status") == "unresolved":
+        if r.get("status") in ("unresolved", "judge_pending"):
+            # judge_pending: the judge did not get to it, or its answer failed
+            # its checks. It is judged again next time it is seen.
             continue
         keys.add(r["job_id"])
         keys.update(identity_keys(r.get("company") or "", r.get("title") or ""))
@@ -3258,6 +3260,16 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     opens = learn.open_applications(db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,krish_verdict,verdict_at", "limit": ALL_ROWS}))
     inserts, staged_rows = [], []
+    # The judge (judge_stage.py). Off, shadow or gate; shadow changes nothing
+    # that reaches him and records what the judge would have done.
+    from . import judge_stage
+    judge_mode = judge_stage.mode_of(cfg)
+    candidates: list = []
+
+    def rank_of(role, result) -> float:
+        cs = company_view.get(company_key(role.company) or slugify(role.company))
+        company_part = cs.total if cs and cs.status != COMPANY_UNKNOWN else 5.0
+        return -((result.score or 0) + company_part)
     fetchers = {"greenhouse": greenhouse.fetch_posting,
                 "ashby": ashby.fetch_posting, "lever": lever.fetch_posting}
     for p in fresh:
@@ -3399,7 +3411,10 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                "jd_text": (role.jd_text or "")[:6000],
                "last_verified_at": NOW() if live else None}
         inserts.append(row)
-        if status == "staging":
+        if judge_mode != "off" and not judge_stage.hard_failure(report):
+            candidates.append(judge_stage.Candidate(
+                role=role, result=result, row=row, rank=rank_of(role, result)))
+        if status == "staging" and judge_mode != "gate":
             # The same rationale generator the re-gate uses, so a row staged
             # today reads exactly like a row re-judged last week. Krish asked
             # for one standard; this is where it is applied.
@@ -3417,9 +3432,65 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                 summary.append(f"rationale flags {role.job_id}: {', '.join(rflags)}")
             staged_rows.append((role, result, snippet, why))
 
+    judged = None
+    if judge_mode != "off" and candidates:
+        try:
+            judged = judge_stage.run(cfg, canon, sheet, candidates, mode=judge_mode)
+            summary.extend(judged.lines)
+        except Exception as e:
+            # The judge failing must never become the judge deciding: in gate
+            # mode nothing is staged on a judge that did not run.
+            summary.append(f"judge did not run: {e.__class__.__name__}: {e}")
+            judged = None
+    if judge_mode == "shadow" and judged is not None:
+        old_ids = {r.job_id for r, _, _, _ in staged_rows}
+        new_ids = {c.role.job_id for c in judged.present}
+        summary.append(f"judge shadow: old rules staged {len(old_ids)}, the judge would "
+                       f"present {len(new_ids)}, both {len(old_ids & new_ids)}")
+        for c in candidates:
+            if c.role.job_id in old_ids - new_ids:
+                summary.append(f"  old rules only: {c.role.company} / {c.role.title}: "
+                               f"{judge.reason_line(c.judgement)[:120]}")
+        for c in judged.present:
+            if c.role.job_id not in old_ids:
+                summary.append(f"  judge only, fit {c.judgement.fit}: "
+                               f"{c.role.company} / {c.role.title}")
+    judge_decided = judge_mode == "gate"
+    if judge_decided:
+        staged_rows = []
+        if judged is not None:
+            judge_stage.apply_gate(judged, candidates)
+            for c in judged.present + judged.audit:
+                why, snippet = c.judgement.why_it_fits, c.judgement.snippet
+                if not why:
+                    why, snippet, _ = write_rationale_and_snippet(
+                        cfg, canon, company=c.role.company, title=c.role.title,
+                        jd=c.role.jd_text, score=c.result.score,
+                        score_reason=c.result.why_it_fits,
+                        location=c.role.location, comp=c.role.comp)
+                if c in judged.audit:
+                    why = judge_stage.audit_why(c.judgement)
+                note = open_application_note(opens, c.role.company)
+                if note:
+                    why = f"{why} {note}"[:900]
+                c.row["why_it_fits"] = why
+                staged_rows.append((c.role, c.result, snippet, why))
+        else:
+            for row in inserts:
+                if row.get("status") == "staging":
+                    row["status"] = "judge_pending"
     if inserts:
-        db_insert(cfg, "hunter_seen_roles", inserts, on_conflict="job_id",
-                  ignore_duplicates=True)
+        # A role the judge left pending last run is judged again now; its row
+        # exists, so it is updated rather than silently skipped.
+        pending_ids = {r["job_id"] for r in db_get(cfg, "hunter_seen_roles", {
+            "select": "job_id", "status": "eq.judge_pending", "limit": ALL_ROWS})}
+        again = [r for r in inserts if r["job_id"] in pending_ids]
+        first = [r for r in inserts if r["job_id"] not in pending_ids]
+        if first:
+            db_insert(cfg, "hunter_seen_roles", first, on_conflict="job_id",
+                      ignore_duplicates=True)
+        if again:
+            db_insert(cfg, "hunter_seen_roles", again, on_conflict="job_id", merge=True)
     counts["recorded"] = len(inserts)
     disc.save_cache(cfg, cache)
     if counts["boards_found"]:
@@ -3438,16 +3509,26 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             f"scoring below {COMPANY_FLOOR:g}: "
             + ", ".join(sorted(set(counts["g14_blocked"]))[:6]))
 
-    if staged_rows:
+    if staged_rows and judge_decided:
+        new_rows = [make_row(company=role.company, role=role.title,
+                             jd_url=role.jd_url, score=result.score,
+                             why_it_fits=why,
+                             location=role.location, comp=role.comp,
+                             source=role.source, jd_snippet=snippet,
+                             jd_verified=(role.liveness != "unverified"))
+                    for role, result, snippet, why in staged_rows]
+        sheet.append_rows(new_rows)
+        for role, _, _, _ in staged_rows:
+            db_patch(cfg, "hunter_seen_roles", {"job_id": role.job_id},
+                     {"presented_at": NOW()})
+        counts["staged"] = len(staged_rows)
+    elif staged_rows:
         # Ranked on the company AND the seat, not the seat alone. Under the
         # old key a role at a company he named tied with a role at an
         # advertising holding company, and at the staging cap the tie was
         # broken by whichever leg happened to run first.
         def rank(entry):
-            role, result = entry[0], entry[1]
-            cs = company_view.get(company_key(role.company) or slugify(role.company))
-            company_part = cs.total if cs and cs.status != COMPANY_UNKNOWN else 5.0
-            return -((result.score or 0) + company_part)
+            return rank_of(entry[0], entry[1])
 
         staged_rows.sort(key=rank)
         # Diversity before volume. Ranked first so the best of each leg and
@@ -3824,6 +3905,16 @@ def settle_step(cfg: Config, canon: Canon, sheet: Sheet,
         f"{out['approvals_closed']} approval(s) closed, {out['archived']} moved "
         f"to {config_mod.ARCHIVE_TAB}")
     return out
+
+
+def cmd_judge_eval() -> int:
+    """Measure the judge against his rulings. Spends money (capped at $25)."""
+    from . import judge_eval
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    result = judge_eval.run(cfg, sheet, canon)
+    print("\n".join(judge_eval.report(result)))
+    return 0
 
 
 def cmd_settle(apply: bool = False) -> int:
@@ -6495,6 +6586,8 @@ def main(argv: list[str]) -> int:
                          profile_dir=_flag("--profile"))
     if cmd == "settle":
         return cmd_settle(apply="--apply" in argv)
+    if cmd == "judge-eval":
+        return cmd_judge_eval()
     if cmd == "close-submitted":
         return cmd_close_submitted(apply="--apply" in argv)
     if cmd == "confirmations":
