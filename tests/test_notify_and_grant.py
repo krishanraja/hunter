@@ -287,6 +287,27 @@ def test_the_working_mailbox_is_on_the_allowlist():
     assert "krish@themindmaker.ai" in notify.ALLOWED_RECIPIENTS
 
 
+def test_the_mindmake_mailbox_is_accepted_as_krish(monkeypatch):
+    """2026-10-04: the consent now authenticates as krish@mindmake.co. The first
+    run after that failed because mailbox() refused the account it was signed in
+    as, so the trouble email never sent and the run went red."""
+    assert "krish@mindmake.co" in notify.ALLOWED_RECIPIENTS
+
+    class R:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"emailAddress": "Krish@MindMake.co"}
+
+    notify._mailbox = None
+    monkeypatch.setattr(notify, "GoogleOAuth",
+                        lambda cfg: type("T", (), {"access_token": lambda s: "t"})())
+    monkeypatch.setattr(notify.requests, "get", lambda *a, **k: R())
+    assert notify.mailbox(FakeCfg()) == "krish@mindmake.co"
+    notify._mailbox = None
+
+
 def test_the_mailbox_is_read_from_the_token_not_guessed(monkeypatch):
     calls = {}
 

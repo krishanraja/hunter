@@ -42,7 +42,15 @@ GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 # anywhere else leaves from this address, and more importantly the reply loop reads
 # THIS mailbox, so a reply Krish sends from it would have been rejected as "not
 # from Krish" and the approve step would have silently never worked.
+#
+# krish@mindmake.co joined on 2026-10-04. It became Krish's public contact address
+# on 2026-10-03, and hunter's Google consent now authenticates as it. The first run
+# after that refused to send its own trouble email to the mailbox it was signed in
+# as ("not on the allowlist") and failed, so the address is added here for the
+# same two reasons as above: it is where hunter's mail now leaves from, and where
+# Krish's replies to it are read.
 ALLOWED_RECIPIENTS = frozenset({
+    "krish@mindmake.co",
     "krish@themindmaker.ai",
     "hello@krishraja.com",
     "krishanraja@gmail.com",
