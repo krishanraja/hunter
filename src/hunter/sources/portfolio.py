@@ -32,8 +32,9 @@ UA = {"User-Agent": "Mozilla/5.0 (compatible; hunter/1.0)"}
 
 # Verified against the live boards on 2026-09-20. Each one was checked to
 # answer with its whole portfolio; firms whose boards do not run on this
-# platform (Sequoia, Lightspeed, Bessemer, Kleiner Perkins) are deliberately
-# absent rather than listed and silently returning nothing.
+# platform (Lightspeed, Bessemer, Kleiner Perkins) are deliberately absent
+# rather than listed and silently returning nothing. Sequoia runs on Consider
+# and is read by sources/consider.py, into the same table.
 FIRMS: dict[str, str] = {
     "Accel": "https://jobs.accel.com/companies",
     "General Catalyst": "https://jobs.generalcatalyst.com/companies",
@@ -177,10 +178,13 @@ def fetch(firm: str, timeout: int = 25) -> list[dict]:
 
 def fetch_all(timeout: int = 25) -> tuple[list[dict], list[str]]:
     """(companies, notes). A firm that fails is named, never silently absent."""
+    from . import consider
     out, notes = [], []
-    for firm in FIRMS:
+    readers = [(f, lambda f=f: fetch(f, timeout=timeout)) for f in FIRMS]
+    readers += [(f, lambda f=f: consider.fetch_companies(f)) for f in consider.BOARDS]
+    for firm, read in readers:
         try:
-            rows = fetch(firm, timeout=timeout)
+            rows = read()
         except Exception as e:
             notes.append(f"{firm} portfolio unavailable: {e.__class__.__name__}")
             continue

@@ -116,10 +116,13 @@ def test_pagination_does_not_stop_at_the_first_short_page(monkeypatch):
 def test_a_firm_whose_board_fails_is_named_rather_than_silently_absent(monkeypatch):
     def boom(*a, **k):
         raise ConnectionError("down")
+    from hunter.sources import consider
     monkeypatch.setattr(portfolio.requests, "get", boom)
+    monkeypatch.setattr(consider.requests, "Session", boom)
     rows, notes = portfolio.fetch_all()
     assert rows == []
-    assert all("unavailable" in n for n in notes) and len(notes) == len(portfolio.FIRMS)
+    assert all("unavailable" in n for n in notes)
+    assert len(notes) == len(portfolio.FIRMS) + len(consider.BOARDS)
 
 
 # ---------- staying current without spending the run on it ----------

@@ -2399,6 +2399,46 @@ def seen_identity(cfg: Config) -> tuple[set, dict]:
     return keys, id_countries
 
 
+READABLE_BOARDS = ("greenhouse", "ashby", "lever")
+
+
+def route_board_postings(posts: list, cache: dict) -> tuple[list, int]:
+    """Split a portfolio board's postings into the ones its company boards
+    will carry and the ones only the portfolio board has.
+
+    A posting whose link names a Greenhouse, Ashby or Lever board teaches
+    hunter that board (written into `cache`, which the full sweep reads) and
+    is left to that sweep, which brings the whole posting text. Everything
+    else is returned to be staged as it is. A board already on record under
+    another name is not learned twice, and a company already mapped to a
+    different board keeps its mapping. Returns (board_only, boards learned).
+    """
+    from .ats import discover as disc
+    known = {(h.get("ats"), (h.get("slug") or "").lower())
+             for h in cache.values() if not disc.is_miss(h)}
+    only, learned = [], 0
+    for bp in posts:
+        if not bp.title or not bp.company:
+            continue
+        key = ats_key(bp.url)
+        # A gh_jid link carries the posting id and no board, so it teaches
+        # nothing about where the board is.
+        if key and key[2]:
+            bp.ats, bp.ats_slug, bp.ats_posting_id = key
+            if key[0] in READABLE_BOARDS:
+                board = (key[0], key[1].lower())
+                ck = slugify(bp.company)
+                have = cache.get(ck)
+                if board not in known and ck and (not have or disc.is_miss(have)):
+                    cache[ck] = {"ats": key[0], "slug": key[1]}
+                    known.add(board)
+                    learned += 1
+                if board in known:
+                    continue
+        only.append(bp)
+    return only, learned
+
+
 def fresh_postings(postings: list, seen_keys: set, id_countries: dict) -> list:
     """The postings not already on record, each counted once. Identity is
     company, title and country, never the bare job id: that id is company and
@@ -2818,6 +2858,30 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
     except Exception as e:
         summary.append(f"a16z board skipped: {e.__class__.__name__}: {e}")
 
+    # Sequoia's portfolio board, as Krish asked on 2026-10-05, and any other
+    # firm on the Consider platform (sources/consider.py). Unlike the a16z
+    # page its API pages through every open role, so it does both jobs at
+    # once. Every Greenhouse, Ashby or Lever board an apply link names is
+    # learned and swept in full below, with the full posting text. A role at a
+    # company whose board hunter cannot read is taken from the Sequoia board
+    # itself, with its pay, and added after the full sweep so a role both
+    # carry arrives once, with its posting.
+    board_only: list = []
+    try:
+        from .sources import consider
+        cache = disc.load_cache(cfg)
+        for firm in consider.BOARDS:
+            jobs = consider.fetch_jobs(firm)
+            posts = [consider.to_posting(j, firm) for j in jobs]
+            only, learned_here = route_board_postings(posts, cache)
+            board_only.extend(only)
+            summary.append(f"{firm} board: {len(jobs)} open roles, {learned_here} new "
+                           f"ATS boards learned, {len(only)} roles taken from the board "
+                           f"itself (no readable company board)")
+        disc.save_cache(cfg, cache)
+    except Exception as e:
+        summary.append(f"Consider boards skipped: {e.__class__.__name__}: {e}")
+
     # Boards learned from the a16z board or from LinkedIn discovery, swept in
     # full like the canon universe. This is where the exhaustive listing
     # comes from.
@@ -2846,6 +2910,7 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
         summary.append(f"learned boards swept in full: {extra}")
     except Exception as e:
         summary.append(f"learned board sweep skipped: {e.__class__.__name__}")
+    postings.extend(board_only)
 
     spend = SpendTracker(cap_usd=float(cfg.optional("hunter_apify_max_usd_per_run", "5.00")))
     urls = linkedin_search_urls(cfg, sheet)
@@ -5558,6 +5623,8 @@ def source_leg(source: str) -> str:
         return "market scan"
     if "a16z" in s:
         return "a16z portfolio"
+    if "sequoia" in s:
+        return "sequoia portfolio"
     if s.startswith("direct ats sweep"):
         return "legacy ats sweep"
     if s.startswith("newsletter"):

@@ -215,13 +215,18 @@ The layers, cheapest first, each with its own measurement:
 
 1. **Companies he wants** (`universe.py`, `lookalike.py`, `radar.py`). His
    list (`data/ai_universe.csv`), his Target Companies, his Yes companies, and
-   lookalikes from the a16z, Accel, General Catalyst and Thrive portfolios,
-   each scored once against his list (about a third of a cent, kept 30 days).
+   lookalikes from the a16z, Sequoia, Accel, General Catalyst and Thrive
+   portfolios, each scored once against his list (about a third of a cent,
+   kept 30 days).
    A one-off Yes makes a company top only if it also scores 5 or more: one Yes
    had made Citi, PayPal and a job-ad network "top". Keys are whole names,
    never a single token. The Company Radar tab shows the trail.
 2. **Their own boards, free, every run.** A board found by guessing must name
-   the company in its postings, or its roles do not count.
+   the company in its postings, or its roles do not count. Sequoia's board
+   (`sources/consider.py`, added 2026-10-05 at his request) is read through
+   its own API: every open role, paged, with pay. Its apply links name each
+   company's own board, which is learned and swept in full; a role at a
+   company whose board hunter cannot read is taken from Sequoia's board.
 3. **His rules at top companies**, decided 2026-10-03 (`gates.run_gates`
    `top_company=True`): the Bay Area and remote-eligible postings pass, Director
    and Manager seats in commercial functions pass, pay may start under the floor
@@ -423,6 +428,7 @@ src/hunter/
   schedule.py       which batch is owed, decided from the run record
   company.py        is the BUSINESS worth his time. Five components, evidenced
   companyintel.py   where those facts come from, free, and always cited
+  sources/consider.py  Sequoia's board: every open role, with pay, and its boards
   prospect.py       companies he has not named, found in what hunter discards
   targets.py        his Target Companies tab, read as policy and written back
   batchstats.py     accept rate per batch. The number nobody was watching

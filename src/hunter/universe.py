@@ -14,8 +14,9 @@ So this lane runs the other way round:
 
   companies   his list (data/ai_universe.csv, 100 he wrote), his Target
               Companies tab, every company he has said Yes to, and lookalikes:
-              venture-backed companies from the a16z, Accel, General Catalyst
-              and Thrive portfolios, scored against his list (lookalike.py).
+              venture-backed companies from the a16z, Sequoia, Accel, General
+              Catalyst and Thrive portfolios, scored against his list
+              (lookalike.py).
   roles       read from each company's own job board, free, every run.
   his rules   decided 2026-10-03, at TOP companies only (the list above):
               - New York, London, UK or US remote, and the San Francisco Bay

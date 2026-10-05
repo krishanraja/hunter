@@ -1,0 +1,137 @@
+{
+ "captured": "2026-10-05 from https://jobs.sequoiacap.com (token replaced)",
+ "page": "<script nonce=\"the-nonce\">window.serverInitialData = {\"csrfToken\":\"TOKEN-FROM-PAGE\",\"board\":{\"id\":\"sequoia-capital\",\"isParent\":true}};</script>",
+ "companies": [
+  {
+   "name": "Verkada",
+   "slug": "verkada",
+   "domain": "verkada.com",
+   "description": "We’re hiring! Learn more and see open positions: https://www.verkada.com/careers\n\nVerkada is the leader in cloud-managed enterprise building security, enabling over 10,000 organizations worldwide to protect their people, assets and privacy. Designed with simplicity in mind, Verkada’s five product lines - video security cameras, door-based access control, environmental sensors, alarms and visitor management - provide unparalleled visibility through a single secure cloud-based software platform. \n\nThe company was founded by computer scientists and security experts from Stanford University, and Hans Robertson, the former co-founder and COO of Cisco Meraki. Verkada is headquartered in San Mateo, CA with offices in Salt Lake City, Tampa, Phoenix, Austin, London and Sydney.",
+   "officeLocations": [
+    "San Mateo, California",
+    "London"
+   ],
+   "markets": [
+    "Consumer Electronics",
+    "Hardware"
+   ],
+   "stages": [
+    "1000+ employees",
+    "Growth"
+   ],
+   "parents": [
+    "CapitalG",
+    "Felicis",
+    "First Round Capital",
+    "Lightspeed",
+    "Next47",
+    "Sequoia Capital",
+    "Webb Investment Network",
+    "Remotely"
+   ],
+   "numJobs": 306,
+   "investors": [
+    "CapitalG",
+    "Felicis",
+    "First Round Capital",
+    "Lightspeed",
+    "Next47",
+    "Sequoia Capital",
+    "Webb Investment Network"
+   ]
+  },
+  {
+   "name": "Gong",
+   "slug": "gong",
+   "domain": "gong.io",
+   "description": "Gong enables revenue teams to realize their fullest potential by unveiling their customer reality. \n\nThe patented Gong Revenue Intelligence Platform™ captures and understands every customer interaction, then delivers insights at scale, empowering revenue teams to make decisions based on data instead of opinions. \n\nOver 2,000 innovative companies like Paychex, PayPal, Hubspot, LinkedIn, MuleSoft, Shopify, Slack, SproutSocial, Twilio, and Zillow trust Gong to power their customer reality. With Gong, customers experience improved win rates, increased deal sizes, and accelerated employee ramp-times.",
+   "officeLocations": [
+    "New York, New York",
+    "Dublin, Ireland",
+    "Chicago, Illinois",
+    "Ramat Gan, Israel",
+    "San Francisco, California",
+    "Lehi, Utah"
+   ],
+   "markets": [
+    "AI-Powered Applications",
+    "Agile Workplace"
+   ],
+   "stages": [
+    "1000+ employees",
+    "Seed funded"
+   ],
+   "parents": [
+    "Battery Ventures",
+    "Norwest Venture Partners",
+    "Sequoia Capital",
+    "TechAviv"
+   ],
+   "numJobs": 96,
+   "investors": [
+    "Battery Ventures",
+    "Norwest Venture Partners",
+    "Sequoia Capital",
+    "TechAviv"
+   ]
+  }
+ ],
+ "jobs": [
+  {
+   "title": "Staff Product Manager",
+   "url": "https://jobs.gem.com/bigpanda/am9icG9zdDqiVK4WAhlUD-GAFV21Nmao",
+   "applyUrl": "https://jobs.gem.com/bigpanda/am9icG9zdDqiVK4WAhlUD-GAFV21Nmao?utm_source=jobs.sequoiacap.com",
+   "companyName": "BigPanda",
+   "companySlug": "bigpanda",
+   "companyDomain": "bigpanda.io",
+   "locations": [
+    "United States",
+    "USA"
+   ],
+   "remote": true,
+   "salary": {
+    "period": {
+     "label": "Year",
+     "value": "year"
+    },
+    "minValue": 195500,
+    "maxValue": 230000,
+    "currency": {
+     "label": "USD",
+     "value": "USD"
+    },
+    "isOriginal": true
+   },
+   "timeStamp": "2026-10-05T17:57:20Z",
+   "jobId": "am9icG9zdDqiVK4WAhlUD-GAFV21Nmao"
+  },
+  {
+   "title": "People Operations Manager",
+   "url": "https://jobs.ashbyhq.com/Rogo/5973b2e4-d756-4be6-a485-50be2cc8196a",
+   "applyUrl": "https://jobs.ashbyhq.com/Rogo/5973b2e4-d756-4be6-a485-50be2cc8196a?utm_source=jobs.sequoiacap.com",
+   "companyName": "Rogo",
+   "companySlug": "rogo",
+   "companyDomain": "rogo.com",
+   "locations": [
+    "United Kingdom",
+    "London"
+   ],
+   "remote": false,
+   "salary": {
+    "period": {
+     "label": "Year",
+     "value": "year"
+    },
+    "minValue": 140000,
+    "maxValue": 190000,
+    "currency": {
+     "label": "USD",
+     "value": "USD"
+    },
+    "isOriginal": true
+   },
+   "timeStamp": "2026-10-05T00:00:00Z",
+   "jobId": "5973b2e4-d756-4be6-a485-50be2cc8196a"
+  }
+ ]
+}
