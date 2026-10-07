@@ -480,7 +480,11 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
     if not api_key:
         return fallback_result(master_competencies, candidates,
                                "hunter_anthropic_api_key missing from system_config")
-    model = cfg.optional("hunter_anthropic_model", "claude-opus-5")
+    from .. import llm, spend
+    stop = spend.over_budget(cfg)
+    if stop:
+        return fallback_result(master_competencies, candidates, stop)
+    model, effort = llm.model_for(cfg, "tailor")
     client = anthropic.Anthropic(api_key=api_key)
     native, _why = is_ai_native_jd(jd_text)
     prompt = _prompt(canon, company, title, jd_text, master_competencies,
@@ -496,10 +500,18 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
                    + feedback.strip())
 
     last_fails: list[str] = []
+    output_config: dict = {"format": {"type": "json_schema", "schema": TAILOR_SCHEMA}}
+    if effort:
+        output_config["effort"] = effort
     for attempt in range(2):
-        content = prompt if attempt == 0 else (
-            prompt + "\n\nYour previous answer failed validation: "
-            + "; ".join(last_fails) + ". Return a corrected JSON object.")
+        # The prompt is one cached block, so the retry reads it from the cache
+        # instead of paying for the whole evidence pack a second time.
+        content = [{"type": "text", "text": prompt,
+                    "cache_control": {"type": "ephemeral"}}]
+        if attempt:
+            content.append({"type": "text", "text":
+                            "Your previous answer failed validation: "
+                            + "; ".join(last_fails) + ". Return a corrected JSON object."})
         try:
             resp = client.messages.create(
                 model=model,
@@ -512,12 +524,13 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
                 # guessed at.
                 max_tokens=16000,
                 messages=[{"role": "user", "content": content}],
-                output_config={"format": {"type": "json_schema",
-                                          "schema": TAILOR_SCHEMA}},
+                output_config=output_config,
             )
         except anthropic.APIError as e:
             last_fails = [f"API error: {e.__class__.__name__}"]
             continue
+        spend.record(cfg, "tailor", model, spend.usage_of(resp),
+                     served_model=getattr(resp, "model", "") or "")
         if resp.stop_reason == "refusal":
             last_fails = ["model refused the request"]
             continue

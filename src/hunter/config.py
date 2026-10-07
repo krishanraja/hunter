@@ -76,6 +76,12 @@ def _rest_headers(cfg: Config) -> dict[str, str]:
     }
 
 
+# Set once a configuration has been read from Supabase. spend.py writes its
+# ledger only then, so the offline tests, which build their own Config, can
+# never reach the network through it.
+LOADED = False
+
+
 def load() -> Config:
     url = os.environ.get("SUPABASE_URL", "").rstrip("/")
     key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -92,6 +98,8 @@ def load() -> Config:
     )
     r.raise_for_status()
     raw = {row["key"]: (row["value"] or "") for row in r.json()}
+    global LOADED
+    LOADED = True
     return Config(supabase_url=url, supabase_key=key, raw=raw)
 
 

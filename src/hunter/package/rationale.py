@@ -25,6 +25,10 @@ from ..config import Config
 MAX_CHARS = 800
 MIN_CHARS = 120
 SNIPPET_MAX = 240
+# The reply cap, not the answer's length. Thinking cannot be switched off on
+# the current models and counts against it; at 1200 a call could stop before
+# writing anything, which is the whole call paid for and the fallback shown.
+RATIONALE_MAX_TOKENS = 4000
 
 RATIONALE_SCHEMA = {
     "type": "object",
@@ -198,8 +202,8 @@ def write_rationale_and_snippet(cfg: Config, canon, *, company: str, title: str,
         # provider every package built in that window would have carried the
         # deterministic fallback rationale without anybody noticing until he
         # read one.
-        text, notes = llm.complete(cfg, prompt, max_tokens=1200,
-                                   schema=RATIONALE_SCHEMA)
+        text, notes = llm.complete(cfg, prompt, max_tokens=RATIONALE_MAX_TOKENS,
+                                   schema=RATIONALE_SCHEMA, purpose="rationale")
         parts = llm.json_object(text)
         if parts is None:
             return (deterministic(company, title, score, score_reason),
@@ -213,7 +217,7 @@ def write_rationale_and_snippet(cfg: Config, canon, *, company: str, title: str,
                 cfg, "That failed validation: " + "; ".join(fails)
                 + ". Rewrite it shorter and use only figures that appear in "
                   "the job description.",
-                max_tokens=1200, schema=RATIONALE_SCHEMA,
+                max_tokens=RATIONALE_MAX_TOKENS, schema=RATIONALE_SCHEMA, purpose="rationale",
                 history=[{"role": "user", "content": prompt},
                          {"role": "assistant", "content": json.dumps(parts)}])
             retry_parts = llm.json_object(retry_text)

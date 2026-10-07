@@ -32,6 +32,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
+from . import spend
 from .config import Config
 from .package import rationale
 
@@ -42,9 +43,13 @@ DEFAULT_MODEL = "claude-opus-5-5"
 # on those 45 roles (0.88), which at that size is mostly noise. He asked for
 # cheaper; the reasoning a call writes is about 70 percent of its cost.
 DEFAULT_EFFORT = "low"
-# The case for a role on his sheet stays at high: it is what persuades him,
-# and it is written only for the roles that reach him.
-CASE_EFFORT = "high"
+# The case for a role on his sheet: medium since 2026-10-07, when he asked for
+# the bill to come down three times. It had been high, at about 14 cents a row
+# on the 4 October run, because it is what persuades him; every figure in it
+# is still checked against the posting and his record, and a case that fails
+# its checks is still replaced by an honest stub. hunter_case_effort=high puts
+# it back without a deploy.
+CASE_EFFORT = "medium"
 MAX_TOKENS = 16000
 # A posting this long is the posting; shorter is a snippet the sheet kept.
 FULL_POSTING_CHARS = 400
@@ -54,11 +59,10 @@ FULL_POSTING_CHARS = 400
 # the first guess, would have shown none of his 13 held-out Yes roles.
 MIN_FIT = 6
 
-# Published per-million-token prices for the default model, used only to turn
-# a call's usage into dollars for hunter_judge_calls. Cache writes are 1.25x
-# input, cache reads are the published cache price; the Batches API is half.
-PRICES = {"claude-opus-5-5": {"in": 4.0, "out": 20.0, "cache_read": 0.20,
-                              "cache_write": 5.0}}
+# Published per-million-token prices, one table for every module (spend.py).
+# A model missing from it is costed at the dearest price there, never at zero,
+# so the judge's dollar cap cannot be switched off by changing the model.
+PRICES = spend.PRICES
 
 FAMILIES = ["country_regional_gm", "chief_commercial_strategy",
             "corp_dev_strategy", "partnerships_alliances",
@@ -453,14 +457,7 @@ def request_params(system: str, role: Role, *, model: str, effort: str,
 
 
 def usd_of(model: str, usage: dict, *, batch: bool = False) -> float:
-    p = PRICES.get(model)
-    if not p:
-        return 0.0
-    usd = (usage.get("input_tokens", 0) * p["in"]
-           + usage.get("output_tokens", 0) * p["out"]
-           + usage.get("cache_read_input_tokens", 0) * p["cache_read"]
-           + usage.get("cache_creation_input_tokens", 0) * p["cache_write"]) / 1e6
-    return round(usd / 2 if batch else usd, 6)
+    return spend.usd_of(model, usage, batch=batch)
 
 
 def usage_of(message) -> dict:
@@ -628,7 +625,9 @@ def make_the_case(cfg: Config, system: str, role: Role, *, client=None,
                                                        effort=effort, problems=problems))
         except Exception as e:
             return thin_case(role), snippet_fallback, [f"the call failed: {e.__class__.__name__}"], usd
-        usd += usd_of(model, usage_of(msg))
+        usd += spend.record(cfg, "case", model, usage_of(msg),
+                            served_model=getattr(msg, "model", "") or "",
+                            job_id=role.job_id)
         if getattr(msg, "stop_reason", "") in ("refusal", "max_tokens"):
             problems = [f"the answer stopped: {msg.stop_reason}"]
             continue

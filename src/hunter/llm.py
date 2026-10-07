@@ -24,6 +24,7 @@ import json
 import re
 import threading
 
+from . import spend
 from .config import Config
 
 # A usage-limit refusal is not a transient error and retrying it 150 times in
@@ -41,7 +42,40 @@ DEFAULT_ORDER = "anthropic,openai"
 # posting, draft a paragraph, read a page and return JSON. Overridable with
 # system_config hunter_openai_model without a deploy.
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
-DEFAULT_ANTHROPIC_MODEL = "claude-opus-5"
+DEFAULT_ANTHROPIC_MODEL = "claude-opus-5-5"
+
+# The model and effort for each job, decided 2026-10-07 when Krish asked for
+# the bill to come down three times. Every job had been on claude-opus-5 at
+# the API's default effort, which on that model is high: $5 and $25 a million
+# tokens, with the reasoning (billed as output) the larger part of each call.
+# claude-opus-5-5 is the same family's successor at $4 and $20, so prose in his
+# name stays on Opus. Jobs that read and extract rather than write as him go to
+# Sonnet. Effort is set on every call because Opus 5.5 cannot switch thinking
+# off and defaults to medium, and what is not set cannot be measured.
+#
+# hunter_model_<purpose> and hunter_effort_<purpose> override one job without a
+# deploy; an effort of "none" sends no effort at all. hunter_anthropic_model is
+# used only for a purpose with no entry here, because it was set when every job
+# shared one model and would otherwise put them all back on the dearer one.
+PURPOSES = {
+    "tailor": ("claude-opus-5-5", "medium"),       # the CV summary and the hook
+    "essay": ("claude-opus-5-5", "medium"),        # answers on his application
+    "rationale": ("claude-sonnet-5-5", "low"),     # Why It Fits when no case ran
+    "newsletter": ("claude-sonnet-5-5", "low"),    # extraction from a post
+    "cold_targets": ("claude-sonnet-5-5", "low"),  # one named person, by search
+}
+
+
+def model_for(cfg: Config, purpose: str) -> tuple[str, str | None]:
+    """(model, effort) for a job. Effort None means the call sends none."""
+    model, effort = PURPOSES.get(
+        purpose, (cfg.optional("hunter_anthropic_model", DEFAULT_ANTHROPIC_MODEL), None))
+    model = cfg.optional(f"hunter_model_{purpose}", model)
+    effort = cfg.optional(f"hunter_effort_{purpose}", effort or "") or None
+    if effort == "none" or model.startswith("claude-haiku"):
+        # Haiku refuses an effort setting outright.
+        effort = None
+    return model, effort
 
 
 class Unavailable(RuntimeError):
@@ -70,7 +104,9 @@ def _text_from_anthropic(resp) -> str:
 
 def _anthropic(cfg: Config, prompt: str, *, max_tokens: int,
                schema: dict | None, system: str | None,
-               web_search: bool, history: list | None) -> str:
+               web_search: bool, history: list | None,
+               purpose: str = "other", cache: bool = False,
+               job_id: str | None = None) -> str:
     key = cfg.optional("hunter_anthropic_api_key")
     if not key:
         raise Unavailable("no hunter_anthropic_api_key in system_config")
@@ -79,20 +115,32 @@ def _anthropic(cfg: Config, prompt: str, *, max_tokens: int,
     except ImportError as e:
         raise Unavailable("anthropic sdk missing") from e
     client = anthropic.Anthropic(api_key=key)
+    model, effort = model_for(cfg, purpose)
     kwargs: dict = {
-        "model": cfg.optional("hunter_anthropic_model", DEFAULT_ANTHROPIC_MODEL),
+        "model": model,
         "max_tokens": max_tokens,
         "messages": (history or []) + [{"role": "user", "content": prompt}],
     }
     if system:
-        kwargs["system"] = system
+        # Cached when the caller says the system text repeats across calls,
+        # as the essays' evidence does: a cache read is a twentieth of the
+        # input price on Opus 5.5.
+        kwargs["system"] = ([{"type": "text", "text": system,
+                              "cache_control": {"type": "ephemeral"}}]
+                            if cache else system)
+    output_config: dict = {}
+    if effort:
+        output_config["effort"] = effort
     if schema:
-        kwargs["output_config"] = {"format": {"type": "json_schema",
-                                              "schema": schema}}
+        output_config["format"] = {"type": "json_schema", "schema": schema}
+    if output_config:
+        kwargs["output_config"] = output_config
     if web_search:
-        kwargs["tools"] = [{"type": "web_search_20250305", "name": "web_search",
+        kwargs["tools"] = [{"type": "web_search_20260209", "name": "web_search",
                             "max_uses": 4}]
     resp = client.messages.create(**kwargs)
+    spend.record(cfg, purpose, model, spend.usage_of(resp),
+                 served_model=getattr(resp, "model", "") or "", job_id=job_id)
     stop = getattr(resp, "stop_reason", "")
     if stop == "refusal":
         raise Unavailable("model refused")
@@ -103,7 +151,9 @@ def _anthropic(cfg: Config, prompt: str, *, max_tokens: int,
 
 def _openai(cfg: Config, prompt: str, *, max_tokens: int,
             schema: dict | None, system: str | None,
-            web_search: bool, history: list | None) -> str:
+            web_search: bool, history: list | None,
+            purpose: str = "other", cache: bool = False,
+            job_id: str | None = None) -> str:
     key = cfg.optional("hunter_openai_api_key")
     if not key:
         raise Unavailable("no hunter_openai_api_key in system_config")
@@ -134,6 +184,13 @@ def _openai(cfg: Config, prompt: str, *, max_tokens: int,
                                 "schema and nothing else:\n"
                        + json.dumps(schema)}
     resp = client.chat.completions.create(**kwargs)
+    u = getattr(resp, "usage", None)
+    # No OpenAI price is in spend.PRICES, so these calls are costed at the
+    # dearest rate there: an overcount the month ceiling can live with.
+    spend.record(cfg, purpose, kwargs["model"],
+                 {"input_tokens": int(getattr(u, "prompt_tokens", 0) or 0),
+                  "output_tokens": int(getattr(u, "completion_tokens", 0) or 0)},
+                 job_id=job_id)
     choice = resp.choices[0]
     if getattr(choice, "finish_reason", "") == "length":
         raise Unavailable("the reply was cut off at the token limit")
@@ -146,24 +203,33 @@ PROVIDERS = {"anthropic": _anthropic, "openai": _openai}
 def complete(cfg: Config, prompt: str, *, max_tokens: int = 1500,
              schema: dict | None = None, system: str | None = None,
              web_search: bool = False, history: list | None = None,
+             purpose: str = "other", cache: bool = False,
+             job_id: str | None = None,
              ) -> tuple[str, list[str]]:
     """Ask whichever provider answers. Returns (text, notes).
 
     An empty string means nobody answered, and notes says who failed and why.
     The caller keeps its deterministic fallback: a model being unavailable is
     a reason to say less, never a reason to invent.
+
+    purpose picks the model and effort (PURPOSES) and labels the call in the
+    spend ledger. cache marks the system text for the prompt cache.
     """
     order = [p.strip() for p in
              cfg.optional("hunter_model_order", DEFAULT_ORDER).split(",")
              if p.strip() in PROVIDERS]
     notes: list[str] = []
+    stop = spend.over_budget(cfg)
+    if stop:
+        return "", [stop]
     for name in order:
         if not available(name):
             continue
         try:
             text = PROVIDERS[name](cfg, prompt, max_tokens=max_tokens,
                                    schema=schema, system=system,
-                                   web_search=web_search, history=history)
+                                   web_search=web_search, history=history,
+                                   purpose=purpose, cache=cache, job_id=job_id)
         except Unavailable as e:
             notes.append(f"{name}: {e}")
             # Only a condition that cannot change within the process is

@@ -36,7 +36,7 @@ import time
 import concurrent.futures as cf
 from collections import Counter
 
-from . import judge, judgedata
+from . import judge, judgedata, spend
 from .sources import company_key
 from .config import Config
 
@@ -221,22 +221,38 @@ def run(cfg: Config, sheet, canon, *, dev: bool = False, replicas: int | None = 
     # it never did: the first holdout run cost $12.91 and the second $17.40
     # against an estimate of $15.97 that assumed the cache was read. This is an
     # estimate and is called one; nothing can stop a batch half way.
+    #
+    # Direct calls by default since 2026-10-07, the holdout included. The
+    # three batched holdout runs cost 8 to 15 cents a role; the direct
+    # development runs 4 to 6, on a context about half the size. A direct run
+    # writes the cache once and every later call reads it at a twentieth of
+    # the input price; a batch reads it only some of the time, and a miss is
+    # the whole context at the batch's half price, ten times a cache read.
+    # The live ledger measures the next holdout; hunter_judge_eval_batch=on
+    # brings the batch back.
+    use_batch = not dev and cfg.optional("hunter_judge_eval_batch", "") == "on"
     ctx = len(system) / 2.4
-    per_call = 4000 * judge.PRICES[model]["in"] + 5000 * judge.PRICES[model]["out"]
-    if dev:
-        est = (ctx * judge.PRICES[model]["cache_write"]
-               + replicas * len(after) * (ctx * judge.PRICES[model]["cache_read"] + per_call)) / 1e6
+    price = spend.price_of(model)
+    per_call = 4000 * price["in"] + 5000 * price["out"]
+    if not use_batch:
+        est = (ctx * price["cache_write"]
+               + replicas * len(after) * (ctx * price["cache_read"] + per_call)) / 1e6
     else:
-        est = replicas * len(after) * (ctx * judge.PRICES[model]["in"] + per_call) / 1e6 / 2
+        est = replicas * len(after) * (ctx * price["in"] + per_call) / 1e6 / 2
     if est > max_usd:
         raise RuntimeError(f"estimated ${est:.2f} is over the ${max_usd:.2f} cap; not sent")
 
     client = judge._client(cfg)
-    if dev:
+    if not use_batch:
         answers, usd, batch_id = _direct(cfg, system, roles, replicas, client, model, effort)
     else:
         answers, usd, batch_id = _batch(system, roles, replicas, client, model, effort,
                                         poll_seconds, est)
+    for jid, by_n in answers.items():
+        for j in by_n.values():
+            if j.usage:
+                spend.record(cfg, "judge_eval", model, j.usage, job_id=jid,
+                             served_model=j.served_model, batch=bool(batch_id))
 
     out_rows = []
     seen_companies = {company_key(r.company) for r in before}

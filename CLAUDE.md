@@ -240,12 +240,38 @@ The layers, cheapest first, each with its own measurement:
 5. **The judge**, last, on what survives, top companies first, at low effort
    (measured equal to high on the dev window, 24 percent cheaper), at most 100
    roles and $5 a run, in gate mode since 2026-10-03.
-6. **The case** for each row that reaches him, at high effort.
+6. **The case** for each row that reaches him, at medium effort since
+   2026-10-07 (`hunter_case_effort`), its figures still checked.
 
 Measured and not used: Haiku as a first reader (`triage.py`,
 `tests/fixtures/triage_eval.json`). At the only line that keeps his Yes roles
 it saves about a fifth of the judge's work; one notch stricter it loses a third
 of them, and exactly the less obvious ones (later, Syntrace, Innovamat).
+
+## 3e. Every model call is in the ledger, and the month has a ceiling
+
+His words, 2026-10-07: "we absolutely need to get hunter's API costs down by
+about 3X". Only the judge had a record: $8.17 of the $21 the 4 October run cost
+on hunter's key. Half of that $8.17 was the same 100 roles judged twice,
+because the first scheduled attempt failed a minute after judging and the
+retry started again.
+
+- **`spend.py` records every call** in `hunter_judge_calls` with a purpose,
+  and the run summary says what each job cost. `python -m hunter.run spend`
+  reads it back. One price table; a model with no price is costed at the
+  dearest, never at zero.
+- **Each job has its own model and effort** (`llm.PURPOSES`): prose in his
+  name on Opus 5.5 at medium, extraction and lookups on Sonnet 5.5 at low.
+  `hunter_model_<purpose>` and `hunter_effort_<purpose>` move one job.
+- **Text that repeats is cached**: the judge's context, the essays' evidence,
+  the tailor prompt on its retry. Retries never resend what the cache holds.
+- **A judgement from the last day is reused**, not paid for again.
+- **The month has a ceiling**, `hunter_llm_max_usd_per_month` ($150 by
+  default). Over it, calls return an honest empty answer and the judge
+  leaves roles pending.
+- **The Batches API is not the saving it looks.** It halves the price but
+  reads the cache only some of the time; the batched holdout runs cost 8 to
+  15 cents a role against 4 to 6 direct. Measure before moving a call to it.
 
 ## 4. The Target Companies tab is his, and it is policy
 
@@ -433,6 +459,7 @@ src/hunter/
   targets.py        his Target Companies tab, read as policy and written back
   batchstats.py     accept rate per batch. The number nobody was watching
   llm.py            one door to a model, with a second provider behind it
+  spend.py          what every model call cost, and the month's ceiling
   employer.py       what kind of company, on evidence not on a taxonomy
   comp.py           reading pay out of a posting that had no pay field
   invariants.py     what must always be true of the sheet, and the repairs

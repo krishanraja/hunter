@@ -35,7 +35,7 @@ import json
 import pathlib
 import random
 
-from . import judge, judgedata
+from . import judge, judgedata, spend
 from .config import ALL_ROWS, Config, db_get, db_patch
 from .sheet import HEADERS as PIPELINE_HEADERS
 
@@ -148,6 +148,9 @@ def draw(cfg: Config, sheet, canon, *, n_judge: int = 120, max_usd: float = 10.0
                 judged.append((row, j))
                 spent += j.usd
     for row, j in judged:
+        if j.usage:
+            spend.record(cfg, "blind_set", j.model, j.usage, job_id=row["job_id"],
+                         served_model=j.served_model)
         if j.verdict != "pending":
             db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]}, j.row_patch())
     picks, sizes = pick(judged, rng)

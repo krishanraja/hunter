@@ -23,6 +23,7 @@ import concurrent.futures as cf
 import datetime
 import json
 
+from . import spend
 from .config import ALL_ROWS, Config, db_get, db_insert
 from .universe import Company, key_of, seeds as load_seeds
 
@@ -31,7 +32,6 @@ MODEL = "claude-opus-5-5"
 EFFORT = "low"
 BATCH = 40
 RESCORE_DAYS = 30
-PRICES = {"in": 4.0, "out": 20.0, "cache_read": 0.20, "cache_write": 5.0}
 
 SCHEMA = {"type": "object", "additionalProperties": False, "required": ["companies"],
           "properties": {"companies": {"type": "array", "items": {
@@ -163,10 +163,8 @@ def score(cfg: Config, companies: list[Company], seed_list: list[Company],
                 except Exception as e:
                     problems.append(f"a batch failed: {e.__class__.__name__}")
                     continue
-                u = judge.usage_of(msg)
-                spent += (u["input_tokens"] * PRICES["in"] + u["output_tokens"] * PRICES["out"]
-                          + u["cache_read_input_tokens"] * PRICES["cache_read"]
-                          + u["cache_creation_input_tokens"] * PRICES["cache_write"]) / 1e6
+                spent += spend.record(cfg, "lookalike", MODEL, spend.usage_of(msg),
+                                      served_model=getattr(msg, "model", "") or "")
                 if getattr(msg, "stop_reason", "") in ("max_tokens", "refusal"):
                     problems.append(f"a batch stopped: {msg.stop_reason}")
                     continue

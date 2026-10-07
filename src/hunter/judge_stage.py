@@ -25,7 +25,7 @@ from __future__ import annotations
 import concurrent.futures as cf
 from dataclasses import dataclass, field
 
-from . import judge
+from . import judge, spend
 from .config import Config, db_insert
 
 # Failures of these gates are facts, not judgement, and stop a role before the
@@ -85,6 +85,22 @@ def run(cfg: Config, canon, sheet, candidates: list[Candidate], *, mode: str,
 
     ranked = sorted(candidates, key=lambda c: c.rank)
     todo, over = ranked[:limit], ranked[limit:]
+    stop = spend.over_budget(cfg)
+    if stop:
+        # The month's ceiling is reached: nothing is judged, and in gate mode
+        # nothing is staged on a judge that did not run.
+        todo, over = [], ranked
+        out.lines.append(f"judge did not run: {stop}")
+    # A role judged in the last day under the same prompt and model is not
+    # judged again. On 4 October the first scheduled attempt judged 100 roles,
+    # failed a minute later, and the retry paid for the same 100 again.
+    model = cfg.optional("hunter_judge_model", judge.DEFAULT_MODEL)
+    earlier = earlier_judgements(cfg, [c.role.job_id for c in todo], model)
+    for c in todo:
+        if c.role.job_id in earlier:
+            c.judgement = earlier[c.role.job_id]
+    reused = sum(1 for c in todo if c.judgement is not None)
+    todo = [c for c in todo if c.judgement is None]
     if system is None:
         system = live_context(cfg, sheet, canon)
     out.system = system
@@ -121,12 +137,13 @@ def run(cfg: Config, canon, sheet, candidates: list[Candidate], *, mode: str,
                 c.judgement = j
                 spent += j.usd
             i += workers
-    unjudged = [c for c in todo if c.judgement is None] + over
+    unjudged = [c for c in todo if c.judgement is None] + \
+        [c for c in over if c.judgement is None]
     for c in unjudged:
         c.judgement = judge.Judgement(
             job_id=c.role.job_id, verdict="pending", fit=None, confidence="", answers={},
             red_flags=[], likely_decline_code="none", why_it_fits="", snippet="",
-            model="", served_model="", problems=["over this run's judging budget"])
+            model="", served_model="", problems=[stop or "over this run's judging budget"])
 
     calls = []
     for c in candidates:
@@ -138,13 +155,17 @@ def run(cfg: Config, canon, sheet, candidates: list[Candidate], *, mode: str,
                           "input_tokens": j.usage.get("input_tokens"),
                           "cache_read_tokens": j.usage.get("cache_read_input_tokens"),
                           "cache_write_tokens": j.usage.get("cache_creation_input_tokens"),
-                          "output_tokens": j.usage.get("output_tokens"), "usd": j.usd})
+                          "output_tokens": j.usage.get("output_tokens"), "usd": j.usd,
+                          "prompt_version": j.prompt_version,
+                          # Kept so a retried run can reuse it (earlier_judgements).
+                          "judgement": None if j.verdict == "pending" else stored(j)})
             out.cache_reads += j.usage.get("cache_read_input_tokens", 0)
     if calls:
         try:
             db_insert(cfg, "hunter_judge_calls", calls)
         except Exception as e:
             out.lines.append(f"judge: cost ledger not written ({e.__class__.__name__})")
+    spend.count("judge", spent, len(calls))
     out.judged = sum(1 for c in candidates if c.judgement.verdict != "pending")
     out.usd = round(spent, 4)
 
@@ -163,13 +184,59 @@ def run(cfg: Config, canon, sheet, candidates: list[Candidate], *, mode: str,
         f"judge ({mode}): {len(candidates)} candidate(s), {out.judged} judged for "
         f"${out.usd:.2f} ({out.cache_reads:,} cached tokens read): "
         f"{out.counts['staging']} present, {out.counts['held']} held, "
-        f"{out.counts['blocked']} rejected, {out.counts['judge_pending']} pending")
+        f"{out.counts['blocked']} rejected, {out.counts['judge_pending']} pending"
+        + (f"; {reused} reused from a judgement made in the last day" if reused else ""))
     for c in out.present:
         out.lines.append(f"  PRESENT fit {c.judgement.fit}: {c.role.company} / {c.role.title}")
     for c in held[:5]:
         out.lines.append(f"  held fit {c.judgement.fit}: {c.role.company} / {c.role.title}: "
                          f"{judge.reason_line(c.judgement)[:140]}")
     return out
+
+
+REUSE_HOURS = 24
+STORED = ("job_id", "verdict", "fit", "confidence", "answers", "red_flags",
+          "likely_decline_code", "why_it_fits", "snippet", "model", "served_model",
+          "prompt_version", "problems")
+
+
+def stored(j: judge.Judgement) -> dict:
+    return {k: getattr(j, k) for k in STORED}
+
+
+def earlier_judgements(cfg: Config, job_ids: list[str], model: str
+                       ) -> dict[str, judge.Judgement]:
+    """Judgements made in the last day under this prompt and model, by job.
+
+    Read from hunter_judge_calls, where every judge call already lands with
+    its cost. A ledger that cannot be read means every role is judged afresh,
+    which is the cost this saves and never a wrong answer.
+    """
+    if not job_ids or not spend._live(cfg):
+        return {}
+    import datetime as dt
+    from .config import ALL_ROWS, db_get
+    since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=REUSE_HOURS)).isoformat()
+    found: dict[str, judge.Judgement] = {}
+    try:
+        for i in range(0, len(job_ids), 100):
+            chunk = job_ids[i:i + 100]
+            for r in db_get(cfg, "hunter_judge_calls", {
+                    "select": "id,job_id,judgement",
+                    "purpose": "eq.judge", "model": f"eq.{model}",
+                    "prompt_version": f"eq.{judge.PROMPT_VERSION}",
+                    "judgement": "not.is.null", "at": f"gte.{since}",
+                    "job_id": "in.(" + ",".join(f'"{j}"' for j in chunk) + ")",
+                    "order": "id.asc", "limit": ALL_ROWS}):
+                d = r.get("judgement") or {}
+                if d.get("verdict") in (None, "pending"):
+                    continue
+                found[r["job_id"]] = judge.Judgement(
+                    **{k: d.get(k) for k in STORED if k in d},
+                    usage={}, usd=0.0)
+    except Exception:
+        return {}
+    return found
 
 
 def live_context(cfg: Config, sheet, canon) -> str:
@@ -222,7 +289,7 @@ def cases_for(cfg: Config, system: str, roles: list, *, client=None
     failed its checks is left out, so the caller keeps the text it had. His
     words, 2026-10-03: "You need to convince me to say yes to these roles
     because of how well suited they are to what I want"."""
-    if not roles or not system:
+    if not roles or not system or spend.over_budget(cfg):
         return {}, 0.0
     client = client or judge._client(cfg)
 
@@ -232,9 +299,17 @@ def cases_for(cfg: Config, system: str, roles: list, *, client=None
             comp=r.comp, url=r.jd_url or r.url, posting=r.jd_text or "",
             source=r.source), client=client)
     out, usd = {}, 0.0
+
+    def take(jid, why, snippet, problems, cost):
+        nonlocal usd
+        usd += cost
+        if not problems:
+            out[jid] = (why, snippet)
+    # The first call alone, so it writes the cache the rest read, as the
+    # judge does. Started six at a time, each of the six paid to write it.
+    jid, res = one(roles[0])
+    take(jid, *res)
     with cf.ThreadPoolExecutor(max_workers=6) as pool:
-        for jid, (why, snippet, problems, cost) in pool.map(one, roles):
-            usd += cost
-            if not problems:
-                out[jid] = (why, snippet)
+        for jid, res in pool.map(one, roles[1:]):
+            take(jid, *res)
     return out, round(usd, 4)

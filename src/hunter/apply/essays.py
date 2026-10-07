@@ -82,12 +82,17 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
     if banned_phrases:
         forbidden = ("\n\nNEVER use any of these words or phrases, in any form:\n"
                      + "\n".join(f"- {b}" for b in sorted(set(banned_phrases))))
+    # The evidence is the same for every question on every form in a run, so
+    # it goes in the cached system text and the question comes after it.
+    # Sent inside the prompt, all of it was paid for at the full input price
+    # on every question and again on every retry.
+    system = SYSTEM + f"\n\nEVIDENCE (everything you may draw on):\n{evidence[:120000]}"
     prompt = (f"COMPANY: {company}\nROLE: {role}\n\n"
               f"QUESTION:\n{question}\n\n"
-              f"JOB DESCRIPTION:\n{jd_text[:6000]}\n\n"
-              f"EVIDENCE (everything you may draw on):\n{evidence[:120000]}"
+              f"JOB DESCRIPTION:\n{jd_text[:6000]}"
               f"{forbidden}")
-    raw, notes = llm.complete(cfg, prompt, max_tokens=MAX_TOKENS, system=SYSTEM)
+    raw, notes = llm.complete(cfg, prompt, max_tokens=MAX_TOKENS, system=system,
+                              purpose="essay", cache=True)
     if not raw:
         return "", "; ".join(notes) or "no model answered"
 
@@ -111,8 +116,8 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
              f"That answer will not do: {problem}. Keep everything that is "
              f"true and specific, cut what is not, and return the same JSON."}]
         raw, notes = llm.complete(cfg, messages[-1]["content"],
-                                  max_tokens=MAX_TOKENS, system=SYSTEM,
-                                  history=messages[:-1])
+                                  max_tokens=MAX_TOKENS, system=system,
+                                  history=messages[:-1], purpose="essay", cache=True)
         if not raw:
             return "", "; ".join(notes) or "no model answered"
         answer, why = _parse(raw)

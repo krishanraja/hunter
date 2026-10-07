@@ -4358,6 +4358,17 @@ def cmd_process(max_packages: int = 0, retry_dead: bool = False) -> int:
                        else "process failed", error=run_error)
         except Exception as e:
             print(f"run reporting failed: {e}")
+        # What the run's model calls cost, by job, read from what each call
+        # reported. The judge's own rows are already in the ledger; the rest
+        # are written here.
+        from . import spend
+        summary.extend(spend.summary())
+        try:
+            line = spend.flush(load())
+            if line:
+                summary.append(line)
+        except Exception as e:
+            summary.append(f"spend: ledger not written ({e.__class__.__name__})")
         try:
             cfg2 = load()
             send_summary(cfg2, "\n".join(summary))
@@ -4365,6 +4376,32 @@ def cmd_process(max_packages: int = 0, retry_dead: bool = False) -> int:
             print(f"notify failed: {e}")
             print("\n".join(summary))
     return 1 if failed else 0
+
+
+def cmd_spend(days: int = 31) -> int:
+    """Read only. What the model calls cost, by day and by job, from the
+    ledger every call writes to (spend.py). The Console shows the bill; this
+    shows which part of hunter ran it up."""
+    from . import spend
+    cfg = load()
+    since = (datetime.datetime.now(datetime.timezone.utc)
+             - datetime.timedelta(days=days)).isoformat()
+    rows = db_get(cfg, spend.TABLE, {"select": "id,at,purpose,model,usd",
+                                      "at": f"gte.{since}", "limit": ALL_ROWS})
+    by_day: dict = {}
+    for r in rows:
+        key = (str(r["at"])[:10], r.get("purpose") or "?", r.get("model") or "?")
+        n, usd = by_day.get(key, (0, 0.0))
+        by_day[key] = (n + 1, usd + float(r.get("usd") or 0))
+    total = sum(u for _, u in by_day.values())
+    print(f"model spend recorded in the last {days} days: ${total:.2f} "
+          f"in {len(rows)} call(s)")
+    for (day, purpose, model), (n, usd) in sorted(by_day.items()):
+        print(f"  {day}  {purpose:<13} {model:<20} {n:>4} call(s)  ${usd:.2f}")
+    stop = spend.over_budget(cfg)
+    print(stop or f"under this month's ceiling "
+                  f"(hunter_llm_max_usd_per_month, default ${spend.DEFAULT_MONTH_CAP})")
+    return 0
 
 
 def cmd_migrate_columns(apply: bool = False) -> int:
@@ -4475,6 +4512,17 @@ def cmd_run() -> int:
                        error=run_error)
         except Exception as e:
             print(f"run reporting failed: {e}")
+        # What the run's model calls cost, by job, read from what each call
+        # reported. The judge's own rows are already in the ledger; the rest
+        # are written here.
+        from . import spend
+        summary.extend(spend.summary())
+        try:
+            line = spend.flush(load())
+            if line:
+                summary.append(line)
+        except Exception as e:
+            summary.append(f"spend: ledger not written ({e.__class__.__name__})")
         try:
             cfg2 = load()
             send_summary(cfg2, "\n".join(summary))
@@ -4482,6 +4530,32 @@ def cmd_run() -> int:
             print(f"notify failed: {e}")
             print("\n".join(summary))
     return 1 if failed else 0
+
+
+def cmd_spend(days: int = 31) -> int:
+    """Read only. What the model calls cost, by day and by job, from the
+    ledger every call writes to (spend.py). The Console shows the bill; this
+    shows which part of hunter ran it up."""
+    from . import spend
+    cfg = load()
+    since = (datetime.datetime.now(datetime.timezone.utc)
+             - datetime.timedelta(days=days)).isoformat()
+    rows = db_get(cfg, spend.TABLE, {"select": "id,at,purpose,model,usd",
+                                      "at": f"gte.{since}", "limit": ALL_ROWS})
+    by_day: dict = {}
+    for r in rows:
+        key = (str(r["at"])[:10], r.get("purpose") or "?", r.get("model") or "?")
+        n, usd = by_day.get(key, (0, 0.0))
+        by_day[key] = (n + 1, usd + float(r.get("usd") or 0))
+    total = sum(u for _, u in by_day.values())
+    print(f"model spend recorded in the last {days} days: ${total:.2f} "
+          f"in {len(rows)} call(s)")
+    for (day, purpose, model), (n, usd) in sorted(by_day.items()):
+        print(f"  {day}  {purpose:<13} {model:<20} {n:>4} call(s)  ${usd:.2f}")
+    stop = spend.over_budget(cfg)
+    print(stop or f"under this month's ceiling "
+                  f"(hunter_llm_max_usd_per_month, default ${spend.DEFAULT_MONTH_CAP})")
+    return 0
 
 
 def _status_line(counts: dict, failed: bool) -> str:
@@ -6741,6 +6815,9 @@ def main(argv: list[str]) -> int:
     if cmd == "drain":
         cid = argv[argv.index("--id") + 1] if "--id" in argv else None
         return cmd_drain(cid)
+    if cmd == "spend":
+        days = int(argv[argv.index("--days") + 1]) if "--days" in argv else 31
+        return cmd_spend(days)
     if cmd == "newsletter":
         lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else 0
         return cmd_newsletter(apply="--apply" in argv, limit=lim)

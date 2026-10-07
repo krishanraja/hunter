@@ -214,16 +214,27 @@ def extract(cfg: Config, post: dict) -> tuple[dict | None, list[str]]:
         return {"talent_moves": [], "hiring": [], "reach_out_advice": []}, ["thin post"]
     try:
         import anthropic
+
+        from .. import llm, spend
+        stop = spend.over_budget(cfg)
+        if stop:
+            return None, [stop]
         client = anthropic.Anthropic(api_key=cfg.require("hunter_anthropic_api_key"))
+        model, effort = llm.model_for(cfg, "newsletter")
+        output_config: dict = {"format": {"type": "json_schema", "schema": SCHEMA}}
+        if effort:
+            output_config["effort"] = effort
         resp = client.messages.create(
-            model=cfg.optional("hunter_anthropic_model", "claude-opus-5"),
+            model=model,
             # A post runs to 14k characters and the schema wants verbatim
             # sentences back, so the JSON alone can pass 4k tokens. Both of
             # the first two live posts stopped at max_tokens=4000.
             max_tokens=16000,
             messages=[{"role": "user", "content": PROMPT.format(
                 text=text, links="\n".join(links[:150]))}],
-            output_config={"format": {"type": "json_schema", "schema": SCHEMA}})
+            output_config=output_config)
+        spend.record(cfg, "newsletter", model, spend.usage_of(resp),
+                     served_model=getattr(resp, "model", "") or "")
         if getattr(resp, "stop_reason", "") in ("refusal", "max_tokens"):
             return None, [f"model stopped: {resp.stop_reason}"]
         raw = json.loads(_text(resp))

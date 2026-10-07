@@ -852,8 +852,15 @@ def cold_targets(cfg: Config, roles: list[dict], cap: int | None = None) -> dict
     if not todo:
         return stats
     import anthropic
+
+    from .. import llm, spend
+    stop = spend.over_budget(cfg)
+    if stop:
+        stats["skipped"].append(stop)
+        return stats
     client = anthropic.Anthropic(api_key=cfg.require("hunter_anthropic_api_key"))
-    model = cfg.optional("hunter_anthropic_model", "claude-opus-5")
+    model, effort = llm.model_for(cfg, "cold_targets")
+    extra = {"output_config": {"effort": effort}} if effort else {}
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     for r in todo[:cap]:
         if budget_s and time.monotonic() - started > budget_s:
@@ -866,7 +873,10 @@ def cold_targets(cfg: Config, roles: list[dict], cap: int | None = None) -> dict
                 model=model, max_tokens=4000,
                 tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 4}],
                 messages=[{"role": "user", "content": COLD_PROMPT.format(
-                    title=r["title"], company=r["company"], loc=loc)}])
+                    title=r["title"], company=r["company"], loc=loc)}], **extra)
+            spend.record(cfg, "cold_targets", model, spend.usage_of(resp),
+                         served_model=getattr(resp, "model", "") or "",
+                         job_id=r.get("job_id"))
             text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
             m = re.search(r"\{.*\}", text, re.S)
             data = json.loads(m.group(0)) if m else {}
