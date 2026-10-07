@@ -46,8 +46,35 @@ def test_his_geography_at_a_top_company(location, remote, secondary, ok):
     assert universe.place_ok(location, remote=remote, secondary=secondary)[0] is ok
 
 
+def test_the_companies_he_sent_join_his_list_once_each():
+    """a16z's Top 50 Consumer AI Apps, sent 2026-10-07. 18 of the 50 were
+    already in his hundred and are not listed twice; the other 32 are top
+    companies like the rest of his list."""
+    own = universe.seeds(universe.SEED_FILE)
+    sent = universe.seeds(universe.SENT_FILES[0])
+    both = universe.seeds()
+    assert len(own) == 100 and len(sent) == 32 and len(both) == 132
+    keys = [k for c in both for k in [c.key, *c.aliases]]
+    assert len(keys) == len(set(keys)), "a company he named twice is listed twice"
+    assert not {c.key for c in sent} & {k for c in own for k in [c.key, *c.aliases]}
+    by = {c.key: c for c in both}
+    for name in ("OpenRouter", "Nous Research", "Gamma", "n8n", "Canva"):
+        assert by[universe.key_of(name)].top, name
+    assert universe.key_of("Grammarly") in by[universe.key_of("Superhuman")].aliases
+    assert "a16z's Top 50 Consumer AI Apps" in by[universe.key_of("OpenRouter")].why
+
+
+def test_a_company_already_on_his_list_keeps_his_own_words(tmp_path, monkeypatch):
+    sent = tmp_path / "sent.csv"
+    sent.write_text('"#","Company","Primary area","Why it matters"\n'
+                    '"2","Anthropic","x","y"\n', encoding="utf-8")
+    monkeypatch.setattr(universe, "SENT_FILES", (sent,))
+    anthropic = [c for c in universe.seeds() if c.key == "anthropic"]
+    assert len(anthropic) == 1 and anthropic[0].area == "Foundation models, enterprise AI"
+
+
 def test_his_list_loads_and_two_names_are_one_company():
-    seeds = universe.seeds()
+    seeds = universe.seeds(universe.SEED_FILE)
     assert len(seeds) == 100
     cursor = [c for c in seeds if c.name == "Cursor"][0]
     assert universe.key_of("Anysphere") in cursor.aliases
@@ -133,3 +160,13 @@ def test_stored_scores_are_read_in_key_order_and_a_failed_read_is_loud(monkeypat
     monkeypatch.setattr(lookalike, "db_get", broken)
     with pytest.raises(RuntimeError):
         lookalike.stored(object())
+
+
+def test_runway_is_read_from_the_ai_video_company_board():
+    """/runway is a finance software company of the same name whose postings
+    say "Runway", so the identity check could not catch it. His Runway role
+    (AI Engagement Manager, sent 2026-10-03) lives at /runway-ml."""
+    from hunter.sources import ats_for
+    assert ats_for("Runway") == ("ashby", "runway-ml")
+    assert ats_for("n8n") == ("ashby", "n8n")
+    assert ats_for("Fal") == ats_for("fal.ai") == ("ashby", "fal-ai")

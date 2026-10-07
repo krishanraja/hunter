@@ -214,7 +214,8 @@ anything with judgement read them, and Runway's board was never found.
 The layers, cheapest first, each with its own measurement:
 
 1. **Companies he wants** (`universe.py`, `lookalike.py`, `radar.py`). His
-   list (`data/ai_universe.csv`), his Target Companies, his Yes companies, and
+   list (`data/ai_universe.csv`, plus the companies he has sent since in
+   `universe.SENT_FILES`), his Target Companies, his Yes companies, and
    lookalikes from the a16z, Sequoia, Accel, General Catalyst and Thrive
    portfolios, each scored once against his list (about a third of a cent,
    kept 30 days).
@@ -451,6 +452,7 @@ src/hunter/
   companybar.py     a business scored once, so a plainly wrong one costs no call
   triage.py         a cheap first reader, measured and not used, and why
   data/ai_universe.csv  the hundred AI companies he listed, 2026-10-03
+  data/a16z_consumer_top50.csv  32 more he sent 2026-10-07, same standing as his list
   schedule.py       which batch is owed, decided from the run record
   company.py        is the BUSINESS worth his time. Five components, evidenced
   companyintel.py   where those facts come from, free, and always cited

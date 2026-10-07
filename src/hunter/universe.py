@@ -44,6 +44,10 @@ from .config import ALL_ROWS, Config, db_get
 from .sources import slugify
 
 SEED_FILE = Path(__file__).resolve().parent / "data" / "ai_universe.csv"
+# The 32 of a16z's Top 50 Consumer AI Apps not already in his hundred, which
+# he sent on 2026-10-07 as "Good companies to look at". Kept in their own file
+# so his own hundred stays exactly as he wrote it.
+SENT_FILES = (Path(__file__).resolve().parent / "data" / "a16z_consumer_top50.csv",)
 LOOKALIKE_MIN = 7          # a lookalike scoring this or more is a top company
 SAID_YES_MIN = 5           # a company he said Yes to, scored this or more
 
@@ -97,18 +101,23 @@ def key_of(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", n.lower())
 
 
-def seeds(path: Path = SEED_FILE) -> list[Company]:
-    """His hundred, as he wrote them. "Cursor / Anysphere" is one company
-    known by two names, so both keys point at it."""
-    out = []
-    with open(path, encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            names = [n.strip() for n in row["Company"].split("/") if n.strip()]
-            c = Company(name=names[0], key=key_of(names[0]), sources=[YOUR_LIST],
-                        area=row.get("Primary area", "").strip(),
-                        why=row.get("Why it matters", "").strip(),
-                        aliases=[key_of(n) for n in names[1:]])
-            out.append(c)
+def seeds(path: Path | None = None) -> list[Company]:
+    """His hundred, as he wrote them, then the companies he has sent since
+    (SENT_FILES), each once. "Cursor / Anysphere" is one company known by two
+    names, so both keys point at it. With `path`, that file alone."""
+    out, seen = [], set()
+    for p in ([path] if path else [SEED_FILE, *SENT_FILES]):
+        with open(p, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                names = [n.strip() for n in row["Company"].split("/") if n.strip()]
+                keys = [key_of(n) for n in names]
+                if seen & set(keys):
+                    continue
+                seen.update(keys)
+                out.append(Company(name=names[0], key=keys[0], sources=[YOUR_LIST],
+                                   area=row.get("Primary area", "").strip(),
+                                   why=row.get("Why it matters", "").strip(),
+                                   aliases=keys[1:]))
     return out
 
 

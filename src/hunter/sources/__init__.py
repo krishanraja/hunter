@@ -217,7 +217,16 @@ ATS_MAP: dict[str, tuple[str, str]] = {
     "reddit": ("greenhouse", "reddit"),
     "gong": ("greenhouse", "gongio"),
     "cresta": ("greenhouse", "cresta"),
-    "runway": ("ashby", "runway"),
+    # Runway the AI video company is /runway-ml. /runway is a finance
+    # software company of the same name, with three engineering roles, and
+    # its postings say "Runway", so it passed the board identity check: every
+    # Runway role he could have seen was read from the wrong company until
+    # 2026-10-07, including the AI Engagement Manager role he sent on 10-03.
+    "runway": ("ashby", "runway-ml"),
+    # Found 2026-10-07; the slug guesser had recorded both as misses.
+    "n8n": ("ashby", "n8n"),
+    "fal": ("ashby", "fal-ai"),
+    "falai": ("ashby", "fal-ai"),
     "tollbit": ("greenhouse", "tollbit"),
     # tvScientific exposes no public ATS board (careers page carries no
     # greenhouse/lever/ashby links, 2026-08-31); discovery-only coverage.
