@@ -68,6 +68,9 @@ def same_company(ours: str, theirs: str) -> bool:
     whole name ("Braintrust", "ADA") cannot be told apart here at all, and the
     page says so rather than guessing.
     """
+    from .universe import key_of
+    if key_of(ours) and key_of(ours) == key_of(theirs):
+        return True  # "higgsfieldai" is Higgsfield AI, written as one word
     a, b = _toks(ours), _toks(theirs)
     if not a or not b:
         return False
@@ -203,8 +206,15 @@ class Graph:
         return out
 
 
+# WEDGE_LEADER says "president", which also matches inside "Vice President".
+# Measured 2026-10-08: VPs of marketing, business development and regional
+# sales were counted as the person who decides. A vice president is not.
+_VICE = re.compile(r"\bvice[\s-]+president\b", re.I)
+
+
 def is_leader(c: dict) -> bool:
-    return bool(WEDGE_LEADER.search(c.get("current_title") or ""))
+    title = c.get("current_title") or ""
+    return bool(WEDGE_LEADER.search(_VICE.sub(" ", title)))
 
 
 def _days_since(iso: str) -> int | None:
@@ -263,7 +273,12 @@ def cover(company: dict, graph: Graph, roles: list[dict], posts: list[dict]) -> 
     here = graph.at(name)
     leaders = sorted((c for c in here if is_leader(c)),
                      key=lambda c: (not in_network(c, MIN_STRENGTH), -(c.get("strength_score") or 0)))
-    cov.leaders = [_person(c) for c in leaders]
+    named = set()
+    for c in leaders:  # one person can sit in both graphs under two keys
+        p = _person(c)
+        if p.name.lower() not in named:
+            named.add(p.name.lower())
+            cov.leaders.append(p)
 
     routes: list[Route] = []
     for p in cov.leaders:

@@ -196,3 +196,25 @@ def test_a_title_naming_the_same_employer_changes_nothing():
                                "current_title": "Head of Sales"}) == "Acme AI"
     assert doorin.employer_of({"current_company": "Crescendo",
                                "current_title": "GTM operator @ Crescendo & angel investor"}) == "Crescendo"
+
+
+def test_a_vice_president_is_not_the_leader():
+    cov = _one([_c("Vi Pres", "Acme AI", "Vice President, Business Development", "3_known_network"),
+                _c("Ev Pee", "Acme AI", "Vice-President & Country Manager", "3_known_network")])
+    assert not cov.has_leader
+    assert {r.kind for r in cov.routes} == {"inside"}
+    assert doorin.is_leader({"current_title": "President & COO"})
+
+
+def test_a_company_written_as_one_word_still_matches():
+    radar = [{"key": "higgsfieldai", "name": "Higgsfield AI", "top": True}]
+    cov = _one([_c("Hal Founder", "higgsfieldai", "Founder & CEO, Higgsfield AI",
+                   connected_on="2017-10-26")], radar=radar)
+    assert cov.door and cov.routes[0].kind == "leader_direct"
+
+
+def test_the_same_leader_in_both_graphs_is_one_leader():
+    cov = _one([_c("Ada Founder", "Acme AI", "CEO", "2_core_network"),
+                _c("Ada Founder", "Acme AI", "Co-founder & CEO", "4_owned_network",
+                   contact_key="contact:x")])
+    assert len(cov.leaders) == 1
