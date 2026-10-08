@@ -410,3 +410,20 @@ def test_evidence_keeps_his_notes_apart_from_the_company_words():
     assert "his words, not the company's): growth + commercial roles" in ev
     assert doorin.evidence_for({"why": "his note only"}).startswith("Krish's note")
     assert "never call them" in doorin.OBSERVATION_SYSTEM
+
+
+def test_openers_are_drafted_only_for_cards_that_will_be_written(monkeypatch):
+    from hunter import config
+    db = _FakeDB([{"contact_id": "u-cy", "state": "listed", "notes": doorin.NOTES_TAG + " old"}])
+    monkeypatch.setattr(config, "db_get", db.get)
+    monkeypatch.setattr(config, "db_insert", db.insert)
+    monkeypatch.setattr(config, "db_patch", db.patch)
+    seen = []
+    radar = [dict(r, description="words") for r in TOP]
+    contacts = [_c("Ada Founder", "Acme AI", "CEO", "2_core_network", contact_id="u-ada"),
+                _c("Ben Insider", "Notion", "Account Executive", "3_known_network", contact_id="u-ben"),
+                _c("Cy Boss", "Notion", "Co-founder & CEO", "5_cold_lead", contact_id="u-cy")]
+    data = {"radar": radar, "contacts": contacts, "roles": [], "posts": []}
+    doorin.run_cards(object(), data, observe_with=lambda cfg, c, ev: seen.append(c.company),
+                     apply=False, refresh_only=True)
+    assert seen == ["Notion"]  # Acme AI would be new, so refresh-only never writes it

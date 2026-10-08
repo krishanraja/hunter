@@ -656,7 +656,15 @@ def run_cards(cfg, data: dict, *, skip=frozenset(), observe_with=None,
     cards, held = make_cards(rows, data["radar"], skip=set(skip))
     by_key = {r.get("key"): r for r in data["radar"]}
     if observe_with is not None:
-        for c in cards[:MAX_OBSERVATIONS]:
+        # Only the cards that will be written are worth a model call. Measured
+        # 2026-10-08: drafting for every door, landable or not, made 69 calls
+        # across three runs where 14 would have done.
+        targets = cards
+        if cfg is not None:
+            plan = land(cfg, cards, apply=False, refresh_only=refresh_only)
+            going = {r["contact_id"] for r in plan["write"] + plan["update"]}
+            targets = [c for c in cards if c.leader.contact_id in going]
+        for c in targets[:MAX_OBSERVATIONS]:
             r = by_key.get(c.key) or {}
             evidence = evidence_for(r)
             if not evidence:
