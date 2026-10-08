@@ -1774,8 +1774,8 @@ def newsletter_step(cfg: Config, *, apply: bool, limit: int = 0) -> dict:
                              "advice": signals.get("reach_out_advice") or []})
         if apply:
             if contacts:
-                db_insert(cfg, "network_contacts", contacts,
-                          on_conflict="contact_key", merge=True)
+                from .people.bridges import upsert_contacts
+                upsert_contacts(cfg, contacts)
             nl.record_post(cfg, post, signals, flags, model)
     return out
 
@@ -2663,23 +2663,36 @@ def live_universe(cfg: Config, canon: Canon, sheet: Sheet,
 
 def propose_canon_universe(cfg: Config, named: list[str], only_tab: list[str],
                            only_canon: list[str]) -> None:
-    """Canon is never edited from code. The drift is filed as a proposal."""
+    """Canon is never edited from code. The drift is filed as a proposal.
+
+    Until 2026-10-08 this never landed: it wrote a "body" column the table
+    does not have, a status ("open") its check constraint refuses, no
+    proposal_type, and an on_conflict with no index behind it, and the
+    exception was swallowed. Now it files once, refreshes the text only while
+    the proposal is still waiting on him, and never touches his decision.
+    """
+    title = "canon 9.1 has drifted from the Target Companies tab"
+    text = ("The tab is the list Krish edits and the one hunter now "
+            "sweeps. Canon 9.1 should be rewritten to match it.\n\n"
+            "Only on the tab: " + (", ".join(only_tab) or "none") +
+            "\nOnly in canon: " + (", ".join(only_canon) or "none") +
+            "\n\nFull list (" + str(len(named)) + "): " + ", ".join(named))
     try:
-        db_insert(cfg, "workflow_proposals", [{
-            "agent_id": "hunter",
-            "title": "canon 9.1 has drifted from the Target Companies tab",
-            "body": ("The tab is the list Krish edits and the one hunter now "
-                     "sweeps. Canon 9.1 should be rewritten to match it.\n\n"
-                     "Only on the tab: " + (", ".join(only_tab) or "none") +
-                     "\nOnly in canon: " + (", ".join(only_canon) or "none") +
-                     "\n\nFull list (" + str(len(named)) + "): " +
-                     ", ".join(named)),
-            "status": "open",
-        }], on_conflict="agent_id,title", merge=True)
-    except Exception:
+        have = db_get(cfg, "workflow_proposals", {
+            "select": "id,status", "agent_id": "eq.hunter",
+            "proposal_type": "eq.quality_improve", "title": f"eq.{title}",
+            "order": "created_at.desc", "limit": "1"})
+        if not have:
+            db_insert(cfg, "workflow_proposals", [{
+                "agent_id": "hunter", "proposal_type": "quality_improve",
+                "title": title, "description": text, "status": "proposed"}])
+        elif have[0].get("status") == "proposed":
+            db_patch(cfg, "workflow_proposals", {"id": have[0]["id"]},
+                     {"description": text, "updated_at": NOW()})
+    except Exception as e:
         # A proposal that cannot be filed must not take the sourcing run with
-        # it. The summary line above already says the two disagree.
-        pass
+        # it, and it must not vanish either.
+        print(f"  canon drift proposal not filed: {e.__class__.__name__}: {str(e)[:160]}")
 
 
 def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,

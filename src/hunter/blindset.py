@@ -121,6 +121,9 @@ def pick(judged: list[tuple[dict, judge.Judgement]], rng: random.Random,
 def draw(cfg: Config, sheet, canon, *, n_judge: int = 120, max_usd: float = 10.0,
          client=None, seed: int | None = None, write: bool = True) -> dict:
     from .judge_stage import live_context
+    stop = spend.over_budget(cfg)
+    if stop:
+        raise RuntimeError(f"blind set not drawn: {stop}")
     seed = seed if seed is not None else int(datetime.date.today().strftime("%Y%m%d"))
     rng = random.Random(seed)
     rows = pool(cfg)
@@ -170,6 +173,8 @@ def add_cases(cfg: Config, system: str, picks: list[dict], postings: dict[str, s
               client=None) -> float:
     """Why It Fits and the JD Snippet for each pick that lacks them."""
     todo = [p for p in picks if not p.get("why")]
+    if todo and spend.over_budget(cfg):
+        return 0.0
 
     def one(p):
         role = judge.Role(job_id=p["job_id"], company=p["company"], title=p["title"],

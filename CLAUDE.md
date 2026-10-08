@@ -244,8 +244,8 @@ The layers, cheapest first, each with its own measurement:
 6. **The case** for each row that reaches him, at medium effort since
    2026-10-07 (`hunter_case_effort`), its figures still checked.
 
-Measured and not used: Haiku as a first reader (`triage.py`,
-`tests/fixtures/triage_eval.json`). At the only line that keeps his Yes roles
+Measured and not used: Haiku as a first reader (`tests/fixtures/triage_eval.json`;
+the module was removed 2026-10-08, its measurement kept). At the only line that keeps his Yes roles
 it saves about a fifth of the judge's work; one notch stricter it loses a third
 of them, and exactly the less obvious ones (later, Syntrace, Innovamat).
 
@@ -450,7 +450,6 @@ src/hunter/
   lookalike.py      venture-backed companies scored against his list, once
   radar.py          the Company Radar tab: companies, boards, open roles
   companybar.py     a business scored once, so a plainly wrong one costs no call
-  triage.py         a cheap first reader, measured and not used, and why
   data/ai_universe.csv  the hundred AI companies he listed, 2026-10-03
   data/a16z_consumer_top50.csv  32 more he sent 2026-10-07, same standing as his list
   schedule.py       which batch is owed, decided from the run record

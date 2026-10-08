@@ -247,6 +247,22 @@ def db_patch(cfg: Config, table: str, match: dict[str, str], values: dict) -> No
     r.raise_for_status()
 
 
+def db_patch_where(cfg: Config, table: str, filters: dict[str, str], values: dict) -> int:
+    """PostgREST patch by raw filters (eq., neq., in.(...)), returning how many
+    rows it changed, so a conditional write can say whether it happened."""
+    if not filters:
+        raise ValueError("refusing to patch without a filter")
+    headers = dict(_rest_headers(cfg))
+    headers["Prefer"] = "return=representation"
+    r = requests.patch(f"{cfg.supabase_url}/rest/v1/{table}",
+                       headers=headers, params=filters, json=values, timeout=60)
+    r.raise_for_status()
+    try:
+        return len(r.json() or [])
+    except ValueError:
+        return 0
+
+
 def db_delete(cfg: Config, table: str, params: dict[str, str]) -> None:
     """PostgREST delete by filter. params are raw filters (eq., in.(...))
     and must be non-empty: an unfiltered delete is never what anyone meant."""

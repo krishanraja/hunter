@@ -20,7 +20,7 @@ import secrets
 import urllib.parse
 from dataclasses import dataclass, field
 
-from ..config import Config, db_get, db_insert, db_patch
+from ..config import Config, db_get, db_insert, db_patch, db_patch_where
 
 TABLE = "hunter_application_approvals"
 
@@ -346,14 +346,26 @@ def get_row(cfg: Config, token: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def set_state(cfg: Config, token: str, state: str, **extra) -> None:
+def set_state(cfg: Config, token: str, state: str, **extra) -> int:
+    """Move one approval to `state`, and say how many rows moved (0 or 1).
+
+    Two systems write this row: hunter, and Control Center's
+    api/hunter/submitted, which records the press his extension saw. A submit
+    is final. Hunter used to patch by token alone, so a cancel from an amend or
+    a late APPROVE could overwrite a submit Control Center had just recorded.
+    Now nothing but another submit can touch a submitted row, and the caller
+    learns that its write did not happen.
+    """
     if state not in STATES:
         raise ValueError(f"unknown approval state {state!r}")
     values = {"state": state,
               "decided_at": datetime.datetime.now(
                   datetime.timezone.utc).isoformat()}
     values.update(extra)
-    db_patch(cfg, TABLE, {"token": token}, values)
+    filters = {"token": f"eq.{token}"}
+    if state != SUBMITTED:
+        filters["state"] = f"neq.{SUBMITTED}"
+    return db_patch_where(cfg, TABLE, filters, values)
 
 
 def mark_processed(cfg: Config, token: str, message_id: str,
