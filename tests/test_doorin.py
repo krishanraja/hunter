@@ -146,3 +146,33 @@ def test_report_runs_from_a_dump(tmp_path):
     rep = doorin.report(doorin.load_dump(str(tmp_path)))
     assert rep["summary"]["door"] == 1
     assert rep["companies"][0]["leaders"][0]["contact_id"] == "u-1"
+
+
+def test_a_one_word_company_does_not_match_a_longer_employer_that_contains_it():
+    """The live graph, 2026-10-08: recruiters and retailers whose names begin
+    with one of his one-word companies were counted as insiders there."""
+    for theirs in ("Harvey Norman (GP Advertising)", "Sphere Digital Recruitment",
+                   "ARTISAN - Creative and Digital Recruitment", "Nexus Adex"):
+        ours = theirs.split()[0].title()
+        assert not doorin.same_company(ours, theirs), theirs
+
+
+def test_the_same_word_with_a_suffix_or_a_team_still_matches():
+    assert doorin.same_company("Reddit", "Reddit, Inc.")
+    assert doorin.same_company("Krea", "Krea.Ai")
+    assert doorin.same_company("Fireworks AI", "Fireworks Ai")
+    assert doorin.same_company("OpenAI", "OpenAI (Codex)")
+    assert doorin.same_company("Nexus (Yc F25)", "Nexus")
+
+
+def test_a_longer_name_keeps_the_containment_rule():
+    assert doorin.same_company("Thinking Machines Lab", "Thinking Machines")
+    assert not doorin.same_company("Notion Head of GTM Operations",
+                                   "Accel-Digital Ad Operations")
+
+
+def test_a_recruiter_named_like_a_top_company_is_not_a_route_there():
+    radar = [{"key": "sphere", "name": "Sphere", "top": True}]
+    cov = _one([_c("Rae Recruiter", "Sphere Digital Recruitment", "VP, North America",
+                   "4_owned_network")], radar=radar)
+    assert not cov.has_route and not cov.has_leader

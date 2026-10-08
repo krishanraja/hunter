@@ -26,6 +26,7 @@ shown, ranked lower, never routed to a stranger (DOOR_IN.md section 6, rule 1).
 from __future__ import annotations
 
 import datetime
+import re
 from dataclasses import dataclass, field
 
 from .people.bridges import (NEWSLETTER_WINDOW_DAYS, WEDGE_LEADER, WEDGE_SEAT,
@@ -43,6 +44,38 @@ WEDGE_SINCE = "2026-09-15"
 
 # Roles that are not live: nothing to apply to, nothing to trigger on.
 DEAD_STATUSES = {"dead", "duplicate", "archived"}
+
+
+_PAREN = re.compile(r"\(.*?\)")
+
+
+def _toks(name: str) -> frozenset:
+    return distinctive_tokens(_PAREN.sub(" ", name or ""))
+
+
+def same_company(ours: str, theirs: str) -> bool:
+    """Is a contact's employer string this company?
+
+    Stricter than bridges.same_employer, because here a false match names a
+    stranger as his way in. Measured on the live graph, 2026-10-08: one-word
+    names in his top list matched "Harvey Norman (GP Advertising)" to Harvey,
+    "Sphere Digital Recruitment" to Sphere, "ARTISAN - Creative and Digital
+    Recruitment" to Artisan and "Nexus Adex" to Nexus, all by containment.
+
+    So a one-word company matches only when the contact's employer reduces to
+    the same word ("Reddit, Inc.", "Krea.Ai"), parentheses aside. A longer name
+    keeps the containment rule bridges.py trusts. Two companies that share a
+    whole name ("Braintrust", "ADA") cannot be told apart here at all, and the
+    page says so rather than guessing.
+    """
+    a, b = _toks(ours), _toks(theirs)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if len(a) == 1 or len(b) == 1:
+        return False
+    return same_employer(a, b)
 
 
 @dataclass
@@ -117,36 +150,29 @@ class Graph:
     def __init__(self, contacts: list[dict]):
         self.contacts = contacts
         self.by_slug: dict[str, list[dict]] = {}
-        self.tokens: dict[str, frozenset] = {}
         for c in contacts:
             co = (c.get("current_company") or "").strip()
             if not co:
                 continue
-            s = slugify(co)
-            self.by_slug.setdefault(s, []).append(c)
-            self.tokens[s] = distinctive_tokens(co)
+            self.by_slug.setdefault(slugify(co), []).append(c)
 
     def at(self, company: str) -> list[dict]:
         """Everyone whose current employer is this company: the exact slug,
         then the narrow same_employer fallback bridges.py already trusts."""
-        s = slugify(company)
-        toks = distinctive_tokens(company)
-        out = list(self.by_slug.get(s, []))
-        for k, t in self.tokens.items():
-            if k != s and same_employer(toks, t):
-                out.extend(self.by_slug.get(k, []))
+        out = []
+        for k, rows in self.by_slug.items():
+            if same_company(company, rows[0].get("current_company") or ""):
+                out.extend(rows)
         return out
 
     def alumni_of(self, company: str) -> list[dict]:
-        s = slugify(company)
-        toks = distinctive_tokens(company)
         out = []
         for c in self.contacts:
-            if slugify(c.get("current_company") or "") == s:
+            if same_company(company, c.get("current_company") or ""):
                 continue
             for h in c.get("employment_history") or []:
                 name = (h.get("companyName") or h.get("company") or "") if isinstance(h, dict) else ""
-                if name and (slugify(name) == s or same_employer(toks, distinctive_tokens(name))):
+                if name and same_company(company, name):
                     out.append(c)
                     break
         return out
@@ -169,11 +195,8 @@ def triggers_for(company: str, roles: list[dict], posts: list[dict]) -> tuple[li
     A role counts as an application whether hunter recorded the state or he
     wrote "applied" in column A: either way the wedge rule says choose one road.
     """
-    toks = distinctive_tokens(company)
-    s = slugify(company)
-
     def same(name: str) -> bool:
-        return bool(name) and (slugify(name) == s or same_employer(toks, distinctive_tokens(name)))
+        return bool(name) and same_company(company, name)
 
     out, applied, founder = [], False, ""
     for r in roles:
