@@ -31,7 +31,7 @@ on:
         options: [process, run, source, packages, drain, approvals, approvals-drain, submit,
                   close-submitted, confirmations, settle, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
-                  migrate-columns]
+                  migrate-columns, door-coverage, door-cards]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string

@@ -7180,7 +7180,8 @@ def main(argv: list[str]) -> int:
             data = doorin.load(cfg)
         res = doorin.run_cards(cfg, data, skip=skip,
                                observe_with=doorin.observe if "--observe" in argv else None,
-                               apply="--apply" in argv)
+                               apply="--apply" in argv,
+                               refresh_only="--refresh-only" in argv)
         for c in res["cards"]:
             seat = f" | now: {c.trigger.what}" if c.trigger else ""
             print(f"{c.company}: {c.leader.title} [{c.ask_kind}, {c.door}] via {c.route.kind}{seat}")
@@ -7197,6 +7198,8 @@ def main(argv: list[str]) -> int:
                   f"{len(landed['not_in_control_center'])} not in Control Center, "
                   f"{len(landed['blocked_words'])} blocked for a banned word"
                   + ("" if "--apply" in argv else " (dry run, nothing written)"))
+            if landed.get("new_not_written"):
+                print("new doors not written (--refresh-only): " + ", ".join(landed["new_not_written"]))
             if landed["read_back"] is not None:
                 rb = landed["read_back"]
                 print(f"read back: {rb['found']} of {rb['expected']} rows are listed and tagged")
@@ -7215,7 +7218,7 @@ def main(argv: list[str]) -> int:
           "clear-unverdicted [--apply], "
           "watchdog [--send], review-email [--send], doctor [--offline], "
           "door-coverage [--from-dump DIR] [--json PATH], "
-          "door-cards [--from-dump DIR] [--skip a,b] [--observe] [--apply]")
+          "door-cards [--from-dump DIR] [--skip a,b] [--observe] [--apply] [--refresh-only]")
     return 2
 
 

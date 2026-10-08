@@ -1,0 +1,20 @@
+{
+  "about": "Leaders he wanted to trust him, and what happened. Company and leader TITLE only: this repository is public, so no personal names. Ground truth for the door-in cards, the sibling of krish_verdicts.json and krish_companies.json. Add rows as outcomes happen; never delete one.",
+  "rows": [
+    {
+      "company": "Amperity",
+      "leader_title": "CEO",
+      "first_touch": "room",
+      "first_touch_detail": "the company's own event",
+      "persisted_to_first_meeting": true,
+      "leader_asked_for_second_meeting": true,
+      "converted_on": "ideas, thought leadership and passion",
+      "seat_designed_around_him": true,
+      "outcome": "offer",
+      "outcome_seat": "chief of staff",
+      "days_meeting_to_offer": null,
+      "recorded": "2026-10-08",
+      "source": "his own account, docs/DOOR_IN.md section 8b"
+    }
+  ]
+}

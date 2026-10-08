@@ -568,13 +568,17 @@ def deal_row(card: Card, now: str) -> dict:
             "notes": notes[:1000]}
 
 
-def land(cfg, cards: list[Card], apply: bool = False) -> dict:
+def land(cfg, cards: list[Card], apply: bool = False, refresh_only: bool = False) -> dict:
     """Put the cards in pilot_deals as `listed`, or say what would be written.
 
     Only a leader with a Control Center contacts row can land (the table is
     keyed by contact_id). A contact who already has a pipeline row is left
     alone unless the row is hunter's own and still `listed`, so nothing he has
-    drafted, sent or ruled on is ever overwritten. Every write is read back."""
+    drafted, sent or ruled on is ever overwritten. Every write is read back.
+
+    refresh_only writes no new rows: it only refreshes hunter's own `listed`
+    rows, for a pass whose job is to add the opening line to cards he has
+    already approved without listing new leaders he has not seen."""
     from .config import db_get, db_insert, db_patch
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     out = {"write": [], "update": [], "not_in_control_center": [], "theirs": [],
@@ -599,6 +603,9 @@ def land(cfg, cards: list[Card], apply: bool = False) -> dict:
             continue
         prior = existing.get(c.leader.contact_id)
         if prior is None:
+            if refresh_only:
+                out.setdefault("new_not_written", []).append(c.company)
+                continue
             out["write"].append(row)
         elif (prior.get("notes") or "").startswith(NOTES_TAG) and prior.get("state") == "listed":
             out["update"].append(row)
@@ -622,7 +629,7 @@ def land(cfg, cards: list[Card], apply: bool = False) -> dict:
 
 
 def run_cards(cfg, data: dict, *, skip=frozenset(), observe_with=None,
-              apply: bool = False) -> dict:
+              apply: bool = False, refresh_only: bool = False) -> dict:
     """The whole phase 2 pass: coverage, cards, observations (capped), land."""
     rows = coverage(data["radar"], data["contacts"], data["roles"], data["posts"])
     cards, held = make_cards(rows, data["radar"], skip=set(skip))
@@ -636,5 +643,5 @@ def run_cards(cfg, data: dict, *, skip=frozenset(), observe_with=None,
                 c.observation_note = "no recorded words from the company to observe from"
                 continue
             observe_with(cfg, c, evidence)
-    landed = land(cfg, cards, apply=apply) if cfg is not None else None
+    landed = land(cfg, cards, apply=apply, refresh_only=refresh_only) if cfg is not None else None
     return {"cards": cards, "held": held, "landed": landed}

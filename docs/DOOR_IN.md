@@ -345,6 +345,37 @@ Mindmake's question, not hunter's.
 
 ---
 
+## 8b. The Amperity sequence, in his words
+
+Recorded 2026-10-08. The first labelled example for the leader fixture.
+
+> "I met the Amperity CEO randomly at an event of theirs, he shared details, I
+> texted him and persisted with it until I got a meeting in with him, he asked
+> me a bunch of questions and learnt about what I do, and was thinking about
+> how we could do something together. He then asked to meet me at Cannes where
+> he then talked to me, where I convinced him with my ideas, thought leadership
+> and passion, and he then got someone to write a job description that matched
+> what I had been talking about, showing my ideas had stayed in his head. I went
+> through a 'process', but was promptly offered the chief of staff role."
+
+The steps, and what each one teaches the system:
+
+| Step | What happened | What it means for hunter |
+|---|---|---|
+| 1. First touch | A room: the company's own event. Not an introduction | Rooms are a route type hunter cannot see yet. Events a top company hosts, or its leader speaks at, belong on the card as a route |
+| 2. Persistence | He texted, and kept going until a meeting happened | The route does not end at the first message. A card needs a follow-up record, not only a send |
+| 3. Discovery | The leader asked the questions and learnt what he does | The first meeting is the leader's, not a pitch. The opener's job is to earn it |
+| 4. Second meeting | The leader asked to meet again, at an industry event (Cannes) | The leader pulled. Rung 2 to rung 3 happens when the leader asks for more |
+| 5. Conversion | Ideas, thought leadership and passion | The observation is the converting asset. It has to be specific to the company |
+| 6. The seat | The leader had a job description written around his ideas | The seat was designed around him after trust, which no posting sweep can find |
+| 7. Formality | A process, then a prompt offer | The posting existed, but only as paperwork for a decision already made |
+
+Not recorded: how long it took from the first meeting to the offer. Ask him
+when it matters for the measures in section 8.
+
+What it does not prove: one example is not a method (section 10). It is the
+first row of `tests/fixtures/krish_leaders.json`, not the rule.
+
 ## 9. Questions only Krish can answer
 
 1. **The destination.** At rung 5, which would he take first: a seat, a

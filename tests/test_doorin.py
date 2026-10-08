@@ -363,3 +363,27 @@ def test_no_model_answer_means_no_observation_not_a_default(monkeypatch):
     monkeypatch.setattr(llm, "complete", lambda cfg, prompt, **kw: ("", ["anthropic: no key"]))
     doorin.observe(None, cards[0], "Acme AI builds agents")
     assert cards[0].observation == "" and "no model answered" in cards[0].observation_note
+
+
+def test_the_leader_fixture_holds_titles_never_names():
+    """krish_leaders.json is public ground truth: company and title, no person."""
+    import json
+    import pathlib
+    data = json.loads((pathlib.Path(__file__).parent / "fixtures" / "krish_leaders.json").read_text())
+    assert data["rows"], "the fixture starts with the Amperity row"
+    for row in data["rows"]:
+        assert {"company", "leader_title", "first_touch", "outcome"} <= set(row)
+        assert not {"name", "leader_name", "full_name", "contact_id"} & set(row)
+
+
+def test_refresh_only_adds_the_line_to_his_cards_and_lists_no_new_leader(monkeypatch):
+    from hunter import config
+    db = _FakeDB([{"contact_id": "u-cy", "state": "listed", "notes": doorin.NOTES_TAG + " old"}])
+    monkeypatch.setattr(config, "db_get", db.get)
+    monkeypatch.setattr(config, "db_insert", db.insert)
+    monkeypatch.setattr(config, "db_patch", db.patch)
+    cards, _ = doorin.make_cards(_door_rows())
+    out = doorin.land(object(), cards, apply=True, refresh_only=True)
+    assert db.inserts == [] and out["new_not_written"] == ["Acme AI"]
+    assert [m["contact_id"] for m, _ in db.patches] == ["u-cy"]
+    assert out["read_back"] == {"expected": 1, "found": 1}
