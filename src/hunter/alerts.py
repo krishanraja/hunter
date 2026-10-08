@@ -83,6 +83,14 @@ def pipeline_url() -> str:
             f"/edit#gid={config_mod.PIPELINE_SHEET_ID}")
 
 
+def hunt_url(cfg) -> str:
+    """The Hunt lane in Control Center, where he rules on roles and opens
+    applications (docs/ONE_SYSTEM.md, layer 4). '' when the address is not set,
+    and then the email falls back to the sheet alone."""
+    base = (cfg.optional("control_center_url") or "").rstrip("/") if cfg else ""
+    return f"{base}/#/people?lane=bridges" if base else ""
+
+
 def _esc(text) -> str:
     return html_mod.escape(str(text or ""))
 
@@ -109,7 +117,7 @@ def batch_state(rows) -> dict:
 
 def review_email(rows, staged: int, *, state: dict | None = None,
                  top: int = 12, notes: list[str] | None = None,
-                 batches=None) -> tuple[str, str, str]:
+                 batches=None, act_url: str = "") -> tuple[str, str, str]:
     """(subject, html, text) for the batch he has to review."""
     st = state or batch_state(rows)
     # The funnel's own report card, in front of him every week. He should
@@ -129,17 +137,32 @@ def review_email(rows, staged: int, *, state: dict | None = None,
     subject = (f"{staged} new role{'s' if staged != 1 else ''} to review, "
                f"{st['to_review']} waiting in total")
 
-    head = [
-        f"<p style='margin:0 0 14px'>Open the Pipeline tab and set column A on "
-        f"each row. That is the whole job: everything after it happens on its "
-        f"own.</p>",
-        f"<p style='margin:0 0 18px'><a href='{pipeline_url()}' "
-        f"style='background:#111;color:#fff;padding:10px 16px;border-radius:6px;"
-        f"text-decoration:none;display:inline-block'>Open the pipeline</a></p>",
+    if act_url:
+        # One place he acts: the Hunt lane, where each role carries its case and
+        # Yes or No is one press. The sheet stays the record and is one link away.
+        head = [
+            "<p style='margin:0 0 14px'>Open the Hunt lane and say Yes or No on "
+            "each role. That is the whole job: everything after it happens on its "
+            "own, and the sheet is kept up to date for you.</p>",
+            f"<p style='margin:0 0 18px'><a href='{act_url}' "
+            f"style='background:#111;color:#fff;padding:10px 16px;border-radius:6px;"
+            f"text-decoration:none;display:inline-block'>Rule on them in Control Center</a>"
+            f"<span style='color:#555'> or <a href='{pipeline_url()}'>open the pipeline</a>"
+            f"</span></p>",
+        ]
+    else:
+        head = [
+            f"<p style='margin:0 0 14px'>Open the Pipeline tab and set column A on "
+            f"each row. That is the whole job: everything after it happens on its "
+            f"own.</p>",
+            f"<p style='margin:0 0 18px'><a href='{pipeline_url()}' "
+            f"style='background:#111;color:#fff;padding:10px 16px;border-radius:6px;"
+            f"text-decoration:none;display:inline-block'>Open the pipeline</a></p>",
+        ]
+    head.append(
         f"<p style='margin:0 0 18px;color:#555'>{st['to_review']} to review, "
         f"{st['approved']} approved and waiting on materials, "
-        f"{st['applied']} applied.</p>",
-    ]
+        f"{st['applied']} applied.</p>")
 
     rowsx = []
     for r in fresh[:top]:
@@ -159,9 +182,12 @@ def review_email(rows, staged: int, *, state: dict | None = None,
              "<th>Where and what</th><th>Why hunter staged it</th></tr>"
              + "".join(rowsx) + "</table>") if rowsx else ""
 
+    # The pack used to be promised by email on its own. Nothing scheduled
+    # sends it: he asks for it, with Prepare on the role in Control Center.
     tail = ["<p style='margin:18px 0 0;color:#555'>Set a row to Yes and hunter "
-            "builds the CV, the cover letter and the filled application, then "
-            "emails you the pack to press send on. Decline with a reason and it "
+            "builds the CV and the cover letter. When you want to apply, press "
+            "Prepare on the role in Control Center and it fills the application "
+            "for you to open and submit yourself. Decline with a reason and it "
             "learns the reason. Anything you edit, it reads as a correction.</p>"]
     if st["dead_approved"]:
         tail.insert(0, f"<p style='margin:18px 0 0;color:#a00'>"
@@ -175,11 +201,12 @@ def review_email(rows, staged: int, *, state: dict | None = None,
             + "".join(head) + table + "".join(tail) + "</div>")
 
     text_lines = [f"{staged} new roles staged. {st['to_review']} waiting for you.",
-                  pipeline_url(), ""]
+                  act_url or pipeline_url(), ""]
     for r in fresh[:top]:
         text_lines.append(f"  {score_of(r)}  {r.company} - {r.role} "
                           f"({r.cell('Location')}, {r.cell('Comp')})")
-    text_lines += ["", "Set column A. Yes builds the pack, a reason teaches it."]
+    text_lines += ["", ("Say Yes or No on each in Control Center." if act_url else "Set column A.")
+                   + " Yes builds the pack, a reason teaches it."]
     return subject, body, "\n".join(text_lines)
 
 
@@ -199,7 +226,7 @@ def send_review_ready(cfg: Config, rows, staged: int, *,
     if not force and already_sent(cfg, REVIEW_READY, fp):
         return {"sent": False, "reason": "already told him about this batch"}
     subject, body, text = review_email(rows, staged, state=st, notes=notes,
-                                       batches=batches)
+                                       batches=batches, act_url=hunt_url(cfg))
     out = notify.send_email(cfg, subject, body, text=text)
     mark_sent(cfg, REVIEW_READY, fp, {"staged": staged, **st})
     return {"sent": bool(out.get("sent")), "subject": subject, **st}
