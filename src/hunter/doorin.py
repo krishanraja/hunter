@@ -549,17 +549,33 @@ def forbidden_in(text: str) -> list[str]:
     return hits
 
 
-def observe(cfg, card: Card, evidence: str) -> Card:
-    """The opening observation, from one model call, checked by the voice gate.
-    A sentence that fails is retried once with the reasons; a second failure
-    leaves the card with no observation and says why. Never a default line."""
-    from . import llm
+def observation_request(card: Card, evidence: str) -> tuple[str, str, frozenset]:
+    """(prompt, the evidence a draft is checked against, names it may use).
+    One definition for both writers: the API call below and the subscription
+    routine (drafts.py), so a sentence is held to one standard whoever wrote it."""
     from .package import voicegate
     haystack = voicegate.build_evidence(evidence, card.company, card.leader.name,
                                         card.trigger.what if card.trigger else "")
     prompt = (f"Company: {card.company}\nLeader: {card.leader.title}\n"
               f"Reason to talk now: {card.trigger.what if card.trigger else 'none recorded'}\n\n"
               f"Evidence:\n{evidence[:4000]}")
+    return prompt, haystack, frozenset({card.company, card.leader.name})
+
+
+def check_observation(text: str, haystack: str, allow_names: frozenset) -> list[str]:
+    """Why this opening line may not be used, or [] when it may."""
+    from .package import voicegate
+    verdict = voicegate.check(text, evidence=haystack, banned_phrases=FORBIDDEN,
+                              max_chars=OBSERVATION_MAX_CHARS, allow_names=allow_names)
+    return [] if verdict.ok else list(verdict.failures)
+
+
+def observe(cfg, card: Card, evidence: str) -> Card:
+    """The opening observation, from one model call, checked by the voice gate.
+    A sentence that fails is retried once with the reasons; a second failure
+    leaves the card with no observation and says why. Never a default line."""
+    from . import llm
+    prompt, haystack, names = observation_request(card, evidence)
     problem = ""
     for _ in range(2):
         text, notes = llm.complete(cfg, prompt + (f"\n\nYour last answer failed: {problem}. Fix it." if problem else ""),
@@ -569,13 +585,11 @@ def observe(cfg, card: Card, evidence: str) -> Card:
         if not text:
             card.observation_note = "no model answered: " + "; ".join(notes)[:200]
             return card
-        verdict = voicegate.check(text, evidence=haystack, banned_phrases=FORBIDDEN,
-                                  max_chars=OBSERVATION_MAX_CHARS,
-                                  allow_names=frozenset({card.company, card.leader.name}))
-        if verdict.ok:
+        failures = check_observation(text, haystack, names)
+        if not failures:
             card.observation, card.observation_note = text, ""
             return card
-        problem = "; ".join(verdict.failures[:3])
+        problem = "; ".join(failures[:3])
     card.observation_note = "the voice gate rejected both drafts: " + problem
     return card
 

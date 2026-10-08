@@ -31,7 +31,7 @@ on:
         options: [process, run, source, packages, drain, approvals, approvals-drain, submit,
                   close-submitted, confirmations, settle, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
-                  migrate-columns, door-coverage, door-cards]
+                  migrate-columns, door-coverage, door-cards, drafts]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string
@@ -132,6 +132,15 @@ jobs:
       - name: Settle what he decided
         if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run settle --apply
+
+      # Prose the writing routine left for hunter (src/hunter/drafts.py): each
+      # answer is checked with the API path's validator and the voice gate and
+      # only then used; one the routine never answered falls back to the API
+      # under the monthly ceiling. With hunter_writer at "api" there is nothing
+      # queued and this reads one empty table.
+      - name: Use the writing routine's checked drafts
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
+        run: python -u -m hunter.run drafts --apply
 
       # Is the loop still turning. Reads only, and every condition is
       # deduplicated on the condition rather than the moment, so running this

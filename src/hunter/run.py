@@ -3640,9 +3640,27 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         staged_rows = []
         if judged is not None:
             judge_stage.apply_gate(judged, candidates)
-            cases, case_usd = judge_stage.cases_for(
-                cfg, judged.system, [c.role for c in judged.present + judged.audit])
-            summary.append(f"judge: the case written for {len(cases)} row(s), ${case_usd:.2f}")
+            from . import drafts
+            shown = judged.present + judged.audit
+            if drafts.writer(cfg) == "routine":
+                # The case is written on his subscription (drafts.py). The
+                # judge's own reason goes on the row now and is replaced when a
+                # checked case comes back; nothing waits on the routine.
+                cases, queued = {}, 0
+                for c in shown:
+                    meta = {"score": c.result.score,
+                            "audit_prefix": (f"{judge_stage.AUDIT_PREFIX} (fit {c.judgement.fit})."
+                                             if c in judged.audit else ""),
+                            "note": open_application_note(opens, c.role.company) or ""}
+                    try:
+                        queued += drafts.queue_case(cfg, judged.system, c.role, meta=meta)
+                    except Exception as e:
+                        summary.append(f"case not queued for {c.role.job_id}: {e.__class__.__name__}")
+                summary.append(f"judge: {queued} case(s) queued for the writing routine")
+            else:
+                cases, case_usd = judge_stage.cases_for(
+                    cfg, judged.system, [c.role for c in shown])
+                summary.append(f"judge: the case written for {len(cases)} row(s), ${case_usd:.2f}")
             for c in judged.present + judged.audit:
                 why, snippet = cases.get(c.role.job_id) or (
                     c.judgement.why_it_fits, c.judgement.snippet)
@@ -4735,9 +4753,24 @@ def cmd_bank_seed(apply: bool = False) -> int:
     return 0
 
 
+def approved_essays(approval_row: dict | None) -> dict[str, str] | None:
+    """The essays he approved, from the plan stored with his approval.
+
+    Pressing an application used to redraft every essay: paid for twice, and
+    a fresh draft is different words, which changes the plan hash and can make
+    submit refuse the plan he approved. None when nothing was stored."""
+    raw = (approval_row or {}).get("fill_plan")
+    try:
+        plan = json.loads(raw) if isinstance(raw, str) else (raw or {})
+    except ValueError:
+        return None
+    essays = plan.get("essays") if isinstance(plan, dict) else None
+    return dict(essays) if isinstance(essays, dict) else None
+
+
 def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
                     bank=None, summary: str = "", hook: str = "",
-                    draft_essays: bool = True):
+                    draft_essays: bool = True, essays: dict[str, str] | None = None):
     """(FillPlan, Audit) for one approved role. No network writes, no mail.
 
     Shared by approvals and, later, submit, so the plan the email shows and the
@@ -4761,7 +4794,16 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
     # application. Drafted from the same evidence the cover letter is traced
     # against and put through the same voice gate, then flagged, because these
     # are the sentences most likely to need his judgement.
-    if draft_essays:
+    if essays is not None:
+        # The essays already approved: reused, never redrafted.
+        if essays:
+            plan = fill.build_payload(
+                spec, bank, company=role.company, role=role.title,
+                jd_url=role.jd_url, role_location=role.location,
+                summary=summary, hook=hook, essays=essays,
+                attachment_style=au.attachment_style)
+            plan.notes.append(f"reused {len(essays)} approved essay(s); none redrafted")
+    elif draft_essays:
         from .apply.resolve import NEEDS_ESSAY
         questions = [f.label for f in plan.fields
                      if f.unresolved
@@ -5976,7 +6018,7 @@ def cmd_submit(token: str, confirm: bool = False) -> int:
         print(f"no role row for {row['job_id']}")
         return 1
 
-    plan, au, role = build_fill_plan(cfg, sheet, rows[0])
+    plan, au, role = build_fill_plan(cfg, sheet, rows[0], essays=approved_essays(row))
     db = DocBuild(GoogleOAuth(cfg).access_token())
     cv_id = (rows[0].get("package_cv_url") or "").split("/d/")[-1].split("/")[0]
     letter_id = (rows[0].get("package_letter_url") or "").split("/d/")[-1].split("/")[0]
@@ -6100,7 +6142,7 @@ def cmd_apply_local(token: str = "", cdp_url: str = "", profile_dir: str = "",
     if not roles:
         print(f"no role row for {row['job_id']}")
         return 1
-    plan, au, role = build_fill_plan(cfg, sheet, roles[0])
+    plan, au, role = build_fill_plan(cfg, sheet, roles[0], essays=approved_essays(row))
     db = DocBuild(GoogleOAuth(cfg).access_token())
     cv_id = (roles[0].get("package_cv_url") or "").split("/d/")[-1].split("/")[0]
     letter_id = (roles[0].get("package_letter_url") or "").split("/d/")[-1].split("/")[0]
@@ -7151,6 +7193,16 @@ def main(argv: list[str]) -> int:
         if len(argv) >= 3 and argv[1] == "--ingest":
             ingest_dir = argv[2]
         return cmd_bridges(ingest_dir)
+    if cmd == "drafts":
+        # Use the subscription routine's checked answers; fall back to the API
+        # for requests it left unanswered (drafts.py). Dry run unless --apply.
+        from . import drafts
+        cfg, canon = build_context()
+        sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        for line in drafts.settle(cfg, apply="--apply" in argv, sheet=sheet,
+                                  canon_headers=canon.sheet_headers):
+            print(line)
+        return 0
     if cmd == "door-coverage":
         # docs/DOOR_IN.md phase 1: of his top companies, how many have a named
         # leader AND a warm route. Reads only; spends nothing; writes nothing
@@ -7182,8 +7234,14 @@ def main(argv: list[str]) -> int:
         else:
             cfg = load()
             data = doorin.load(cfg)
+        observe_with = None
+        if "--observe" in argv:
+            from . import drafts
+            observe_with = (drafts.queue_observation
+                            if cfg is not None and drafts.writer(cfg) == "routine"
+                            else doorin.observe)
         res = doorin.run_cards(cfg, data, skip=skip,
-                               observe_with=doorin.observe if "--observe" in argv else None,
+                               observe_with=observe_with,
                                apply="--apply" in argv,
                                refresh_only="--refresh-only" in argv)
         for c in res["cards"]:
