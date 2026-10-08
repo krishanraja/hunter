@@ -7147,6 +7147,20 @@ def main(argv: list[str]) -> int:
         if len(argv) >= 3 and argv[1] == "--ingest":
             ingest_dir = argv[2]
         return cmd_bridges(ingest_dir)
+    if cmd == "door-coverage":
+        # docs/DOOR_IN.md phase 1: of his top companies, how many have a named
+        # leader AND a warm route. Reads only; spends nothing; writes nothing
+        # but the optional JSON file.
+        import json as _json
+        from . import doorin
+        data = (doorin.load_dump(argv[argv.index("--from-dump") + 1])
+                if "--from-dump" in argv else doorin.load(load()))
+        rep = doorin.report(data)
+        print(_json.dumps({"summary": rep["summary"], "wedge": rep["wedge"]}, indent=2))
+        if "--json" in argv:
+            with open(argv[argv.index("--json") + 1], "w", encoding="utf-8") as f:
+                _json.dump(rep, f, indent=1)
+        return 0
     print(f"unknown command {cmd!r}; commands: process [--max N] [--retry-dead], "
           f"run, reconcile, migrate-columns [--apply], migrate-sheet, "
           f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
@@ -7157,7 +7171,8 @@ def main(argv: list[str]) -> int:
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive, "
           "layout, invariants [--apply], amendments, preflight, "
           "clear-unverdicted [--apply], "
-          "watchdog [--send], review-email [--send], doctor [--offline]")
+          "watchdog [--send], review-email [--send], doctor [--offline], "
+          "door-coverage [--from-dump DIR] [--json PATH]")
     return 2
 
 
