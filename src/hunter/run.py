@@ -4394,32 +4394,6 @@ def cmd_process(max_packages: int = 0, retry_dead: bool = False) -> int:
     return 1 if failed else 0
 
 
-def cmd_spend(days: int = 31) -> int:
-    """Read only. What the model calls cost, by day and by job, from the
-    ledger every call writes to (spend.py). The Console shows the bill; this
-    shows which part of hunter ran it up."""
-    from . import spend
-    cfg = load()
-    since = (datetime.datetime.now(datetime.timezone.utc)
-             - datetime.timedelta(days=days)).isoformat()
-    rows = db_get(cfg, spend.TABLE, {"select": "id,at,purpose,model,usd",
-                                      "at": f"gte.{since}", "limit": ALL_ROWS})
-    by_day: dict = {}
-    for r in rows:
-        key = (str(r["at"])[:10], r.get("purpose") or "?", r.get("model") or "?")
-        n, usd = by_day.get(key, (0, 0.0))
-        by_day[key] = (n + 1, usd + float(r.get("usd") or 0))
-    total = sum(u for _, u in by_day.values())
-    print(f"model spend recorded in the last {days} days: ${total:.2f} "
-          f"in {len(rows)} call(s)")
-    for (day, purpose, model), (n, usd) in sorted(by_day.items()):
-        print(f"  {day}  {purpose:<13} {model:<20} {n:>4} call(s)  ${usd:.2f}")
-    stop = spend.over_budget(cfg)
-    print(stop or f"under this month's ceiling "
-                  f"(hunter_llm_max_usd_per_month, default ${spend.DEFAULT_MONTH_CAP})")
-    return 0
-
-
 def cmd_migrate_columns(apply: bool = False) -> int:
     """Pipeline first, then the Applied tab, both to the 30-column layout."""
     cfg = load()
@@ -4571,6 +4545,20 @@ def cmd_spend(days: int = 31) -> int:
     stop = spend.over_budget(cfg)
     print(stop or f"under this month's ceiling "
                   f"(hunter_llm_max_usd_per_month, default ${spend.DEFAULT_MONTH_CAP})")
+    # Control Center drafts approaches for the cards hunter lands in
+    # pilot_deals, on its own key. It meters every call in meter_daily; read it
+    # here so this report covers the whole loop without recording it twice.
+    try:
+        cc = db_get(cfg, "meter_daily", {
+            "select": "unit_key,usd,runs", "provider": "eq.anthropic",
+            "unit_key": "in.(pilots,pilot-trigger,pilot-draft)",
+            "day": f"gte.{since[:10]}", "limit": ALL_ROWS})
+        cc_usd = sum(float(r.get("usd") or 0) for r in cc)
+        cc_runs = sum(int(r.get("runs") or 0) for r in cc)
+        print(f"Control Center pilot drafting, same window: ${cc_usd:.2f} in "
+              f"{cc_runs} call(s) (meter_daily, its own key, outside this ceiling)")
+    except Exception as e:
+        print(f"Control Center pilot drafting: not read ({e.__class__.__name__})")
     return 0
 
 
