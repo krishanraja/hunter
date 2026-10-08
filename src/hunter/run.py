@@ -7193,6 +7193,15 @@ def main(argv: list[str]) -> int:
         if len(argv) >= 3 and argv[1] == "--ingest":
             ingest_dir = argv[2]
         return cmd_bridges(ingest_dir)
+    if cmd == "actions":
+        # Buttons he pressed in Control Center (actions.py). Dry run unless --apply.
+        from . import actions
+        cfg, canon = build_context()
+        sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        for line in actions.apply_queued(cfg, sheet, canon.sheet_headers,
+                                         apply="--apply" in argv):
+            print(line)
+        return 0
     if cmd == "drafts":
         # Use the subscription routine's checked answers; fall back to the API
         # for requests it left unanswered (drafts.py). Dry run unless --apply.

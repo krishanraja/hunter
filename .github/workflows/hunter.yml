@@ -31,7 +31,7 @@ on:
         options: [process, run, source, packages, drain, approvals, approvals-drain, submit,
                   close-submitted, confirmations, settle, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
-                  migrate-columns, door-coverage, door-cards, drafts]
+                  migrate-columns, door-coverage, door-cards, drafts, actions]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string
@@ -123,6 +123,14 @@ jobs:
       - name: Close applications the employer has acknowledged
         if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run confirmations --apply
+
+      # What he pressed in Control Center (src/hunter/actions.py): a verdict is
+      # written to column A as the words he would have typed, so the settle
+      # step below records it in this same pass; "prepare" sends him the
+      # filled application to press. Before settle on purpose.
+      - name: Apply what he pressed in Control Center
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
+        run: python -u -m hunter.run actions --apply
 
       # Column A, acted on within the hour: what he marked Applied or Declined
       # is recorded, his edits to those rows are read, any approval still open

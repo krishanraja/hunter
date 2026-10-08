@@ -222,16 +222,10 @@ def _use_case(cfg, r, why, snippet, sheet, canon_headers) -> bool:
     if not back or back[0].get("why_it_fits") != why:
         return False
     if sheet is not None and canon_headers:
+        from .actions import pipeline_row
         b = back[0]
-        urls = {u for u in (b.get("url"), b.get("job_url")) if u}
-        rows = sheet.read_pipeline(canon_headers)
-        # The posting's link identifies the row; company and title only when
-        # exactly one row carries them, because a second country is a second row.
-        hit = [x for x in rows if x.jd_url and x.jd_url in urls]
-        if not hit:
-            same = [x for x in rows if x.company.lower() == (b.get("company") or "").lower()
-                    and x.role.lower() == (b.get("title") or "").lower()]
-            hit = same if len(same) == 1 else []
+        found = pipeline_row(sheet.read_pipeline(canon_headers), b)
+        hit = [found] if found else []
         score = int(b.get("score") or meta.get("score") or 0)
         if hit and 1 <= score <= 10:
             sheet.update_assessment(hit[0].row_number, score=score, why_it_fits=why)
