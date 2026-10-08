@@ -419,3 +419,222 @@ def report(data: dict) -> dict:
     rows = coverage(data["radar"], data["contacts"], data["roles"], data["posts"])
     return {"summary": summary(rows), "wedge": wedge_record(data["bridges"]),
             "companies": to_json(rows)}
+
+
+# ---------- phase 2: the leader card ----------
+#
+# One card per company that is a door: the leader, the reason now, the warm
+# route, and the one observation he would open on. It lands in Control
+# Center's pilot_deals as `listed`, so there is one pipeline and not two.
+# Nothing here sends. A card is a draft he reads, edits and sends himself.
+
+NOTES_TAG = "hunter door-in:"
+MAX_OBSERVATIONS = 20
+OBSERVATION_MAX_CHARS = 280
+
+# Mindmake's canon keeps these out of public words, and the price is private
+# (docs/DOOR_IN.md section 4). They go to the model as banned phrases AND are
+# checked on everything a card carries, because a word the model was told to
+# avoid still turns up.
+FORBIDDEN = ("chief of staff", "fractional", "sprint", "pilot", "proof",
+             "retainer", "consulting", "my services", "i help companies",
+             "$", "£", "per month", "day rate")
+
+OBSERVATION_SYSTEM = """You write one sentence for Krish Raja to open a conversation with a company's leader.
+
+It is the observation he would make anyway: what the company's own words suggest its go-to-market is about to have to solve, put as a diagnosis, never as an offer. He has run go-to-market as the operator carrying the number and as the advisor brought in to fix it.
+
+Rules:
+- One sentence, under 280 characters, no greeting, no sign-off, no question to buy anything.
+- Use only facts in the evidence. Do not invent a number, a customer, a product or a person.
+- Never mention a price, a programme, consulting, services, a sprint, a pilot, a proof, chief of staff or fractional.
+- No em dashes.
+Return only the sentence."""
+
+
+@dataclass
+class Card:
+    company: str
+    key: str
+    sources: list
+    leader: Person
+    route: Route
+    trigger: Trigger | None
+    ask_kind: str            # buyer | intro, the values pilot_deals accepts
+    door: str                # brain | gtm, a suggestion he overrides
+    why_top: str = ""
+    observation: str = ""
+    observation_note: str = ""
+
+
+def _door_of(cov: Coverage, trigger: Trigger | None) -> str:
+    """Which Mindmake door the conversation most likely fits. A rule, shown as
+    a suggestion: an open commercial seat is a company problem (GTM); with no
+    seat open, the leader buying for themselves (Brain) is the likelier door."""
+    return "gtm" if trigger is not None and trigger.kind == "open_seat" else "brain"
+
+
+def make_cards(rows: list[Coverage], radar_rows: list[dict] | None = None,
+               skip: set[str] | frozenset = frozenset()) -> tuple[list[Card], list[dict]]:
+    """(cards, held back with the reason). A company with a live application is
+    held back: one road per company, the wedge's rule. So is any company he
+    named in `skip`, which is how a same-name collision the code cannot see
+    (two companies called Braintrust) is kept off his pipeline."""
+    why = {r.get("key"): (r.get("lookalike_why") or r.get("why") or "") for r in radar_rows or []}
+    cards, held = [], []
+    for c in rows:
+        if not c.door:
+            continue
+        if c.key in skip or slugify(c.name) in skip:
+            held.append({"company": c.name, "reason": "skipped by name: check it is the same company"})
+            continue
+        if c.applied:
+            held.append({"company": c.name, "reason": "an application there is live; one road per company"})
+            continue
+        leader = next((p for p in c.leaders if p.in_network), c.leaders[0])
+        route = c.routes[0]
+        trigger = next((t for t in c.triggers if t.kind == "open_seat"),
+                       c.triggers[0] if c.triggers else None)
+        cards.append(Card(
+            company=c.name, key=c.key, sources=c.sources, leader=leader, route=route,
+            trigger=trigger, ask_kind="buyer" if route.kind == "leader_direct" else "intro",
+            door=_door_of(c, trigger), why_top="; ".join(c.sources) + (
+                f". {why[c.key]}" if why.get(c.key) else "")))
+    # Leaders he knows first, then the warmest route, then a reason to talk now.
+    cards.sort(key=lambda k: (k.ask_kind != "buyer", k.trigger is None, k.company.lower()))
+    return cards, held
+
+
+def forbidden_in(text: str) -> list[str]:
+    """Banned words as whole words ("Copilot" is not "pilot"), and any
+    currency sign at all."""
+    low = (text or "").lower()
+    hits = []
+    for w in FORBIDDEN:
+        if w in ("$", "\u00a3"):
+            if w in low:
+                hits.append(w)
+        elif re.search(r"(?<![a-z])" + re.escape(w) + r"(?![a-z])", low):
+            hits.append(w)
+    return hits
+
+
+def observe(cfg, card: Card, evidence: str) -> Card:
+    """The opening observation, from one model call, checked by the voice gate.
+    A sentence that fails is retried once with the reasons; a second failure
+    leaves the card with no observation and says why. Never a default line."""
+    from . import llm
+    from .package import voicegate
+    haystack = voicegate.build_evidence(evidence, card.company, card.leader.name,
+                                        card.trigger.what if card.trigger else "")
+    prompt = (f"Company: {card.company}\nLeader: {card.leader.title}\n"
+              f"Reason to talk now: {card.trigger.what if card.trigger else 'none recorded'}\n\n"
+              f"Evidence, the company's own words:\n{evidence[:4000]}")
+    problem = ""
+    for _ in range(2):
+        text, notes = llm.complete(cfg, prompt + (f"\n\nYour last answer failed: {problem}. Fix it." if problem else ""),
+                                   max_tokens=300, system=OBSERVATION_SYSTEM,
+                                   purpose="door_observation", cache=True)
+        text = " ".join((text or "").split()).strip().strip('"')
+        if not text:
+            card.observation_note = "no model answered: " + "; ".join(notes)[:200]
+            return card
+        verdict = voicegate.check(text, evidence=haystack, banned_phrases=FORBIDDEN,
+                                  max_chars=OBSERVATION_MAX_CHARS,
+                                  allow_names=frozenset({card.company, card.leader.name}))
+        if verdict.ok:
+            card.observation, card.observation_note = text, ""
+            return card
+        problem = "; ".join(verdict.failures[:3])
+    card.observation_note = "the voice gate rejected both drafts: " + problem
+    return card
+
+
+def deal_row(card: Card, now: str) -> dict:
+    """The pilot_deals row for a card. sourced_by must be 'krish' or 'os' (the
+    table's check constraint), so hunter's rows say 'os' and carry NOTES_TAG,
+    which is also how land() knows a row is its own."""
+    t = card.trigger
+    notes = (f"{NOTES_TAG} {card.company}. Route: {card.route.evidence}. "
+             f"Door (suggested): {'Build your AI GTM' if card.door == 'gtm' else 'Build your AI brain'}."
+             + (f" Observation not drafted: {card.observation_note}" if card.observation_note else ""))
+    return {"contact_id": card.leader.contact_id, "state": "listed", "listed_at": now,
+            "sourced_by": "os", "ask_kind": card.ask_kind,
+            "why_face": f"{card.leader.title} at {card.company}. Top company: {card.why_top}"[:500],
+            "trigger_signal": t.what if t else None,
+            "trigger_source_url": (t.url or None) if t else None,
+            "trigger_found_at": (t.when or None) if t else None,
+            "draft_body": card.observation or None,
+            "notes": notes[:1000]}
+
+
+def land(cfg, cards: list[Card], apply: bool = False) -> dict:
+    """Put the cards in pilot_deals as `listed`, or say what would be written.
+
+    Only a leader with a Control Center contacts row can land (the table is
+    keyed by contact_id). A contact who already has a pipeline row is left
+    alone unless the row is hunter's own and still `listed`, so nothing he has
+    drafted, sent or ruled on is ever overwritten. Every write is read back."""
+    from .config import db_get, db_insert, db_patch
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    out = {"write": [], "update": [], "not_in_control_center": [], "theirs": [],
+           "blocked_words": [], "read_back": None}
+    ids = [c.leader.contact_id for c in cards if c.leader.contact_id]
+    existing = {}
+    if ids:
+        for r in db_get(cfg, "pilot_deals", {
+                "select": "contact_id,state,notes",
+                "contact_id": "in.(" + ",".join(ids) + ")"}):
+            existing[str(r["contact_id"])] = r
+    for c in cards:
+        if not c.leader.contact_id:
+            out["not_in_control_center"].append(c.company)
+            continue
+        row = deal_row(c, now)
+        # What he might send is the draft; the other fields are his pipeline's
+        # own notes, where a company's funding figure is not a Mindmake price.
+        bad = forbidden_in(row.get("draft_body") or "")
+        if bad:
+            out["blocked_words"].append({"company": c.company, "words": bad})
+            continue
+        prior = existing.get(c.leader.contact_id)
+        if prior is None:
+            out["write"].append(row)
+        elif (prior.get("notes") or "").startswith(NOTES_TAG) and prior.get("state") == "listed":
+            out["update"].append(row)
+        else:
+            out["theirs"].append({"company": c.company, "state": prior.get("state")})
+    if apply:
+        if out["write"]:
+            db_insert(cfg, "pilot_deals", out["write"])
+        for row in out["update"]:
+            db_patch(cfg, "pilot_deals", {"contact_id": row["contact_id"]},
+                     {k: v for k, v in row.items() if k != "contact_id"})
+        done = [r["contact_id"] for r in out["write"] + out["update"]]
+        if done:
+            back = db_get(cfg, "pilot_deals", {
+                "select": "contact_id,state,sourced_by,notes",
+                "contact_id": "in.(" + ",".join(done) + ")"})
+            ok = [r for r in back if r.get("state") == "listed"
+                  and (r.get("notes") or "").startswith(NOTES_TAG)]
+            out["read_back"] = {"expected": len(done), "found": len(ok)}
+    return out
+
+
+def run_cards(cfg, data: dict, *, skip=frozenset(), observe_with=None,
+              apply: bool = False) -> dict:
+    """The whole phase 2 pass: coverage, cards, observations (capped), land."""
+    rows = coverage(data["radar"], data["contacts"], data["roles"], data["posts"])
+    cards, held = make_cards(rows, data["radar"], skip=set(skip))
+    by_key = {r.get("key"): r for r in data["radar"]}
+    if observe_with is not None:
+        for c in cards[:MAX_OBSERVATIONS]:
+            r = by_key.get(c.key) or {}
+            evidence = "\n".join(x for x in (r.get("description"), r.get("why"),
+                                             r.get("lookalike_why")) if x)
+            if not evidence:
+                c.observation_note = "no recorded words from the company to observe from"
+                continue
+            observe_with(cfg, c, evidence)
+    landed = land(cfg, cards, apply=apply) if cfg is not None else None
+    return {"cards": cards, "held": held, "landed": landed}

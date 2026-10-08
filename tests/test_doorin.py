@@ -218,3 +218,148 @@ def test_the_same_leader_in_both_graphs_is_one_leader():
                 _c("Ada Founder", "Acme AI", "Co-founder & CEO", "4_owned_network",
                    contact_key="contact:x")])
     assert len(cov.leaders) == 1
+
+
+# ---------- phase 2: cards ----------
+
+def _door_rows(applied=False):
+    contacts = [_c("Ada Founder", "Acme AI", "CEO", "2_core_network", contact_id="u-ada"),
+                _c("Ben Insider", "Notion", "Account Executive", "3_known_network", contact_id="u-ben"),
+                _c("Cy Boss", "Notion", "Co-founder & CEO", "5_cold_lead", contact_id="u-cy")]
+    roles = [{"company": "Notion", "title": "Head of Revenue", "status": "presented",
+              "url": "https://jobs.example/n1", "scanned_at": "2026-10-01"}]
+    if applied:
+        roles.append({"company": "Acme AI", "title": "x", "application_state": "submitted"})
+    return doorin.coverage(TOP, contacts, roles, [])
+
+
+def test_cards_put_a_leader_he_knows_first_and_say_buyer_or_intro():
+    cards, held = doorin.make_cards(_door_rows())
+    assert [(c.company, c.ask_kind) for c in cards] == [("Acme AI", "buyer"), ("Notion", "intro")]
+    notion = cards[1]
+    assert notion.leader.name == "Cy Boss" and notion.route.person.name == "Ben Insider"
+    assert notion.trigger.url == "https://jobs.example/n1" and notion.door == "gtm"
+    assert cards[0].trigger is None and cards[0].door == "brain"
+    assert held == []
+
+
+def test_a_live_application_holds_the_card_back():
+    cards, held = doorin.make_cards(_door_rows(applied=True))
+    assert [c.company for c in cards] == ["Notion"]
+    assert held[0]["company"] == "Acme AI" and "one road" in held[0]["reason"]
+
+
+def test_a_named_skip_holds_the_card_back():
+    cards, held = doorin.make_cards(_door_rows(), skip={"acmeai"})
+    assert [c.company for c in cards] == ["Notion"] and "same company" in held[0]["reason"]
+
+
+def test_forbidden_words_are_whole_words_and_any_currency_sign():
+    assert doorin.forbidden_in("Run a 30-day pilot") == ["pilot"]
+    assert doorin.forbidden_in("Their Copilot launch") == []
+    assert doorin.forbidden_in("about £5k") == ["£"]
+    assert "chief of staff" in doorin.forbidden_in("a Chief of Staff in a box")
+
+
+def test_deal_row_uses_values_the_pipeline_accepts():
+    cards, _ = doorin.make_cards(_door_rows())
+    row = doorin.deal_row(cards[1], "2026-10-08T00:00:00Z")
+    assert row["sourced_by"] in ("krish", "os") and row["ask_kind"] in ("buyer", "intro", "collaborator")
+    assert row["state"] == "listed" and row["notes"].startswith(doorin.NOTES_TAG)
+    assert row["contact_id"] == "u-cy" and row["trigger_source_url"] == "https://jobs.example/n1"
+    assert row["draft_body"] is None  # no observation drafted, so none written
+
+
+class _FakeDB:
+    def __init__(self, existing=()):
+        self.rows = {r["contact_id"]: dict(r) for r in existing}
+        self.inserts, self.patches = [], []
+
+    def get(self, cfg, table, params):
+        assert table == "pilot_deals"
+        ids = params["contact_id"][4:-1].split(",")
+        return [dict(self.rows[i]) for i in ids if i in self.rows]
+
+    def insert(self, cfg, table, rows, **kw):
+        assert table == "pilot_deals" and not kw
+        self.inserts.extend(rows)
+        for r in rows:
+            self.rows[r["contact_id"]] = dict(r)
+
+    def patch(self, cfg, table, match, values):
+        self.patches.append((match, values))
+        self.rows[match["contact_id"]].update(values)
+
+
+def _land(monkeypatch, db, cards, apply):
+    from hunter import config
+    monkeypatch.setattr(config, "db_get", db.get)
+    monkeypatch.setattr(config, "db_insert", db.insert)
+    monkeypatch.setattr(config, "db_patch", db.patch)
+    return doorin.land(object(), cards, apply=apply)
+
+
+def test_land_dry_run_writes_nothing(monkeypatch):
+    db = _FakeDB()
+    cards, _ = doorin.make_cards(_door_rows())
+    out = _land(monkeypatch, db, cards, apply=False)
+    assert len(out["write"]) == 2 and db.inserts == [] and out["read_back"] is None
+
+
+def test_land_writes_new_rows_and_reads_them_back(monkeypatch):
+    db = _FakeDB()
+    cards, _ = doorin.make_cards(_door_rows())
+    out = _land(monkeypatch, db, cards, apply=True)
+    assert len(db.inserts) == 2
+    assert out["read_back"] == {"expected": 2, "found": 2}
+
+
+def test_land_never_touches_a_row_he_owns(monkeypatch):
+    db = _FakeDB([{"contact_id": "u-ada", "state": "drafted", "notes": "his own"},
+                  {"contact_id": "u-cy", "state": "listed", "notes": doorin.NOTES_TAG + " old"}])
+    cards, _ = doorin.make_cards(_door_rows())
+    out = _land(monkeypatch, db, cards, apply=True)
+    assert out["theirs"] == [{"company": "Acme AI", "state": "drafted"}]
+    assert db.rows["u-ada"]["notes"] == "his own" and db.inserts == []
+    assert [m["contact_id"] for m, _ in db.patches] == ["u-cy"]
+
+
+def test_a_leader_outside_control_center_is_reported_not_written(monkeypatch):
+    db = _FakeDB()
+    rows = doorin.coverage(TOP[:1], [_c("Ada Founder", "Acme AI", "CEO", "2_core_network")], [], [])
+    cards, _ = doorin.make_cards(rows)
+    out = _land(monkeypatch, db, cards, apply=True)
+    assert out["not_in_control_center"] == ["Acme AI"] and db.inserts == []
+
+
+def test_a_draft_with_a_forbidden_word_is_never_written(monkeypatch):
+    db = _FakeDB()
+    cards, _ = doorin.make_cards(_door_rows())
+    cards[0].observation = "Happy to run a pilot on your pricing."
+    out = _land(monkeypatch, db, cards, apply=True)
+    assert out["blocked_words"][0]["company"] == "Acme AI"
+    assert [r["contact_id"] for r in db.inserts] == ["u-cy"]
+
+
+def test_observation_passes_the_gate_or_is_left_empty_with_the_reason(monkeypatch):
+    from hunter import llm
+    cards, _ = doorin.make_cards(_door_rows())
+    card = cards[1]
+    answers = iter(["Your Head of Revenue seat says the model is being rebuilt."])
+    monkeypatch.setattr(llm, "complete", lambda cfg, prompt, **kw: (next(answers), []))
+    doorin.observe(None, card, "Notion is hiring a Head of Revenue to rebuild the model")
+    assert card.observation.startswith("Your Head of Revenue") and card.observation_note == ""
+
+    bad = cards[0]
+    answers = iter(["We grew 340% with a pilot.", "Still a 340% pilot."])
+    monkeypatch.setattr(llm, "complete", lambda cfg, prompt, **kw: (next(answers), []))
+    doorin.observe(None, bad, "Acme AI builds agents")
+    assert bad.observation == "" and "rejected both drafts" in bad.observation_note
+
+
+def test_no_model_answer_means_no_observation_not_a_default(monkeypatch):
+    from hunter import llm
+    cards, _ = doorin.make_cards(_door_rows())
+    monkeypatch.setattr(llm, "complete", lambda cfg, prompt, **kw: ("", ["anthropic: no key"]))
+    doorin.observe(None, cards[0], "Acme AI builds agents")
+    assert cards[0].observation == "" and "no model answered" in cards[0].observation_note

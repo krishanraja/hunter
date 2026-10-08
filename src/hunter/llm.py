@@ -63,6 +63,7 @@ PURPOSES = {
     "rationale": ("claude-sonnet-5-5", "low"),     # Why It Fits when no case ran
     "newsletter": ("claude-sonnet-5-5", "low"),    # extraction from a post
     "cold_targets": ("claude-sonnet-5-5", "low"),  # one named person, by search
+    "door_observation": ("claude-opus-5-5", "medium"),  # a leader card's opening line, in his name
 }
 
 

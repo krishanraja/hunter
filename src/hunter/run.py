@@ -7161,6 +7161,48 @@ def main(argv: list[str]) -> int:
             with open(argv[argv.index("--json") + 1], "w", encoding="utf-8") as f:
                 _json.dump(rep, f, indent=1)
         return 0
+    if cmd == "door-cards":
+        # docs/DOOR_IN.md phase 2: a leader card per door, landing in Control
+        # Center's pilot_deals as `listed`. Dry run unless --apply. Nothing is
+        # ever sent. --observe drafts the opening line (a model call each,
+        # capped, costed in the ledger). --skip names companies to hold back.
+        from . import doorin
+        skip = set()
+        if "--skip" in argv:
+            skip = {s.strip().lower() for s in argv[argv.index("--skip") + 1].split(",") if s.strip()}
+        if "--from-dump" in argv:
+            if "--apply" in argv or "--observe" in argv:
+                print("--from-dump is a dry run: it has no database to write to or model to ask")
+                return 2
+            cfg, data = None, doorin.load_dump(argv[argv.index("--from-dump") + 1])
+        else:
+            cfg = load()
+            data = doorin.load(cfg)
+        res = doorin.run_cards(cfg, data, skip=skip,
+                               observe_with=doorin.observe if "--observe" in argv else None,
+                               apply="--apply" in argv)
+        for c in res["cards"]:
+            seat = f" | now: {c.trigger.what}" if c.trigger else ""
+            print(f"{c.company}: {c.leader.title} [{c.ask_kind}, {c.door}] via {c.route.kind}{seat}")
+            if c.observation:
+                print(f"    opener: {c.observation}")
+            elif c.observation_note:
+                print(f"    no opener: {c.observation_note}")
+        for h in res["held"]:
+            print(f"held: {h['company']}: {h['reason']}")
+        landed = res["landed"]
+        if landed is not None:
+            print(f"pilot_deals: {len(landed['write'])} new, {len(landed['update'])} refreshed, "
+                  f"{len(landed['theirs'])} left alone (his), "
+                  f"{len(landed['not_in_control_center'])} not in Control Center, "
+                  f"{len(landed['blocked_words'])} blocked for a banned word"
+                  + ("" if "--apply" in argv else " (dry run, nothing written)"))
+            if landed["read_back"] is not None:
+                rb = landed["read_back"]
+                print(f"read back: {rb['found']} of {rb['expected']} rows are listed and tagged")
+                if rb["found"] != rb["expected"]:
+                    return 1
+        return 0
     print(f"unknown command {cmd!r}; commands: process [--max N] [--retry-dead], "
           f"run, reconcile, migrate-columns [--apply], migrate-sheet, "
           f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
@@ -7172,7 +7214,8 @@ def main(argv: list[str]) -> int:
           "layout, invariants [--apply], amendments, preflight, "
           "clear-unverdicted [--apply], "
           "watchdog [--send], review-email [--send], doctor [--offline], "
-          "door-coverage [--from-dump DIR] [--json PATH]")
+          "door-coverage [--from-dump DIR] [--json PATH], "
+          "door-cards [--from-dump DIR] [--skip a,b] [--observe] [--apply]")
     return 2
 
 
