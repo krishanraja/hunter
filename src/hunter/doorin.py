@@ -377,7 +377,11 @@ def load(cfg) -> dict:
     because a card can only land in pilot_deals against a contacts row."""
     from .config import ALL_ROWS, db_get
     radar = db_get(cfg, "hunter_company_radar", {
-        "select": "key,name,sources,top,lookalike", "top": "eq.true", "limit": ALL_ROWS})
+        # description, why and lookalike_why are the company's own words, the
+        # only evidence the opening line may use. The first live run selected
+        # without them and every card came back "no recorded words".
+        "select": "key,name,sources,top,lookalike,area,why,description,lookalike_why",
+        "top": "eq.true", "limit": ALL_ROWS})
     nc = db_get(cfg, "network_contacts", {"select": NC_FIELDS, "limit": ALL_ROWS})
     held = {str(c.get("contact_id")) for c in nc if c.get("contact_id")}
     cc = db_get(cfg, "contacts", {

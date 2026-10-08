@@ -387,3 +387,18 @@ def test_refresh_only_adds_the_line_to_his_cards_and_lists_no_new_leader(monkeyp
     assert db.inserts == [] and out["new_not_written"] == ["Acme AI"]
     assert [m["contact_id"] for m, _ in db.patches] == ["u-cy"]
     assert out["read_back"] == {"expected": 1, "found": 1}
+
+
+def test_load_reads_the_company_words_the_opener_needs(monkeypatch):
+    """The first live run selected the Radar without its descriptions, so every
+    card said there was nothing to observe from. Pinned here."""
+    from hunter import config
+    asked = {}
+
+    def fake_get(cfg, table, params):
+        asked[table] = params.get("select", "")
+        return []
+    monkeypatch.setattr(config, "db_get", fake_get)
+    doorin.load(object())
+    for col in ("description", "why", "lookalike_why"):
+        assert col in asked["hunter_company_radar"].split(",")
