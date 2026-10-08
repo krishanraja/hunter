@@ -3603,8 +3603,11 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     if judge_mode != "off" and candidates:
         # The company bar (companybar.py): a business scored once against his
         # list, and a role at one that is plainly not his kind costs no call.
+        from . import companybar
+        candidates, _, fn_lines = companybar.function_cut(
+            candidates, mark=judge_mode == "gate")
+        summary.extend(fn_lines)
         try:
-            from . import companybar
             candidates, _, bar_lines = companybar.apply(
                 cfg, candidates, top_keys=top_keys, mark=judge_mode == "gate",
                 max_usd=float(cfg.optional("hunter_company_bar_max_usd", "1")))

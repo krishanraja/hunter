@@ -344,3 +344,22 @@ def test_the_case_writes_the_cache_before_the_rest_read_it(monkeypatch):
 def test_the_case_is_written_at_medium_effort():
     assert judge.CASE_EFFORT == "medium"
     assert judge.DEFAULT_EFFORT == "low", "the judge stays where it was measured"
+
+
+def test_a_rejection_is_reused_for_a_week_and_a_presented_role_for_a_day(monkeypatch):
+    """8 October: 13 of the 100 roles judged had been rejected on 4 October
+    under the same prompt and model, and were paid for again."""
+    import datetime as dt
+    from hunter import config
+    three_days = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=3)).isoformat()
+    rows = [{"id": 1, "job_id": "old_no", "at": three_days,
+             "judgement": judge_stage.stored(judgement("old_no", "reject", 2))},
+            {"id": 2, "job_id": "old_yes", "at": three_days,
+             "judgement": judge_stage.stored(judgement("old_yes"))}]
+    asked = []
+    monkeypatch.setattr(config, "LOADED", True, raising=False)
+    monkeypatch.setattr(config, "db_get", lambda cfg, t, params: asked.append(params) or rows)
+    cfg = type("C", (), {"supabase_url": "https://x"})()
+    found = judge_stage.earlier_judgements(cfg, ["old_no", "old_yes"], "m")
+    assert set(found) == {"old_no"}
+    assert asked[0]["at"].removeprefix("gte.") < (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=6)).isoformat()

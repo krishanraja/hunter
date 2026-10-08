@@ -1,0 +1,781 @@
+{
+ "meta": {
+  "measured": "2026-10-08",
+  "what": "titles only. yes: every role he marked Yes or Applied (hunter_verdict_events go/applied). no: every role he declined. judged_2026_10_08: the judge's 100 calls on that run, with its fit and verdict.",
+  "result": "the bar cuts 0 of his Yes titles, 4 of his No titles, and 25 of the 100 judged roles, none presented, highest fit 3"
+ },
+ "yes": [
+  "AI Adoption & Commercialization Senior Lead - Senior Vice President",
+  "AI Strategy & Transformation, Director - RQA",
+  "AI Transformation Director",
+  "Business Development Lead, Cloud & AI",
+  "Business Operations Leader / Chief of Staff",
+  "Chief Revenue Officer",
+  "Chief Revenue Officer (CRO)",
+  "Chief of Staff",
+  "Chief of Staff to Chief Strategy Officer",
+  "Chief of Staff, GTM",
+  "Chief of Staff, Go to Market",
+  "Chief of Staff, Google Research",
+  "Director of Corporate Development",
+  "Director of GTM Strategy",
+  "Director of Product Development",
+  "Director of Product Management, Consumer",
+  "Director, Channel Partnerships",
+  "Director, Enterprise AI Enablement",
+  "Director, Marketing Strategy and AI Transformation",
+  "Director, Partnerships",
+  "Enterprise Sales Leader",
+  "Executive Director, Corporate Strategy & Intelligence",
+  "Founding GTM Lead",
+  "General Manager - UK",
+  "General Manager, Songkick",
+  "Global Solutions Lead, CTV & Video Business",
+  "Head of AI Platform, GM",
+  "Head of Artist Partnerships",
+  "Head of Business Operations",
+  "Head of Business and Corporate Development",
+  "Head of Commercial Sales",
+  "Head of Content Partnerships and Premium Supply",
+  "Head of Corporate Development",
+  "Head of Enterprise & Strategic Activations",
+  "Head of Enterprise GTM - Shelby Platform",
+  "Head of Enterprise Sales, Industries",
+  "Head of Entertainment GTM",
+  "Head of GTM",
+  "Head of GTM (Path to COO)",
+  "Head of GTM Engineering",
+  "Head of GTM Innovation and Operations",
+  "Head of GTM Operations",
+  "Head of GTM Strategy & Operations, AMER",
+  "Head of GTM Strategy & Ops",
+  "Head of GTM, AI Inference",
+  "Head of GTM, Workforce",
+  "Head of Growth",
+  "Head of Partnerships",
+  "Head of Partnerships, Digital Natives",
+  "Head of Revenue Operations",
+  "Head of Revenue Operations (CLEAR1 - B2B)",
+  "Head of Sales",
+  "Head of Solution and Commercialization Strategy",
+  "Head of Technology Partnerships",
+  "Managing Director, EMEA",
+  "Marketing Chief of Staff",
+  "Monetization Programs and Operations Lead",
+  "SVP, Strategy",
+  "Senior Director, Corporate Strategy & Development",
+  "Senior Director, Platform GTM Strategy",
+  "Senior Vice President & General Manager, Audience & Growth",
+  "Senior Vice President, Commercial Strategy",
+  "Senior Vice President, Data & AI Transformation",
+  "Senior Vice President, Revenue Strategy & Partnerships",
+  "Sr Director, Chief of Staff",
+  "Strategic AI Transformation Lead (East)",
+  "Strategy & Operations, Office of the CCO",
+  "Strategy and Operations Principal Lead, GBO Chief of Staff Team",
+  "VP Sales (Global)",
+  "VP of Content Partnerships",
+  "VP of Strategic Partnerships & Ecosystems",
+  "VP of Strategy and Corporate Development",
+  "VP of Strategy and Operations",
+  "VP, AI Enablement",
+  "VP, Creator Growth (SLG)",
+  "VP, Strategic Partnerships",
+  "VP, Technology Partnerships",
+  "Vice President",
+  "Vice President, AI Enablement",
+  "Vice President, Business Development",
+  "Vice President, Commercial Strategy",
+  "Vice President, GTM Operations",
+  "WIZE Managing Director UK "
+ ],
+ "no": [
+  "AI Adoption & Commercialization Senior Lead - Senior Vice President",
+  "Area Director, Partnerships Team - Central Region",
+  "Area Director, Partnerships Team - Midwest Region",
+  "Associate Director, Corporate Strategy- Enterprise AI Transformation",
+  "Business Director, Strategy and Analytics",
+  "Business Operations Leader / Chief of Staff",
+  "Chief AI Transformation Officer",
+  "Chief Revenue Officer",
+  "Chief Revenue Officer (CRO)",
+  "Chief Revenue Officer (Remote, Higher Ed, SaaS, AI, Contact Center) NEW!",
+  "Chief of Staff",
+  "Chief of Staff (Executive Office) and VP of Strategy & Operations",
+  "Chief of Staff to GVP Moveworks Sales (Director, EX Sales Strategy)",
+  "Chief of Staff to the CXO",
+  "Chief of Staff to the GM of Housing",
+  "Chief of Staff, GTM",
+  "Chief of Staff, Go to Market",
+  "Chief of Staff, Google Research",
+  "Chief of Staff, Payer",
+  "Corporate Vice President, AI Enablement Manager",
+  "Director - Business Development & Partnerships - Healthcare",
+  "Director of Channels & Alliances",
+  "Director of Corporate Development",
+  "Director of GTM Strategy",
+  "Director of Partnerships",
+  "Director of Product Management, Forward Deployed & Strategy",
+  "Director of Revenue Strategy & Growth",
+  "Director of Sales, Enterprise",
+  "Director of Sales, Enterprise - New York",
+  "Director, Advanced TV Partnerships (Dentsu)",
+  "Director, Business Development, Publishing Partnerships",
+  "Director, Business Operations",
+  "Director, Business Operations & Strategy",
+  "Director, Business Operations and COS to CCO",
+  "Director, Cloud GTM Finance",
+  "Director, Content and Data Partnerships",
+  "Director, Customer Experience Strategy & Operations",
+  "Director, Customer Success Strategy and Operations ",
+  "Director, Data Partnerships",
+  "Director, Ecosystem Growth",
+  "Director, Government Affairs & Public Policy",
+  "Director, M&A and Corporate Strategy - NYC (Hybrid) -$230,000",
+  "Director, Marketing Strategy and AI Transformation",
+  "Director, Partnerships",
+  "Director, Partnerships (AWS, Microsoft, GCP)",
+  "Director, Payer Innovation and Alliances",
+  "Director, Programmatic Demand Partnerships",
+  "Director, Sales Strategy and Operations",
+  "Director, Strategic Partnerships",
+  "Director, Strategy & Business Management, Global Equities",
+  "Director, Strategy Engagement Lead",
+  "Director/GM, DTC & New Channel Development",
+  "EMEA Salesforce Sales & Alliances Director",
+  "EY-Parthenon - Strategy and Execution - Commercial Strategy - Director - Multiple Locations",
+  "Enterprise AI Transformation Lead (East)",
+  "Enterprise Sales Director",
+  "Enterprise Sales Director - Majors",
+  "Enterprise Sales Director - Majors, Consumer Business Services",
+  "Enterprise Sales Director - Majors, Healthcare",
+  "Enterprise Sales Director - Majors, Retail",
+  "Enterprise Sales Director - Strategic",
+  "Enterprise Sales Director - Strategic, Consumer Business Services",
+  "Enterprise Sales Director - Strategic, Healthcare",
+  "Enterprise Sales Director - Strategic, Retail",
+  "Enterprise Sales Director, Consumer Business Services",
+  "Enterprise Sales Director, Financial Services",
+  "Enterprise Sales Director, Healthcare",
+  "Enterprise Sales Director, Retail",
+  "Executive Director & Head, Global ETF Marketing & Direct Partnerships",
+  "Executive Director, Corporate Strategy & Intelligence",
+  "Executive Director, Strategy Prioritization & Governance",
+  "Founding GTM",
+  "Founding GTM Lead",
+  "Founding GTM Lead, AgentSpot",
+  "GM, Business Development, Enterprise",
+  "GM, Product - Command",
+  "GTM Chief of Staff",
+  "GTM Strategy & Operations Senior Lead, Fulfillment",
+  "General Manager - UK",
+  "General Manager, CRM +",
+  "General Manager, Data Operations",
+  "General Manager, North America",
+  "General Manager, White Label",
+  "Global Head of Sales Enablement",
+  "Global Solutions Lead, CTV & Video Business",
+  "Group VP and GM, Applied Research Intelligence",
+  "Head of AI",
+  "Head of AI Operations and Systems",
+  "Head of AI Platform Engineering, Execution Services",
+  "Head of AI Product",
+  "Head of AI Product Transformation, Enterprise Solutions",
+  "Head of AI and Machine Learning Engineering",
+  "Head of AI-First Development (Firmwide AI) - Managing Director",
+  "Head of Applied AI & Agent Factory - Managing Director",
+  "Head of Business Operations",
+  "Head of Commercial Banking Growth Analytics",
+  "Head of Corporate Development",
+  "Head of Data Management - Managing Director (NY)",
+  "Head of GTM",
+  "Head of GTM AI and Engineering",
+  "Head of GTM Enablement - Global Lead",
+  "Head of GTM Finance",
+  "Head of GTM Innovation and Operations",
+  "Head of GTM Strategy and Operations",
+  "Head of Go-To-Market",
+  "Head of Growth Marketing",
+  "Head of Marketing Operations & Analytics",
+  "Head of Marketplace",
+  "Head of Partnerships",
+  "Head of Partnerships & Alliances",
+  "Head of Post Sales Technology",
+  "Head of Product Marketing",
+  "Head of Scaled, Ads Solutions",
+  "Head of Solutions and Industry Marketing",
+  "Head of Strategic Affiliations & Ecosystem Partnerships",
+  "Head of Technology Partnerships",
+  "Investing & Corporate Development Vice President",
+  "Managing Director",
+  "Managing Director Strategic Banking Accounts",
+  "Managing Director, B2B",
+  "Managing Director, Chief Financial Officer - Global Payments",
+  "Managing Director, EMEA",
+  "Managing Director, Enterprise Accounts, Financial Services AI",
+  "Managing Director, Industrial Products, Managed Services",
+  "Managing Director, Insurance Transformation & AI",
+  "Managing Director, Office of the CFO",
+  "Managing Director, Operations & Strategy",
+  "Managing Director, Sales - FinServ",
+  "Managing Director/Senior Account Partner - Utilities",
+  "Partner Success Director",
+  "Principal Business Development Manager, Frontier",
+  "Product Strategy and Operations, Director - New Verticals | Housing",
+  "RVP, Sales Analytics (Tableau)",
+  "Regional Director",
+  "Regional Director of Sales",
+  "Regional Director, Commercial",
+  "Regional Director, Commercial Expansion",
+  "SVP, Strategy",
+  "Senior Director - Partnerships Sales Leader",
+  "Senior Director, Finance - Business Enablement",
+  "Senior Director, GTM Strategy & Operations",
+  "Senior Director, Global Sales Strategy and Operations",
+  "Senior Director, Marketplace Growth and Partnerships",
+  "Senior Director, Platform GTM Strategy",
+  "Senior Director, Product & Technology Finance",
+  "Senior Director, Product Partnerships",
+  "Senior Director, Product Sales Planning & Commercial Strategy",
+  "Senior Director, Strategic Alliances",
+  "Senior Director, Strategic Partnerships",
+  "Senior Director, Strategy and Portfolio Management",
+  "Senior Director, Technology Partnerships",
+  "Senior Managing Director - AI Strategy & Enterprise Applications",
+  "Senior Managing Director, Digital Transformation, Private Equity",
+  "Senior Vice President & General Manager, Senior Living",
+  "Sr Director, Chief of Staff",
+  "Sr Director, Technology Partner Alliances Development",
+  "Sr. Business Director, Strategy and Analytics",
+  "Sr. Director, Agency Partnerships",
+  "Sr. Director, Commercial Strategy",
+  "Strategic Account Director, Healthcare",
+  "Strategic Partnerships Director - Southeast",
+  "Strategy & Operations Director, Employer",
+  "Technical Chief of Staff",
+  "Technology Alliances Director",
+  "US Managing Director",
+  "VP Strategy Director",
+  "VP of Commercialization, GO Enterprise",
+  "VP of Content Partnerships",
+  "VP of Partnerships, EMEA",
+  "VP of Strategy and Corporate Development",
+  "VP of Strategy and Operations",
+  "VP, AI Enablement",
+  "VP, Channel Partnerships",
+  "VP, Finance",
+  "VP, Growth Marketing",
+  "VP, Marketplace ICHRA General Manager - Lucie",
+  "VP, Strategy & Business Management, Equity Derivatives",
+  "VP, customer success (EMEA)",
+  "Vice President - Product Partnerships, Connected Commerce",
+  "Vice President, AI Enablement",
+  "Vice President, Americas Sales",
+  "Vice President, Business Development & Strategic Partnerships",
+  "Vice President, Client Partnerships (Publisher Cloud)",
+  "Vice President, Partnership Manager Transaction Banking Innovation & Embedded Banking",
+  "\u2022Managing Director, Healthcare Business Transformation | Corporate Finance"
+ ],
+ "judged_2026_10_08": [
+  {
+   "title": "Account CTO",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Account Director, Commercial",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Account Director, Digital Native Enterprise",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Account Director, Digital Native Large Enterprise",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Account Director, Digital Native New Business",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Account Director, Healthcare",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Account Director, Higher Education",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Account Director, Insurance",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Account Director, Large Enterprise",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Account Director, Large Enterprise",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Account Director, Life Sciences",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Account Director, Startups Expansion",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Business Development Director - AI Natives",
+   "fit": 6,
+   "verdict": "present"
+  },
+  {
+   "title": "Chief Financial Officer (CFO)",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Chief of Staff, Sales",
+   "fit": 7,
+   "verdict": "present"
+  },
+  {
+   "title": "Director / Senior Director, Critical Facility Operations ",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director of Construction",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director of Customer Success [EMEA]",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director of Data & AI Partnerships, Life Sciences",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director of Demand Generation ",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director of People Operations ",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director of Product Management, Ads Quality and Performance - Moloco Commerce Media",
+   "fit": 6,
+   "verdict": "present"
+  },
+  {
+   "title": "Director of Product Security",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director of Revenue",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Brand Operations",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Commercial Sales, EMEA",
+   "fit": 6,
+   "verdict": "present"
+  },
+  {
+   "title": "Director, Community, North America",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Customer Experience",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Engagement - East",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Engineering",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Finance - DC Construction & Operations Finance",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Finance - Power Production & Energy",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Financial Reporting - Special Projects",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Forward Deployed Engineering",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, IT SOX",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Intellectual Property Counsel",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Launch Team",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Product Design",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, SOX Infrastructure",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Sales Development",
+   "fit": 6,
+   "verdict": "present"
+  },
+  {
+   "title": "Director, Sales Development - USA",
+   "fit": 6,
+   "verdict": "present"
+  },
+  {
+   "title": "Director, Strategic Accounts - Toronto",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Strategic Finance",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Strategic Finance - Corporate FP&A",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Technical Accounting - M&A",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, Technical Accounting \u2013 Investments",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director, West",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director/Sr. Manager, AI Inference Model Scaling",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Director/VP of Product Marketing",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "EVP of Enterprise Sales",
+   "fit": 6,
+   "verdict": "present"
+  },
+  {
+   "title": "Enterprise Sales Director - Strategic",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Enterprise Sales Director - Strategic, Healthcare",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Enterprise Sales Director - Strategic, Retail",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Enterprise Sales Director, Healthcare",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Enterprise Sales Director, Retail",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Founding Customer Success Manager",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Founding Customer Success Manager",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Founding Data Engineer",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Founding Deployment Lead, Japan",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Founding Developer Experience Lead",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Founding Forward Deployment Engineer",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Founding GTM Lead",
+   "fit": 6,
+   "verdict": "present"
+  },
+  {
+   "title": "Founding Product Engineer",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Global Head of AV Driver Training",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of AI Native Operations",
+   "fit": 8,
+   "verdict": "present"
+  },
+  {
+   "title": "Head of Brand",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of Brand & Storytelling",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of Community, Enterprise Marketing",
+   "fit": 6,
+   "verdict": "present"
+  },
+  {
+   "title": "Head of Compute Supply Chain",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of Corporate Development",
+   "fit": 8,
+   "verdict": "present"
+  },
+  {
+   "title": "Head of Customer Success & Account Management - USA",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of DevRel",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of EMEA Marketing",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of Field Engineering Operations",
+   "fit": 6,
+   "verdict": "present"
+  },
+  {
+   "title": "Head of Finance",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of Fleet Operations - UK",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of Influencer Marketing",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of Marketing",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of New Media",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of People Technology",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of Process & Controls - Finance and Operations",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of Product Marketing",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of State and Local Government Sales",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "Head of Technical Solutions",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Manager/ Director, Sales Development",
+   "fit": 6,
+   "verdict": "present"
+  },
+  {
+   "title": "Partner Development Director",
+   "fit": 7,
+   "verdict": "present"
+  },
+  {
+   "title": "Principal / Director, Technical Program Management \u2014 Driver Out",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Senior Director, GTM Enablement",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Senior Director, Portfolio Management",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "Senior Director, Solutions Architecture \u2014 Americas",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "Senior Growth Director - Moloco Ads",
+   "fit": 6,
+   "verdict": "present"
+  },
+  {
+   "title": "Senior Manager, Head of Talent Operations",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "Team Coordinator, President Team, London",
+   "fit": 0,
+   "verdict": "reject"
+  },
+  {
+   "title": "Treasury Director, Investments & Liquidity",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "VP Engineering, Robotaxi ",
+   "fit": 1,
+   "verdict": "reject"
+  },
+  {
+   "title": "VP of Finance",
+   "fit": 2,
+   "verdict": "reject"
+  },
+  {
+   "title": "VP of Investor Relations",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "VP, Performance Marketing",
+   "fit": 3,
+   "verdict": "reject"
+  },
+  {
+   "title": "VP, Product Marketing",
+   "fit": 4,
+   "verdict": "reject"
+  },
+  {
+   "title": "VP/Director, Enterprise Revenue",
+   "fit": 6,
+   "verdict": "present"
+  }
+ ]
+}

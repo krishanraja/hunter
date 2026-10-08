@@ -234,7 +234,11 @@ The layers, cheapest first, each with its own measurement:
    when the top or OTE reaches $250,000. Nowhere else changes. The gate code
    already had a variable called `top`; the flag is `top_company` for that
    reason.
-4. **The company bar** (`companybar.py`): a role at a company scoring 0 or 1
+4. **The function bar, then the company bar** (`companybar.py`). A title naming
+   only functions he has never taken (engineering, finance, legal, HR, design)
+   costs no call: on 8 October it would have spared 25 of 100 judge calls, all
+   rejected at fit 3 or below, and it cuts none of his Yes titles
+   (`tests/fixtures/function_bar_eval.json`). Then a role at a company scoring 0 or 1
    is cut with no judge call, except an AI transformation seat and a
    recruiter's posting. Measured on 242 of his rulings: it loses none of his
    Yes roles beyond his own cut. At 3 it would lose ColdIQ, which he applied to.
@@ -266,7 +270,9 @@ retry started again.
   `hunter_model_<purpose>` and `hunter_effort_<purpose>` move one job.
 - **Text that repeats is cached**: the judge's context, the essays' evidence,
   the tailor prompt on its retry. Retries never resend what the cache holds.
-- **A judgement from the last day is reused**, not paid for again.
+- **A judgement is reused, not paid for again**: a rejection for a week, any
+  other verdict for a day, so a role he might see is read against his newest
+  rulings. 13 of the 100 roles judged on 8 October had been rejected on the 4th.
 - **The month has a ceiling**, `hunter_llm_max_usd_per_month` ($150 by
   default). Over it, calls return an honest empty answer and the judge
   leaves roles pending.
