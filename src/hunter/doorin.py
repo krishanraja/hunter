@@ -451,6 +451,7 @@ It is the observation he would make anyway: what the company's own words suggest
 Rules:
 - One sentence, under 280 characters, no greeting, no sign-off, no question to buy anything.
 - Use only facts in the evidence. Do not invent a number, a customer, a product or a person.
+- Only the text labelled "The company's own description" is the company's words. Krish's notes are his view, not theirs: never call them "your own words", "your positioning" or "the company's language".
 - Never mention a price, a programme, consulting, services, a sprint, a pilot, a proof, chief of staff or fractional.
 - No em dashes.
 Return only the sentence."""
@@ -533,7 +534,7 @@ def observe(cfg, card: Card, evidence: str) -> Card:
                                         card.trigger.what if card.trigger else "")
     prompt = (f"Company: {card.company}\nLeader: {card.leader.title}\n"
               f"Reason to talk now: {card.trigger.what if card.trigger else 'none recorded'}\n\n"
-              f"Evidence, the company's own words:\n{evidence[:4000]}")
+              f"Evidence:\n{evidence[:4000]}")
     problem = ""
     for _ in range(2):
         text, notes = llm.complete(cfg, prompt + (f"\n\nYour last answer failed: {problem}. Fix it." if problem else ""),
@@ -632,6 +633,22 @@ def land(cfg, cards: list[Card], apply: bool = False, refresh_only: bool = False
     return out
 
 
+def evidence_for(radar_row: dict) -> str:
+    """What the opening line may draw on, labelled by whose words it is.
+
+    The first drafted lines said "Beehiiv's own words" about a note Krish wrote
+    on his Target Companies tab. A line that attributes his words to the
+    company is a claim the company never made, so the two are kept apart."""
+    parts = []
+    if (radar_row.get("description") or "").strip():
+        parts.append("The company's own description: " + radar_row["description"].strip())
+    note = " ".join(x.strip() for x in (radar_row.get("why"), radar_row.get("lookalike_why"))
+                    if (x or "").strip())
+    if note:
+        parts.append("Krish's note on why it matters to him (his words, not the company's): " + note)
+    return "\n".join(parts)
+
+
 def run_cards(cfg, data: dict, *, skip=frozenset(), observe_with=None,
               apply: bool = False, refresh_only: bool = False) -> dict:
     """The whole phase 2 pass: coverage, cards, observations (capped), land."""
@@ -641,8 +658,7 @@ def run_cards(cfg, data: dict, *, skip=frozenset(), observe_with=None,
     if observe_with is not None:
         for c in cards[:MAX_OBSERVATIONS]:
             r = by_key.get(c.key) or {}
-            evidence = "\n".join(x for x in (r.get("description"), r.get("why"),
-                                             r.get("lookalike_why")) if x)
+            evidence = evidence_for(r)
             if not evidence:
                 c.observation_note = "no recorded words from the company to observe from"
                 continue

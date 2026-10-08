@@ -402,3 +402,11 @@ def test_load_reads_the_company_words_the_opener_needs(monkeypatch):
     doorin.load(object())
     for col in ("description", "why", "lookalike_why"):
         assert col in asked["hunter_company_radar"].split(",")
+
+
+def test_evidence_keeps_his_notes_apart_from_the_company_words():
+    ev = doorin.evidence_for({"description": "We build agents.", "why": "growth + commercial roles"})
+    assert "The company's own description: We build agents." in ev
+    assert "his words, not the company's): growth + commercial roles" in ev
+    assert doorin.evidence_for({"why": "his note only"}).startswith("Krish's note")
+    assert "never call them" in doorin.OBSERVATION_SYSTEM
