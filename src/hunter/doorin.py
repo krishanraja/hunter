@@ -302,6 +302,17 @@ def cover(company: dict, graph: Graph, roles: list[dict], posts: list[dict]) -> 
     return cov
 
 
+_PLACEHOLDER = re.compile(r"\b(stealth|unnamed|undisclosed|confidential)\b", re.I)
+
+
+def is_placeholder(radar_row: dict) -> bool:
+    """A Radar row that names no real company. Measured 2026-10-08: a top row
+    called "Stealth Vertical AI Startup", with no source and another company's
+    description, matched a contact whose LinkedIn employer said the same, and
+    became a card. A company is only a company when something named it."""
+    return bool(_PLACEHOLDER.search(radar_row.get("name") or "")) or not radar_row.get("sources")
+
+
 def coverage(radar_rows: list[dict], contacts: list[dict], roles: list[dict],
              posts: list[dict]) -> list[Coverage]:
     """One Coverage per top company. radar_rows are hunter_company_radar rows;
@@ -310,7 +321,7 @@ def coverage(radar_rows: list[dict], contacts: list[dict], roles: list[dict],
     graph = Graph(contacts)
     seen, out = set(), []
     for r in radar_rows:
-        if not r.get("top"):
+        if not r.get("top") or is_placeholder(r):
             continue
         k = r.get("key") or slugify(r.get("name") or "")
         if k in seen:
