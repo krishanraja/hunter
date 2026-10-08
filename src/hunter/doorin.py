@@ -78,6 +78,31 @@ def same_company(ours: str, theirs: str) -> bool:
     return same_employer(a, b)
 
 
+_TITLE_EMPLOYER = re.compile(r"(?:@|\bat\b)\s*([^|\u2022\u00b7,;(&\n]+)", re.I)
+
+
+def employer_of(c: dict) -> str:
+    """Where this person works now, as best the record says.
+
+    The company field goes stale and the headline does not: measured on his
+    graph, 2026-10-08, a "Mercor" contact titled "CEO @ Sepal AI", an "OpenAI"
+    contact titled "Startups SA @ AWS" and an "Anthropic" contact titled
+    "Advisory Solutions Architect @ MongoDB". Each was counted as an insider
+    at a company they had left, and the Mercor one as its CEO.
+
+    So a title that names an employer ("@ X", "at X") wins when it is not the
+    company field. A title naming no employer leaves the field alone.
+    """
+    field = (c.get("current_company") or "").strip()
+    m = _TITLE_EMPLOYER.search(c.get("current_title") or "")
+    if not m:
+        return field
+    named = re.split(r"\s+-\s+", m.group(1).strip())[0].strip()
+    if not named or not _toks(named) or (field and same_company(field, named)):
+        return field
+    return named
+
+
 @dataclass
 class Person:
     key: str
@@ -136,7 +161,7 @@ def _person(c: dict) -> Person:
         key=c.get("contact_key") or f"contact:{c.get('id') or c.get('contact_id') or ''}",
         name=(c.get("full_name") or "").strip(),
         title=(c.get("current_title") or "").strip(),
-        company=(c.get("current_company") or "").strip(),
+        company=employer_of(c),
         tier=contact_tier(c),
         strength=int(c.get("strength_score") or 0),
         in_network=in_network(c, MIN_STRENGTH),
@@ -151,7 +176,7 @@ class Graph:
         self.contacts = contacts
         self.by_slug: dict[str, list[dict]] = {}
         for c in contacts:
-            co = (c.get("current_company") or "").strip()
+            co = employer_of(c)
             if not co:
                 continue
             self.by_slug.setdefault(slugify(co), []).append(c)
@@ -161,14 +186,14 @@ class Graph:
         then the narrow same_employer fallback bridges.py already trusts."""
         out = []
         for k, rows in self.by_slug.items():
-            if same_company(company, rows[0].get("current_company") or ""):
+            if same_company(company, employer_of(rows[0])):
                 out.extend(rows)
         return out
 
     def alumni_of(self, company: str) -> list[dict]:
         out = []
         for c in self.contacts:
-            if same_company(company, c.get("current_company") or ""):
+            if same_company(company, employer_of(c)):
                 continue
             for h in c.get("employment_history") or []:
                 name = (h.get("companyName") or h.get("company") or "") if isinstance(h, dict) else ""

@@ -176,3 +176,23 @@ def test_a_recruiter_named_like_a_top_company_is_not_a_route_there():
     cov = _one([_c("Rae Recruiter", "Sphere Digital Recruitment", "VP, North America",
                    "4_owned_network")], radar=radar)
     assert not cov.has_route and not cov.has_leader
+
+
+def test_a_title_naming_another_employer_beats_a_stale_company_field():
+    stale = [_c("Ann Moved", "Mercor", "CEO @ Sepal AI", "3_known_network"),
+             _c("Bo Moved", "OpenAI", "Startups SA @ AWS • AI/ML", "3_known_network"),
+             _c("Cy Moved", "Anthropic", "Advisory Solutions Architect at MongoDB",
+                "3_known_network")]
+    radar = [{"key": k, "name": k, "top": True} for k in ("Mercor", "OpenAI", "Anthropic")]
+    rows = doorin.coverage(radar, stale, [], [])
+    assert not any(r.has_leader or r.has_route for r in rows)
+
+
+def test_a_title_naming_the_same_employer_changes_nothing():
+    cov = _one([_c("Di Here", "Acme AI", "GTM @ Acme AI - Strategic Industries",
+                   "4_owned_network")])
+    assert [r.kind for r in cov.routes] == ["inside"]
+    assert doorin.employer_of({"current_company": "Acme AI",
+                               "current_title": "Head of Sales"}) == "Acme AI"
+    assert doorin.employer_of({"current_company": "Crescendo",
+                               "current_title": "GTM operator @ Crescendo & angel investor"}) == "Crescendo"
