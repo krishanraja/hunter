@@ -194,7 +194,14 @@ def run(cfg: Config, canon, sheet, candidates: list[Candidate], *, mode: str,
     return out
 
 
+# A rejection stands for a week; anything else for a day. Measured 2026-10-08:
+# 13 of the 100 roles judged on 8 October had been judged, and rejected, on
+# 4 October under the same prompt and model, and were paid for again. A week
+# covers the next batch. Only a rejection is kept that long, because his newest
+# rulings feed the prompt and a role the judge would present deserves a fresh
+# read against them.
 REUSE_HOURS = 24
+REUSE_REJECT_HOURS = 24 * 7
 STORED = ("job_id", "verdict", "fit", "confidence", "answers", "red_flags",
           "likely_decline_code", "why_it_fits", "snippet", "model", "served_model",
           "prompt_version", "problems")
@@ -216,13 +223,15 @@ def earlier_judgements(cfg: Config, job_ids: list[str], model: str
         return {}
     import datetime as dt
     from .config import ALL_ROWS, db_get
-    since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=REUSE_HOURS)).isoformat()
+    now = dt.datetime.now(dt.timezone.utc)
+    since = (now - dt.timedelta(hours=max(REUSE_HOURS, REUSE_REJECT_HOURS))).isoformat()
+    day = (now - dt.timedelta(hours=REUSE_HOURS)).isoformat()
     found: dict[str, judge.Judgement] = {}
     try:
         for i in range(0, len(job_ids), 100):
             chunk = job_ids[i:i + 100]
             for r in db_get(cfg, "hunter_judge_calls", {
-                    "select": "id,job_id,judgement",
+                    "select": "id,job_id,judgement,at",
                     "purpose": "eq.judge", "model": f"eq.{model}",
                     "prompt_version": f"eq.{judge.PROMPT_VERSION}",
                     "judgement": "not.is.null", "at": f"gte.{since}",
@@ -230,6 +239,8 @@ def earlier_judgements(cfg: Config, job_ids: list[str], model: str
                     "order": "id.asc", "limit": ALL_ROWS}):
                 d = r.get("judgement") or {}
                 if d.get("verdict") in (None, "pending"):
+                    continue
+                if d.get("verdict") != "reject" and (r.get("at") or "") < day:
                     continue
                 found[r["job_id"]] = judge.Judgement(
                     **{k: d.get(k) for k in STORED if k in d},

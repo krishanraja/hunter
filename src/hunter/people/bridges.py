@@ -601,9 +601,7 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
                 "outside network", TIER_BASE["peer_transition"],
                 DRAFTS["peer_transition"].format(company=role["company"]), now))
 
-    for i in range(0, len(upserts), 100):
-        db_insert(cfg, "bridge_candidates", upserts[i:i + 100],
-                  on_conflict="job_id,contact_key,path_tier", merge=True)
+    upsert_bridges(cfg, upserts)
 
     # A bridge that stopped qualifying has to go, not just a bridge into a role that
     # died. This pass only ever upserted, so a candidate derived by an older and
@@ -644,6 +642,64 @@ def build_bridges(cfg: Config, sheet: Sheet, min_strength: int = 25) -> dict:
             "considered": considered, "dropped_out_of_network": dropped,
             "roles_with_no_contact_at_company": no_contact,
             "superseded": superseded, "mindmake_wedges": wedge}
+
+
+# What Krish has decided about a bridge belongs to him. Every run used to
+# upsert each derived bridge with state "proposed" and a fresh draft_ask, so a
+# bridge he had marked reached_out, snoozed or not_a_path in Control Center, or
+# whose ask he had rewritten, was reset on the next run. Control Center writes
+# both columns; on a bridge that already exists hunter now writes neither.
+_HIS_ON_A_BRIDGE = ("state", "draft_ask", "surfaced_at")
+
+# A secondary source (the newsletter, a cold lookup) may create a contact but
+# never overwrite how hunter knows one: a cold lookup that found an existing
+# LinkedIn connection reset its strength to 0 and its source to "hunter cold
+# target" (one row in the live graph, 2026-10-08).
+_KEPT_ON_A_CONTACT = ("strength_score", "strength_evidence", "source", "connected_on")
+
+
+def _split_existing(rows: list[dict], existing: set, key, protected) -> tuple[list, list]:
+    new, old = [], []
+    for r in rows:
+        if key(r) in existing:
+            old.append({k: v for k, v in r.items() if k not in protected})
+        else:
+            new.append(r)
+    return new, old
+
+
+def upsert_bridges(cfg: Config, rows: list[dict]) -> None:
+    """Write derived bridges without touching what he set on existing ones."""
+    if not rows:
+        return
+    have = db_get(cfg, "bridge_candidates", {
+        "select": "job_id,contact_key,path_tier", "limit": ALL_ROWS})
+    existing = {(h["job_id"], h["contact_key"], h["path_tier"]) for h in have}
+    new, old = _split_existing(
+        rows, existing, lambda r: (r["job_id"], r["contact_key"], r["path_tier"]),
+        _HIS_ON_A_BRIDGE)
+    for batch in (new, old):
+        for i in range(0, len(batch), 100):
+            db_insert(cfg, "bridge_candidates", batch[i:i + 100],
+                      on_conflict="job_id,contact_key,path_tier", merge=True)
+
+
+def upsert_contacts(cfg: Config, rows: list[dict]) -> None:
+    """Create contacts a secondary source found; on one hunter already holds,
+    update only what the source can know (employer, title, URL)."""
+    if not rows:
+        return
+    keys = sorted({r["contact_key"] for r in rows})
+    existing: set = set()
+    for i in range(0, len(keys), 50):
+        quoted = ",".join('"' + k.replace('"', '') + '"' for k in keys[i:i + 50])
+        existing |= {h["contact_key"] for h in db_get(cfg, "network_contacts", {
+            "select": "contact_key", "contact_key": f"in.({quoted})"})}
+    new, old = _split_existing(rows, existing, lambda r: r["contact_key"],
+                               _KEPT_ON_A_CONTACT)
+    for batch in (new, old):
+        if batch:
+            db_insert(cfg, "network_contacts", batch, on_conflict="contact_key", merge=True)
 
 
 def _candidate(role, contact_key, tier, evidence, proximity, score, draft, now):
@@ -893,16 +949,14 @@ def cold_targets(cfg: Config, roles: list[dict], cap: int | None = None) -> dict
         evidence = (f"COLD TARGET, found by web search: {name}, {data.get('title') or 'title unknown'} "
                     f"at {r['company']}. {data.get('why') or ''} "
                     f"Source: {data.get('source_url') or 'not given'}")
-        db_insert(cfg, "network_contacts", [{
+        upsert_contacts(cfg, [{
             "contact_key": key, "linkedin_url": url or None, "full_name": name,
             "current_company": r["company"], "current_title": data.get("title") or None,
             "strength_score": 0, "strength_evidence": {"cold_target": True},
-            "source": "hunter cold target", "updated_at": now}],
-            on_conflict="contact_key", merge=True)
-        db_insert(cfg, "bridge_candidates", [_candidate(
+            "source": "hunter cold target", "updated_at": now}])
+        upsert_bridges(cfg, [_candidate(
             r, key, "cold_target", plain_text(evidence)[:900], "outside network, named",
             TIER_BASE["cold_target"],
-            DRAFTS["cold_target"].format(company=r["company"], role=r["title"]), now)],
-            on_conflict="job_id,contact_key,path_tier", merge=True)
+            DRAFTS["cold_target"].format(company=r["company"], role=r["title"]), now)])
         stats["found"] += 1
     return stats

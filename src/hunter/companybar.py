@@ -21,6 +21,15 @@ Recorded in tests/fixtures/company_bar_eval.json.
 
 What is never cut here: his list, his Target Companies, anything scoring 2 or
 more, and a company that could not be scored (never block on no evidence).
+
+The function bar runs first and costs nothing: a title that names a function he
+has never taken (engineering, finance, legal, security, HR, design, facilities)
+and none that he has (sales, GTM, revenue, strategy, operations, partnerships,
+AI, chief of staff) is cut without a judge call. Measured 2026-10-08 before it
+was written: of the judge's 100 calls on the 8 October run it removes 25, all
+of which the judge rejected at fit 3 or below; it cuts none of the 83 distinct
+titles he marked Yes or Applied, none of the Yes rows in krish_verdicts.json or judge_eval.json,
+and 4 of his 185 declines. Recorded in tests/fixtures/function_bar_eval.json.
 """
 from __future__ import annotations
 
@@ -30,10 +39,41 @@ from . import lookalike, universe
 from .config import Config
 
 BAR = 2
+NOT_HIS_FUNCTION = re.compile(
+    r"\b(engineer|engineering|developer|devrel|finance|financial|accounting|accountant|"
+    r"treasury|fp&a|sox|tax|controller|investor relations|cfo|chief financial|counsel|"
+    r"legal|attorney|intellectual property|security|construction|facility|facilities|"
+    r"people|talent|recruit\w*|human resources|hr|design|designer|supply chain|"
+    r"driver training|fleet|it)\b", re.I)
+HIS_FUNCTION = re.compile(
+    r"\b(gtm|go-to-market|revenue|commercial|strategy|strategic|chief of staff|operations|"
+    r"partnerships?|business development|sales|growth|transformation|ai|general manager|"
+    r"gm|corporate development|founder|chief)\b", re.I)
 AI_SEAT = re.compile(r"\bai\b.*\b(transformation|strategy|enablement|adoption)\b|"
                      r"\b(transformation|strategy)\b.*\bai\b|\bchief ai\b|\bhead of ai\b", re.I)
 RECRUITER = re.compile(r"recruit|search firm|executive search|staffing|headhunt|talent agency|"
                        r"placement|\bjobot\b|\bharnham\b", re.I)
+
+
+def not_his_function(title: str) -> bool:
+    """A title naming only a function he has never taken."""
+    t = title or ""
+    return bool(NOT_HIS_FUNCTION.search(t)) and not HIS_FUNCTION.search(t)
+
+
+def function_cut(candidates: list, *, mark: bool = True) -> tuple[list, list, list[str]]:
+    """(kept, cut, summary lines). No model, no network: the title alone."""
+    kept, cut = [], []
+    for c in candidates:
+        if not not_his_function(c.role.title):
+            kept.append(c)
+            continue
+        if mark:
+            c.row["status"] = "blocked"
+            c.row["rejection_reason"] = f"FUNCTION not his, by title: {c.role.title}"[:300]
+        cut.append(c)
+    lines = [f"function bar: {len(cut)} role(s) cut without a judge call"] if cut else []
+    return kept, cut, lines
 
 
 def exempt(title: str, company: universe.Company) -> str:

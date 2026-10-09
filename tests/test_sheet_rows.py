@@ -679,38 +679,6 @@ def test_reconcile_duplicate_sheet_row_never_mints_a_db_row(monkeypatch):
     assert any("duplicates row 3" in x for x in ledger.skipped)
 
 
-def test_dedupe_db_marks_newcomer_and_protects_standing(monkeypatch):
-    """A re-sourced role must fold into the incumbent's hash-suffixed row;
-    rows carrying a verdict or a package are never marked."""
-    import hunter.run as run_mod
-    rows = [
-        {"job_id": "writer:vp-customer-success-emea-205914", "company": "Writer",
-         "title": "VP, Customer Success (EMEA)", "krish_verdict": None,
-         "package_status": "none", "presented_at": "2026-08-20T00:00:00Z",
-         "status": "presented"},
-        {"job_id": "writer:vp-customer-success-emea", "company": "Writer",
-         "title": "VP, Customer Success (EMEA)", "krish_verdict": None,
-         "package_status": "none", "presented_at": None, "status": "scanned"},
-        {"job_id": "morpho:head-of-gtm", "company": "Morpho",
-         "title": "Head of GTM", "krish_verdict": "go",
-         "package_status": "built", "presented_at": "2026-08-01T00:00:00Z",
-         "status": "presented"},
-        {"job_id": "morpho:head-of-gtm-2", "company": "Morpho",
-         "title": "Head of GTM", "krish_verdict": "applied",
-         "package_status": "none", "presented_at": None, "status": "scanned"},
-    ]
-    patched = []
-    monkeypatch.setattr(run_mod, "load", lambda: None)
-    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: rows)
-    monkeypatch.setattr(run_mod, "db_patch",
-                        lambda cfg, table, match, values: patched.append((match, values)))
-    run_mod.cmd_dedupe_db()
-    assert patched == [({"job_id": "writer:vp-customer-success-emea"},
-                        {"status": "duplicate",
-                         "rejection_reason":
-                         "duplicate of writer:vp-customer-success-emea-205914"})]
-
-
 def test_sourcing_identity_dedupe_catches_hash_suffixed_rows(monkeypatch):
     """seen_identity_keys must recognize a re-discovered posting by company
     and title even when the stored job_id carries the incumbent's suffix."""

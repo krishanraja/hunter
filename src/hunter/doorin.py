@@ -30,7 +30,7 @@ import re
 from dataclasses import dataclass, field
 
 from .people.bridges import (NEWSLETTER_WINDOW_DAYS, WEDGE_LEADER, WEDGE_SEAT,
-                             contact_tier, in_network, same_employer, tier_words)
+                             contact_tier, in_network, tier_words)
 from .sources import distinctive_tokens, slugify
 from . import verdicts
 
@@ -53,32 +53,46 @@ def _toks(name: str) -> frozenset:
     return distinctive_tokens(_PAREN.sub(" ", name or ""))
 
 
+# Words that say what kind of entity a name is, not which one. "Higgsfield AI"
+# and "Higgsfield Ai", "Reddit" and "Reddit, Inc." differ only in these.
+_GENERIC = frozenset({"ai", "inc", "incorporated", "ltd", "limited", "llc", "plc",
+                      "gmbh", "co", "corp", "corporation", "company", "the", "hq",
+                      "lab", "labs"})
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+def _name_words(name: str) -> frozenset:
+    words = _WORD.findall(_PAREN.sub(" ", (name or "").lower()))
+    return frozenset(w for w in words if w not in _GENERIC)
+
+
 def same_company(ours: str, theirs: str) -> bool:
     """Is a contact's employer string this company?
 
     Stricter than bridges.same_employer, because here a false match names a
-    stranger as his way in. Measured on the live graph, 2026-10-08: one-word
-    names in his top list matched "Harvey Norman (GP Advertising)" to Harvey,
-    "Sphere Digital Recruitment" to Sphere, "ARTISAN - Creative and Digital
-    Recruitment" to Artisan and "Nexus Adex" to Nexus, all by containment.
+    stranger as his way in. Two rounds of measurement on the live graph:
 
-    So a one-word company matches only when the contact's employer reduces to
-    the same word ("Reddit, Inc.", "Krea.Ai"), parentheses aside. A longer name
-    keeps the containment rule bridges.py trusts. Two companies that share a
-    whole name ("Braintrust", "ADA") cannot be told apart here at all, and the
-    page says so rather than guessing.
+    2026-10-08, morning: containment matched "Harvey Norman (GP Advertising)" to
+    Harvey, "Sphere Digital Recruitment" to Sphere, "ARTISAN - Creative and
+    Digital Recruitment" to Artisan and "Nexus Adex" to Nexus.
+
+    2026-10-08, afternoon: four cards he had to delete. A shared word was
+    enough ("Kana Intelligence" for Physical Intelligence, "Entertainment
+    Thinking" for Series Entertainment, "Data-Direct" for Fragment Data
+    Technologies), and a short word was invisible ("Together - NZ" for
+    Together AI, because the token filter drops anything under four letters).
+
+    So the names must be the same words, every word kept, once parentheses and
+    the words in _GENERIC are set aside. "Captify APAC" no longer counts as
+    Captify: a missed door waits for a better route, a wrong one sends him to a
+    stranger. Two companies that share a whole name ("Braintrust", "ADA")
+    still cannot be told apart here, and the page says so rather than guessing.
     """
     from .universe import key_of
     if key_of(ours) and key_of(ours) == key_of(theirs):
         return True  # "higgsfieldai" is Higgsfield AI, written as one word
-    a, b = _toks(ours), _toks(theirs)
-    if not a or not b:
-        return False
-    if a == b:
-        return True
-    if len(a) == 1 or len(b) == 1:
-        return False
-    return same_employer(a, b)
+    a, b = _name_words(ours), _name_words(theirs)
+    return bool(a) and a == b
 
 
 _TITLE_EMPLOYER = re.compile(r"(?:@|\bat\b)\s*([^|\u2022\u00b7,;(&\n]+)", re.I)
@@ -186,7 +200,7 @@ class Graph:
 
     def at(self, company: str) -> list[dict]:
         """Everyone whose current employer is this company: the exact slug,
-        then the narrow same_employer fallback bridges.py already trusts."""
+        by same_company, which wants the same words in both names."""
         out = []
         for k, rows in self.by_slug.items():
             if same_company(company, employer_of(rows[0])):
@@ -535,17 +549,33 @@ def forbidden_in(text: str) -> list[str]:
     return hits
 
 
-def observe(cfg, card: Card, evidence: str) -> Card:
-    """The opening observation, from one model call, checked by the voice gate.
-    A sentence that fails is retried once with the reasons; a second failure
-    leaves the card with no observation and says why. Never a default line."""
-    from . import llm
+def observation_request(card: Card, evidence: str) -> tuple[str, str, frozenset]:
+    """(prompt, the evidence a draft is checked against, names it may use).
+    One definition for both writers: the API call below and the subscription
+    routine (drafts.py), so a sentence is held to one standard whoever wrote it."""
     from .package import voicegate
     haystack = voicegate.build_evidence(evidence, card.company, card.leader.name,
                                         card.trigger.what if card.trigger else "")
     prompt = (f"Company: {card.company}\nLeader: {card.leader.title}\n"
               f"Reason to talk now: {card.trigger.what if card.trigger else 'none recorded'}\n\n"
               f"Evidence:\n{evidence[:4000]}")
+    return prompt, haystack, frozenset({card.company, card.leader.name})
+
+
+def check_observation(text: str, haystack: str, allow_names: frozenset) -> list[str]:
+    """Why this opening line may not be used, or [] when it may."""
+    from .package import voicegate
+    verdict = voicegate.check(text, evidence=haystack, banned_phrases=FORBIDDEN,
+                              max_chars=OBSERVATION_MAX_CHARS, allow_names=allow_names)
+    return [] if verdict.ok else list(verdict.failures)
+
+
+def observe(cfg, card: Card, evidence: str) -> Card:
+    """The opening observation, from one model call, checked by the voice gate.
+    A sentence that fails is retried once with the reasons; a second failure
+    leaves the card with no observation and says why. Never a default line."""
+    from . import llm
+    prompt, haystack, names = observation_request(card, evidence)
     problem = ""
     for _ in range(2):
         text, notes = llm.complete(cfg, prompt + (f"\n\nYour last answer failed: {problem}. Fix it." if problem else ""),
@@ -555,13 +585,11 @@ def observe(cfg, card: Card, evidence: str) -> Card:
         if not text:
             card.observation_note = "no model answered: " + "; ".join(notes)[:200]
             return card
-        verdict = voicegate.check(text, evidence=haystack, banned_phrases=FORBIDDEN,
-                                  max_chars=OBSERVATION_MAX_CHARS,
-                                  allow_names=frozenset({card.company, card.leader.name}))
-        if verdict.ok:
+        failures = check_observation(text, haystack, names)
+        if not failures:
             card.observation, card.observation_note = text, ""
             return card
-        problem = "; ".join(verdict.failures[:3])
+        problem = "; ".join(failures[:3])
     card.observation_note = "the voice gate rejected both drafts: " + problem
     return card
 

@@ -130,6 +130,11 @@ def score(cfg: Config, companies: list[Company], seed_list: list[Company],
     if not companies:
         return 0, 0.0, []
     from . import judge
+    stop = spend.over_budget(cfg)
+    if stop:
+        # The month's ceiling covers this job too. Until 2026-10-08 it did not,
+        # and lookalike was the third most expensive job in the ledger.
+        return 0, 0.0, [f"lookalike did not run: {stop}"]
     client = client or judge._client(cfg)
     system = system_text(seed_list, targets)
     by_key = {c.key: c for c in companies}
@@ -155,6 +160,11 @@ def score(cfg: Config, companies: list[Company], seed_list: list[Company],
             if spent >= max_usd:
                 problems.append(f"stopped at the ${max_usd:.2f} ceiling with "
                                 f"{len(batches) - i} batch(es) unsent")
+                break
+            stop = spend.over_budget(cfg) if i else None
+            if stop:
+                problems.append(f"stopped at the month's ceiling with "
+                                f"{len(batches) - i} batch(es) unsent: {stop}")
                 break
             futures = [pool_.submit(one, b) for b in batches[i:i + workers]]
             for fut in futures:

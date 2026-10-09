@@ -165,7 +165,7 @@ def test_the_same_word_with_a_suffix_or_a_team_still_matches():
     assert doorin.same_company("Nexus (Yc F25)", "Nexus")
 
 
-def test_a_longer_name_keeps_the_containment_rule():
+def test_a_lab_suffix_is_the_same_company_and_a_shared_word_is_not():
     assert doorin.same_company("Thinking Machines Lab", "Thinking Machines")
     assert not doorin.same_company("Notion Head of GTM Operations",
                                    "Accel-Digital Ad Operations")
@@ -436,3 +436,20 @@ def test_a_placeholder_or_unsourced_radar_row_is_never_a_company():
              {"key": "acmeai", "name": "Acme AI", "top": True, "sources": ["your list"]}]
     contacts = [_c("Sam Stealth", "Stealth Vertical AI Startup", "Founder", "4_owned_network")]
     assert [r.name for r in doorin.coverage(radar, contacts, [], [])] == ["Acme AI"]
+
+
+def test_a_shared_word_or_a_short_suffix_is_not_the_same_company():
+    # The four cards he deleted on 2026-10-08, each a stranger at a company
+    # whose name shares one word with a company he wants.
+    assert not doorin.same_company("Together AI", "Together - NZ")
+    assert not doorin.same_company("Fragment Data Technologies", "Data-Direct")
+    assert not doorin.same_company("Series Entertainment", "Entertainment Thinking")
+    assert not doorin.same_company("Physical Intelligence", "Kana Intelligence")
+
+
+def test_the_seven_cards_he_kept_still_match():
+    for ours, theirs in [("Fireworks AI", "Fireworks Ai"), ("HeyGen", "HeyGen"),
+                         ("Coactive", "Coactive AI"), ("Cobot", "Cobot"),
+                         ("Higgsfield AI", "Higgsfield Ai"), ("Pylon", "Pylon"),
+                         ("Beehiiv", "Beehiiv")]:
+        assert doorin.same_company(ours, theirs), (ours, theirs)

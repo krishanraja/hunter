@@ -525,3 +525,41 @@ def test_one_leader_per_role_not_three(monkeypatch):
 def test_the_wedge_is_retired_like_any_other_derived_tier():
     from hunter.people.bridges import DERIVED_TIERS
     assert "mindmake_wedge" in DERIVED_TIERS
+
+
+def test_a_bridge_he_already_acted_on_keeps_his_state_and_ask(monkeypatch):
+    # Every run used to upsert state "proposed" and a fresh draft over a bridge
+    # he had marked reached_out in Control Center.
+    from hunter.people import bridges as br
+    writes = []
+    monkeypatch.setattr(br, "db_get", lambda cfg, table, params: [
+        {"job_id": "j1", "contact_key": "ann", "path_tier": "inside"}])
+    monkeypatch.setattr(br, "db_insert",
+                        lambda cfg, table, rows, **kw: writes.append(rows))
+    old = {"job_id": "j1", "contact_key": "ann", "path_tier": "inside",
+           "path_evidence": "e", "state": "proposed", "draft_ask": "new words",
+           "surfaced_at": "now"}
+    new = dict(old, contact_key="bob")
+    br.upsert_bridges(None, [old, new])
+    flat = [r for batch in writes for r in batch]
+    ann = next(r for r in flat if r["contact_key"] == "ann")
+    bob = next(r for r in flat if r["contact_key"] == "bob")
+    assert "state" not in ann and "draft_ask" not in ann and ann["path_evidence"] == "e"
+    assert bob["state"] == "proposed" and bob["draft_ask"] == "new words"
+
+
+def test_a_cold_lookup_never_resets_a_real_connection(monkeypatch):
+    from hunter.people import bridges as br
+    writes = []
+    monkeypatch.setattr(br, "db_get", lambda cfg, table, params: [{"contact_key": "ann"}])
+    monkeypatch.setattr(br, "db_insert",
+                        lambda cfg, table, rows, **kw: writes.append(rows))
+    row = {"contact_key": "ann", "full_name": "Ann", "current_company": "Acme",
+           "strength_score": 0, "source": "hunter cold target", "strength_evidence": {}}
+    br.upsert_contacts(None, [row, dict(row, contact_key="cold:bo")])
+    flat = [r for batch in writes for r in batch]
+    ann = next(r for r in flat if r["contact_key"] == "ann")
+    bo = next(r for r in flat if r["contact_key"] == "cold:bo")
+    assert "strength_score" not in ann and "source" not in ann
+    assert ann["current_company"] == "Acme"
+    assert bo["strength_score"] == 0 and bo["source"] == "hunter cold target"

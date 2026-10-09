@@ -182,6 +182,9 @@ def run(cfg: Config, sheet, canon, *, dev: bool = False, replicas: int | None = 
     """dev: examples before DEV_CUTOFF, scored on DEV_CUTOFF to CUTOFF, one
     replica, direct calls (minutes, not a batch queue). Otherwise the holdout:
     examples before CUTOFF, scored after it, twice, through the Batches API."""
+    stop = spend.over_budget(cfg)
+    if stop:
+        raise RuntimeError(f"judge-eval not run: {stop}")
     rows, skipped = judgedata.collect(cfg, sheet, canon)
     # The blind set is a different population (roles the old gates threw
     # away) with its own measure (blindset.evaluate); mixing it in would make

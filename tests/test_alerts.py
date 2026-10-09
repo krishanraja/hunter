@@ -281,3 +281,15 @@ def test_a_batch_the_schedule_gave_up_on_is_reported(monkeypatch):
     monkeypatch.setattr(alerts, "db_get", fake.get)
     problems = alerts.trouble_checks(None)
     assert any(p["kind"] == "a batch could not run" for p in problems)
+
+
+def test_with_control_center_the_button_opens_the_hunt_lane_and_the_sheet_stays_a_link():
+    url = "https://cc.example/#/people?lane=bridges"
+    _, html, text = alerts.review_email([row(3)], staged=1, act_url=url)
+    assert html.index(url) < html.index(alerts.pipeline_url())
+    assert "Rule on them in Control Center" in html and url in text
+
+
+def test_the_email_never_promises_a_pack_nothing_sends():
+    _, html, _ = alerts.review_email([row(3)], staged=1)
+    assert "emails you the pack" not in html and "Prepare" in html

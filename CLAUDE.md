@@ -234,7 +234,11 @@ The layers, cheapest first, each with its own measurement:
    when the top or OTE reaches $250,000. Nowhere else changes. The gate code
    already had a variable called `top`; the flag is `top_company` for that
    reason.
-4. **The company bar** (`companybar.py`): a role at a company scoring 0 or 1
+4. **The function bar, then the company bar** (`companybar.py`). A title naming
+   only functions he has never taken (engineering, finance, legal, HR, design)
+   costs no call: on 8 October it would have spared 25 of 100 judge calls, all
+   rejected at fit 3 or below, and it cuts none of his Yes titles
+   (`tests/fixtures/function_bar_eval.json`). Then a role at a company scoring 0 or 1
    is cut with no judge call, except an AI transformation seat and a
    recruiter's posting. Measured on 242 of his rulings: it loses none of his
    Yes roles beyond his own cut. At 3 it would lose ColdIQ, which he applied to.
@@ -244,8 +248,8 @@ The layers, cheapest first, each with its own measurement:
 6. **The case** for each row that reaches him, at medium effort since
    2026-10-07 (`hunter_case_effort`), its figures still checked.
 
-Measured and not used: Haiku as a first reader (`triage.py`,
-`tests/fixtures/triage_eval.json`). At the only line that keeps his Yes roles
+Measured and not used: Haiku as a first reader (`tests/fixtures/triage_eval.json`;
+the module was removed 2026-10-08, its measurement kept). At the only line that keeps his Yes roles
 it saves about a fifth of the judge's work; one notch stricter it loses a third
 of them, and exactly the less obvious ones (later, Syntrace, Innovamat).
 
@@ -266,7 +270,9 @@ retry started again.
   `hunter_model_<purpose>` and `hunter_effort_<purpose>` move one job.
 - **Text that repeats is cached**: the judge's context, the essays' evidence,
   the tailor prompt on its retry. Retries never resend what the cache holds.
-- **A judgement from the last day is reused**, not paid for again.
+- **A judgement is reused, not paid for again**: a rejection for a week, any
+  other verdict for a day, so a role he might see is read against his newest
+  rulings. 13 of the 100 roles judged on 8 October had been rejected on the 4th.
 - **The month has a ceiling**, `hunter_llm_max_usd_per_month` ($150 by
   default). Over it, calls return an honest empty answer and the judge
   leaves roles pending.
@@ -441,6 +447,8 @@ src/hunter/
     essays.py         drafts the open questions
     approval.py       tokens, states, the plan hash
     infobank.py       his recorded answers
+  drafts.py         prose queued for the writing routine on his subscription, checked before use
+  actions.py        what he pressed in Control Center, applied to the sheet by hunter
   judge.py          would he want this role: one model call, quoted, checked
   judge_stage.py    the judge inside staging: off, shadow or gate
   judge_eval.py     the judge measured against his rulings, chronologically
@@ -450,7 +458,6 @@ src/hunter/
   lookalike.py      venture-backed companies scored against his list, once
   radar.py          the Company Radar tab: companies, boards, open roles
   companybar.py     a business scored once, so a plainly wrong one costs no call
-  triage.py         a cheap first reader, measured and not used, and why
   data/ai_universe.csv  the hundred AI companies he listed, 2026-10-03
   data/a16z_consumer_top50.csv  32 more he sent 2026-10-07, same standing as his list
   schedule.py       which batch is owed, decided from the run record
@@ -472,7 +479,9 @@ src/hunter/
     tailor.py       block selection, the hook
     voicegate.py    every generated string passes this
 extension/            loaded unpacked in his Chrome. main is what he downloads
-docs/DOOR_IN.md       leaders first, roles second: the thesis and plan, not built
+docs/DOOR_IN.md       leaders first, roles second: the thesis and plan
+docs/ONE_SYSTEM.md    the four layers, where every command lives, and the record of the move
+docs/ROUTINE_WRITER.md  the subscription routine that writes the prose, and what it may touch
 tests/                1400 tests, offline
   test_taste.py       the bar, measured against his own verdicts
   test_company_taste.py          the company bar, against the companies he chose
