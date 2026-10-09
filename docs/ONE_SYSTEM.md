@@ -15,6 +15,45 @@ The target, four layers:
 
 ---
 
+## 2026-10-09: his yes to the merge and the routine
+
+His words: "Merge to main and turn on the routine yourself. Do all of the rest
+of it and I'll do number 5 later. Make sure we use all the different API keys
+if needed (LLMs), so this doesn't cost Anthropic API credits when it's not
+necessary."
+
+- **GitHub Actions is locked for billing** since about 21:00 UTC on 8 October:
+  every hourly drain since has failed before its first step, and the pull
+  request checks could not start. Hunter is not running until the account is
+  unlocked at github.com/settings/billing. This is his to fix; nothing in
+  either repository can.
+- **Retired** (his yes): migrate-columns, migrate-sheet, dedupe-db,
+  recover-verdicts, clear-unverdicted, prune-orphans, disconnect (one-off
+  repairs, done); apply-local and watch, with the windows/ scripts (his
+  extension does this); submit, and approvals-drain --send (a datacentre
+  press the bot check refused). submit.py stays as the module that previews
+  and opens a form; nothing calls press_submit.
+- **Provider per job** (`llm.PROVIDER_ORDER`, `hunter_provider_<purpose>`):
+  newsletter extraction goes to OpenAI first, through llm.complete, and is
+  priced at OpenAI's rate in the ledger. Prose in his name and anything
+  measured against his rulings stays on Anthropic; moving the judge or
+  lookalike is a measurement to run, not a key to switch. A job that needs
+  web search never goes to OpenAI, which has no search tool here. The case and
+  the door-in line leave the API for his subscription (below), which is the
+  larger saving.
+- **The routine is on**: hunter_writer = routine, and two routines on his
+  subscription fire after each batch (Sunday 14:47 London, Thursday 10:17
+  UTC) with the prompt in docs/ROUTINE_WRITER.md. Plan usage on the first two
+  runs is still to be read from his usage page.
+- **Door-in cards**: Ada's card (Siva Ganeshanandan, CCO at Ada) checks out and
+  lands on the next door-cards run with --skip braintrust,olive. Braintrust
+  stays held: the Radar row is braintrust.dev (AI evaluation) and the contact
+  runs the talent marketplace of the same name. Olive stays held: the contact
+  is at Zoa Research with a stale "@ Olive" title. The name matcher cannot
+  tell either apart, so the skip is the rule until a better route appears.
+
+---
+
 ## Where every command lives now
 
 | Layer | Commands and jobs |

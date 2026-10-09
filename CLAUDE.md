@@ -447,6 +447,8 @@ src/hunter/
     essays.py         drafts the open questions
     approval.py       tokens, states, the plan hash
     infobank.py       his recorded answers
+  drafts.py         prose queued for the writing routine on his subscription, checked before use
+  actions.py        what he pressed in Control Center, applied to the sheet by hunter
   judge.py          would he want this role: one model call, quoted, checked
   judge_stage.py    the judge inside staging: off, shadow or gate
   judge_eval.py     the judge measured against his rulings, chronologically
@@ -477,7 +479,9 @@ src/hunter/
     tailor.py       block selection, the hook
     voicegate.py    every generated string passes this
 extension/            loaded unpacked in his Chrome. main is what he downloads
-docs/DOOR_IN.md       leaders first, roles second: the thesis and plan, not built
+docs/DOOR_IN.md       leaders first, roles second: the thesis and plan
+docs/ONE_SYSTEM.md    the four layers, where every command lives, and the record of the move
+docs/ROUTINE_WRITER.md  the subscription routine that writes the prose, and what it may touch
 tests/                1400 tests, offline
   test_taste.py       the bar, measured against his own verdicts
   test_company_taste.py          the company bar, against the companies he chose

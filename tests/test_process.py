@@ -487,31 +487,6 @@ def test_the_clearing_label_teaches_the_learning_loop_nothing():
     assert learn.company_declines(events) == {}
 
 
-def test_a_row_with_no_safe_database_row_is_left_on_the_sheet():
-    """An archived row carrying a rejection in column A and no database stamp
-    is read as HIS rejection by the next reconcile. Better to leave it."""
-    import inspect
-    from hunter import run
-    src = inspect.getsource(run.cmd_clear_unverdicted)
-    assert "stranded" in src and "STAY on" in src
-
-
-def test_clearing_never_deletes():
-    import inspect
-    from hunter import run
-    src = inspect.getsource(run.cmd_clear_unverdicted)
-    assert "archive_rows" in src
-    assert "delete_rows" not in src, "cleared rows must remain restorable"
-
-
-def test_clearing_refuses_to_report_success_if_an_approval_vanished():
-    import inspect
-    from hunter import run
-    src = inspect.getsource(run.cmd_clear_unverdicted)
-    assert "REFUSING TO REPORT SUCCESS" in src
-    assert "approved_before" in src and "approved_after" in src
-
-
 # ---------- the staging cap, 2026-09-20 ----------
 
 def test_staging_is_capped_so_the_sheet_stays_judgeable():

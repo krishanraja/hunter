@@ -212,34 +212,21 @@ def extract(cfg: Config, post: dict) -> tuple[dict | None, list[str]]:
     links = post_links(post["html"])
     if len(text) < 200:
         return {"talent_moves": [], "hiring": [], "reach_out_advice": []}, ["thin post"]
-    try:
-        import anthropic
-
-        from .. import llm, spend
-        stop = spend.over_budget(cfg)
-        if stop:
-            return None, [stop]
-        client = anthropic.Anthropic(api_key=cfg.require("hunter_anthropic_api_key"))
-        model, effort = llm.model_for(cfg, "newsletter")
-        output_config: dict = {"format": {"type": "json_schema", "schema": SCHEMA}}
-        if effort:
-            output_config["effort"] = effort
-        resp = client.messages.create(
-            model=model,
-            # A post runs to 14k characters and the schema wants verbatim
-            # sentences back, so the JSON alone can pass 4k tokens. Both of
-            # the first two live posts stopped at max_tokens=4000.
-            max_tokens=16000,
-            messages=[{"role": "user", "content": PROMPT.format(
-                text=text, links="\n".join(links[:150]))}],
-            output_config=output_config)
-        spend.record(cfg, "newsletter", model, spend.usage_of(resp),
-                     served_model=getattr(resp, "model", "") or "")
-        if getattr(resp, "stop_reason", "") in ("refusal", "max_tokens"):
-            return None, [f"model stopped: {resp.stop_reason}"]
-        raw = json.loads(_text(resp))
-    except Exception as e:
-        return None, [f"extraction failed: {e.__class__.__name__}"]
+    # Through llm.complete, so whichever provider hunter_provider_newsletter
+    # names answers (OpenAI first, since 2026-10-09: extraction, not his
+    # words). It checks the month's ceiling and records the call.
+    from .. import llm
+    text_out, notes = llm.complete(
+        cfg, PROMPT.format(text=text, links="\n".join(links[:150])),
+        # A post runs to 14k characters and the schema wants verbatim
+        # sentences back, so the JSON alone can pass 4k tokens. Both of
+        # the first two live posts stopped at max_tokens=4000.
+        max_tokens=16000, schema=SCHEMA, purpose="newsletter")
+    if not text_out:
+        return None, ["extraction failed: " + ("; ".join(notes) or "no answer")]
+    raw = llm.json_object(text_out)
+    if raw is None:
+        return None, ["extraction failed: the answer was not JSON"]
     signals, dropped = ground(raw, links)
     return signals, dropped
 

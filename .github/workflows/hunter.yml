@@ -28,10 +28,10 @@ on:
         description: "hunter command"
         type: choice
         default: process
-        options: [process, run, source, packages, drain, approvals, approvals-drain, submit,
+        options: [process, run, source, packages, drain, approvals, approvals-drain,
                   close-submitted, confirmations, settle, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
-                  migrate-columns, door-coverage, door-cards, drafts, actions]
+                  door-coverage, door-cards, drafts, actions]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string
@@ -104,12 +104,10 @@ jobs:
       # broken run never reaches the step that can submit an application.
       - name: Read approval replies
         if: steps.cmd.outputs.args == 'drain'
-        # --apply, NOT --send. Pressing submit from here goes through a headless
-        # Chromium in a datacentre, which an invisible bot check scores and
-        # refuses with nothing shown: the first application it pressed was
-        # recorded as submitted and never reached the employer. An APPROVE now
-        # moves the token to approved and waits for `apply-local`, which opens the
-        # filled form in Krish's own browser for him to press.
+        # An APPROVE moves the token to approved. He opens the filled form
+        # from Control Center or the email; his extension fills it and he
+        # presses Submit. Pressing from a datacentre browser was built once
+        # and refused by an invisible bot check, and is retired.
         run: python -u -m hunter.run approvals-drain --apply
 
       # Krish presses Submit in his own browser; the extension tells Control

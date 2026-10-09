@@ -596,13 +596,6 @@ def cmd_recon() -> int:
     return 0
 
 
-def cmd_migrate_sheet() -> int:
-    cfg, canon = build_context()
-    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    print(sheet.migrate_formatting())
-    return 0
-
-
 def resolve_db_row(srow, known: list[dict], paired: dict) -> tuple[dict | None, str]:
     """The DB row a sheet row is, or a reason it cannot be settled.
 
@@ -927,156 +920,6 @@ def recover_verdicts(cfg: Config, sheet: Sheet, canon: Canon,
     return after - before
 
 
-def cmd_recover_verdicts(apply: bool = False) -> int:
-    cfg, canon = build_context()
-    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    rows = list(sheet.read_pipeline(canon.sheet_headers)) + list(sheet.read_archive())
-    events = learn.from_sheet_rows(rows, source="sheet column A, recovered")
-    have = {(e.get("job_id"), e.get("reason_text")) for e in learn.load_events(cfg)}
-    new = [e for e in events if (e["job_id"], e["reason_text"]) not in have]
-    print(f"{len(events)} decline(s) of yours are on the sheet or in the archive")
-    print(f"{len(new)} of them have no learning event on record\n")
-    from collections import Counter
-    for code, n in Counter(e["reason_code"] for e in new).most_common():
-        print(f"  {n:>3}  {code}")
-    company = [e for e in new if e["reason_code"] in learn.COMPANY_CODES]
-    print(f"\n  {len(company)} are company-level declines that should drive G12:")
-    for e in company[:25]:
-        print(f"    {e['company'][:22]:24} {e['title'][:44]:46} {e['reason_code']}")
-    if not apply:
-        print("\ndry run. add --apply to record them.")
-        return 0
-    summary: Summary = Summary()
-    gained = recover_verdicts(cfg, sheet, canon, summary)
-    print("\n" + "\n".join(summary))
-    declines = learn.company_declines(learn.load_events(cfg),
-                                      learn.load_company_allow(cfg))
-    names = sorted({d["company"] for d in declines.values()})
-    print(f"\ncompanies G12 now blocks ({len(names)}):\n  " + ", ".join(names))
-    return 0
-
-
-def cmd_clear_unverdicted(apply: bool = False) -> int:
-    """Take every row he has not ruled on off Pipeline, keeping every Yes.
-
-    Krish 2026-09-20, after the sourcing defects were found and fixed:
-    "clear all but the yes's and let Sunday refill from the fixed source".
-
-    The reasoning behind allowing this at all. 65 of his 88 unverdicted rows
-    were LinkedIn links with no readable job description, so the restored bar
-    could not score them: no posting, no gates, no score. They are the output
-    of the sourcing he was right to complain about, and no gate can reach
-    them. Clearing is his call and he made it.
-
-    Three properties this has to have.
-
-    Nothing is deleted. Every row moves to the Applied tab, so the history is
-    intact and `restore <job_id>` puts any of them back.
-
-    Nothing is learned from it. Every DB row is stamped with
-    learn.AUTO_SOURCE, which the learning loop excludes by construction, and
-    the label carries no reason code. Clearing 59 rows must not teach hunter
-    that he dislikes 59 companies. A row hunter cannot stamp is left on the
-    sheet rather than archived, because an archived row with a rejection in
-    column A and no DB stamp is read as HIS rejection by the next reconcile.
-
-    Nothing he approved is touched. Counted before and after.
-    """
-    cfg, canon = build_context()
-    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    rows = sheet.read_pipeline(canon.sheet_headers)
-    approved_before = [r for r in rows
-                       if classify_verdict(r.verdict or "") == "go"]
-    targets = [r for r in rows if classify_verdict(r.verdict or "") == "none"]
-    print(f"Pipeline has {len(rows)} rows: {len(approved_before)} you approved, "
-          f"{len(targets)} you have not ruled on\n")
-    if not targets:
-        print("nothing to clear")
-        return 0
-
-    paired = _pair_sheet_to_db(cfg, rows)
-    known_ids = {r["job_id"] for r in db_get(
-        cfg, "hunter_seen_roles", {"select": "job_id", "limit": ALL_ROWS})}
-
-    stampable, mintable, stranded = [], [], []
-    for r in targets:
-        d = paired.get(r.row_number)
-        if d and d.get("job_id"):
-            stampable.append((r, d["job_id"]))
-            continue
-        jid = job_id(r.company, r.role)
-        # A minted id that already exists belongs to some other row, and
-        # stamping it would file this clearing against a different role.
-        (stranded if jid in known_ids else mintable).append((r, jid))
-
-    print(f"  {len(stampable)} row(s) have a database row to stamp")
-    print(f"  {len(mintable)} row(s) need one minted")
-    if stranded:
-        print(f"  {len(stranded)} row(s) cannot be stamped safely and STAY on "
-              f"Pipeline:")
-        for r, _ in stranded:
-            print(f"      row {r.row_number} {r.company} / {r.role}")
-    if not apply:
-        print(f"\ndry run. add --apply to archive "
-              f"{len(stampable) + len(mintable)} row(s) to "
-              f"{config_mod.ARCHIVE_TAB}. Nothing is deleted and restore "
-              f"reverses any of it.")
-        return 0
-
-    import json as json_mod
-    snapshot = [{"row": r.row_number, "job_id": jid, "company": r.company,
-                 "role": r.role, "url": r.jd_url, "cells": r.cells}
-                for r, jid in stampable + mintable]
-    print(f"\nsnapshot of {len(snapshot)} row(s) taken before any write")
-
-    if mintable:
-        db_insert(cfg, "hunter_seen_roles", [
-            {"job_id": jid, "company": r.company, "title": r.role,
-             "url": r.jd_url or "", "job_url": r.jd_url or "",
-             "source": r.cell("Source") or "sheet", "status": "dropped",
-             "sweep_date": TODAY(), "presented_at": NOW(),
-             "krish_verdict": CLEAR_LABEL, "verdict_at": NOW(),
-             "verdict_source": learn.AUTO_SOURCE,
-             "rejection_reason": "cleared on his instruction 2026-09-20; "
-                                 "sourced before the quality bar was restored"}
-            for r, jid in mintable], on_conflict="job_id", merge=True)
-        print(f"minted {len(mintable)} database row(s), all marked "
-              f"{learn.AUTO_SOURCE!r} so the learning loop ignores them")
-
-    for _r, jid in stampable:
-        db_patch(cfg, "hunter_seen_roles", {"job_id": jid},
-                 {"krish_verdict": CLEAR_LABEL, "verdict_at": NOW(),
-                  "verdict_source": learn.AUTO_SOURCE, "status": "dropped",
-                  "rejection_reason": "cleared on his instruction 2026-09-20; "
-                                      "sourced before the quality bar was "
-                                      "restored"})
-    print(f"stamped {len(stampable)} existing database row(s)")
-
-    moving = {r.row_number for r, _ in stampable + mintable}
-    sheet.set_verdicts({n: CLEAR_LABEL for n in moving})
-    fresh = {r.row_number: r for r in sheet.read_pipeline(canon.sheet_headers)}
-    sheet.archive_rows([fresh[n] for n in sorted(moving) if n in fresh],
-                       archive_tab=config_mod.ARCHIVE_TAB,
-                       archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
-                       headers=canon.sheet_headers)
-
-    after = sheet.read_pipeline(canon.sheet_headers)
-    approved_after = [r for r in after
-                      if classify_verdict(r.verdict or "") == "go"]
-    print(f"\narchived {len(moving)} row(s) to {config_mod.ARCHIVE_TAB}")
-    print(f"Pipeline now has {len(after)} rows")
-    print(f"approved rows: {len(approved_before)} before, "
-          f"{len(approved_after)} after")
-    if len(approved_after) != len(approved_before):
-        raise SheetError(
-            f"REFUSING TO REPORT SUCCESS: {len(approved_before)} approved rows "
-            f"went in and {len(approved_after)} came out. Investigate before "
-            f"anything else touches this sheet.")
-    print(json_mod.dumps({"cleared": len(moving),
-                          "approved_kept": len(approved_after)}))
-    return 0
-
-
 def cmd_restore(job_ids: list[str], apply: bool = False) -> int:
     """Put a row back on Pipeline that should never have left it.
 
@@ -1207,60 +1050,6 @@ def cmd_decline(pairs_in: list[tuple[int, str]], apply: bool = False) -> int:
 # Hunter took over from the incumbent on this date. Anything built before it
 # came off CV v11 and letter v1, both superseded by the masters in canon 9.9.
 HUNTER_TOOK_OVER = "2026-08-31"
-
-
-def cmd_disconnect(apply: bool = False) -> int:
-    """Unlink packages built on the superseded templates.
-
-    Krish asked for this and did not get it. Twelve packages were built
-    2026-08-11 by the retired incumbent from CV v11 and letter v1, all of them
-    on roles he said go to, and every one is marked package_status='built', so
-    select_for_build skips them permanently. Even after he marks a row Yes it
-    would never be rebuilt on the current format.
-
-    Disconnect means unlink. The Drive documents stay where they are: they are
-    not hunter's to bin.
-    """
-    cfg, canon = build_context()
-    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    rows = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,company,title,package_status,package_built_at,"
-                  "package_cv_url,package_letter_url",
-        "package_status": "neq.none", "limit": "1000"})
-    # Only a package that actually exists and predates the handover. A row
-    # sitting at 'blocked' with no build date is a different problem and is
-    # not this command's to touch.
-    stale = [r for r in rows
-             if r.get("package_status") == "built"
-             and str(r.get("package_built_at") or "")[:10] < HUNTER_TOOK_OVER]
-    print(f"{len(stale)} package(s) built before {HUNTER_TOOK_OVER} on the "
-          f"superseded templates:")
-    for r in stale:
-        print(f"  {str(r.get('package_built_at'))[:10]}  {r['company'][:22]:24} "
-              f"{str(r.get('title'))[:38]}")
-
-    live = sheet.read_pipeline(canon.sheet_headers)
-    linked = [r for r in live
-              if any((r.cell(n) or "").strip() not in ("", "Not built")
-                     for n in ("CV Doc", "Cover Letter Doc", "CV PDF", "CL PDF"))]
-    print(f"\n{len(linked)} Pipeline row(s) still show package links:")
-    for r in linked:
-        print(f"  row {r.row_number}: {r.company} / {r.role}")
-
-    if not apply:
-        print("\ndry run. add --apply to unlink. The Drive files are not touched.")
-        return 0
-
-    for r in stale:
-        db_patch(cfg, "hunter_seen_roles", {"job_id": r["job_id"]},
-                 {"package_status": "none", "package_built_at": None,
-                  "package_cv_url": None, "package_letter_url": None,
-                  "package_folder_url": None, "package_outreach_url": None})
-    if linked:
-        sheet.clear_package_links([r.row_number for r in linked])
-    print(f"\nunlinked {len(stale)} package(s) and cleared {len(linked)} sheet "
-          f"row(s). They rebuild on the current format once you mark them Yes.")
-    return 0
 
 
 def cmd_verify(apply: bool = False) -> int:
@@ -1421,38 +1210,6 @@ def cmd_set_dropdown() -> int:
     print(f"column A dropdown set to {len(values)} values over {rows} rows:")
     for v in values:
         print(f"  {v}")
-    return 0
-
-
-def cmd_prune_orphans(apply: bool = False) -> int:
-    """Delete Pipeline rows that no DB row explains.
-
-    A staged row always has a hunter_seen_roles row behind it. One without is
-    debris from a run that half-failed, and it cannot be assessed, verified or
-    archived because there is nothing to assess: every other command here
-    refuses to touch it, correctly. Only rows still reading exactly "New" are
-    ever removed, so nothing Krish has written on is at risk.
-    """
-    cfg, canon = build_context()
-    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    live = sheet.read_pipeline(canon.sheet_headers)
-    known = db_get(cfg, "hunter_seen_roles",
-                   {"select": "job_id,title,company,url,job_url", "limit": ALL_ROWS})
-    _, unmatched, _, _ = match_rows(live, list(known))
-    orphans = [r for r in unmatched if (r.verdict or "").strip() == "New"]
-    held = [r for r in unmatched if (r.verdict or "").strip() != "New"]
-    print(f"{len(orphans)} orphan row(s) to delete:")
-    for r in orphans:
-        print(f"  row {r.row_number:>3} {r.company[:24]:26} {r.role[:44]}")
-    for r in held:
-        print(f"  HELD row {r.row_number}: {r.company} reads {r.verdict!r}, not New")
-    if not apply:
-        print("\ndry run. add --apply to delete them.")
-        return 0
-    if orphans:
-        sheet.delete_rows([r.row_number for r in orphans], expect_verdict="New")
-    left = sheet.read_pipeline(canon.sheet_headers)
-    print(f"\ndeleted {len(orphans)}; Pipeline now has {len(left)} rows")
     return 0
 
 
@@ -2480,71 +2237,6 @@ def place_suffix(base: str, countries: frozenset, location: str, url: str,
         import hashlib
         suffix += "-" + hashlib.sha1((url or location).encode()).hexdigest()[:6]
     return suffix
-
-
-def cmd_dedupe_db() -> int:
-    """Mark DB rows that duplicate another row's identity (same company +
-    normalized title) status=duplicate so reconcile and the router ignore
-    them. The keeper is chosen by standing: a verdict, then a package, then
-    presented_at, then the incumbent's hash-suffixed job_id. A row with a
-    verdict or a package is never marked; groups where standing ties are
-    reported and left alone."""
-    cfg = load()
-    rows = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,company,title,krish_verdict,package_status,"
-                  "presented_at,status,url,job_url,location",
-        "status": "neq.duplicate", "limit": ALL_ROWS})
-    groups: dict = {}
-    exact: set = set()
-    for r in rows:
-        # one ATS posting is one posting whatever the incumbent called it;
-        # without a key, the squashed company plus the title decides
-        key = ats_key(r.get("url") or r.get("job_url"))
-        if key:
-            exact.add(key)
-        # ...and the country: the same title in London and in Seoul is two
-        # roles. A row whose place names no country groups on its own, so
-        # nothing is marked on a guess.
-        groups.setdefault(
-            key or (_squash(r.get("company") or ""), _norm_title(r.get("title") or ""),
-                    "|".join(sorted(country_of(r.get("location") or "")))),
-            []).append(r)
-    marked, held = 0, 0
-    for ident, group in sorted(groups.items(), key=lambda kv: str(kv[0])):
-        if len(group) < 2 or not ident[0] or not ident[1]:
-            continue
-
-        def rank(r):
-            return (bool(r.get("krish_verdict")),
-                    (r.get("package_status") or "none") != "none",
-                    bool(r.get("presented_at")),
-                    bool(HASH_SUFFIX.search(r.get("job_id") or "")))
-
-        ranked = sorted(group, key=rank, reverse=True)
-        keeper, losers = ranked[0], ranked[1:]
-        # Standing protects a row whose identity was INFERRED from a company and
-        # a title, because that match can be wrong and discarding a role Krish
-        # judged would be worse than a duplicate. It protects nothing when both
-        # rows carry the same ATS posting URL: that is not an inference, it is
-        # the same application twice, and holding it is how one Harvey posting
-        # sent two approval emails.
-        protected = [] if ident in exact else [
-            r for r in losers
-            if r.get("krish_verdict")
-            or (r.get("package_status") or "none") != "none"]
-        if protected:
-            held += 1
-            print(f"HELD {ident[0]}/{ident[1]}: more than one row has standing; "
-                  f"kept nothing, review {[r['job_id'] for r in group]}")
-            continue
-        for r in losers:
-            db_patch(cfg, "hunter_seen_roles", {"job_id": r["job_id"]},
-                     {"status": "duplicate",
-                      "rejection_reason": f"duplicate of {keeper['job_id']}"})
-            marked += 1
-            print(f"duplicate: {r['job_id']} -> keeper {keeper['job_id']}")
-    print(f"dedupe-db: {marked} rows marked duplicate, {held} groups held for review")
-    return 0
 
 
 def linkedin_search_urls(cfg: Config, sheet: Sheet) -> list[str]:
@@ -4412,31 +4104,6 @@ def cmd_process(max_packages: int = 0, retry_dead: bool = False) -> int:
     return 1 if failed else 0
 
 
-def cmd_migrate_columns(apply: bool = False) -> int:
-    """Pipeline first, then the Applied tab, both to the 30-column layout."""
-    cfg = load()
-    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    r1 = sheet.migrate_columns(tab=sheet_mod.TAB, sheet_id=config_mod.PIPELINE_SHEET_ID,
-                               apply=apply)
-    print(r1)
-    if apply and not (r1.get("verified") or r1.get("noop")):
-        print("Pipeline migration did not verify; the Applied tab is untouched")
-        return 1
-    r2 = sheet.migrate_columns(tab=config_mod.ARCHIVE_TAB,
-                               sheet_id=config_mod.ARCHIVE_SHEET_ID,
-                               trailing=sheet_mod.ARCHIVE_TRAILING, apply=apply)
-    print(r2)
-    if not apply:
-        print("\ndry run. add --apply to move the columns on both tabs")
-        return 0
-    canon = load_canon(cfg)
-    live = sheet.read_pipeline(canon.sheet_headers)
-    arch = sheet.read_archive()
-    print(f"\nverified: Pipeline reads {len(live)} rows on the new layout, "
-          f"{config_mod.ARCHIVE_TAB} reads {len(arch)}")
-    return 0
-
-
 def cmd_run() -> int:
     summary: Summary = Summary([f"hunter run {TODAY()}"])
     failed = False
@@ -5242,15 +4909,13 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
     return 1 if failed else 0
 
 
-def cmd_approvals_drain(apply: bool = False, send: bool = False) -> int:
+def cmd_approvals_drain(apply: bool = False) -> int:
     """Read Krish's replies and act on each one. Dry run by default.
 
     Three outcomes, and every reply gets exactly one:
-      approve  the token moves to approved, and with --send the application is
-               submitted in the same pass. He approved a picture of the completed
-               form, so the approval covers the send; asking a second time cost two
-               more emails and up to two more hours and bought nothing. The gate
-               inside submit still runs and still refuses on a changed plan hash
+      approve  the token moves to approved. He opens the filled form from
+               Control Center or the email, his extension fills it, and he
+               presses Submit himself. Nothing in hunter presses it
       amend    the old token is superseded so a stale APPROVE cannot land later,
                the package is rebuilt with his words passed through verbatim, and
                a fresh approval email goes out with a new token
@@ -5293,15 +4958,9 @@ def cmd_approvals_drain(apply: bool = False, send: bool = False) -> int:
             approval.mark_processed(cfg, r["token"], r["message_id"],
                                     row.get("processed_message_ids"))
             acted += 1
-            if not send:
-                print(f"         approved, not sent. To send: "
-                      f"python -m hunter.run submit --token {r['token']} --confirm")
-                continue
-            # He approved a picture of the completed form, so the approval covers
-            # the send: asking again bought nothing and cost two more emails. The
-            # gate still runs inside submit and still refuses on a changed plan hash.
-            rc = cmd_submit(r["token"], confirm=True)
-            print(f"         {'submitted' if rc == 0 else 'not submitted, see above'}")
+            # Approved. He opens the filled form from Control Center or the
+            # email and his extension fills it. Nothing here presses anything.
+            print("         approved; open it from Control Center or the email")
             continue
 
         # amend. The old token dies first: if the rebuild fails, the worst case is
@@ -5995,84 +5654,6 @@ def staged_company_lines(cfg: Config, limit: int = 25) -> list[str]:
     return out
 
 
-def cmd_submit(token: str, confirm: bool = False) -> int:
-    """Fill one approved application. Press submit only with --confirm.
-
-    Without --confirm it fills the real form on the real site and stops, which is
-    how the first live one gets checked: read the screenshot, confirm every field
-    and that the button is untouched, then run it again with --confirm.
-    """
-    from .apply import approval, merge, submit as submit_mod
-    from .apply.audit import ATT_CV
-    from .docbuild import DocBuild
-
-    cfg, canon = build_context()
-    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    row = approval.get_row(cfg, token)
-    if not row:
-        print(f"no approval row for token {token!r}")
-        return 1
-    rows = db_get(cfg, "hunter_seen_roles",
-                  {"select": "*", "job_id": f"eq.{row['job_id']}", "limit": "1"})
-    if not rows:
-        print(f"no role row for {row['job_id']}")
-        return 1
-
-    plan, au, role = build_fill_plan(cfg, sheet, rows[0], essays=approved_essays(row))
-    db = DocBuild(GoogleOAuth(cfg).access_token())
-    cv_id = (rows[0].get("package_cv_url") or "").split("/d/")[-1].split("/")[0]
-    letter_id = (rows[0].get("package_letter_url") or "").split("/d/")[-1].split("/")[0]
-    attachments: dict[str, bytes] = {}
-    if cv_id and letter_id:
-        cv_pdf, letter_pdf = db.export_pdf(cv_id), db.export_pdf(letter_id)
-        if au.attachment_style == ATT_CV:
-            # One slot, one file, letter first: the same rule the approval email
-            # told him it would follow.
-            attachments["file_resume"] = merge.merge_pdfs(letter_pdf, cv_pdf)
-        else:
-            attachments["file_resume"] = cv_pdf
-            attachments["file_cover"] = letter_pdf
-
-    print(f"{role.company} {role.title}\n  {plan.ats} {plan.slug}/{plan.posting_id}"
-          f"\n  {len(plan.fields)} fields, {len(plan.blocking)} blocking, "
-          f"attachments: {', '.join(attachments) or 'none'}")
-    try:
-        out = submit_mod.submit(cfg, token, plan, attachments=attachments,
-                                confirm=confirm)
-    except submit_mod.SubmitBlocked as e:
-        print(f"\nREFUSED: {e}")
-        return 1
-    print(f"\nstate: {out['state']}"
-          + (f"  ({out['reason']})" if out.get("reason") else ""))
-    if out.get("filled"):
-        print(f"  filled: {', '.join(out['filled'][:8])}")
-    if out.get("missed"):
-        print(f"  NOT filled: {', '.join(out['missed'][:8])}")
-    if out["state"] == "filled":
-        print(f"\nNothing was sent. Re-run with --confirm to press submit:"
-              f"\n  python -m hunter.run submit --token {token} --confirm")
-    if out["state"] == approval.SUBMITTED:
-        record_applied(cfg, canon, sheet, row["job_id"],
-                       company=role.company, role=role.title,
-                       screenshot=out.get("screenshot") or "",
-                       confirmation=out.get("confirmation") or "",
-                       after_png=out.get("after_png") or b"")
-    elif confirm:
-        # A send that was attempted and did not land is exactly as silent as a
-        # send that landed used to be. The reason reached a GitHub Actions log and
-        # stopped, and Krish went on believing an approved application was in.
-        try:
-            send_send_failed(cfg, company=role.company, role=role.title,
-                             token=token, state=out["state"],
-                             reason=out.get("reason") or "",
-                             missed=out.get("missed") or [],
-                             notes=out.get("notes") or [])
-            print("  told him it did not send")
-        except Exception as e:
-            print(f"  failure notice email FAILED: {e}")
-    return 0 if out["state"] in ("filled", approval.SUBMITTED) else 1
-
-
 def send_send_failed(cfg: Config, *, company: str, role: str, token: str,
                      state: str, reason: str, missed: list[str],
                      notes: list[str]) -> None:
@@ -6093,97 +5674,6 @@ def send_send_failed(cfg: Config, *, company: str, role: str, token: str,
                                                 (list(missed) + list(notes))])
     notify.send_email(cfg, f"NOT sent: {company} {role}", html,
                       to=notify.mailbox(cfg), text=text)
-
-
-def cmd_apply_local(token: str = "", cdp_url: str = "", profile_dir: str = "",
-                    port: int = 0) -> int:
-    """Open the next approved application, filled, in Krish's own browser.
-
-    His answer to the thing that actually blocks this: "have the approve button
-    take me to a filled-out form, ready to press submit myself, with the uploads
-    attached". A link in an email cannot do that, because a page may not put a
-    file into a file input, which is the one part of an application that matters
-    most. A browser being driven can, and this one is his.
-
-    It also removes the reason the first submission never arrived. Harvey's form
-    scores its visitor with invisible reCAPTCHA v3, and a headless Chromium in a
-    datacentre fails that score, so the press was refused with nothing shown.
-    Attaching to a normally started Chrome reads navigator.webdriver false, not
-    because anything is masked but because it genuinely was not started by
-    automation, and the person pressing the button really is a person.
-
-    Nothing here can submit: open_for_human never calls press_submit and holds no
-    reference to it. The last click is his.
-    """
-    from .apply import approval, merge, submit as submit_mod
-    from .apply.audit import ATT_CV
-    from .docbuild import DocBuild
-
-    cfg, canon = build_context()
-    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    if token:
-        row = approval.get_row(cfg, token)
-        rows = [row] if row else []
-    else:
-        rows = db_get(cfg, approval.TABLE,
-                      {"select": "*", "state": f"eq.{approval.APPROVED}",
-                       "order": "decided_at.desc", "limit": "1"})
-    if not rows or not rows[0]:
-        print("nothing approved and waiting. Reply APPROVE to an application "
-              "email first, or pass --token")
-        return 1
-    row = rows[0]
-    if row["state"] != approval.APPROVED:
-        print(f"token is {row['state']!r}, not {approval.APPROVED!r}")
-        return 1
-
-    roles = db_get(cfg, "hunter_seen_roles",
-                   {"select": "*", "job_id": f"eq.{row['job_id']}", "limit": "1"})
-    if not roles:
-        print(f"no role row for {row['job_id']}")
-        return 1
-    plan, au, role = build_fill_plan(cfg, sheet, roles[0], essays=approved_essays(row))
-    db = DocBuild(GoogleOAuth(cfg).access_token())
-    cv_id = (roles[0].get("package_cv_url") or "").split("/d/")[-1].split("/")[0]
-    letter_id = (roles[0].get("package_letter_url") or "").split("/d/")[-1].split("/")[0]
-    attachments: dict[str, bytes] = {}
-    names: dict[str, str] = {}
-    if cv_id and letter_id:
-        cv_pdf, letter_pdf = db.export_pdf(cv_id), db.export_pdf(letter_id)
-        if au.attachment_style == ATT_CV:
-            attachments["file_resume"] = merge.merge_pdfs(letter_pdf, cv_pdf)
-            names["file_resume"] = merge.merged_name(role.company)
-        else:
-            attachments["file_resume"], attachments["file_cover"] = cv_pdf, letter_pdf
-            names["file_resume"] = "KrishRaja_CV.pdf"
-            names["file_cover"] = "KrishRaja_CoverLetter.pdf"
-
-    print(f"{role.company} {role.title}\n  opening the form in your browser")
-    try:
-        out = submit_mod.open_for_human(
-            plan, attachments=attachments, names=names, cdp_url=cdp_url,
-            profile_dir=profile_dir,
-            **({"port": port} if port else {}))
-    except submit_mod.SubmitBlocked as e:
-        # A missing browser is the one setup mistake this will actually hit, and
-        # a stack trace is not an instruction.
-        print(f"  {e}")
-        return 1
-    if out["error"] or out["blocker"]:
-        print(f"  could not open it: {out['blocker'] or out['error']}")
-        return 1
-    print(f"  filled {len(out['filled'])} field(s)")
-    if out["missed"]:
-        print(f"  NOT filled, do these yourself: {', '.join(out['missed'])}")
-    for n in out["notes"]:
-        print(f"  {n}")
-    if out["files"]:
-        print(f"  attached: {', '.join(p.split('/')[-1] for p in out['files'])}")
-    print(f"\n  {out['url']}\n"
-          f"  Read it and press Submit. The employer's receipt closes the row by\n"
-          f"  itself, usually within minutes. Nothing else to do.\n"
-          f"  (If it never arrives: python -m hunter.run applied --token {row['token']})")
-    return 0
 
 
 SAID_SO = "Krish said he submitted this himself"
@@ -6293,69 +5783,6 @@ def cmd_applied(token: str = "", job_ids: str = "") -> int:
         except Exception as e:
             print(f"digest email FAILED: {e}")
     return 0
-
-
-def cmd_watch(once: bool = False, every: int = 60, port: int = 0,
-              profile_dir: str = "") -> int:
-    """Sit on Krish's PC and open each approved application as it is approved.
-
-    His actual ask: press Approve in the email and have a filled form appear,
-    ready to submit. Nothing else in this system can deliver that, because a web
-    page may not put a file into a file input and no link ever will. Something
-    has to be running on the machine with the browser on it. This is that thing,
-    and it is the only part of hunter that lives on his computer.
-
-    So the loop he sees is: reply APPROVE, wait a minute, press Submit. No
-    command, no terminal. It also runs the confirmation pass, so the receipt from
-    the employer closes the row without him doing anything at all.
-    """
-    from .apply import submit as submit_mod
-    seen: set[str] = set()
-    port = port or submit_mod.DEBUG_PORT
-    print(f"watching for approved applications, every {every}s. Ctrl-C to stop.")
-    while True:
-        try:
-            opened = _open_approved(seen, port=port, profile_dir=profile_dir)
-            if opened:
-                print(f"  {opened} form(s) opened. Read each one and press Submit.")
-            cmd_confirmations(apply=True)
-        except KeyboardInterrupt:
-            print("\nstopped")
-            return 0
-        except Exception as e:
-            # A watcher that dies on one bad poll is a watcher he finds dead a
-            # week later, which is the failure this whole session has been about.
-            print(f"  poll failed, carrying on: {e.__class__.__name__}: {e}")
-        if once:
-            return 0
-        try:
-            time.sleep(every)
-        except KeyboardInterrupt:
-            print("\nstopped")
-            return 0
-
-
-def _open_approved(seen: set[str], *, port: int, profile_dir: str) -> int:
-    """Open every approved application not opened already this session."""
-    from .apply import approval
-    cfg, _canon = build_context()
-    rows = db_get(cfg, approval.TABLE,
-                  {"select": "token", "state": f"eq.{approval.APPROVED}",
-                   "order": "decided_at.asc", "limit": "10"})
-    opened = 0
-    for r in rows:
-        if r["token"] in seen:
-            continue
-        seen.add(r["token"])
-        if cmd_apply_local(token=r["token"], port=port,
-                           profile_dir=profile_dir) == 0:
-            opened += 1
-        # One at a time. Ten approvals answered in one sitting would otherwise
-        # arrive as ten tabs at once, which is not a review, and the next one is
-        # a minute away anyway.
-        if opened:
-            break
-    return opened
 
 
 def retire_dead_posting(cfg: Config, canon, sheet: Sheet, job_id: str, *,
@@ -6830,12 +6257,8 @@ def main(argv: list[str]) -> int:
     if cmd == "process":
         mx = int(argv[argv.index("--max") + 1]) if "--max" in argv else 0
         return cmd_process(max_packages=mx, retry_dead="--retry-dead" in argv)
-    if cmd == "migrate-columns":
-        return cmd_migrate_columns(apply="--apply" in argv)
     if cmd == "reconcile":
         return cmd_reconcile()
-    if cmd == "migrate-sheet":
-        return cmd_migrate_sheet()
     if cmd == "build":
         if len(argv) < 3 or argv[1] != "--job-id":
             print("usage: python -m hunter.run build --job-id <job_id>")
@@ -6843,8 +6266,6 @@ def main(argv: list[str]) -> int:
         return cmd_build(argv[2])
     if cmd == "recon":
         return cmd_recon()
-    if cmd == "dedupe-db":
-        return cmd_dedupe_db()
     if cmd == "regate":
         frm = int(argv[argv.index("--from") + 1]) if "--from" in argv else 41
         lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else 0
@@ -6913,16 +6334,6 @@ def main(argv: list[str]) -> int:
         return cmd_bank_seed(apply="--apply" in argv)
     if cmd == "gtm-seed":
         return cmd_gtm_seed(apply="--apply" in argv)
-    if cmd == "submit":
-        tok = ""
-        if "--token" in argv:
-            i = argv.index("--token")
-            if i + 1 < len(argv):
-                tok = argv[i + 1]
-        if not tok:
-            print("usage: python -m hunter.run submit --token X [--confirm]")
-            return 2
-        return cmd_submit(tok, confirm="--confirm" in argv)
     def _flag(name: str, default: str = "") -> str:
         if name in argv:
             i = argv.index(name)
@@ -6930,15 +6341,6 @@ def main(argv: list[str]) -> int:
                 return argv[i + 1]
         return default
 
-    if cmd == "apply-local":
-        return cmd_apply_local(token=_flag("--token"),
-                               cdp_url=_flag("--cdp"),
-                               profile_dir=_flag("--profile"))
-    if cmd == "watch":
-        return cmd_watch(once="--once" in argv,
-                         every=int(_flag("--every", "60")),
-                         port=int(_flag("--port", "0")),
-                         profile_dir=_flag("--profile"))
     if cmd == "settle":
         return cmd_settle(apply="--apply" in argv)
     if cmd == "blind-set":
@@ -6964,8 +6366,7 @@ def main(argv: list[str]) -> int:
             return 2
         return cmd_applied(token=tok, job_ids=jids)
     if cmd == "approvals-drain":
-        return cmd_approvals_drain(apply="--apply" in argv,
-                                   send="--send" in argv)
+        return cmd_approvals_drain(apply="--apply" in argv)
     if cmd == "approvals":
         jid = ""
         if "--job-id" in argv:
@@ -6982,18 +6383,10 @@ def main(argv: list[str]) -> int:
         return cmd_audit_forms(apply="--apply" in argv, limit=lim)
     if cmd == "verify":
         return cmd_verify(apply="--apply" in argv)
-    if cmd == "disconnect":
-        return cmd_disconnect(apply="--apply" in argv)
-    if cmd == "recover-verdicts":
-        return cmd_recover_verdicts(apply="--apply" in argv)
-    if cmd == "clear-unverdicted":
-        return cmd_clear_unverdicted(apply="--apply" in argv)
     if cmd == "archive":
         return cmd_archive(apply="--apply" in argv)
     if cmd == "set-dropdown":
         return cmd_set_dropdown()
-    if cmd == "prune-orphans":
-        return cmd_prune_orphans(apply="--apply" in argv)
     if cmd == "prune-sheet":
         return cmd_prune_sheet(apply="--apply" in argv,
                                include_ungated="--incumbent" in argv,
@@ -7278,15 +6671,14 @@ def main(argv: list[str]) -> int:
                     return 1
         return 0
     print(f"unknown command {cmd!r}; commands: process [--max N] [--retry-dead], "
-          f"run, reconcile, migrate-columns [--apply], migrate-sheet, "
-          f"build --job-id X, recon, dedupe-db, learn [--apply], drain [--id X], verify, "
+          f"run, reconcile, "
+          f"build --job-id X, recon, learn [--apply], drain [--id X], verify, "
           f"bank-check, audit-forms [--apply] [--limit N], simulate [--send], bank-seed [--apply], "
           "gtm-seed [--apply], approvals [--apply] [--job-id X], "
-          "approvals-drain [--apply] [--send], submit --token X [--confirm], "
+          "approvals-drain [--apply], actions [--apply], drafts [--apply], "
           "newsletter [--apply] [--limit N], "
           "bridges [--ingest DIR], prune-sheet [--apply], regate, archive, "
           "layout, invariants [--apply], amendments, preflight, "
-          "clear-unverdicted [--apply], "
           "watchdog [--send], review-email [--send], doctor [--offline], "
           "door-coverage [--from-dump DIR] [--json PATH], "
           "door-cards [--from-dump DIR] [--skip a,b] [--observe] [--apply] [--refresh-only]")

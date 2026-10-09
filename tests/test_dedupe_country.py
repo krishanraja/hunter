@@ -95,17 +95,3 @@ def test_the_learning_twin_is_never_in_another_country():
     assert _identity_twin(london, [london, seoul, nyc]) is nyc
 
 
-def test_the_clean_up_never_merges_two_countries(monkeypatch, capsys):
-    import hunter.run as R
-    rows = [{"job_id": "sierra:regional-vp-sales", "company": "Sierra", "title": "Regional VP, Sales",
-             "location": "Seoul, South Korea", "url": "https://www.linkedin.com/jobs/view/1"},
-            {"job_id": "sierra:regional-vp-sales-uk", "company": "Sierra", "title": "Regional VP, Sales",
-             "location": "London", "url": "https://www.linkedin.com/jobs/view/2"},
-            {"job_id": "sierra:regional-vp-sales-a1b2c3", "company": "Sierra", "title": "Regional VP, Sales",
-             "location": "London, England", "url": "https://www.linkedin.com/jobs/view/3"}]
-    patched = []
-    monkeypatch.setattr(R, "load", lambda: None)
-    monkeypatch.setattr(R, "db_get", lambda cfg, table, params: rows)
-    monkeypatch.setattr(R, "db_patch", lambda cfg, t, key, body: patched.append(key["job_id"]))
-    R.cmd_dedupe_db()
-    assert patched == ["sierra:regional-vp-sales-uk"], "the two London rows are one; Seoul is its own"

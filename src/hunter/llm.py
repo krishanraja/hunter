@@ -67,6 +67,30 @@ PURPOSES = {
 }
 
 
+# Which provider answers first, per job. Krish, 2026-10-09: use the other keys
+# where the Anthropic one is not needed. A job that reads and extracts rather
+# than writes in his name can go to OpenAI first, with Anthropic behind it.
+# Prose in his name (tailor, essay, door_observation) and anything measured
+# against his rulings (the judge, lookalike) stays on Anthropic: moving those
+# is a measurement, not a setting. hunter_provider_<purpose> overrides one job
+# without a deploy; hunter_model_order is the default for the rest.
+PROVIDER_ORDER = {
+    "newsletter": "openai,anthropic",
+}
+# The OpenAI path has no search tool, so a call that needs one is never sent
+# there, whatever the order says.
+SEARCHES = {"anthropic"}
+
+
+def provider_order(cfg: Config, purpose: str, *, web_search: bool = False) -> list[str]:
+    default = PROVIDER_ORDER.get(purpose, cfg.optional("hunter_model_order", DEFAULT_ORDER))
+    names = [p.strip() for p in cfg.optional(f"hunter_provider_{purpose}", default).split(",")
+             if p.strip() in PROVIDERS]
+    if web_search:
+        names = [p for p in names if p in SEARCHES]
+    return names
+
+
 def model_for(cfg: Config, purpose: str) -> tuple[str, str | None]:
     """(model, effort) for a job. Effort None means the call sends none."""
     model, effort = PURPOSES.get(
@@ -186,8 +210,6 @@ def _openai(cfg: Config, prompt: str, *, max_tokens: int,
                        + json.dumps(schema)}
     resp = client.chat.completions.create(**kwargs)
     u = getattr(resp, "usage", None)
-    # No OpenAI price is in spend.PRICES, so these calls are costed at the
-    # dearest rate there: an overcount the month ceiling can live with.
     spend.record(cfg, purpose, kwargs["model"],
                  {"input_tokens": int(getattr(u, "prompt_tokens", 0) or 0),
                   "output_tokens": int(getattr(u, "completion_tokens", 0) or 0)},
@@ -216,9 +238,7 @@ def complete(cfg: Config, prompt: str, *, max_tokens: int = 1500,
     purpose picks the model and effort (PURPOSES) and labels the call in the
     spend ledger. cache marks the system text for the prompt cache.
     """
-    order = [p.strip() for p in
-             cfg.optional("hunter_model_order", DEFAULT_ORDER).split(",")
-             if p.strip() in PROVIDERS]
+    order = provider_order(cfg, purpose, web_search=web_search)
     notes: list[str] = []
     stop = spend.over_budget(cfg)
     if stop:

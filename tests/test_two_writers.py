@@ -72,3 +72,23 @@ def test_lookalike_is_under_the_months_ceiling(monkeypatch):
     co = Company(key="acme", name="Acme")
     scored, usd, problems = lookalike.score(None, [co], [], [], client=Boom())
     assert (scored, usd) == (0, 0.0) and "did not run" in problems[0]
+
+
+def test_extraction_goes_to_openai_first_and_his_words_stay_on_anthropic():
+    # Krish, 2026-10-09: use the other keys where the Anthropic one is not needed.
+    from hunter import llm
+
+    class Cfg:
+        def __init__(self, **kv): self.kv = kv
+        def optional(self, k, d=""): return self.kv.get(k, d)
+    assert llm.provider_order(Cfg(), "newsletter") == ["openai", "anthropic"]
+    for purpose in ("tailor", "essay", "door_observation", "rationale"):
+        assert llm.provider_order(Cfg(), purpose) == ["anthropic", "openai"], purpose
+    # A job that searches the web can only go where there is a search tool.
+    assert llm.provider_order(Cfg(), "cold_targets", web_search=True) == ["anthropic"]
+    assert llm.provider_order(Cfg(hunter_provider_newsletter="anthropic"), "newsletter") == ["anthropic"]
+
+
+def test_an_openai_call_is_priced_at_its_own_rate_not_the_dearest():
+    from hunter import spend
+    assert spend.PRICES["gpt-4.1-mini"]["out"] < spend.PRICES["claude-sonnet-5-5"]["out"]

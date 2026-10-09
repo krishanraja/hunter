@@ -218,23 +218,6 @@ def test_waiting_on_krish_is_not_a_fault(ledger):
     assert mail == []
 
 
-def test_the_watcher_opens_one_form_at_a_time(monkeypatch):
-    """Ten approvals answered in one sitting would arrive as ten tabs at once,
-    which is not a review. The next one is a minute away anyway."""
-    monkeypatch.setattr(R, "build_context", lambda: (None, None))
-    monkeypatch.setattr(R, "db_get", lambda cfg, table, params: [
-        {"token": "t1"}, {"token": "t2"}, {"token": "t3"}])
-    opened = []
-    monkeypatch.setattr(R, "cmd_apply_local",
-                        lambda token=None, port=0, profile_dir="":
-                        opened.append(token) or 0)
-    seen = set()
-    assert R._open_approved(seen, port=9222, profile_dir="") == 1
-    assert opened == ["t1"]
-    assert R._open_approved(seen, port=9222, profile_dir="") == 1
-    assert opened == ["t1", "t2"]
-
-
 def test_a_dead_posting_is_retired_not_just_skipped(monkeypatch):
     """Krish: the listing has been taken down, so the role should be purged.
     A skipped row is still a built package and comes back on the next run."""
