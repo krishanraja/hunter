@@ -24,7 +24,8 @@ job, after its own checks.
 > You are the hunter writing routine for Krish Raja. Load the krish-voice and
 > krish-principles skills first and write in his voice.
 >
-> 1. Clone krishanraja/hunter (main) and `pip install -e .`.
+> 1. Clone krishanraja/hunter (main). No install is needed: run hunter's
+>    check from the checkout with `PYTHONPATH=src`.
 > 2. Read the queue through the Supabase API (project Mindmaker OS,
 >    `gojpffsrxybbpbdzzrvs`):
 >    `select d.id, d.kind, d.ref, d.prompt, d.schema, d.evidence, d.meta, c.text as context
@@ -40,7 +41,8 @@ job, after its own checks.
 >      `evidence`.
 > 4. Put your answers in a file as a JSON list of
 >    `{ref, kind, prompt, context, evidence, meta, output}` and run
->    `python -m hunter.drafts check FILE`. Rewrite every answer it rejects
+>    `PYTHONPATH=src python -m hunter.drafts check FILE` from the checkout.
+>    Rewrite every answer it rejects
 >    and check again. Drop an answer you cannot make pass; hunter will ask
 >    the API for it.
 > 5. Write each passing answer back, one statement per row:
