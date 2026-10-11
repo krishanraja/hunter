@@ -15,6 +15,29 @@ The target, four layers:
 
 ---
 
+## 2026-10-11: the routine's first real batch, and a bug it exposed
+
+The Sunday batch ran (265 candidates, 100 judged for $3.30, 17 presented;
+the function bar spared 29 calls and the company bar 23). No case was queued:
+staging hands the queue a ResolvedRole (jd_text, jd_url), not a judge.Role,
+and queue_case read attributes it does not have. Every one of the 17 failed
+with an AttributeError that the summary recorded and nothing else surfaced,
+so the rows reached him with the judge's short reason. The API path was never
+hit, so nothing was spent either way.
+
+Fixed the same afternoon (PR 16): queue_case normalises what it is handed, a
+test carries the exact shape staging uses, and `drafts --requeue N` is the
+repair for a batch whose cases never queued. Then the loop ran end to end for
+the first time on cases: 11 requeued, the routine wrote all 11 on his plan in
+one pass, hunter's checks passed all 11, the rows and the sheet carry them, and
+the ledger shows 0 API calls for cases today. The 7 door-in opening lines went
+the same way on 9 October.
+
+Still to read, by him: the plan usage those two routine runs cost, from his
+subscription usage page.
+
+---
+
 ## 2026-10-09: his yes to the merge and the routine
 
 His words: "Merge to main and turn on the routine yourself. Do all of the rest
