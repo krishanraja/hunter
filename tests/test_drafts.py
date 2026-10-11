@@ -120,3 +120,19 @@ def test_pressing_an_application_reuses_the_essays_he_approved():
     assert run.approved_essays(row) == {"Why us?": "Because."}
     assert run.approved_essays({"fill_plan": json.dumps({"essays": {}})}) == {}
     assert run.approved_essays({}) is None and run.approved_essays({"fill_plan": "not json"}) is None
+
+
+def test_a_case_queues_from_the_role_staging_actually_carries(monkeypatch):
+    # 2026-10-11: every case for the Sunday batch failed with an AttributeError,
+    # because staging hands over a ResolvedRole (jd_text, jd_url), not a judge.Role.
+    class Resolved:
+        job_id = "acme:vp-revenue"; company = "Acme"; title = "VP Revenue"
+        location = "NYC"; comp = ""; jd_url = "https://jobs.acme/1"; jd_text = "Acme sells software."
+        source = "ashby"
+    asked = []
+    monkeypatch.setattr(drafts, "request", lambda cfg, kind, ref, prompt, **kw: asked.append((kind, ref, kw)) or True)
+    assert drafts.queue_case(None, "ctx", Resolved(), meta={"score": 7})
+    kind, ref, kw = asked[0]
+    assert (kind, ref) == ("case", "acme:vp-revenue")
+    assert kw["meta"]["role"]["posting"] == "Acme sells software."
+    assert kw["meta"]["role"]["url"] == "https://jobs.acme/1"

@@ -6601,6 +6601,13 @@ def main(argv: list[str]) -> int:
         from . import drafts
         cfg, canon = build_context()
         sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        if "--requeue" in argv:
+            # The repair for a batch whose cases never queued: ask again for
+            # every role presented in the last N days.
+            days = int(argv[argv.index("--requeue") + 1])
+            for line in drafts.requeue_presented(cfg, sheet, canon, days=days):
+                print(line)
+            return 0
         for line in drafts.settle(cfg, apply="--apply" in argv, sheet=sheet,
                                   canon_headers=canon.sheet_headers):
             print(line)
