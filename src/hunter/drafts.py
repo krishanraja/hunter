@@ -268,10 +268,27 @@ def _api_observation(cfg, r):
     return " ".join((text or "").split()).strip().strip('"') or None
 
 
+def as_judge_role(role):
+    """A judge.Role from whatever staging hands over: a judge.Role, or the
+    ResolvedRole a candidate carries, which spells the posting jd_text and
+    the link jd_url. On 2026-10-11 every case for the Sunday batch failed to
+    queue on exactly that difference, and 17 roles reached him without one."""
+    from . import judge
+    if isinstance(role, judge.Role):
+        return role
+    return judge.Role(
+        job_id=role.job_id, company=role.company, title=role.title,
+        location=getattr(role, "location", "") or "", comp=getattr(role, "comp", "") or "",
+        url=getattr(role, "jd_url", "") or getattr(role, "url", "") or "",
+        posting=getattr(role, "jd_text", None) or getattr(role, "posting", "") or "",
+        source=getattr(role, "source", "") or "")
+
+
 def queue_case(cfg, system: str, role, *, meta: dict) -> bool:
     """A case request for one row about to reach his sheet."""
     from . import judge
     from .package.rationale import RATIONALE_SCHEMA
+    role = as_judge_role(role)
     m = dict(meta)
     m["company"] = role.company
     m["role"] = {"company": role.company, "title": role.title, "location": role.location,
@@ -280,6 +297,29 @@ def queue_case(cfg, system: str, role, *, meta: dict) -> bool:
     return request(cfg, "case", role.job_id,
                    judge.user_prompt(role) + "\n\n" + judge.CASE_PROMPT,
                    context=system, schema=RATIONALE_SCHEMA, meta=m)
+
+
+def requeue_presented(cfg, sheet, canon, *, days: int = 2) -> list[str]:
+    """Queue a case for every role presented in the last `days` that has none:
+    the repair for a batch whose cases did not queue. Reads the judge's live
+    context once; writes nothing but the queue."""
+    from . import judge_stage
+    since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat()
+    rows = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,location,comp,url,job_url,jd_text,source,score,judge_fit",
+        "presented_at": f"gte.{since}", "judge_verdict": "not.is.null", "limit": ALL_ROWS})
+    if not rows:
+        return ["requeue: no roles presented in that window"]
+    system = judge_stage.live_context(cfg, sheet, canon)
+    queued = 0
+    for r in rows:
+        from . import judge
+        role = judge.Role(job_id=r["job_id"], company=r.get("company") or "", title=r.get("title") or "",
+                          location=r.get("location") or "", comp=r.get("comp") or "",
+                          url=r.get("job_url") or r.get("url") or "", posting=r.get("jd_text") or "",
+                          source=r.get("source") or "")
+        queued += queue_case(cfg, system, role, meta={"score": r.get("score")})
+    return [f"requeue: {queued} case(s) queued for the writing routine out of {len(rows)} presented"]
 
 
 def queue_observation(cfg, card, evidence: str):
