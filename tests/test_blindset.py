@@ -44,13 +44,14 @@ def test_a_row_is_a_pipeline_row_with_no_score():
     """His words: the same column format as Pipeline, always. The Score stays
     empty: the old score points the wrong way and the judge's fit would give
     its call away."""
-    from hunter.sheet import COLS, HEADERS
+    from hunter.sheet import AI_SCORE, AI_WHY, COLS, HEADERS, HIS_COLS
     p = dict(row(1), why="Runs GTM. FIT: like Clay. RISK: pay unstated.",
              snippet="C1 sells software; the seat runs GTM.", source="linkedin")
     r = blindset.row_for(p)
     assert len(r) == len(HEADERS)
-    assert r[COLS["Score"]] == ""
-    assert r[COLS["Why It Fits"]].startswith("Runs GTM. FIT:")
+    assert r[COLS[AI_SCORE]] == ""
+    assert all(r[COLS[n]] == "" for n in HIS_COLS), "his two columns are his to fill"
+    assert r[COLS[AI_WHY]].startswith("Runs GTM. FIT:")
     assert r[COLS["JD Snippet"]] == "C1 sells software; the seat runs GTM."
     assert "HYPERLINK" in r[COLS["Job Link"]] and "https://x/1" in r[COLS["Job Link"]]
     assert r[COLS["Business"]] == "C1" and r[COLS["Location"]] == "NYC"
@@ -153,6 +154,10 @@ class Sheet:
     def _post(self, path, body):
         self.posts.append((path, body))
 
+    def narrow_score_colours(self, *, sheet_id=None):
+        self.narrowed = sheet_id
+        return {"narrowed": 0, "noop": True, "verified": True}
+
     def _write(self, blocks, raw=False):
         self.writes.append((blocks, raw))
 
@@ -161,7 +166,7 @@ class Sheet:
         for r in rows:
             assert not validate_row(r, is_append=True), validate_row(r, is_append=True)
         self.appended.extend(rows)
-        return f"Pipeline!A12:AD{11 + len(rows)}"
+        return f"Pipeline!A12:AF{11 + len(rows)}"
 
     def set_verdicts(self, mapping):
         self.verdicts = mapping
@@ -198,11 +203,12 @@ def test_a_tab_that_does_not_read_back_is_an_error():
     data, raw = ok.writes[0]
     assert not raw, "HYPERLINK formulas need USER_ENTERED, as on Pipeline"
     assert data[0][0].startswith("'Blind Set'!A3:")
-    assert ok.writes[1] == ([("'Blind Set'!AE3:AE3", [["j1"]])], True)
+    assert ok.writes[1] == ([("'Blind Set'!AG3:AG3", [["j1"]])], True)
+    assert ok.narrowed == 99, "the copied colours come back to AI Score alone"
 
 
 def test_his_yes_reaches_pipeline_once_as_the_same_row(monkeypatch):
-    from hunter.sheet import COLS
+    from hunter.sheet import AI_SCORE, AI_WHY, COLS
     patched = []
 
     def db_get(cfg, table, params):
@@ -221,8 +227,8 @@ def test_his_yes_reaches_pipeline_once_as_the_same_row(monkeypatch):
     r = s.appended[0]
     assert r[COLS["Verdict"]] == "New", "Pipeline takes a new row only as New"
     assert s.verdicts == {12: "Yes"}, "then his Yes is written onto the row it landed on"
-    assert r[COLS["Score"]] == "6" and r[COLS["Source"]] == blindset.SOURCE
-    assert r[COLS["Why It Fits"]] == "The case. FIT: x. RISK: y."
+    assert r[COLS[AI_SCORE]] == "6" and r[COLS["Source"]] == blindset.SOURCE
+    assert r[COLS[AI_WHY]] == "The case. FIT: x. RISK: y."
     assert r[COLS["JD Snippet"]] == "snip"
     assert patched == [({"job_id": "j1"}, {"status": "staging",
                                           "presented_at": patched[0][1]["presented_at"]})]

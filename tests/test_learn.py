@@ -228,9 +228,9 @@ def test_an_unresolvable_row_is_refused_not_guessed():
     A guess is worse than a refusal: it can stamp a rejection onto a role he
     wants."""
     from hunter.run import resolve_db_row
-    from hunter.sheet import SheetRow
+    from hunter.sheet import N_COLS, SheetRow
 
-    srow = SheetRow(row_number=22, cells=[""] * 30, verdict="New",
+    srow = SheetRow(row_number=22, cells=[""] * N_COLS, verdict="New",
                     company="Anysphere (Cursor)",
                     role="Regional Vice President, Business Development",
                     jd_url=None)

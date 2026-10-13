@@ -130,7 +130,9 @@ def _parse_sheet_headers(body_913: str) -> list[str]:
         headers.append(parts[1].strip())
     if len(headers) != len(CODE_HEADERS):
         raise CanonError(f"canon 9.13 lists {len(headers)} headers, expected "
-                         f"{len(CODE_HEADERS)}; run migrate-columns or fix canon")
+                         f"{len(CODE_HEADERS)}. The Pipeline columns and canon 9.13 "
+                         f"must name the same columns in the same order; whichever "
+                         f"one is behind is the one to update")
     return headers
 
 

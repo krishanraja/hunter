@@ -249,6 +249,59 @@ def check_model_keys(cfg) -> Check:
     return Check("model keys", OK, f"{', '.join(good)} answered")
 
 
+def check_sheet_header(cfg, *, read_header=None, read_archive_grid=None,
+                       canon_headers=None) -> Check:
+    """The Pipeline header he sees, sheet.HEADERS and canon 9.13 name the same
+    columns in the same order, and the Applied header is a layout its
+    readers and writers know. When he inserted two columns on 2026-10-11
+    every hourly run failed on the header for two days, and nothing here
+    looked at it."""
+    from .sheet import (APPLIED_STOPPED, HEADERS, archive_header_diffs,
+                        archive_layout, describe_header_change, header_diffs,
+                        header_shift)
+    try:
+        if canon_headers is None:
+            from .canon import load_canon
+            canon_headers = load_canon(cfg).sheet_headers
+    except Exception as e:
+        return Check("sheet header", FAIL, f"canon would not load: {str(e)[:160]}",
+                     "amend canon 9.13 to name the Pipeline columns")
+    try:
+        if read_header is None or read_archive_grid is None:
+            from .config import GoogleServiceAccount
+            from .sheet import Sheet
+            sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+            read_header = read_header or sheet.read_header
+            read_archive_grid = read_archive_grid or sheet.read_archive_grid
+        live = read_header()
+        applied = read_archive_grid()
+    except Exception as e:
+        return Check("sheet header", FAIL,
+                     f"could not read the Pipeline and Applied headers: {str(e)[:90]}")
+    problems = []
+    if list(canon_headers) != list(HEADERS):
+        problems.append(f"canon 9.13 and sheet.HEADERS disagree at "
+                        f"{header_diffs(list(canon_headers), HEADERS)[:3]}")
+    diffs = header_diffs(live, HEADERS)
+    if diffs:
+        problems.append(describe_header_change(diffs, shift=header_shift(live, HEADERS)))
+    layout = archive_layout(applied)
+    if not layout:
+        problems.append(describe_header_change(archive_header_diffs(applied),
+                                               lead="Applied columns changed: ",
+                                               consequence=APPLIED_STOPPED))
+    if problems:
+        return Check("sheet header", FAIL, " ".join(problems),
+                     "bring sheet.HEADERS and canon 9.13 to the live header together")
+    applied_says = {"current": "Applied is on the same layout",
+                    "previous": "Applied is on the previous layout and gains his "
+                                "two columns on the next settle",
+                    "empty": "Applied is empty"}[layout]
+    return Check("sheet header", OK, f"the Pipeline header, the code and canon 9.13 "
+                                     f"name the same {len(HEADERS)} columns; "
+                                     f"{applied_says}")
+
+
 def run(cfg, run_source: str, *, offline: bool = False) -> list[Check]:
     checks = [check_branch_reaches_main(), check_extension_on_main(),
               check_scheduled_commands(run_source)]
@@ -259,7 +312,7 @@ def run(cfg, run_source: str, *, offline: bool = False) -> list[Check]:
             check_endpoint(SUBMITTED_URL, method="POST", expect=400,
                            name="submitted endpoint"),
             check_table_columns(cfg), check_live_payloads(cfg),
-            check_model_keys(cfg), check_browser(),
+            check_sheet_header(cfg), check_model_keys(cfg), check_browser(),
         ]
     return checks
 

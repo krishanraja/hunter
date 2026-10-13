@@ -1,4 +1,5 @@
-"""Column J: why this role is a fit for Krish specifically.
+"""Why AI thinks it Fits (column L since 2026-10-11): why this role is a fit
+for Krish specifically.
 
 Krish's complaint, 2026-09-02: rows 31-40 do this well and nothing else
 does. Measured, he is right. Of the 70 rows below 41, 42 said literally

@@ -129,7 +129,8 @@ def check_canon(cfg: Config) -> Check:
                      "canon governs every gate; nothing runs without it")
     if list(canon.sheet_headers) != list(HEADERS):
         return Check("canon", FAIL, "canon 9.13 and the code disagree on the "
-                     "column contract", "run migrate-columns or amend canon")
+                     "column contract", "make canon 9.13 and sheet.HEADERS name the "
+                     "same columns as the Pipeline header, in the same order")
     return Check("canon", OK, f"version {canon.version}, {len(canon.gates)} gates, "
                  f"bar {canon.bar}")
 

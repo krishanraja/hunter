@@ -36,8 +36,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field as dc_field
 
 from . import verdicts
-from .sheet import (BUILT_STATUSES, DATA_START_ROW, DEFAULTS_BY_NAME,
-                    PACKAGE_STATUSES, PKG_DEAD, Sheet, cell_range)
+from .sheet import (AI_SCORE, BUILT_STATUSES, DATA_START_ROW, DEFAULTS_BY_NAME,
+                    HIS_COLS, KRISH_REACTION, KRISH_SCORE, PACKAGE_STATUSES,
+                    PKG_DEAD, Sheet, cell_range)
 
 BROKEN, WATCH, OK = "broken", "watch", "ok"
 
@@ -102,7 +103,7 @@ def check_no_decided_rows(rows) -> Finding:
 
 def check_scores_numeric(rows) -> Finding:
     bad = [r.row_number for r in rows
-           if r.cell("Score").strip() and _num(r.cell("Score")) is None]
+           if r.cell(AI_SCORE).strip() and _num(r.cell(AI_SCORE)) is None]
     if not bad:
         return Finding("scores are numbers", OK, f"{len(rows)} row(s) sort correctly")
     return Finding("scores are numbers", BROKEN,
@@ -110,11 +111,14 @@ def check_scores_numeric(rows) -> Finding:
 
 
 def check_no_empty_cells(rows) -> Finding:
-    """canon 9.13: no blank cells. A blank reads as missing data rather than
-    as the default it should carry."""
+    """canon 9.13: no blank cells in the columns hunter owns. A blank reads as
+    missing data rather than as the default it should carry. His two columns
+    have no default: a blank there means he has not ruled yet."""
     holes: dict[int, list[str]] = {}
     for r in rows:
         for name, default in DEFAULTS_BY_NAME.items():
+            if name in HIS_COLS:
+                continue
             if not str(r.cell(name)).strip():
                 holes.setdefault(r.row_number, []).append(name)
     if not holes:
@@ -199,18 +203,42 @@ def check_applied_state_agrees(rows) -> Finding:
         if (kind == "applied") != marked:
             wrong.append(r.row_number)
     if not wrong:
-        return Finding("applied state agrees", OK, "column A and column T match")
+        from .sheet import letter
+        return Finding("applied state agrees", OK,
+                       f"column A and column {letter('Application Status')} match")
     return Finding("applied state agrees", BROKEN,
                    f"{len(wrong)} row(s) disagree about whether you applied",
                    rows=wrong)
 
 
+DUPLICATE_WORD = "duplicate"
+
+
+def _called_duplicate(r) -> bool:
+    """His reaction on this row is the one word Duplicate."""
+    return r.cell(KRISH_REACTION).strip().strip(" .!").lower() == DUPLICATE_WORD
+
+
+def _his_mark(r) -> bool:
+    """He has scored the row, or reacted to it in words other than calling it
+    a duplicate. Either is him ruling on that row."""
+    return bool(r.cell(KRISH_SCORE).strip()) or bool(
+        r.cell(KRISH_REACTION).strip() and not _called_duplicate(r))
+
+
 def _standing(r) -> tuple:
-    """Which twin is the real row. His verdict outranks a built package, which
-    outranks being higher up the sheet. Matches router.same_posting, so the
-    sheet and the database agree on which twin survives."""
+    """Which twin is the real row. His verdict outranks his score or his
+    reaction, which outrank a built package, which outranks being higher up
+    the sheet; a row he called a duplicate ranks below its twin. On
+    2026-10-13 one role sat on two rows: the upper one he had marked
+    Duplicate in Krish Reaction, the lower one he had scored 9. Row position
+    alone kept the upper row and stamped his 9 for archiving.
+    Matches router.same_posting on everything else, so the sheet and the
+    database agree on which twin survives."""
     kind = verdicts.parse(r.verdict or "")[0]
     return (kind in ("go", "applied"),
+            _his_mark(r),
+            not _called_duplicate(r),
             bool(r.package_urls.get("cv") and r.package_urls.get("letter")),
             r.cell("Package Status").strip() in BUILT_STATUSES,
             -r.row_number)
@@ -255,7 +283,7 @@ def check_no_duplicate_postings(rows) -> Finding:
 
 
 def check_sorted_by_score(rows) -> Finding:
-    scores = [_num(r.cell("Score")) or 0 for r in rows]
+    scores = [_num(r.cell(AI_SCORE)) or 0 for r in rows]
     if scores == sorted(scores, reverse=True):
         return Finding("sorted by score", OK, "highest scoring role is at the top")
     return Finding("sorted by score", BROKEN, "rows are out of score order")
@@ -276,16 +304,21 @@ def check_row_headroom(sheet: Sheet, rows) -> Finding:
     return Finding("row headroom", OK, f"{total - used} spare rows")
 
 
-def check_archive_stamped(archive) -> Finding:
+def check_archive_stamped(archive, error: Exception | None = None) -> Finding:
     """Every archived row carries the date it left, or the archive stops being
-    a record of when a decision was made."""
-    from .sheet import ARCHIVE_WIDTH
-    missing = []
-    for r in archive:
-        cells = r.cells
-        stamp = cells[ARCHIVE_WIDTH - 1] if len(cells) >= ARCHIVE_WIDTH else ""
-        if not str(stamp).strip():
-            missing.append(r.row_number)
+    a record of when a decision was made. read_archive finds the stamp by its
+    header; reading it by position off cells, which stop at the last Pipeline
+    column, reported every one of 369 dated rows as undated.
+
+    `error` is why Applied could not be read. An unread tab is not an empty
+    one: "0 archived row(s) dated" for a tab nobody read was a pass made of
+    nothing."""
+    if error is not None:
+        from .config import ARCHIVE_TAB
+        return Finding("archive stamped", WATCH,
+                       f"the {ARCHIVE_TAB} tab was not read, so its stamps are "
+                       f"unchecked: {error.__class__.__name__}: {str(error)[:120]}")
+    missing = [r.row_number for r in archive if not str(r.archived_on or "").strip()]
     if not missing:
         return Finding("archive stamped", OK, f"{len(archive)} archived row(s) dated")
     return Finding("archive stamped", WATCH,
@@ -319,8 +352,8 @@ def repair_scores(sheet: Sheet, rows, bad: list[int]) -> str:
     for r in rows:
         if r.row_number not in bad:
             continue
-        n = _num(r.cell("Score"))
-        blocks.append((cell_range("Score", r.row_number), [[n if n is not None else 0]]))
+        n = _num(r.cell(AI_SCORE))
+        blocks.append((cell_range(AI_SCORE, r.row_number), [[n if n is not None else 0]]))
     if not blocks:
         return ""
     sheet._write(blocks)
@@ -333,6 +366,8 @@ def repair_empty_cells(sheet: Sheet, rows, targets: list[int]) -> str:
         if r.row_number not in targets:
             continue
         for name, default in DEFAULTS_BY_NAME.items():
+            if name in HIS_COLS:
+                continue   # his: hunter never writes a default into them
             if str(r.cell(name)).strip():
                 continue
             blocks.append((cell_range(name, r.row_number), [[default]]))
@@ -369,6 +404,8 @@ def repair_duplicates(sheet: Sheet, rows, targets: list[int]) -> str:
             continue
         if (r.verdict or "").strip() not in ("", "New"):
             continue  # he has already ruled on it; leave it alone
+        if r.cell(KRISH_SCORE).strip():
+            continue  # he scored this row, so it is his ruling, not a twin to clear
         mapping[r.row_number] = f"{verdicts.DECLINE_PREFIX}duplicate row"
     if not mapping:
         return ""
@@ -415,7 +452,8 @@ def check_accept_rate(batches) -> Finding:
 
 # ---------- the pass ----------
 
-def check_all(sheet: Sheet, rows, archive, batches=None) -> list[Finding]:
+def check_all(sheet: Sheet, rows, archive, batches=None, *,
+              archive_error: Exception | None = None) -> list[Finding]:
     return [
         check_dropdown_reaches_the_end(sheet, rows),
         check_verdict_vocabulary(rows),
@@ -428,7 +466,7 @@ def check_all(sheet: Sheet, rows, archive, batches=None) -> list[Finding]:
         check_dead_yes_rows(rows),
         check_applied_state_agrees(rows),
         check_sorted_by_score(rows),
-        check_archive_stamped(archive),
+        check_archive_stamped(archive, archive_error),
         check_row_headroom(sheet, rows),
         check_accept_rate(batches),
     ]
@@ -453,11 +491,12 @@ def enforce(sheet: Sheet, canon_headers: list[str], *, apply: bool = True,
     writes. Returns findings plus lines for the run summary.
     """
     rows = sheet.read_pipeline(canon_headers)
+    archive, unread = [], None
     try:
         archive = sheet.read_archive()
-    except Exception:
-        archive = []
-    findings = check_all(sheet, rows, archive, batches)
+    except Exception as e:
+        unread = e
+    findings = check_all(sheet, rows, archive, batches, archive_error=unread)
 
     repaired: list[str] = []
     if apply:
@@ -473,7 +512,7 @@ def enforce(sheet: Sheet, canon_headers: list[str], *, apply: bool = True,
             except Exception as e:
                 f.repaired = f"repair failed: {e.__class__.__name__}: {e}"
 
-    after = check_all(sheet, rows, archive) if repaired else findings
+    after = check_all(sheet, rows, archive, archive_error=unread) if repaired else findings
     still = [f for f in after if f.state == BROKEN]
     return {"findings": findings, "repaired": repaired,
             "still_broken": [f.name for f in still],

@@ -1,4 +1,4 @@
-"""Orchestrator. python -m hunter.run {process,run,reconcile,migrate-columns,build,recon,drain}
+"""Orchestrator. python -m hunter.run {process,run,reconcile,build,recon,drain}
 
 Phases of a full run, in order:
   1. Load config and canon; every hard-fail guard fires before any paid call,
@@ -415,13 +415,14 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet,
             "title": srow.role, "url": srow.jd_url or "", "job_url": srow.jd_url or "",
             "source": (srow.cell("Source") or "sheet reconcile"),
             "status": "dropped" if verdict_kind == "rejection" else "staging",
-            "why_it_fits": srow.cell("Why It Fits") if srow.cell("Why It Fits") != "Not assessed" else "",
+            "why_it_fits": (srow.cell(sheet_mod.AI_WHY)
+                            if srow.cell(sheet_mod.AI_WHY) != "Not assessed" else ""),
             "location": srow.cell("Location") if srow.cell("Location") != "Not stated" else "",
             "comp": srow.cell("Comp") if srow.cell("Comp") != "Not disclosed" else "",
             "sweep_date": TODAY(), "presented_at": NOW(),
         }
         try:
-            row["score"] = int(srow.cell("Score"))
+            row["score"] = int(srow.cell(sheet_mod.AI_SCORE))
         except (ValueError, TypeError):
             pass
         if verdict_kind == "rejection":
@@ -751,8 +752,8 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
     if held:
         print(f"holding {len(held)} row(s) you have already decided on, "
               f"whatever column A says. They are never archived or rescored, "
-              f"but they still get a rationale so column J reads the same "
-              f"everywhere:")
+              f"but they still get a rationale so column "
+              f"{sheet_mod.letter(sheet_mod.AI_WHY)} reads the same everywhere:")
         for r, d in held:
             print(f"  row {r.row_number}: {r.company} / {r.role} "
                   f"[{d.get('krish_verdict')}]")
@@ -762,8 +763,12 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
     print(f"re-gating {len(rows)} rows from row {from_row} down\n")
 
     keep, drop, unresolved = [], [], []
+    # By row number, fixed before the loop. Re-reading `held` on every pass
+    # let a local of the same name rebind it to one row's score, after which
+    # every later held row read as undecided and went down the drop path.
+    held_rows = frozenset(r.row_number for r, _ in held)
     for r in rows + [h[0] for h in held]:
-        decided_row = r in [h[0] for h in held]
+        decided_row = r.row_number in held_rows
         # The sheet already knows the location and comp; without them G6 sees
         # an empty string and fails every row on geography, which would have
         # archived 70 legitimate roles.
@@ -808,7 +813,8 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
         if decided_row:
             # His verdict outranks the rubric. The row keeps the score it has
             # and only gains the rationale it was missing.
-            existing = int(r.cell("Score")) if str(r.cell("Score")).strip().isdigit() else result.score
+            shown = str(r.cell(sheet_mod.AI_SCORE)).strip()
+            existing = int(shown) if shown.isdigit() else result.score
             why, flags = write_rationale(
                 cfg, canon, company=r.company, title=full, jd=role.jd_text,
                 score=existing, score_reason=result.why_it_fits,
@@ -961,7 +967,9 @@ def cmd_restore(job_ids: list[str], apply: bool = False) -> int:
     cells = [list(hit.cells) for _, _, hit in wanted]
     for c in cells:
         c[0] = "New"          # append validation demands it; corrected below
-    rng = sheet.append_rows(cells)
+    # His score and reaction come back with his row: they are his words, not
+    # hunter writing into his columns.
+    rng = sheet.append_rows(cells, carry_his=True)
     start = int(rng.split("!A")[1].split(":")[0])
     sheet._post("/values:batchUpdate", {
         "valueInputOption": "USER_ENTERED",
@@ -1217,8 +1225,9 @@ def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False,
                     job_ids: str = "") -> int:
     """Remove rows this system should never have written.
 
-    Only rows where column A still reads exactly "New", so nothing Krish has
-    touched is ever at risk, and only two unambiguous classes by default:
+    Only rows where column A still reads exactly "New" and Krish Score and
+    Krish Reaction are both blank, so nothing Krish has touched is ever at
+    risk, and only two unambiguous classes by default:
       1. duplicates of an earlier row (same company and title),
       2. rows sitting outside canon 9.4 geography, which is how ElevenLabs GM
          Brazil, Denmark, Poland and Saudi Arabia reached the sheet at score 8.
@@ -1241,7 +1250,12 @@ def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False,
     def ident(s: SheetRow):
         return sheet_identity(s.company, s.role)
 
-    untouched = lambda s: (s.verdict or "").strip() == "New"
+    # Untouched means column A New AND his score and reaction blank. Column A
+    # alone planned his 9 on Notion as a "duplicate" of the twin he had
+    # marked Duplicate, and his 10 on Reddit with it, because both read New.
+    def untouched(s: SheetRow) -> bool:
+        return ((s.verdict or "").strip() == "New"
+                and not any(s.cell(n).strip() for n in sheet_mod.HIS_COLS))
     plan: dict[int, str] = {}
     first: dict[tuple, int] = {}
 
@@ -1949,7 +1963,7 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     role, relink, rflags = resolve_for_build(
         cfg, row, cache,
         sheet_snippet=(srow.cell("JD Snippet") if srow else ""),
-        sheet_why=(srow.cell("Why It Fits") if srow else ""))
+        sheet_why=(srow.cell(sheet_mod.AI_WHY) if srow else ""))
     if getattr(role, "liveness", "checked") == "checked" and not role.live:
         # Verifiably gone. The row stays on Pipeline with column A untouched
         # (canon: hunter never archives a role Krish approved); Package
@@ -2133,14 +2147,23 @@ def seen_identity(cfg: Config) -> tuple[set, dict]:
     keys: set = set()
     id_countries: dict = {}
     rows = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,url,job_url,company,title,location,status", "limit": ALL_ROWS})
+        "select": "job_id,url,job_url,company,title,location,status,presented_at",
+        "limit": ALL_ROWS})
     for r in rows:
         id_countries[r["job_id"]] = country_of(r.get("location") or "")
         # A row hunter could not resolve was never actually assessed. Counting
         # it as seen means it can never be reconsidered once resolution
         # improves, and 1451 LinkedIn postings were sitting in exactly that
         # state when board discovery arrived.
-        if r.get("status") in ("unresolved", "judge_pending"):
+        #
+        # Unless it reached his sheet. A posting first recorded unresolved
+        # keeps that status when a later sweep stages it (the insert ignores
+        # a duplicate job id), so it was never seen, came back on the next
+        # sweep, and was appended again: four roles each sat on Pipeline
+        # twice on 2026-10-13. A role he has been shown is seen, whatever its
+        # status says.
+        if (r.get("status") in ("unresolved", "judge_pending")
+                and not r.get("presented_at")):
             # judge_pending: the judge did not get to it, or its answer failed
             # its checks. It is judged again next time it is seen.
             continue
@@ -3873,15 +3896,40 @@ def cmd_blind_eval(apply: bool = False) -> int:
     return 0
 
 
+def archive_columns_step(sheet: Sheet, *, apply: bool) -> str:
+    """Applied gains his two columns before anything writes to it, in one
+    line for the summary. Raises on a header it does not recognise."""
+    rep = sheet.ensure_archive_columns(apply=apply, archive_tab=config_mod.ARCHIVE_TAB,
+                                       archive_sheet_id=config_mod.ARCHIVE_SHEET_ID)
+    tab = config_mod.ARCHIVE_TAB
+    if rep["noop"]:
+        return f"{tab} columns: {rep['state']} layout, nothing to change"
+    if rep.get("applied"):
+        return (f"{tab} columns: {sheet_mod.KRISH_SCORE} and {sheet_mod.KRISH_REACTION} "
+                f"inserted, {rep['rows']} row(s) read back unchanged")
+    return (f"{tab} columns: still the previous layout, {rep['rows']} row(s); "
+            f"dry run, add --apply to insert {sheet_mod.KRISH_SCORE} and "
+            f"{sheet_mod.KRISH_REACTION}")
+
+
 def cmd_settle(apply: bool = False) -> int:
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     summary: list[str] = []
+    # Here and not inside settle_step, which returns at once when nothing is
+    # decided, as it did on every hourly run after he inserted his columns.
+    columns_ok = True
+    try:
+        print(archive_columns_step(sheet, apply=apply))
+    except Exception as e:
+        columns_ok = False
+        print(f"{config_mod.ARCHIVE_TAB} columns NOT checked: "
+              f"{e.__class__.__name__}: {e}")
     out = settle_step(cfg, canon, sheet, summary, apply=apply)
     print("\n".join(summary))
     if not apply and out["decided"]:
         print("dry run. add --apply to record and move these rows")
-    return 0
+    return 0 if columns_ok else 1
 
 
 def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
@@ -3898,6 +3946,14 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
     counts: dict = {"built": 0, "dead": 0, "unverified": 0, "blocked": 0,
                     "warm_paths": 0, "cold_targets": 0, "archived": 0,
                     "sorted": 0, "g12_blocked": 0, "amendments": 0}
+
+    # Applied gains his two columns before this pass reads it (reconcile,
+    # below) or writes it (the archive).
+    try:
+        summary.append(archive_columns_step(sheet, apply=True))
+    except Exception as e:
+        summary.append(f"{config_mod.ARCHIVE_TAB} columns NOT checked: "
+                       f"{e.__class__.__name__}: {e}")
 
     # His edits are read BEFORE anything of hunter's is written, because the
     # first build of the pass would overwrite the very cells that carry them.
@@ -4031,9 +4087,11 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
     # newly appended block cannot put the scroll back.
     try:
         lay = layout.apply_layout(sheet, sheet_id=config_mod.PIPELINE_SHEET_ID)
-        summary.append(f"layout: {lay['visible']} columns visible, "
+        summary.append(f"layout verified: {lay['visible']} columns visible, "
                        f"{lay['hidden']} hidden, {lay['width_after']}px wide"
-                       + (" (unchanged)" if lay.get("noop") else ""))
+                       + (" (unchanged)" if lay.get("noop") else "")
+                       + (f", {lay['score_colours']} score colour rule(s) narrowed "
+                          f"to {sheet_mod.AI_SCORE}" if lay.get("score_colours") else ""))
     except Exception as e:
         summary.append(f"layout pass failed: {e.__class__.__name__}: {e}")
 
@@ -6546,14 +6604,33 @@ def main(argv: list[str]) -> int:
         return 0 if ok else 1
     if cmd == "watchdog":
         cfg = load()
-        problems = alerts.trouble_checks(cfg)
+        # The Pipeline and Applied headers are checked here because this step
+        # runs even when every other step has failed on them. Opening the
+        # sheet is inside a try: a broken service account key would otherwise
+        # take down the database checks too, at the moment every sheet step
+        # is failing the same way.
+        sheet, opened = None, None
+        try:
+            sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+        except Exception as e:
+            opened = e
+        observed: dict = {}
+        problems = alerts.trouble_checks(cfg, sheet=sheet, observed=observed,
+                                         sheet_error=opened, check_canon=True)
         for p in problems:
             print(f"  {p['kind']}: {p['detail']}")
         if not problems:
-            print("  nothing wrong; the loop is turning")
+            if "--send" in argv:
+                alerts.forget_cleared(cfg, observed)
+            if observed["unread"]:
+                print(f"  nothing wrong in what was read, but NOT read: "
+                      f"{', '.join(observed['unread'])}")
+            else:
+                print("  nothing wrong; the loop is turning")
             return 0
         if "--send" in argv:
-            print(alerts.send_trouble(cfg, force="--force" in argv))
+            print(alerts.send_trouble(cfg, force="--force" in argv, sheet=sheet,
+                                      sheet_error=opened, check_canon=True))
         else:
             print("\ndry run. add --send to mail these.")
         return 0

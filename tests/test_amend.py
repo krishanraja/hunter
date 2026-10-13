@@ -4,7 +4,7 @@ come from Krish, and hunter must never read its own output as his."""
 import pytest
 
 from hunter import amend
-from hunter.sheet import COLS, SheetRow, make_row
+from hunter.sheet import AI_SCORE, AI_WHY, COLS, HIS_COLS, SheetRow, make_row
 
 EM_DASH = chr(0x2014)
 
@@ -49,12 +49,12 @@ def test_a_real_word_change_is_an_amendment():
 
 def test_a_rewritten_cell_is_read_back_as_a_correction():
     before = row(3)
-    after = row(3, **{"Why It Fits": "Actually it fits because of the data work."})
+    after = row(3, **{AI_WHY: "Actually it fits because of the data work."})
     found = amend.detect([after], PAIRED, state_for(before))
     assert len(found) == 1
-    assert found[0]["field"] == "Why It Fits"
+    assert found[0]["field"] == AI_WHY
     assert found[0]["after_text"].startswith("Actually it fits")
-    assert found[0]["lesson"] == amend.MEANING["Why It Fits"]
+    assert found[0]["lesson"] == amend.MEANING[AI_WHY]
 
 
 def test_an_untouched_row_produces_nothing():
@@ -82,9 +82,36 @@ def test_clearing_a_cell_is_not_treated_as_a_correction():
 def test_several_changed_cells_are_several_amendments():
     before = row(3)
     after = row(3, Role="Director of Strategy", Location="London",
-                Score="9")
+                **{AI_SCORE: "9"})
     found = amend.detect([after], PAIRED, state_for(before))
-    assert {f["field"] for f in found} == {"Role", "Location", "Score"}
+    assert {f["field"] for f in found} == {"Role", "Location", AI_SCORE}
+
+
+def test_his_own_columns_are_never_an_amendment():
+    """Krish Score and Krish Reaction are his to begin with. What he writes
+    there is his ruling, not a correction of something hunter wrote."""
+    assert not HIS_COLS & set(amend.WATCHED)
+    before = row(3)
+    after = row(3, **{"Krish Score": "9", "Krish Reaction": "Love this one"})
+    assert amend.detect([after], PAIRED, state_for(before)) == []
+
+
+def test_a_snapshot_taken_under_the_old_names_files_nothing():
+    """hunter_row_state rows written before 2026-10-11 are keyed Score and
+    Why It Fits. Comparing them against the renamed columns would read every
+    row as an edit, so a field with no record is skipped until the next
+    snapshot."""
+    r = row(3, **{AI_WHY: "a new argument"})
+    old = {"acme:vp": {"job_id": "acme:vp", "fields": {
+        "Score": "7", "Why It Fits": "the old argument"}}}
+    assert amend.detect([r], PAIRED, old) == []
+
+
+def test_calibration_reads_the_renamed_column_too():
+    amendments = [{"field": AI_SCORE, "before_text": "6", "after_text": "9"},
+                  {"field": "Score", "before_text": "5", "after_text": "8"},
+                  {"field": AI_SCORE, "before_text": "7", "after_text": "9"}]
+    assert "higher" in amend.score_calibration(amendments)
 
 
 def test_the_verdict_is_never_an_amendment():

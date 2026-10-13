@@ -23,7 +23,9 @@ Every alert is deduplicated through hunter_alerts on a fingerprint that
 describes the condition, not the moment. The same stall reported hourly is
 noise, and noise is how an inbox alert stops being read, so the second copy is
 never sent. A condition that clears and returns is a new fingerprint and is
-sent again.
+sent again; a sheet header change has no date in its fingerprint, so its mark
+is deleted when the tab reads clean (forget_cleared), and the same change made
+again is sent again.
 
 This module composes and decides. notify.py is still the only thing that can
 put a message on the wire, and it can still only reach Krish.
@@ -31,11 +33,14 @@ put a message on the wire, and it can still only reach Krish.
 from __future__ import annotations
 
 import datetime
+import hashlib
 import html as html_mod
+import json
 
 from . import config as config_mod
 from . import notify, verdicts
-from .config import Config, db_get, db_insert
+from .config import Config, db_delete, db_get, db_insert
+from .sheet import AI_SCORE, AI_WHY
 
 TABLE = "hunter_alerts"
 
@@ -129,7 +134,7 @@ def review_email(rows, staged: int, *, state: dict | None = None,
 
     def score_of(r):
         try:
-            return int(float(r.cell("Score") or 0))
+            return int(float(r.cell(AI_SCORE) or 0))
         except (TypeError, ValueError):
             return 0
 
@@ -173,12 +178,12 @@ def review_email(rows, staged: int, *, state: dict | None = None,
             f"<span style='color:#444'>{_esc(r.role)}</span></td>"
             f"<td style='padding:6px 10px 6px 0;color:#555'>{_esc(r.cell('Location'))}"
             f"<br>{_esc(r.cell('Comp'))}</td>"
-            f"<td style='padding:6px 0;color:#444'>{_esc(r.cell('Why It Fits')[:220])}</td>"
+            f"<td style='padding:6px 0;color:#444'>{_esc(r.cell(AI_WHY)[:220])}</td>"
             "</tr>")
     table = ("<table style='border-collapse:collapse;font:14px/1.45 -apple-system,"
              "Segoe UI,Helvetica,Arial,sans-serif'>"
              "<tr style='text-align:left;color:#888;font-size:12px'>"
-             "<th style='padding-bottom:6px'>Score</th><th>Role</th>"
+             "<th style='padding-bottom:6px'>AI score</th><th>Role</th>"
              "<th>Where and what</th><th>Why hunter staged it</th></tr>"
              + "".join(rowsx) + "</table>") if rowsx else ""
 
@@ -234,9 +239,133 @@ def send_review_ready(cfg: Config, rows, staged: int, *,
 
 # ---------- something is wrong ----------
 
-def trouble_checks(cfg: Config) -> list[dict]:
-    """Conditions that mean the loop has stopped turning. Read only."""
+COLUMNS_CHANGED = "Pipeline columns changed"
+APPLIED_CHANGED = "Applied columns changed"
+CANON_DISAGREES = "canon and the code disagree"
+SHEET_UNOPENED = "the sheet could not be opened"
+# What the watchdog writes into workflow_runs itself (send_trouble). Not a
+# run, so never counted as a failed one: one header change otherwise came
+# back an hour later as a second email saying runs were failing.
+WATCHDOG_KINDS = frozenset({COLUMNS_CHANGED, APPLIED_CHANGED, CANON_DISAGREES})
+# These conditions by fingerprint prefix. Each fingerprint is the change
+# itself with no date in it, so it is forgotten when the thing reads clean
+# (forget_cleared); otherwise the same change made again a month later was
+# never reported, while every run failed on it.
+SHEET_PREFIXES = {COLUMNS_CHANGED: "columns:", APPLIED_CHANGED: "applied-columns:"}
+CANON_PREFIX = "canon:"
+
+
+def _digest(diffs) -> str:
+    return hashlib.sha1(json.dumps(diffs).encode("utf-8")).hexdigest()[:16]
+
+
+def header_problem(sheet) -> dict | None:
+    """The Pipeline header against the one hunter writes, read out past the
+    last column it knows. Fingerprinted on the difference itself, so the same
+    change is reported once however many hours it stands, and a further
+    change is reported again.
+
+    He inserted two columns on 2026-10-11 and hunter stopped, correctly, for
+    56 hourly runs, with nothing recorded and nobody told. The guard was
+    right and silent; this is the telling.
+    """
+    from .sheet import HEADERS, describe_header_change, header_diffs, header_shift
+    live = sheet.read_header()
+    diffs = header_diffs(live, HEADERS)
+    if not diffs:
+        return None
+    return {"kind": COLUMNS_CHANGED,
+            "fingerprint": SHEET_PREFIXES[COLUMNS_CHANGED] + _digest(diffs),
+            "detail": describe_header_change(diffs, lead="",
+                                             shift=header_shift(live, HEADERS)),
+            "record_run": True}
+
+
+def applied_header_problem(sheet) -> dict | None:
+    """The Applied header, judged exactly as its readers and writers judge it
+    (sheet.archive_layout). Applied's row 1 became load-bearing when
+    read_archive started finding columns by name: a header there that is
+    neither layout stops every archive and the next batch's reconcile, and
+    before this nothing looked at it but the code that failed on it."""
+    from .sheet import (APPLIED_STOPPED, archive_header_diffs, archive_layout,
+                        describe_header_change)
+    grid = sheet.read_archive_grid()
+    if archive_layout(grid):
+        return None
+    diffs = archive_header_diffs(grid)
+    return {"kind": APPLIED_CHANGED,
+            "fingerprint": SHEET_PREFIXES[APPLIED_CHANGED] + _digest(diffs),
+            "detail": describe_header_change(diffs, lead="",
+                                             consequence=APPLIED_STOPPED),
+            "record_run": True}
+
+
+def canon_problem(cfg: Config) -> dict | None:
+    """Canon 9.13 against sheet.HEADERS. Every hourly command loads canon
+    first and stops on a mismatch before it can record a run, so a merge
+    that lands before its canon write, or a hand edit that breaks a section,
+    was silent until the eight-day stall check."""
+    from .canon import load_canon
+    from .sheet import HEADERS, header_diffs
+    try:
+        names = list(load_canon(cfg).sheet_headers)
+    except Exception as e:
+        why = f"canon will not load: {e.__class__.__name__}: {str(e)[:200]}"
+    else:
+        if names == list(HEADERS):
+            return None
+        why = (f"canon 9.13 names {len(names)} columns where the code names "
+               f"{len(HEADERS)}, first differences {header_diffs(names, HEADERS)[:3]}")
+    digest = hashlib.sha1(why.encode("utf-8")).hexdigest()[:16]
+    return {"kind": CANON_DISAGREES, "fingerprint": CANON_PREFIX + digest,
+            "detail": why + ". Every hourly command stops at its first step until "
+                            "canon and the code agree.",
+            "record_run": True}
+
+
+def trouble_checks(cfg: Config, sheet=None, *, observed: dict | None = None,
+                   sheet_error: Exception | None = None,
+                   check_canon: bool = False) -> list[dict]:
+    """Conditions that mean the loop has stopped turning. Read only. Given a
+    sheet, the Pipeline and Applied headers are two of them; `sheet_error` is
+    why there is no sheet to read. `check_canon` adds canon 9.13 against the
+    code, one more read, for the scheduled watchdog.
+
+    `observed`, when given, is filled with what the sheet checks saw:
+    "clean", the fingerprint prefixes read and found clear, and "unread",
+    the checks that could not read at all. A header that could not be read
+    is not a header that is fine, and the watchdog says which it was."""
     out: list[dict] = []
+    seen = observed if observed is not None else {}
+    seen.setdefault("clean", [])
+    seen.setdefault("unread", [])
+    checks = ((COLUMNS_CHANGED, "the Pipeline header", header_problem),
+              (APPLIED_CHANGED, "the Applied header", applied_header_problem))
+    if sheet_error is not None:
+        seen["unread"].extend(name for _, name, _ in checks)
+        out.append({"kind": SHEET_UNOPENED,
+                    "fingerprint": f"sheet-open:{sheet_error.__class__.__name__}",
+                    "detail": f"{sheet_error.__class__.__name__}: "
+                              f"{str(sheet_error)[:160]}. Every step that reads "
+                              f"or writes the sheet is failing the same way."})
+    elif sheet is not None:
+        for kind, name, check in checks:
+            try:
+                found = check(sheet)
+            except Exception as e:
+                print(f"watchdog: {name} not read ({e.__class__.__name__})")
+                seen["unread"].append(name)
+                continue
+            if found:
+                out.append(found)
+            else:
+                seen["clean"].append(SHEET_PREFIXES[kind])
+    if check_canon:
+        found = canon_problem(cfg)
+        if found:
+            out.append(found)
+        else:
+            seen["clean"].append(CANON_PREFIX)
 
     runs = db_get(cfg, "workflow_runs",
                   {"select": "run_at,status,outcome,workflow_name,error_message",
@@ -253,7 +382,9 @@ def trouble_checks(cfg: Config) -> list[dict]:
                     "detail": f"the last successful run was {age:.0f} days ago. "
                               f"Check the Actions schedule and the repository "
                               f"secrets."})
-    fails = [r for r in runs[:3] if str(r.get("status") or "").lower()
+    real = [r for r in runs if not (isinstance(r.get("outcome"), str)
+                                    and r["outcome"] in WATCHDOG_KINDS)]
+    fails = [r for r in real[:3] if str(r.get("status") or "").lower()
              in ("failed", "error")]
     if len(fails) >= 2:
         why = (fails[0].get("error_message") or "")[:160]
@@ -307,7 +438,7 @@ def trouble_checks(cfg: Config) -> list[dict]:
     except Exception:
         pass
 
-    recent = runs[:4]
+    recent = real[:4]
     empty = [r for r in recent
              if isinstance(r.get("outcome"), dict)
              and (r["outcome"] or {}).get("staged") == 0
@@ -338,15 +469,41 @@ def trouble_email(problems: list[dict]) -> tuple[str, str, str]:
     return subject, body, text
 
 
-def send_trouble(cfg: Config, *, force: bool = False) -> dict:
-    problems = trouble_checks(cfg)
+def forget_cleared(cfg: Config, observed: dict) -> None:
+    """Delete the sent marks of the header and canon conditions just read and
+    found clear. Only ever on a clean read: a header that could not be read
+    is not evidence that the change was undone."""
+    for prefix in observed.get("clean", []):
+        try:
+            db_delete(cfg, TABLE, {"kind": f"eq.{TROUBLE}",
+                                   "fingerprint": f"like.{prefix}*"})
+        except Exception as e:
+            print(f"watchdog: could not clear {prefix}* ({e.__class__.__name__})")
+
+
+def send_trouble(cfg: Config, *, force: bool = False, sheet=None,
+                 sheet_error: Exception | None = None,
+                 check_canon: bool = False) -> dict:
+    observed: dict = {}
+    problems = trouble_checks(cfg, sheet=sheet, observed=observed,
+                              sheet_error=sheet_error, check_canon=check_canon)
+    forget_cleared(cfg, observed)
     if not problems:
         return {"sent": False, "problems": 0}
-    fresh = [p for p in problems
-             if force or not already_sent(cfg, TROUBLE, p["fingerprint"])]
+    new = [p for p in problems if not already_sent(cfg, TROUBLE, p["fingerprint"])]
+    fresh = problems if force else new
     if not fresh:
         return {"sent": False, "problems": len(problems),
                 "reason": "every condition has already been reported"}
+    # A condition that stops every run before the run can record itself
+    # gets one failed workflow_runs row, the first time it is seen, so
+    # Control Center's banner shows it too. Once, not hourly: report.py keeps
+    # one row per run and never a heartbeat.
+    for p in new:
+        if p.get("record_run"):
+            from .report import report_run
+            report_run(cfg, started_at=_now(), ok=False, counts={}, spend_usd=0.0,
+                       summary_line=p["kind"], error=p["detail"])
     subject, body, text = trouble_email(fresh)
     out = notify.send_email(cfg, subject, body, text=text)
     for p in fresh:

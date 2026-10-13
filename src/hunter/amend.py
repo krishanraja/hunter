@@ -32,14 +32,17 @@ import hashlib
 import re
 
 from .config import ALL_ROWS, Config, db_get, db_insert, db_patch
+from .sheet import AI_SCORE, AI_WHY
 
 TABLE = "hunter_amendments"
 STATE_TABLE = "hunter_row_state"
 
 # The cells hunter writes that carry an argument or a fact he might correct.
 # Verdict is not here: column A is his by definition and learn.py owns it.
-# Package cells are not here either; they are links, not prose.
-WATCHED = ("Role", "JD Snippet", "Score", "Why It Fits", "Location", "Comp")
+# Package cells are not here either; they are links, not prose. Nor are
+# Krish Score and Krish Reaction: they are his to begin with, so nothing he
+# writes there is a correction of hunter.
+WATCHED = ("Role", "JD Snippet", AI_SCORE, AI_WHY, "Location", "Comp")
 
 # A difference that is formatting rather than a correction: a trailing space,
 # a smart quote a paste turned straight, the dash style Google Docs puts in.
@@ -53,8 +56,8 @@ WHITESPACE = re.compile(r"\s+")
 MEANING = {
     "Role": "hunter had the job title wrong",
     "JD Snippet": "hunter's summary of the job was wrong or useless",
-    "Score": "his score disagrees with the scorer",
-    "Why It Fits": "he rewrote the argument, so the argument was weak",
+    AI_SCORE: "his score disagrees with the scorer",
+    AI_WHY: "he rewrote the argument, so the argument was weak",
     "Location": "hunter had the location wrong",
     "Comp": "hunter had the pay wrong",
     "cover letter": "he edited the letter before sending it",
@@ -249,10 +252,11 @@ def sync_after(cfg: Config, rows, paired: dict) -> int:
 # ---------- reading it back ----------
 
 def score_calibration(amendments: list[dict]) -> str:
-    """Does he score higher or lower than the scorer, and by how much."""
+    """Does he score higher or lower than the scorer, and by how much.
+    Amendments recorded before 2026-10-11 name the column "Score"."""
     deltas = []
     for a in amendments:
-        if a.get("field") != "Score":
+        if a.get("field") not in (AI_SCORE, "Score"):
             continue
         try:
             deltas.append(int(float(a["after_text"])) - int(float(a["before_text"])))
