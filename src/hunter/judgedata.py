@@ -203,10 +203,12 @@ def fill_jd(r: Ruled) -> Ruled:
     otherwise. What cannot be fetched stays empty and the row says so."""
     if r.has_jd or not r.url.startswith("http"):
         return r
-    from .run import _resolve_for_build, ats_key, fetch_jd_plain
+    from .run import _resolve_for_build, board_key, fetch_jd_plain
     text = ""
     try:
-        if ats_key(r.url):
+        # board_key, not ats_key: a gh_jid link has no board to read and its
+        # own page is the posting.
+        if board_key(r.url):
             role = _resolve_for_build({"url": r.url, "job_url": r.url, "title": r.title,
                                        "company": r.company})
             text = role.jd_text or ""

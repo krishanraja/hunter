@@ -129,3 +129,13 @@ def test_it_reads_the_sheet_back_rather_than_trusting_the_write(monkeypatch, wir
 
     monkeypatch.setattr(R, "Sheet", LyingSheet)
     assert R.cmd_unretire("rembrand:head", apply=True) == 1
+
+
+def test_a_role_with_no_verdict_of_his_goes_back_to_new_never_yes(monkeypatch, wired):
+    """A role his Krish Score built has no krish_verdict by design: a score is
+    not a Yes. Defaulting to Yes wrote a verdict he never gave into column A,
+    read back as correct, and the learning loop would have read it as his."""
+    scored = dict(ROWS[0], krish_verdict=None, package_trigger="Krish Score 8")
+    monkeypatch.setattr(R, "db_get", lambda cfg, table, params: [scored])
+    assert R.cmd_unretire("rembrand:head", apply=True) == 0
+    assert wired["verdicts"] == {7: "New"}

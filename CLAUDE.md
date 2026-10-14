@@ -306,6 +306,39 @@ about 0: what reached him was ordered no better than chance.
 - His rulings of 2026-10-13: a score of 7 or more builds the package, his
   score wins over an older column A Yes, rows scored 1 to 5 and blanks he has
   scored past leave Pipeline, and he rules on the sheet in K and M.
+- **A score of 7 or more builds** (`router.build_trigger`): a whole number 7
+  to 10 in K on a row column A leaves undecided, M not Duplicate. Column A
+  Yes still builds; Applied or Declined always wins. Score builds run in
+  their own hourly pass after settle, `score-builds --apply`, scores only, at
+  most `hunter_max_score_builds_per_run` (3, and 0 is off) a run, K highest
+  first, then oldest; never inside `run` or `process`, which build Yes only.
+  The pass builds nothing until canon 9.13 carries the rule. Measured on
+  2026-10-13: 32 scored rows with no package, which inside the batch run
+  would have added over an hour to it. Its log carries counts only, and no
+  line anywhere prints his score beside a role ("built on your score").
+- **A role is its row, never its twin.** `build_one` builds onto the row the
+  selection chose (`run.own_sheet_row`), Prepare and settle read the row by
+  its link (`run._rows_for`), and a gh_jid link is matched by its posting id
+  alone. The live list had one title in two countries scored 10 and 9.
+- **The reason is `package_trigger`, never column A.** "column A Yes" or
+  "Krish Score N" on hunter_seen_roles (and on the rating that built it).
+  Control Center shows a score-built role with Prepare, a refused one with
+  its reason, and leaves both out of Roles to rule on. Bulk `approvals` never mails one; Prepare sends it only
+  while the row still asks for it.
+- **A score taken back takes the application back.** Settle cancels every
+  open approval for the posting when K goes below 7, is cleared or reads
+  Duplicate, or column A says Declined, records why, and reads it back, and
+  cancels an approval made after that too. It watches by the trigger and
+  the documents, not package_status, which reconcile rewrites on a Decline.
+  A K that is not a whole number cancels nothing: unknown is not lower. The
+  documents stay. A row his score asks for is never stamped or archived by
+  `verify` or `regate`. `build_one` re-reads A and K before it fetches or
+  pays. A refused score build is not retried until K, the link or the
+  masters change; a verification failure gets one more try first, and a
+  build that raised is an error, tried again next hour.
+- **Not yet** (PR4, with his say on the list first): rows scored 1 to 5 leave
+  Pipeline, and his low score on a column A Yes row. Until then Yes builds
+  whatever K says.
 
 ## 4. The Target Companies tab is his, and it is policy
 

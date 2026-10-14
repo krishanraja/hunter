@@ -1253,6 +1253,10 @@ def test_the_checks_and_the_review_email_run_over_a_row_built_from_headers():
 
     findings = invariants.check_all(Stub(), rows, [])
     assert not [f for f in findings if f.state == invariants.BROKEN]
+    # The email lists what he has still to score, so its row has K and M blank.
+    blank = his(list(cells), "", "")
+    rows = [SheetRow(row_number=3, cells=blank, verdict="New", company="Acme",
+                     role="VP Strategy", jd_url=None)]
     subject, html, text = alerts.review_email(rows, staged=1)
     assert ">AI score</th>" in html and ">Score</th>" not in html
     assert "The argument." in html and ">8<" in html

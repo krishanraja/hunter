@@ -7,8 +7,10 @@ most rows (one column A verdict among the 17 roles of the 10-11 batch). This rea
 of ruling each row carries, and keeps a history in hunter_krish_ratings, one
 row per distinct thing he wrote about a role.
 
-It records. It decides nothing: staging and builds read column A exactly as
-before (PR3 and PR4 move them, each with his approval).
+It records. It decides nothing: since 2026-10-14 a build reads K itself,
+through router.build_trigger with this module's whole_score, so "7.5" is
+unreadable in both places; staging reads column A as before (PR4 moves the
+rows he scored low, with his approval).
 
 What it must never do, because each one has already been measured to go wrong:
 
@@ -283,6 +285,20 @@ class Read:
 
 def _ident(s: SheetRow) -> list:
     return [norm(s.company).lower(), norm(s.role).lower(), norm(_location(s)).lower()]
+
+
+def ident_of_row(s: SheetRow) -> tuple:
+    """A sheet row as the record keys it: company, title and location as
+    typed, normalised. The review email uses it to leave out the blanks this
+    record says he has scored past, without pairing the sheet again."""
+    return tuple(_ident(s))
+
+
+def ident_of_record(r: dict) -> tuple:
+    """The same key read off a stored rating, which keeps the row's own
+    company, title and location (_payload)."""
+    return (norm(r.get("company") or "").lower(), norm(r.get("title") or "").lower(),
+            norm(r.get("location") or "").lower())
 
 
 def read_tabs(sheet, canon_headers: list[str]) -> Read:
