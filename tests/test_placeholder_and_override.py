@@ -237,6 +237,8 @@ def _sheet_with(col_a, monkeypatch):
 
     monkeypatch.setattr(s, "_column_a", lambda: [[v] for v in state["rows"]],
                         raising=False)
+    # K and M blank on every row: these tests are about column A
+    monkeypatch.setattr(s, "_his_cells", lambda: [], raising=False)
     monkeypatch.setattr(s, "_post", fake_post, raising=False)
     return s, posted
 

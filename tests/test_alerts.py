@@ -6,7 +6,7 @@ import datetime
 import pytest
 
 from hunter import alerts
-from hunter.sheet import COLS, PKG_DEAD, SheetRow, make_row
+from hunter.sheet import AI_WHY, COLS, PKG_DEAD, SheetRow, make_row
 
 EM_DASH = chr(0x2014)
 
@@ -75,7 +75,7 @@ def test_the_email_carries_no_em_dash():
 
 
 def test_html_from_a_posting_cannot_break_the_email():
-    rows = [row(3, **{"Why It Fits": "<script>alert(1)</script> and & more"})]
+    rows = [row(3, **{AI_WHY: "<script>alert(1)</script> and & more"})]
     _, html, _ = alerts.review_email(rows, staged=1)
     assert "<script>" not in html and "&lt;script&gt;" in html
 

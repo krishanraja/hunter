@@ -1,12 +1,12 @@
 """Sheet layer: row construction, the validation matrix, HYPERLINK round
-trips, structural read-back comparison, grid parsing against a fake
-transport, and the column migration. Canon 9.13 is the contract under test."""
+trips, structural read-back comparison, and grid parsing against a fake
+transport. Canon 9.13 is the contract under test."""
 import re
 
 import pytest
 
 import hunter.sheet as sheet_mod
-from hunter.sheet import (COLS, HEADERS, LEGACY_HEADERS, LAST_COL, N_COLS, Sheet,
+from hunter.sheet import (AI_SCORE, AI_WHY, COLS, HEADERS, LAST_COL, N_COLS, Sheet,
                           SheetError, col_index, col_letter, hyperlink, letter,
                           make_row, pad_row, parse_hyperlink, rows_equal,
                           validate_row)
@@ -57,7 +57,7 @@ def test_validate_catches_wrong_width():
 
 
 def test_validate_catches_blank_cell():
-    fails = validate_row(good_row(**{"Why It Fits": " "}))
+    fails = validate_row(good_row(**{AI_WHY: " "}))
     assert any("blank" in f for f in fails)
 
 
@@ -67,9 +67,9 @@ def test_validate_catches_bare_url_in_d():
 
 
 def test_validate_catches_score_out_of_range():
-    assert validate_row(good_row(**{"Score": "0"}))
-    assert validate_row(good_row(**{"Score": "11"}))
-    assert validate_row(good_row(**{"Score": "nine"}))
+    assert validate_row(good_row(**{AI_SCORE: "0"}))
+    assert validate_row(good_row(**{AI_SCORE: "11"}))
+    assert validate_row(good_row(**{AI_SCORE: "nine"}))
 
 
 def test_validate_catches_bad_date():
@@ -92,7 +92,7 @@ def test_validate_catches_non_new_verdict_on_append():
 
 
 def test_validate_catches_em_dash():
-    fails = validate_row(good_row(**{"Why It Fits": "Great fit \u2014 really"}))
+    fails = validate_row(good_row(**{AI_WHY: "Great fit \u2014 really"}))
     assert any("em dash" in f for f in fails)
 
 
@@ -135,7 +135,7 @@ def parse_range(rng):
 class FakeSheet(Sheet):
     """An in-memory Pipeline grid behind the real Sheet methods. Serves any
     rectangle, applies every values write, and implements the structural
-    requests the migration and the sort need."""
+    requests the column insert and the sort need."""
 
     def __init__(self, grid, tab="Pipeline"):
         super().__init__(token="offline", workbook_id="wb", sheet_id=1)
@@ -215,17 +215,24 @@ class FakeSheet(Sheet):
                     rng = req["deleteDimension"]["range"]
                     del self.grid[rng["startIndex"]:rng["endIndex"]]
                 elif "sortRange" in req:
+                    # Only the columns the request names move, as in the API.
+                    # Sorting whole rows whatever the request said let an A:J
+                    # sort pass every test while it would strand his K and M.
                     sr = req["sortRange"]
                     r0, r1 = sr["range"]["startRowIndex"], sr["range"]["endRowIndex"]
+                    c0 = sr["range"].get("startColumnIndex", 0)
+                    c1 = sr["range"].get("endColumnIndex", N_COLS)
                     col = sr["sortSpecs"][0]["dimensionIndex"]
-                    block = self.grid[r0:r1]
+                    width = max(c1, *(len(r) for r in self.grid[r0:r1])) if r1 > r0 else c1
+                    block = [self._row(i, width)[c0:c1] for i in range(r0, r1)]
 
-                    def key(row):
+                    def key(part):
                         try:
-                            return -int(row[col])
+                            return -int(part[col - c0])
                         except (ValueError, TypeError, IndexError):
                             return 1
-                    self.grid[r0:r1] = sorted(block, key=key)
+                    for i, part in zip(range(r0, r1), sorted(block, key=key)):
+                        self.grid[i][c0:c1] = part
         return {}
 
 
@@ -279,7 +286,7 @@ def test_append_lands_after_last_populated_row():
 
 def test_append_rejects_invalid_row_before_any_write():
     s = FakeSheet(base_grid())
-    bad = good_row(**{"Score": "0"})
+    bad = good_row(**{AI_SCORE: "0"})
     with pytest.raises(SheetError, match="validation"):
         s.append_rows([bad])
     assert not s.posts
@@ -293,24 +300,27 @@ def test_update_package_cells_touches_only_links_status_and_built():
                            built_date="2026-08-31")
     path, body = s.posts[-1]
     ranges = [b["range"] for b in body["data"]]
-    assert ranges == ["Pipeline!F3:I3", "Pipeline!R3", "Pipeline!AD3"]
+    assert ranges == ["Pipeline!F3:I3", "Pipeline!T3", "Pipeline!AF3"]
     assert s.grid[2][C["Verdict"]] == "Applied"
     assert parse_hyperlink(s.grid[2][C["CV Doc"]]) == ("https://d/cv", "CV")
     assert s.grid[2][C["Materials Built"]] == "2026-08-31"
 
 
 def test_column_map_matches_the_requested_layout():
-    """Krish, 2026-09-07: JD Snippet right after Role, warm path after Comp."""
-    assert len(HEADERS) == 30 and len(LEGACY_HEADERS) == 28
+    """Krish, 2026-09-07: JD Snippet right after Role, warm path after Comp.
+    Krish, 2026-10-11: his score at K and his reaction at M, each beside
+    hunter's own."""
+    assert len(HEADERS) == 32 and len(sheet_mod.PREVIOUS_HEADERS) == 30
     assert C["JD Snippet"] == 3 and C["Job Link"] == 4
-    assert C["Comp"] == 14 and C["Warm Path"] == 15 and C["Path Evidence"] == 16
-    assert letter("Package Status") == "R" and letter("Materials Built") == "AD"
-    assert LAST_COL == "AD"
+    assert (letter(AI_SCORE), letter("Krish Score"), letter(AI_WHY),
+            letter("Krish Reaction")) == ("J", "K", "L", "M")
+    assert C["Comp"] == 16 and C["Warm Path"] == 17 and C["Path Evidence"] == 18
+    assert letter("Package Status") == "T" and letter("Materials Built") == "AF"
+    assert LAST_COL == "AF" and sheet_mod.ARCHIVE_LAST_COL == "AG"
     for i in range(60):
         assert col_index(col_letter(i)) == i
-    assert {col_letter(i) for i in sheet_mod.DATE_COLS} == {"U", "AB", "AD"}
-    idx = sheet_mod.migration_indexes()
-    assert (idx["move_from"], idx["move_to"], idx["insert_at"]) == (26, 3, 15)
+    assert {col_letter(i) for i in sheet_mod.DATE_COLS} == {"W", "AD", "AF"}
+    assert sheet_mod.his_insert_indexes() == [10, 12]
 
 
 def test_update_package_status_accepts_only_the_vocabulary():
@@ -349,96 +359,9 @@ def test_sort_by_score_orders_desc_removes_gaps_and_keeps_column_a_with_its_row(
     s = FakeSheet(grid)
     out = s.sort_by_score()
     assert out == {"rows": 3, "blank_rows_removed": 1, "verified": True}
-    order = [(r[C["Verdict"]], r[C["Business"]], str(r[C["Score"]])) for r in s.grid[2:]]
+    order = [(r[C["Verdict"]], r[C["Business"]], str(r[C[AI_SCORE]])) for r in s.grid[2:]]
     assert order == [("Declined - stage wrong", "High", "10"), ("New", "Mid", "8"),
                      ("Yes", "Low", "6")]
-
-
-# ---------- the column migration ----------
-
-def legacy_row(verdict, company, role, url, snippet="What the business does.",
-               built="n/a"):
-    cells = [""] * len(LEGACY_HEADERS)
-    for name, val in (("Verdict", verdict), ("Business", company), ("Role", role),
-                      ("Job Link", hyperlink(url, "JD")), ("Score", "9"),
-                      ("JD Snippet", snippet), ("Materials Built", built),
-                      ("Package Status", "Not started")):
-        cells[LEGACY_HEADERS.index(name)] = val
-    for i, c in enumerate(cells):
-        if not c:
-            cells[i] = "x"
-    return cells
-
-
-def legacy_grid(trailing=()):
-    return [list(LEGACY_HEADERS) + list(trailing), [""] * (28 + len(trailing)),
-            legacy_row("Yes", "Legora", "Director of Corporate Development",
-                       "https://jobs.ashbyhq.com/legora/a6", built="2026-09-03") + ["2026-09-02"] * len(trailing),
-            legacy_row("Declined - stage wrong", "Flex", "Chief of Staff",
-                       "https://flex.example/j/2") + ["2026-09-02"] * len(trailing)]
-
-
-def test_migrate_columns_dry_run_plans_move_then_insert():
-    s = FakeSheet(legacy_grid())
-    report = s.migrate_columns(tab="Pipeline", sheet_id=1)
-    assert report["state"] == "legacy" and report["data_rows"] == 2
-    assert report["plan"][0].startswith("move column AA")
-    assert "insert 2 columns at P" in report["plan"][1]
-    assert not report["applied"] and not s.posts
-
-
-def test_migrate_columns_apply_on_legacy_grid():
-    s = FakeSheet(legacy_grid())
-    report = s.migrate_columns(tab="Pipeline", sheet_id=1, apply=True)
-    assert report["applied"] and report["verified"]
-    assert s.grid[0] == HEADERS
-    row = s.grid[2]
-    assert row[C["Verdict"]] == "Yes" and row[C["Business"]] == "Legora"
-    assert row[C["JD Snippet"]] == "What the business does."
-    assert parse_hyperlink(row[C["Job Link"]])[0] == "https://jobs.ashbyhq.com/legora/a6"
-    assert row[C["Warm Path"]] == "None found" and row[C["Path Evidence"]] == "n/a"
-    assert row[C["Package Status"]] == "Not started"
-    assert row[C["Materials Built"]] == "2026-09-03"
-    assert s.read_pipeline(HEADERS)[0].jd_url == "https://jobs.ashbyhq.com/legora/a6"
-
-
-def test_migrate_columns_is_idempotent():
-    s = FakeSheet(legacy_grid())
-    s.migrate_columns(tab="Pipeline", sheet_id=1, apply=True)
-    n = len(s.posts)
-    again = s.migrate_columns(tab="Pipeline", sheet_id=1, apply=True)
-    assert again["noop"] and again["state"] == "done" and len(s.posts) == n
-
-
-def test_migrate_columns_resumes_from_the_moved_state():
-    s = FakeSheet(legacy_grid())
-    s._post(":batchUpdate", {"requests": [{"moveDimension": {
-        "source": {"sheetId": 1, "dimension": "COLUMNS", "startIndex": 26, "endIndex": 27},
-        "destinationIndex": 3}}]})
-    moved = list(LEGACY_HEADERS)
-    moved.insert(3, moved.pop(26))
-    s.grid[0] = moved
-    report = s.migrate_columns(tab="Pipeline", sheet_id=1)
-    assert report["state"] == "moved" and report["plan"][0].startswith("insert 2")
-    s.migrate_columns(tab="Pipeline", sheet_id=1, apply=True)
-    assert s.grid[0] == HEADERS and s.grid[2][C["JD Snippet"]] == "What the business does."
-
-
-def test_migrate_columns_applied_tab_keeps_archived_on_last():
-    s = FakeSheet(legacy_grid(trailing=("Archived On",)), tab="Applied")
-    report = s.migrate_columns(tab="Applied", sheet_id=1, trailing=("Archived On",), apply=True)
-    assert report["applied"]
-    assert s.grid[0] == HEADERS + ["Archived On"]
-    assert s.grid[2][30] == "2026-09-02" and s.grid[2][C["Materials Built"]] == "2026-09-03"
-
-
-def test_migrate_columns_refuses_an_unknown_header():
-    grid = legacy_grid()
-    grid[0][5] = "Letter"
-    s = FakeSheet(grid)
-    with pytest.raises(SheetError, match="neither"):
-        s.migrate_columns(tab="Pipeline", sheet_id=1, apply=True)
-    assert not s.posts
 
 
 def test_update_package_cells_rejects_new_o_vocabulary():
@@ -825,7 +748,7 @@ def test_archive_refuses_to_delete_when_the_copy_was_truncated(monkeypatch):
     def truncated_get(path, params=None):
         if "/values/" in path and "Applied" in path:
             reads["n"] += 1
-            if reads["n"] == 1:
+            if reads["n"] <= 2:
                 return {"values": []}          # the archive starts empty
             # the read-back: what a merged range gives back, column A only
             return {"values": [["Verdict"], ["Applied"]]}

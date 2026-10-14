@@ -18,10 +18,10 @@ with the judge's call hidden.
   banding, copied from Pipeline itself each time it is written, so a change
   he makes to Pipeline's look carries over. His words, 2026-10-03: "the same
   column format and rich formatting as the Pipeline tab, always". Every row
-  carries the JD Snippet, the link, and a Why It Fits that makes the strongest
-  honest case from everything he has written (judge.make_the_case). The case
-  writer is never told the judge's call, and the Score column stays empty,
-  so nothing on the row gives the judgement away.
+  carries the JD Snippet, the link, and a Why AI thinks it Fits that makes the
+  strongest honest case from everything he has written (judge.make_the_case).
+  The case writer is never told the judge's call, and the AI Score column
+  stays empty, so nothing on the row gives the judgement away.
 - Scoring reads his column A back and weights each stratum by its size in the
   judged sample, so the estimate is of the pool, not of the draw.
 - A Yes is a real lead the old rules had hidden: `blind-eval --apply` puts it
@@ -37,7 +37,7 @@ import random
 
 from . import judge, judgedata, spend
 from .config import ALL_ROWS, Config, db_get, db_patch
-from .sheet import HEADERS as PIPELINE_HEADERS
+from .sheet import N_COLS
 
 TAB = "Blind Set"
 TAB_SRC = "Pipeline"
@@ -45,7 +45,7 @@ TAB_SRC = "Pipeline"
 # the job id sits in one hidden column after Pipeline's last, so his verdict
 # pairs back exactly.
 FIRST_ROW = 3
-REF_COL = len(PIPELINE_HEADERS)
+REF_COL = N_COLS
 GATES = ("G4", "G7", "G11", "G14")
 STRATA = (("present", 15), ("near", 15), ("far", 10))
 RECORD = pathlib.Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "judge_blind.json"
@@ -193,14 +193,15 @@ def add_cases(cfg: Config, system: str, picks: list[dict], postings: dict[str, s
 
 
 def row_for(p: dict) -> list[str]:
-    """Exactly the row Pipeline would carry, except Score: the old score points
-    the wrong way and the judge's fit would give its call away."""
-    from .sheet import COLS, make_row
+    """Exactly the row Pipeline would carry, except AI Score: the old score
+    points the wrong way and the judge's fit would give its call away. His two
+    columns are blank, as on any new Pipeline row."""
+    from .sheet import AI_SCORE, COLS, make_row
     row = make_row(company=p["company"], role=p["title"], jd_url=p["url"], score=0,
                    why_it_fits=p.get("why", ""), location=p.get("location", ""),
                    comp=p.get("comp", ""), source=p.get("source", ""),
                    jd_snippet=p.get("snippet", ""), jd_verified=True)
-    row[COLS["Score"]] = ""
+    row[COLS[AI_SCORE]] = ""
     return row
 
 
@@ -329,6 +330,10 @@ def write_tab(sheet, picks: list[dict]) -> None:
     finish = finishing_requests(src, tabs()[TAB], dst_id, len(picks))
     if finish:
         sheet._post(":batchUpdate", {"requests": finish})
+    # The colours copied from Pipeline are keyed on AI Score. Wherever they
+    # still reach into Krish Score, they come back to AI Score alone, here as
+    # on Pipeline (Sheet.narrow_score_colours).
+    sheet.narrow_score_colours(sheet_id=dst_id)
     after = tabs()[TAB]
     if picks and (len(after.get("conditionalFormats", [])) != len(src.get("conditionalFormats", []))
                   or bool(after.get("bandedRanges")) != bool(src.get("bandedRanges"))):
@@ -474,7 +479,7 @@ def apply_yes(cfg: Config, sheet, record: dict, labels: dict[str, str]) -> list[
     Yes is written into column A and read back. A role already on the sheet is
     left alone."""
     import re
-    from .sheet import COLS
+    from .sheet import AI_SCORE, COLS
     from .run import NOW
     on_sheet = {r["job_id"] for r in db_get(cfg, "hunter_seen_roles", {
         "select": "job_id", "presented_at": "not.is.null", "limit": ALL_ROWS})}
@@ -489,7 +494,7 @@ def apply_yes(cfg: Config, sheet, record: dict, labels: dict[str, str]) -> list[
     rows = []
     for p in todo:
         row = row_for(dict(p, source=SOURCE))
-        row[COLS["Score"]] = str(scores.get(p["job_id"], 0))
+        row[COLS[AI_SCORE]] = str(scores.get(p["job_id"], 0))
         rows.append(row)
     rng = sheet.append_rows(rows)
     first = int(re.search(r"!A(\d+):", rng).group(1))

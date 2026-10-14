@@ -4,8 +4,8 @@ import pytest
 
 from hunter import invariants, verdicts
 from hunter.invariants import BROKEN, OK, WATCH
-from hunter.sheet import (COLS, DEFAULTS_BY_NAME, HEADERS, N_COLS, PKG_DEAD,
-                          PKG_BUILT_DIRECT, SheetRow, hyperlink, make_row)
+from hunter.sheet import (AI_SCORE, AI_WHY, COLS, DEFAULTS_BY_NAME, HEADERS, N_COLS,
+                          PKG_DEAD, PKG_BUILT_DIRECT, SheetRow, hyperlink, make_row)
 
 
 def row(n, *, verdict="New", company="Acme", role="VP Strategy",
@@ -121,16 +121,16 @@ def test_the_same_title_at_two_companies_is_not_a_duplicate():
 # ---------- the numbers ----------
 
 def test_a_score_written_as_text_is_broken():
-    f = invariants.check_scores_numeric([row(3, Score="nine")])
+    f = invariants.check_scores_numeric([row(3, **{AI_SCORE: "nine"})])
     assert f.state == BROKEN and f.rows == [3]
 
 
 def test_an_integer_score_is_fine():
-    assert invariants.check_scores_numeric([row(3, Score="9")]).state == OK
+    assert invariants.check_scores_numeric([row(3, **{AI_SCORE: "9"})]).state == OK
 
 
 def test_out_of_order_rows_are_broken():
-    rows = [row(3, Score="6"), row(4, Score="9")]
+    rows = [row(3, **{AI_SCORE: "6"}), row(4, **{AI_SCORE: "9"})]
     assert invariants.check_sorted_by_score(rows).state == BROKEN
     assert invariants.check_sorted_by_score(rows[::-1]).state == OK
 
@@ -138,7 +138,7 @@ def test_out_of_order_rows_are_broken():
 # ---------- the holes ----------
 
 def test_an_empty_cell_is_broken_and_names_its_row():
-    f = invariants.check_no_empty_cells([row(3, **{"Why It Fits": ""})])
+    f = invariants.check_no_empty_cells([row(3, **{AI_WHY: ""})])
     assert f.state == BROKEN and f.rows == [3]
 
 
@@ -263,15 +263,15 @@ def test_a_duplicate_he_has_already_ruled_on_is_left_alone():
 
 def test_repairing_scores_writes_integers():
     sheet = FakeSheet()
-    invariants.repair_scores(sheet, [row(3, Score="7.0")], [3])
+    invariants.repair_scores(sheet, [row(3, **{AI_SCORE: "7.0"})], [3])
     assert sheet.writes and sheet.writes[0][1] == [[7]]
 
 
 def test_repairing_holes_uses_the_canon_default():
     sheet = FakeSheet()
-    invariants.repair_empty_cells(sheet, [row(3, **{"Why It Fits": ""})], [3])
+    invariants.repair_empty_cells(sheet, [row(3, **{AI_WHY: ""})], [3])
     written = dict((rng, vals[0][0]) for rng, vals in sheet.writes)
-    assert DEFAULTS_BY_NAME["Why It Fits"] in written.values()
+    assert DEFAULTS_BY_NAME[AI_WHY] in written.values()
 
 
 def test_repairing_applied_state_follows_column_a():

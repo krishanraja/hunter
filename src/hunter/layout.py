@@ -11,7 +11,7 @@ that never say anything.
 
 So the layout has one job: put everything a verdict depends on inside one
 screen, and hide the rest rather than deleting it. Hiding is reversible and
-keeps the 30-column contract canon 9.13 fixes; deleting would break it.
+keeps the column contract canon 9.13 fixes; deleting would break it.
 
 Three rules the numbers follow:
 
@@ -26,12 +26,15 @@ Three rules the numbers follow:
   the next role off the screen. Uniform rows are what make a column scannable.
 
 Idempotent by construction: it sets absolute widths and an explicit hidden
-flag on every one of the thirty columns, so running it twice changes nothing
-and running it after Krish has dragged a column puts it back.
+flag on every column, so running it twice changes nothing and running it
+after Krish has dragged a column puts it back. That is also why his own two
+columns are in WIDTHS at the widths he gave them on 2026-10-11: a width left
+to the sheet would be reset under him every hour.
 """
 from __future__ import annotations
 
-from .sheet import COLS, DATA_START_ROW, HEADERS, N_COLS, Sheet, SheetError
+from .sheet import (AI_SCORE, AI_WHY, COLS, DATA_START_ROW, HEADERS,
+                    KRISH_REACTION, KRISH_SCORE, N_COLS, Sheet, SheetError)
 
 # name -> pixel width. Every column in HEADERS appears exactly once, so a new
 # column added to the contract fails the guard below instead of silently
@@ -46,8 +49,10 @@ WIDTHS: dict[str, int] = {
     "Cover Letter Doc": 56,
     "CV PDF": 52,
     "CL PDF": 52,
-    "Score": 46,
-    "Why It Fits": 230,
+    AI_SCORE: 46,
+    KRISH_SCORE: 46,
+    AI_WHY: 230,
+    KRISH_REACTION: 77,
     "Sector": 96,
     "Stage": 90,
     "Location": 90,
@@ -74,17 +79,19 @@ WIDTHS: dict[str, int] = {
 # CV PDF and CL PDF are hidden even though they are built, because the Doc
 # links next to them open the same material and are the ones he edits. Path
 # Evidence is hidden because Warm Path already carries the person and the
-# evidence is a paragraph; it is in the approval email instead.
+# evidence is a paragraph; it is in the approval email instead. His score
+# and his reaction sit beside hunter's, because the gap between the two is
+# the thing he is reading for.
 VISIBLE: tuple[str, ...] = (
     "Verdict", "Business", "Role", "JD Snippet", "Job Link", "CV Doc",
-    "Cover Letter Doc", "Score", "Why It Fits", "Location", "Comp",
-    "Warm Path", "Package Status",
+    "Cover Letter Doc", AI_SCORE, KRISH_SCORE, AI_WHY, KRISH_REACTION,
+    "Location", "Comp", "Warm Path", "Package Status",
 )
 
 # Wrapped, so the whole sentence is there when the row is tall enough to show
 # it, clipped rather than overflowing when it is not.
-WRAPPED: tuple[str, ...] = ("JD Snippet", "Why It Fits", "Role", "Comp",
-                            "Warm Path", "Package Status")
+WRAPPED: tuple[str, ...] = ("JD Snippet", AI_WHY, KRISH_REACTION, "Role",
+                            "Comp", "Warm Path", "Package Status")
 
 FROZEN_COLUMNS = 3          # Verdict, Business, Role stay put
 FROZEN_ROWS = 2             # header plus the intentional blank
@@ -146,15 +153,18 @@ def plan(sheet_id: int, row_count: int) -> list[dict]:
 
     # Text behaviour across the whole data block: top aligned so wrapped cells
     # start at the same line, clipped by default so a long cell cannot spill
-    # over its neighbour.
-    reqs.append({"repeatCell": {
-        "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_ROW - 1,
-                  "endRowIndex": max(row_count, DATA_START_ROW),
-                  "startColumnIndex": 0, "endColumnIndex": N_COLS},
-        "cell": {"userEnteredFormat": {"verticalAlignment": "TOP",
-                                       "wrapStrategy": "CLIP",
-                                       "textFormat": {"fontSize": 10}}},
-        "fields": "userEnteredFormat(verticalAlignment,wrapStrategy,textFormat.fontSize)"}})
+    # over its neighbour. Krish Score is left out: the number he types is his,
+    # and so is how it looks.
+    his = COLS[KRISH_SCORE]
+    for c0, c1 in ((0, his), (his + 1, N_COLS)):
+        reqs.append({"repeatCell": {
+            "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_ROW - 1,
+                      "endRowIndex": max(row_count, DATA_START_ROW),
+                      "startColumnIndex": c0, "endColumnIndex": c1},
+            "cell": {"userEnteredFormat": {"verticalAlignment": "TOP",
+                                           "wrapStrategy": "CLIP",
+                                           "textFormat": {"fontSize": 10}}},
+            "fields": "userEnteredFormat(verticalAlignment,wrapStrategy,textFormat.fontSize)"}})
     for name in WRAPPED:
         idx = COLS[name]
         reqs.append({"repeatCell": {
@@ -177,7 +187,7 @@ def plan(sheet_id: int, row_count: int) -> list[dict]:
         "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,"
                   "wrapStrategy,textFormat)"}})
 
-    score = COLS["Score"]
+    score = COLS[AI_SCORE]
     reqs.append({"repeatCell": {
         "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_ROW - 1,
                   "endRowIndex": max(row_count, DATA_START_ROW),
@@ -236,6 +246,7 @@ def apply_layout(sheet: Sheet, *, sheet_id: int | None = None) -> dict:
     before = current(sheet, sid)
     reqs = plan(sid, before["row_count"])
     sheet._post(":batchUpdate", {"requests": reqs})
+    colours = sheet.narrow_score_colours(sheet_id=sid)
     after = current(sheet, sid)
 
     want_hidden = [h not in VISIBLE for h in HEADERS]
@@ -261,6 +272,7 @@ def apply_layout(sheet: Sheet, *, sheet_id: int | None = None) -> dict:
             "width_before": before["visible_width"],
             "width_after": after["visible_width"],
             "frozen": f"{FROZEN_ROWS} rows, {FROZEN_COLUMNS} columns",
+            "score_colours": colours["narrowed"],
             "verified": True}
 
 

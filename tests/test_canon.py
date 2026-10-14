@@ -10,19 +10,28 @@ from hunter.canon import CanonError, load_canon
 from hunter.config import Config
 
 
+# Canon v9, 2026-10-13: his two columns at K and M, on one line, with a blank
+# line after it. The parser stops at the first blank line, so the sentence
+# about his columns has to be its own paragraph or it is read as part of the
+# last header name.
 HEADER_SENTENCE = ("A Verdict, B Business, C Role, D JD Snippet, E Job Link, F CV Doc, "
-                   "G Cover Letter Doc, H CV PDF, I CL PDF, J Score, K Why It Fits, "
-                   "L Sector, M Stage, N Location, O Comp, P Warm Path, Q Path Evidence, "
-                   "R Package Status, S Source, T Application Status, U Applied Date, "
-                   "V Next Action, W Application Format, X Attachment Style, "
-                   "Y Additional Questions, Z Form Complexity, AA Autonomy Score, "
-                   "AB Form Audit Date, AC JD URL Verified, AD Materials Built")
-LEGACY_SENTENCE = ("A Verdict, B Business, C Role, D Job Link, E CV Doc, F Cover Letter Doc, "
-                   "G CV PDF, H CL PDF, I Score, J Why It Fits, K Sector, L Stage, M Location, "
-                   "N Comp, O Package Status, P Source, Q Application Status, R Applied Date, "
-                   "S Next Action, T Application Format, U Attachment Style, V Additional Questions, "
-                   "W Form Complexity, X Autonomy Score, Y Form Audit Date, Z JD URL Verified, "
-                   "AA JD Snippet, AB Materials Built")
+                   "G Cover Letter Doc, H CV PDF, I CL PDF, J AI Score, K Krish Score, "
+                   "L Why AI thinks it Fits, M Krish Reaction, N Sector, O Stage, "
+                   "P Location, Q Comp, R Warm Path, S Path Evidence, T Package Status, "
+                   "U Source, V Application Status, W Applied Date, X Next Action, "
+                   "Y Application Format, Z Attachment Style, AA Additional Questions, "
+                   "AB Form Complexity, AC Autonomy Score, AD Form Audit Date, "
+                   "AE JD URL Verified, AF Materials Built")
+HIS_PARAGRAPH = ("K Krish Score and M Krish Reaction are Krish's. Hunter never writes "
+                 "them and gives them no default.")
+# Canon v8, the 30 columns before he inserted his two.
+V8_SENTENCE = ("A Verdict, B Business, C Role, D JD Snippet, E Job Link, F CV Doc, "
+               "G Cover Letter Doc, H CV PDF, I CL PDF, J Score, K Why It Fits, "
+               "L Sector, M Stage, N Location, O Comp, P Warm Path, Q Path Evidence, "
+               "R Package Status, S Source, T Application Status, U Applied Date, "
+               "V Next Action, W Application Format, X Attachment Style, "
+               "Y Additional Questions, Z Form Complexity, AA Autonomy Score, "
+               "AB Form Audit Date, AC JD URL Verified, AD Materials Built")
 
 
 def synthetic_body(cv_id=config.CV_MASTER_ID, letter_id=config.LETTER_MASTER_ID,
@@ -63,6 +72,7 @@ def synthetic_body(cv_id=config.CV_MASTER_ID, letter_id=config.LETTER_MASTER_ID,
             "Pipeline tab: sheetId 708873267.\n"
             "Header, exact, in order:\n"
             + HEADER_SENTENCE + ".\n\n"
+            + HIS_PARAGRAPH + "\n\n"
             "LINK COLUMNS ARE HYPERLINK FORMULAS, NOT URLS.\n"
         ),
     }
@@ -88,21 +98,40 @@ def test_parses_both_heading_styles_and_all_guards_pass(cfg, monkeypatch):
     assert c.bar == 8
     assert sorted(c.gates) == [f"G{i}" for i in range(1, 11)] or len(c.gates) == 10
     assert "TollBit" in c.universe and "Glean" in c.universe
-    assert len(c.sheet_headers) == 30
+    from hunter.sheet import HEADERS
+    assert len(c.sheet_headers) == 32
+    assert c.sheet_headers == HEADERS
     assert c.sheet_headers[0] == "Verdict"
     assert c.sheet_headers[3] == "JD Snippet"
-    assert c.sheet_headers[15] == "Warm Path"
-    assert c.sheet_headers[29] == "Materials Built"
+    assert c.sheet_headers[9:13] == ["AI Score", "Krish Score",
+                                     "Why AI thinks it Fits", "Krish Reaction"]
+    assert c.sheet_headers[17] == "Warm Path"
+    assert c.sheet_headers[31] == "Materials Built"
     # The numbered list item inside section 4 must not have opened a section.
     assert "1" not in c.sections or "Header row" not in c.sections.get("1", ("", ""))[0]
 
 
-def test_the_old_28_column_body_is_refused(cfg, monkeypatch):
-    """After the 2026-09-07 column move a canon body still listing 28 names
-    means canon and the sheet disagree, and hunter must not run on either."""
-    patch_body(monkeypatch, synthetic_body().replace(HEADER_SENTENCE, LEGACY_SENTENCE))
-    with pytest.raises(CanonError, match="expected 30"):
+def test_the_v8_30_column_body_is_refused_in_plain_words(cfg, monkeypatch):
+    """After he inserted Krish Score and Krish Reaction on 2026-10-11, a canon
+    body still listing 30 names means canon and the sheet disagree, and hunter
+    must not run on either. The message used to say "run migrate-columns", a
+    command that no longer existed."""
+    patch_body(monkeypatch, synthetic_body().replace(HEADER_SENTENCE, V8_SENTENCE))
+    with pytest.raises(CanonError, match="lists 30 headers, expected 32") as e:
         load_canon(cfg)
+    assert "migrate-columns" not in str(e.value)
+    assert "same columns in the same order" in str(e.value)
+
+
+def test_his_paragraph_without_a_blank_line_is_swallowed_by_the_list(cfg, monkeypatch):
+    """Why canon v9 puts a blank line between the header and the sentence
+    about his columns: without it the sentence is read as the end of the last
+    header name, and the list still counts 32."""
+    body = synthetic_body().replace(HEADER_SENTENCE + ".\n\n" + HIS_PARAGRAPH,
+                                    HEADER_SENTENCE + ".\n" + HIS_PARAGRAPH)
+    patch_body(monkeypatch, body)
+    c = load_canon(cfg)
+    assert len(c.sheet_headers) == 32 and c.sheet_headers[-1] != "Materials Built"
 
 
 def test_a_mislettered_header_list_is_refused(cfg, monkeypatch):

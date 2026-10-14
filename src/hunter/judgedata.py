@@ -23,6 +23,7 @@ from dataclasses import asdict, dataclass
 
 from . import judge, verdicts
 from .config import ALL_ROWS, Config, db_get
+from .sheet import AI_WHY
 
 CLEARING = "sourced before the bar was fixed"
 
@@ -124,7 +125,7 @@ def collect(cfg: Config, sheet, canon) -> tuple[list[Ruled], dict]:
             presented_at=d.get("presented_at") or first_event.get(jid),
             jd_text=d.get("jd_text") or "",
             snippet=_clean(s.cell("JD Snippet"), "Not captured"),
-            why=_clean(s.cell("Why It Fits"), "Not assessed"),
+            why=_clean(s.cell(AI_WHY), "Not assessed"),
             source=d.get("source") or s.cell("Source") or "",
             archived=s.archived))
     blind = blind_rulings(sheet, {d["job_id"]: d for d in db}, seen)

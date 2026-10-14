@@ -4,7 +4,7 @@
   is intentionally blank, data starts at row 3.
 - Column positions come from ONE map, COLS, built from HEADERS. Every range
   string in this module is derived from it, so a column move is a change to
-  HEADERS plus one migrate-columns run, never a hunt for magic numbers.
+  HEADERS and canon 9.13, never a hunt for magic numbers.
 - The link columns (Job Link, CV Doc, Cover Letter Doc, CV PDF, CL PDF) hold
   =HYPERLINK("url","label") formulas. Reads use valueRenderOption=FORMULA; a
   rendered read loses every URL.
@@ -17,7 +17,11 @@
   writes touch the four link columns, Package Status and Materials Built;
   warm path writes touch Warm Path and Path Evidence; sorting moves whole
   rows so column A travels with its row.
-- No cell is ever left blank; fill defaults are canon 9.13's, verbatim.
+- No cell hunter owns is left blank; fill defaults are canon 9.13's,
+  verbatim. Krish Score and Krish Reaction (HIS_COLS) are his: hunter never
+  writes into them and never gives them a default. The only writes that
+  carry them are the ones that move his whole row (to Applied, and back by
+  restore), and those read his two cells back before anything is deleted.
 """
 from __future__ import annotations
 
@@ -34,10 +38,35 @@ SHEETS = "https://sheets.googleapis.com/v4/spreadsheets"
 TAB = "Pipeline"
 DATA_START_ROW = 3  # 1-based; row 2 is intentionally blank
 
+# The two columns hunter writes its own judgement into. Named, because until
+# 2026-10-11 they were "Score" and "Why It Fits", and a name typed out at forty
+# call sites is a name that gets missed at one of them.
+AI_SCORE = "AI Score"
+AI_WHY = "Why AI thinks it Fits"
+# Krish inserted these on 2026-10-11, between hunter's score and hunter's
+# argument: his score out of 10 and his reaction in his own words. They are
+# his. Hunter writes into neither, defaults neither, and a blank in either is
+# an answer rather than a hole to fill.
+KRISH_SCORE = "Krish Score"
+KRISH_REACTION = "Krish Reaction"
+HIS_COLS = frozenset({KRISH_SCORE, KRISH_REACTION})
+
 # Canon 9.13, exact, in order. run.assert_canon_alignment refuses to run
 # when canon says otherwise, so this list and the canon body cannot drift
 # apart silently.
 HEADERS = [
+    "Verdict", "Business", "Role", "JD Snippet", "Job Link", "CV Doc",
+    "Cover Letter Doc", "CV PDF", "CL PDF", AI_SCORE, KRISH_SCORE, AI_WHY,
+    KRISH_REACTION, "Sector", "Stage", "Location", "Comp", "Warm Path",
+    "Path Evidence", "Package Status", "Source", "Application Status",
+    "Applied Date", "Next Action", "Application Format", "Attachment Style",
+    "Additional Questions", "Form Complexity", "Autonomy Score",
+    "Form Audit Date", "JD URL Verified", "Materials Built",
+]
+# The 30-column layout Pipeline carried until he inserted his two columns, and
+# the Applied tab still carries until ensure_archive_columns moves it. Read
+# only by that method and by read_archive, which reads either layout.
+PREVIOUS_HEADERS = [
     "Verdict", "Business", "Role", "JD Snippet", "Job Link", "CV Doc",
     "Cover Letter Doc", "CV PDF", "CL PDF", "Score", "Why It Fits", "Sector",
     "Stage", "Location", "Comp", "Warm Path", "Path Evidence", "Package Status",
@@ -46,26 +75,23 @@ HEADERS = [
     "Form Complexity", "Autonomy Score", "Form Audit Date", "JD URL Verified",
     "Materials Built",
 ]
-# The 28-column layout the sheet carried until 2026-09-07. Read only by
-# migrate_columns, which knows how to get from here to HEADERS.
-LEGACY_HEADERS = [
-    "Verdict", "Business", "Role", "Job Link", "CV Doc", "Cover Letter Doc",
-    "CV PDF", "CL PDF", "Score", "Why It Fits", "Sector", "Stage", "Location",
-    "Comp", "Package Status", "Source", "Application Status", "Applied Date",
-    "Next Action", "Application Format", "Attachment Style",
-    "Additional Questions", "Form Complexity", "Autonomy Score",
-    "Form Audit Date", "JD URL Verified", "JD Snippet", "Materials Built",
-]
+PREVIOUS_NAMES = {"Score": AI_SCORE, "Why It Fits": AI_WHY}
 N_COLS = len(HEADERS)
 COLS = {name: i for i, name in enumerate(HEADERS)}
+HIS_IDX = frozenset(COLS[n] for n in HIS_COLS)
 ARCHIVE_TRAILING = ("Archived On",)
 ARCHIVE_WIDTH = N_COLS + len(ARCHIVE_TRAILING)
+# How far right a header read looks. Reading only to the last column hunter
+# knows makes a column he adds after it invisible: the guard compared the
+# first thirty cells, saw them agree, and the sort would then have moved every
+# row and left his new column where it was.
+SCAN_WIDTH = 52
 
 # canon 9.13 fill defaults, by name
 DEFAULTS_BY_NAME = {
     "Verdict": "New", "JD Snippet": "Not captured", "CV Doc": "Not built",
     "Cover Letter Doc": "Not built", "CV PDF": "Not built", "CL PDF": "Not built",
-    "Why It Fits": "Not assessed", "Sector": "Not stated", "Stage": "Not stated",
+    AI_WHY: "Not assessed", "Sector": "Not stated", "Stage": "Not stated",
     "Location": "Not stated", "Comp": "Not disclosed", "Warm Path": "None found",
     "Path Evidence": "n/a", "Package Status": "Not started", "Source": "Unknown",
     "Application Status": "Not applied", "Applied Date": "n/a",
@@ -101,6 +127,21 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 class SheetError(RuntimeError):
     pass
+
+
+class HeaderChanged(SheetError):
+    """Pipeline's row 1 is not the header hunter writes against.
+
+    On 2026-10-11 Krish inserted two columns and renamed two, and the guard
+    held: nothing was written over his cells. But it said so as a list of
+    tuples ending "run migrate-columns", a command that no longer existed, in
+    a log nobody reads, for 56 hourly runs. This says which columns moved, in
+    words, and the watchdog mails the same words (alerts.trouble_checks).
+    """
+
+    def __init__(self, diffs: list[tuple[str, str, str]], shift: str = ""):
+        self.diffs = diffs
+        super().__init__(describe_header_change(diffs, shift=shift))
 
 
 # ---------- the column map ----------
@@ -151,6 +192,121 @@ def cell_range(first: str, row: int, last: str | None = None,
 LAST_COL = col_letter(N_COLS - 1)
 FULL_RANGE = f"{TAB}!A1:{LAST_COL}"
 ARCHIVE_LAST_COL = col_letter(ARCHIVE_WIDTH - 1)
+SCAN_LAST_COL = col_letter(SCAN_WIDTH - 1)
+HEADER_SCAN = f"{TAB}!A1:{SCAN_LAST_COL}1"
+
+
+def header_diffs(found: list, expected: list[str]) -> list[tuple[str, str, str]]:
+    """(column letter, what row 1 reads, what hunter expects) for every
+    column that disagrees, including anything written after the last
+    column hunter knows."""
+    got = [str(x if x is not None else "") for x in found]
+    width = max(len(got), len(expected))
+    got += [""] * (width - len(got))
+    want = list(expected) + [""] * (width - len(expected))
+    return [(col_letter(i), got[i], want[i]) for i in range(width)
+            if got[i] != want[i] and (got[i].strip() or want[i].strip())]
+
+
+def header_shift(found: list, expected: list[str]) -> str:
+    """One phrase when row 1 is `expected` with one or two columns inserted
+    or removed inside it and nothing else changed, else "". One column
+    inserted at F read as two dozen renames, F to AF, and never said
+    "inserted". A column added after the last one is left to the cell list,
+    which already says it is past the end."""
+    got = [str(x if x is not None else "") for x in found]
+    while got and not got[-1].strip():
+        got.pop()
+    want = list(expected)
+    if len(got) == len(want):
+        return ""
+    longer, shorter = (got, want) if len(got) > len(want) else (want, got)
+    extra, i, j = [], 0, 0
+    while i < len(longer):
+        if j < len(shorter) and longer[i] == shorter[j]:
+            j += 1
+        else:
+            extra.append((i, longer[i]))
+        i += 1
+    if j != len(shorter) or not 1 <= len(extra) <= 2:
+        return ""
+    if longer is got:
+        if all(i >= len(want) for i, _ in extra):
+            return ""
+        names = " and ".join(f"{name!r} at {col_letter(i)}" if name.strip()
+                             else f"a blank column at {col_letter(i)}"
+                             for i, name in extra)
+        return f"a column was inserted: {names}" if len(extra) == 1 else \
+            f"columns were inserted: {names}"
+    names = " and ".join(f"{name!r}, which was {col_letter(i)}" for i, name in extra)
+    return f"a column was removed: {names}" if len(extra) == 1 else \
+        f"columns were removed: {names}"
+
+
+PIPELINE_STOPPED = ("Hunter is not writing to the sheet until the code and canon "
+                    "9.13 agree with the header again: undo the change, or ask "
+                    "Claude to adopt it.")
+APPLIED_STOPPED = ("Hunter is not moving decided rows to Applied, and the next "
+                   "batch cannot read it, until its row 1 is a layout hunter "
+                   "knows again: undo the change, or ask Claude to adopt it.")
+
+
+def describe_header_change(diffs: list[tuple[str, str, str]], *, limit: int = 6,
+                           lead: str = "Pipeline columns changed: ", shift: str = "",
+                           consequence: str = PIPELINE_STOPPED) -> str:
+    """The diff in words he can act on without reading code, ending with what
+    is stopped and what he can do. `shift` (header_shift) replaces the cell
+    list when the change was an insert or a removal."""
+    if shift:
+        return f"{lead}{shift}. {consequence}"
+    parts = []
+    for letter_, got, want in diffs[:limit]:
+        if not want:
+            parts.append(f"{letter_} reads {got!r}, a column past the last "
+                         f"one hunter knows")
+        elif not got:
+            parts.append(f"{letter_} is empty where hunter expects {want!r}")
+        else:
+            parts.append(f"{letter_} reads {got!r} where hunter expects {want!r}")
+    more = f", and {len(diffs) - limit} more" if len(diffs) > limit else ""
+    return lead + "; ".join(parts) + more + ". " + consequence
+
+
+def archive_layout(grid: list[list]) -> str:
+    """Which layout the Applied tab is on, from its own rows: "empty" when it
+    holds nothing, "current" (HEADERS plus Archived On), "previous"
+    (PREVIOUS_HEADERS plus Archived On), or "" for neither, which every
+    reader and writer of Applied refuses. One judgement, so the watchdog and
+    the doctor see the header exactly as the writers do."""
+    if not grid:
+        return "empty"
+    header = pad_row(grid[0], SCAN_WIDTH)
+    for state, names in (("current", HEADERS), ("previous", PREVIOUS_HEADERS)):
+        want = list(names) + list(ARCHIVE_TRAILING)
+        if header[:len(want)] == want and not any(x.strip() for x in header[len(want):]):
+            return state
+    return ""
+
+
+def archive_header_diffs(grid: list[list]) -> list[tuple[str, str, str]]:
+    """Applied's row 1 against whichever known layout it is nearer."""
+    header = pad_row(grid[0] if grid else [], SCAN_WIDTH)
+    return min((header_diffs(header, list(names) + list(ARCHIVE_TRAILING))
+                for names in (HEADERS, PREVIOUS_HEADERS)), key=len)
+
+
+def his_insert_indexes() -> list[int]:
+    """Where his two columns go into a tab still on PREVIOUS_HEADERS, in
+    ascending order, so each index is right at the moment it is inserted.
+    Derived and checked rather than typed."""
+    at = sorted(COLS[n] for n in HIS_COLS)
+    grown = [PREVIOUS_NAMES.get(h, h) for h in PREVIOUS_HEADERS]
+    for i in at:
+        grown.insert(i, "")
+    if grown != ["" if h in HIS_COLS else h for h in HEADERS]:
+        raise SheetError("HEADERS is not PREVIOUS_HEADERS with his two columns "
+                         "inserted; fix the map first")
+    return at
 
 
 @dataclass
@@ -163,6 +319,10 @@ class SheetRow:
     jd_url: str | None
     package_urls: dict[str, str | None] = field(default_factory=dict)
     archived: bool = False   # lives on the Applied tab, decided, read only
+    # The Applied tab's stamp, kept off `cells` so cells stays N_COLS wide
+    # for every caller. check_archive_stamped read cells[30] of a row padded
+    # to 30, so it reported all 369 dated rows as undated.
+    archived_on: str = ""
 
     def cell(self, name: str) -> str:
         return self.cells[col(name)]
@@ -232,9 +392,9 @@ def make_row(*, company: str, role: str, jd_url: str, score: int,
     cells[COLS["Business"]] = as_text(plain_text(company))
     cells[COLS["Role"]] = as_text(plain_text(role))
     cells[COLS["Job Link"]] = hyperlink(jd_url, "JD")
-    cells[COLS["Score"]] = str(score)
+    cells[COLS[AI_SCORE]] = str(score)
     if why_it_fits.strip():
-        cells[COLS["Why It Fits"]] = plain_text(why_it_fits).strip()
+        cells[COLS[AI_WHY]] = plain_text(why_it_fits).strip()
     for name, value in (("Sector", sector), ("Stage", stage), ("Location", location),
                         ("Comp", comp), ("Source", source)):
         if value.strip():
@@ -254,6 +414,8 @@ def validate_row(cells: list[str], *, is_append: bool = True) -> list[str]:
     if len(cells) != N_COLS:
         return [f"expected {N_COLS} cells, got {len(cells)}"]
     for i, c in enumerate(cells):
+        if i in HIS_IDX:
+            continue   # his: blank means he has not ruled, and it stays blank
         if not str(c).strip():
             fails.append(f"blank cell at column {col_letter(i)} ({HEADERS[i]})")
     if is_append and cells[COLS["Verdict"]] != "New":
@@ -262,17 +424,19 @@ def validate_row(cells: list[str], *, is_append: bool = True) -> list[str]:
     if not parsed or not parsed[0].startswith("http"):
         fails.append(f'column {letter("Job Link")} must be =HYPERLINK("http...","JD")')
     try:
-        score = int(cells[COLS["Score"]])
+        score = int(cells[COLS[AI_SCORE]])
         if not 1 <= score <= 10:
-            fails.append(f"column {letter('Score')} score out of 1..10")
+            fails.append(f"column {letter(AI_SCORE)} score out of 1..10")
     except (ValueError, TypeError):
-        fails.append(f"column {letter('Score')} score is not an integer")
+        fails.append(f"column {letter(AI_SCORE)} score is not an integer")
     for i in DATE_COLS:
         if cells[i] != "n/a" and not DATE_RE.match(cells[i]):
             fails.append(f"column {col_letter(i)} must be n/a or YYYY-MM-DD, got {cells[i]!r}")
     if cells[COLS["JD URL Verified"]] not in ("TRUE", "FALSE"):
         fails.append(f"column {letter('JD URL Verified')} must be TRUE or FALSE in that casing")
     for i, c in enumerate(cells):
+        if i in HIS_IDX:
+            continue   # his words, with whatever dash he typed
         if "\u2014" in str(c):
             fails.append(f"em dash in column {col_letter(i)}")
     return fails
@@ -303,50 +467,6 @@ def rows_equal(expected: list[str], actual: list[str]) -> bool:
     """Structural comparison tolerant of Sheets normalization: HYPERLINKs
     compare by (url, label); everything else compares as trimmed text."""
     return not row_diff(expected, actual)
-
-
-def column_state(header: list[str], trailing: tuple[str, ...] = ()) -> str:
-    """Where a tab sits on the road from LEGACY_HEADERS to HEADERS.
-
-    legacy: the 28 old names (plus trailing). moved: JD Snippet already at D
-    and no Warm Path yet. inserted: the two new columns exist but the header
-    is not written. done: HEADERS exactly. unknown: none of these, and the
-    migration refuses to guess.
-    """
-    h = [str(x).strip() for x in header]
-    tl = list(trailing)
-    if h[:len(HEADERS) + len(tl)] == HEADERS + tl and not any(
-            x for x in h[len(HEADERS) + len(tl):]):
-        return "done"
-    if h[:len(LEGACY_HEADERS) + len(tl)] == LEGACY_HEADERS + tl and not any(
-            x for x in h[len(LEGACY_HEADERS) + len(tl):]):
-        return "legacy"
-    moved = list(LEGACY_HEADERS)
-    moved.insert(3, moved.pop(LEGACY_HEADERS.index("JD Snippet")))
-    if h[:len(moved) + len(tl)] == moved + tl and not any(x for x in h[len(moved) + len(tl):]):
-        return "moved"
-    insert_at = moved.index("Comp") + 1
-    inserted = moved[:insert_at] + ["", ""] + moved[insert_at:]
-    hh = list(h) + [""] * (len(inserted) + len(tl) - len(h))
-    if all((hh[i] == inserted[i]) or (inserted[i] == "" and hh[i] in ("", "Warm Path", "Path Evidence"))
-           for i in range(len(inserted))) and hh[len(inserted):len(inserted) + len(tl)] == tl:
-        return "inserted"
-    return "unknown"
-
-
-def migration_indexes() -> dict:
-    """The move and the insert, derived rather than typed, and checked."""
-    src = LEGACY_HEADERS.index("JD Snippet")
-    dst = LEGACY_HEADERS.index("Job Link")
-    moved = list(LEGACY_HEADERS)
-    moved.insert(dst, moved.pop(src))
-    insert_at = moved.index("Comp") + 1
-    new_names = [h for h in HEADERS if h not in LEGACY_HEADERS]
-    if moved[:insert_at] + new_names + moved[insert_at:] != HEADERS:
-        raise SheetError("HEADERS is not LEGACY_HEADERS with the snippet moved "
-                         "and the new columns inserted; fix the map first")
-    return {"move_from": src, "move_to": dst, "insert_at": insert_at,
-            "insert_count": len(new_names), "new_names": new_names}
 
 
 class Sheet:
@@ -398,9 +518,18 @@ class Sheet:
     def _column_a(self, tab: str = TAB) -> list[list]:
         return self._values(f"{tab}!A1:A2000", formulas=False)
 
+    def _his_cells(self, tab: str = TAB) -> list[dict[str, str]]:
+        """Krish Score and Krish Reaction for every row, rendered, by name."""
+        lo, hi = min(HIS_IDX), max(HIS_IDX)
+        raw = self._values(f"{tab}!{col_letter(lo)}1:{col_letter(hi)}2000",
+                           formulas=False)
+        return [{n: pad_row(r, hi - lo + 1)[COLS[n] - lo] for n in HIS_COLS}
+                for r in raw]
+
     def delete_rows(self, row_numbers: list[int], *,
                     expect_verdict: str | None = "New",
-                    named: set[int] | frozenset[int] = frozenset()) -> int:
+                    named: set[int] | frozenset[int] = frozenset(),
+                    his_copied: bool = False) -> int:
         """Remove data rows, refusing any row Krish has written on.
 
         Deleting is the one destructive thing this module does, so it re-reads
@@ -416,6 +545,13 @@ class Sheet:
         expect_verdict=None instead would have disabled the check for the whole
         batch, including the duplicate and out-of-geography rows in the same
         call, which is exactly the blanket this guard exists to prevent.
+
+        His score and his reaction are writing on the row too. Column A alone
+        let prune-sheet plan his 9 on Notion for deletion as a "duplicate" of
+        the twin he had marked Duplicate, because both read New. So K and M are
+        re-read with column A, and a target with either filled is refused
+        unless he named it. `his_copied` is for archive_rows alone, which has
+        already written both cells to Applied and read them back.
         """
         targets = sorted({int(n) for n in row_numbers}, reverse=True)
         if not targets:
@@ -436,6 +572,21 @@ class Sheet:
         if dirty:
             raise SheetError(f"refusing to delete: column A is no longer "
                              f"{expect_verdict!r} on {dirty[:5]}; re-run the plan")
+        if not his_copied:
+            marks = self._his_cells()
+            his = []
+            for n in targets:
+                if n in exempt:
+                    continue
+                row = marks[n - 1] if len(marks) >= n else {}
+                filled = [name for name in sorted(HIS_COLS)
+                          if str(row.get(name, "")).strip()]
+                if filled:
+                    his.append((n, filled))
+            if his:
+                raise SheetError(f"refusing to delete: he has written in "
+                                 f"{' or '.join(sorted(HIS_COLS))} on {his[:5]}; "
+                                 f"nothing deleted")
         self._post(":batchUpdate", {"requests": [
             {"deleteDimension": {"range": {
                 "sheetId": self.sheet_id, "dimension": "ROWS",
@@ -487,6 +638,104 @@ class Sheet:
         }}]})
         return rows
 
+    def ensure_archive_columns(self, *, apply: bool = True,
+                               archive_tab: str = config.ARCHIVE_TAB,
+                               archive_sheet_id: int = config.ARCHIVE_SHEET_ID) -> dict:
+        """Give the Applied tab his two columns, once, in place.
+
+        Pipeline gained Krish Score and Krish Reaction on 2026-10-11 and
+        Applied did not, so a row moved there would have landed 32 cells wide
+        under a 31-name header: his score under Why It Fits, every column
+        after it one to the right, and the stamp past the last header. Run
+        before anything writes Applied.
+
+        Reads row 1 and decides from it alone (archive_layout). The current
+        layout, or an empty tab, is a no-op. The previous layout
+        (PREVIOUS_HEADERS plus Archived On, nothing after it) gets both
+        columns inserted where HEADERS puts them, in one atomic request.
+        Anything else raises and changes nothing: a header nobody recognises
+        is not hunter's to guess at. Then reads back every row (same count,
+        same Business and Role, the stamp moved two to the right, his two
+        cells blank) and only then writes the header and reads it back.
+        """
+        raw = [pad_row(r, SCAN_WIDTH) for r in self.read_archive_grid(archive_tab)]
+        current = HEADERS + list(ARCHIVE_TRAILING)
+        report = {"tab": archive_tab, "state": "", "rows": 0,
+                  "applied": False, "noop": False}
+        data = [(n, r) for n, r in enumerate(raw[1:], start=2)
+                if any(str(c).strip() for c in r[:3])]
+        report["rows"] = len(data)
+        state = archive_layout(raw)
+        if state in ("empty", "current"):
+            report["state"], report["noop"] = state, True
+            return report
+        if state != "previous":
+            raise SheetError(f"{archive_tab} header is neither the previous nor the "
+                             f"current layout; first differences "
+                             f"{archive_header_diffs(raw)[:4]}. Nothing was changed.")
+        report["state"] = "previous"
+        if not apply:
+            return report
+
+        at = his_insert_indexes()
+        old_stamp = len(PREVIOUS_HEADERS)
+        # The two inserts first, in one request, and the header only once
+        # every row has been read back. Sent together, a read-back that failed
+        # left row 1 reading the current layout over rows that may not have
+        # moved, and the very next archive_rows and read_archive trusted it.
+        # Sent after, a failure leaves the previous names with two blank
+        # columns among them, which archive_layout knows as neither layout,
+        # so everything that touches Applied stops until someone looks.
+        self._post(":batchUpdate", {"requests": [{"insertDimension": {
+            "range": {"sheetId": archive_sheet_id, "dimension": "COLUMNS",
+                      "startIndex": i, "endIndex": i + 1},
+            "inheritFromBefore": True}} for i in at]})
+        grown = list(PREVIOUS_HEADERS)
+        for i in at:
+            grown.insert(i, "")
+        grown += list(ARCHIVE_TRAILING)
+
+        after = [pad_row(r, SCAN_WIDTH) for r in self.read_archive_grid(archive_tab)]
+        problems = []
+        if not after or after[0][:len(grown)] != grown or any(
+                x.strip() for x in after[0][len(grown):]):
+            problems.append(f"row 1 reads {after[0][:4] if after else []}... where "
+                            f"two blank columns should sit at "
+                            f"{' and '.join(col_letter(i) for i in at)}")
+        got = [(n, r) for n, r in enumerate(after[1:], start=2)
+               if any(str(c).strip() for c in r[:3])]
+        if len(got) != len(data):
+            problems.append(f"{len(data)} rows before, {len(got)} after")
+        his = [COLS[n] for n in sorted(HIS_COLS)]
+        for (n, was), (m, now) in zip(data, got):
+            if n != m or was[1:3] != now[1:3]:
+                problems.append(f"row {n} Business and Role moved")
+            elif now[ARCHIVE_WIDTH - 1] != was[old_stamp]:
+                problems.append(f"row {n} Archived On did not land at "
+                                f"{ARCHIVE_LAST_COL}")
+            elif any(str(now[i]).strip() for i in his):
+                problems.append(f"row {n} has a value in a column just inserted")
+            if len(problems) > 4:
+                break
+        if problems:
+            raise SheetError(f"{archive_tab} column insert did not verify, and its "
+                             f"header was not written: " + "; ".join(problems[:5])
+                             + ". Inspect the tab before any other write.")
+
+        self._post(":batchUpdate", {"requests": [{"updateCells": {
+            "range": {"sheetId": archive_sheet_id, "startRowIndex": 0,
+                      "endRowIndex": 1, "startColumnIndex": 0,
+                      "endColumnIndex": len(current)},
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": h}}
+                                 for h in current]}],
+            "fields": "userEnteredValue"}}]})
+        if archive_layout(self.read_archive_grid(archive_tab)) != "current":
+            raise SheetError(f"{archive_tab} columns were inserted and verified but "
+                             f"the header did not read back as the current layout. "
+                             f"Inspect the tab before any other write.")
+        report["applied"] = report["verified"] = True
+        return report
+
     def archive_rows(self, rows: list["SheetRow"], *, archive_tab: str,
                      archive_sheet_id: int, headers: list[str]) -> int:
         """Copy decided rows to the archive tab, then delete them from
@@ -494,6 +743,10 @@ class Sheet:
         a half-done move that loses a row Krish decided on is unacceptable."""
         if not rows:
             return 0
+        # close-submitted and confirmations archive before settle runs, so
+        # the column insert cannot wait for settle to do it.
+        self.ensure_archive_columns(apply=True, archive_tab=archive_tab,
+                                    archive_sheet_id=archive_sheet_id)
         # The archive tab shipped narrower than the payload. Writing past the
         # grid silently drops the overflow (that is how the first archived row
         # lost every column but A), so widen the grid before writing anything.
@@ -513,11 +766,22 @@ class Sheet:
             "sheetId": archive_sheet_id, "startRowIndex": 0,
             "startColumnIndex": 0, "endColumnIndex": ARCHIVE_WIDTH}}})
         self._post(":batchUpdate", {"requests": reqs})
-        existing = self._values(f"{archive_tab}!A1:{ARCHIVE_LAST_COL}2000")
-        header_written = bool(existing) and existing[0][:1] == [headers[0]]
+        existing = self._values(f"{archive_tab}!A1:{SCAN_LAST_COL}2000")
+        header_written = bool(existing) and any(str(c).strip() for c in existing[0])
+        want = list(headers) + list(ARCHIVE_TRAILING)
+        if header_written:
+            # Column A alone said "Verdict" on the old layout too, which is how
+            # 32-wide rows would have gone under a 31-name header. The whole
+            # header, or nothing moves.
+            head = pad_row(existing[0], SCAN_WIDTH)
+            if head[:len(want)] != want or any(x.strip() for x in head[len(want):]):
+                raise SheetError(
+                    f"{archive_tab} header is not Pipeline's columns plus "
+                    f"{ARCHIVE_TRAILING[0]}: {header_diffs(head, want)[:4]}; "
+                    f"nothing deleted from Pipeline")
         payload = []
         if not header_written:
-            payload.append(list(headers) + list(ARCHIVE_TRAILING))
+            payload.append(want)
         stamp = datetime.date.today().isoformat()
         for r in rows:
             payload.append(list(r.cells) + [stamp])
@@ -525,20 +789,35 @@ class Sheet:
         end = start + len(payload) - 1
         rng = f"{archive_tab}!A{start}:{ARCHIVE_LAST_COL}{end}"
         self._write([(rng, payload)])
+        # His two cells again, RAW, so they land as the text he typed. Under
+        # USER_ENTERED a reaction starting with a minus sign is a formula and
+        # "8/10" is a date.
+        self._write([(f"{archive_tab}!{letter(n)}{start}:{letter(n)}{end}",
+                      [[row[COLS[n]]] for row in payload]) for n in sorted(HIS_COLS)],
+                    raw=True)
         back = self._values(rng)
         if len(back) != len(payload):
             raise SheetError(f"archive read-back wrote {len(back)} of "
                              f"{len(payload)} rows; nothing deleted from Pipeline")
         # Count is not proof. Compare the identity columns cell by cell, or a
         # truncated write looks like a clean one and Pipeline loses the row.
-        for want, got in zip(payload, back):
-            got = (list(got) + [""] * 3)[:3]
-            if [str(want[1]).strip(), str(want[2]).strip()] != [str(got[1]).strip(),
-                                                                str(got[2]).strip()]:
+        # His two cells are compared too: they exist nowhere else once the
+        # Pipeline row is gone.
+        for want_row, got in zip(payload, back):
+            got = pad_row(got, ARCHIVE_WIDTH)
+            if [str(want_row[1]).strip(), str(want_row[2]).strip()] != [got[1].strip(),
+                                                                        got[2].strip()]:
                 raise SheetError(
-                    f"archive read-back mismatch: wrote {want[1]!r}/{want[2]!r}, "
+                    f"archive read-back mismatch: wrote {want_row[1]!r}/{want_row[2]!r}, "
                     f"read {got[1]!r}/{got[2]!r}; nothing deleted from Pipeline")
-        return self.delete_rows([r.row_number for r in rows], expect_verdict=None)
+            for n in sorted(HIS_COLS):
+                if str(want_row[COLS[n]]) != got[COLS[n]]:
+                    raise SheetError(
+                        f"archive read-back mismatch on {want_row[1]!r}/{want_row[2]!r} "
+                        f"{n}: wrote {str(want_row[COLS[n]])[:60]!r}, read "
+                        f"{got[COLS[n]][:60]!r}; nothing deleted from Pipeline")
+        return self.delete_rows([r.row_number for r in rows], expect_verdict=None,
+                                his_copied=True)
 
     def set_verdicts(self, mapping: dict[int, str]) -> int:
         """Write column A on named rows and read it back.
@@ -569,8 +848,8 @@ class Sheet:
 
     def clear_package_links(self, row_numbers: list[int]) -> int:
         """Set the four package link columns back to "Not built" and read
-        them back. Column A is Krish's; Score and Why It Fits belong to the
-        assessment."""
+        them back. Column A is Krish's; AI Score and Why AI thinks it Fits
+        belong to the assessment."""
         if not row_numbers:
             return 0
         blank = [["Not built"] * 4]
@@ -635,25 +914,51 @@ class Sheet:
         return self._values(rng, formulas=False)
 
     def update_assessment(self, row_number: int, *, score: int, why_it_fits: str) -> None:
-        """Rewrite Score and Why It Fits only. Column A stays Krish's, and the
-        package columns stay the build path's; this writer exists so a
-        re-gate can correct a score and its rationale without touching
-        anything else on the row."""
+        """Rewrite AI Score and Why AI thinks it Fits only. Column A stays
+        Krish's, and the package columns stay the build path's; this writer
+        exists so a re-gate can correct a score and its rationale without
+        touching anything else on the row.
+
+        Two ranges, J and L, never the one range J:L. They were adjacent until
+        he put his own score between them on 2026-10-11, and the single range
+        would have written the rationale into Krish Score. His two cells are
+        read before and after, and the write is refused as failed if either
+        moved."""
         if row_number < DATA_START_ROW:
             raise SheetError(f"refusing to write row {row_number}: header rows")
         if not 1 <= int(score) <= 10:
             raise SheetError(f"score {score} out of canon range 1..10")
         why = plain_text(why_it_fits).strip()
         if not why:
-            raise SheetError("Why It Fits cannot be blank; use the deterministic fallback")
+            raise SheetError(f"{AI_WHY} cannot be blank; use the deterministic fallback")
         if "\u2014" in why:
-            raise SheetError("em dash in Why It Fits")
-        rng = cell_range("Score", row_number, "Why It Fits")
-        self._write([(rng, [[str(int(score)), why[:900]]])])
-        back = self._values(rng, formulas=False) or [[]]
-        got = (back[0] + ["", ""])[:2] if back else ["", ""]
+            raise SheetError(f"em dash in {AI_WHY}")
+        first, last = COLS[AI_SCORE], COLS[KRISH_REACTION]
+        if not first < COLS[AI_WHY] < last or not all(first <= COLS[n] <= last
+                                                       for n in HIS_COLS):
+            raise SheetError("AI Score to Krish Reaction no longer spans his two "
+                             "columns; fix this writer rather than write blind")
+        span = cell_range(AI_SCORE, row_number, KRISH_REACTION)
+
+        def read_span() -> list[str]:
+            back = self._values(span)
+            return pad_row(back[0] if back else [], last - first + 1)
+
+        before = read_span()
+        self._write([(cell_range(AI_SCORE, row_number), [[str(int(score))]]),
+                     (cell_range(AI_WHY, row_number), [[as_text(why[:900])]])])
+        got = read_span()
         if got[0] != str(int(score)):
-            raise SheetError(f"read-back of row {row_number} Score gave {got[0]!r}")
+            raise SheetError(f"read-back of row {row_number} {AI_SCORE} gave {got[0]!r}")
+        if got[COLS[AI_WHY] - first].strip() != why[:900].strip():
+            raise SheetError(f"read-back of row {row_number} {AI_WHY} gave "
+                             f"{got[COLS[AI_WHY] - first][:60]!r}")
+        for name in sorted(HIS_COLS):
+            i = COLS[name] - first
+            if got[i] != before[i]:
+                raise SheetError(f"row {row_number} {name} read {before[i][:40]!r} before "
+                                 f"the assessment write and {got[i][:40]!r} after; "
+                                 f"inspect the row before any other write")
 
     def read_tab_formulas(self, rng: str) -> list[list]:
         """Formula-rendered values from any tab. The answer tabs hold link cells
@@ -705,30 +1010,67 @@ class Sheet:
     def read_archive(self) -> list[SheetRow]:
         """Archived rows are still part of "the sheet" for reconciliation.
         Leaving them out makes every archived role look missing, and
-        direction 2 re-appends it to Pipeline on the next run."""
-        grid = self._values(f"{config.ARCHIVE_TAB}!A1:{LAST_COL}2000")
+        direction 2 re-appends it to Pipeline on the next run.
+
+        Columns are found by Applied's own row 1, never by position. Applied
+        kept the previous layout after Pipeline gained his two columns, and a
+        positional read then took Sector for the rationale, Warm Path for the
+        location and Next Action for the applied date. Either layout reads;
+        anything else raises, and nothing here ever writes."""
+        grid = self.read_archive_grid()
+        state = archive_layout(grid)
+        if state == "empty":
+            return []
+        if state == "current":
+            where = {h: i for i, h in enumerate(HEADERS)}
+            stamp_at = len(HEADERS)
+        elif state == "previous":
+            where = {PREVIOUS_NAMES.get(h, h): i for i, h in enumerate(PREVIOUS_HEADERS)}
+            stamp_at = len(PREVIOUS_HEADERS)
+        else:
+            raise SheetError(
+                f"{config.ARCHIVE_TAB} header is neither the previous nor the "
+                f"current layout: {archive_header_diffs(grid)[:4]}")
         rows = []
         for i, raw in enumerate(grid[1:], start=2):
-            cells = pad_row(raw)
+            line = pad_row(raw, SCAN_WIDTH)
+            cells = [""] * N_COLS
+            for name, at in where.items():
+                cells[COLS[name]] = line[at]
             if not cells[COLS["Business"]].strip() and not cells[COLS["Role"]].strip():
                 continue
             parsed = parse_hyperlink(cells[COLS["Job Link"]])
             rows.append(SheetRow(row_number=i, cells=cells, verdict=cells[COLS["Verdict"]],
                                  company=cells[COLS["Business"]], role=cells[COLS["Role"]],
                                  jd_url=parsed[0] if parsed else None,
-                                 archived=True))
+                                 archived=True, archived_on=line[stamp_at]))
         return rows
 
-    def read_pipeline(self, canon_headers: list[str]) -> list[SheetRow]:
-        grid = self.read_grid()
-        if not grid:
+    def read_header(self) -> list[str]:
+        """Pipeline's row 1, read well past the last column hunter knows."""
+        got = self._values(HEADER_SCAN)
+        return pad_row(got[0] if got else [], SCAN_WIDTH)
+
+    def read_archive_grid(self, archive_tab: str = config.ARCHIVE_TAB) -> list[list]:
+        """The Applied tab as it stands, out past the last column hunter
+        knows, for archive_layout to judge."""
+        return self._values(f"{archive_tab}!A1:{SCAN_LAST_COL}2000")
+
+    def _read_checked(self, expected: list[str]) -> list[list[str]]:
+        """The grid, after row 1 has been checked against `expected` out to
+        SCAN_LAST_COL, in one request. Raises HeaderChanged on any
+        difference, a column after the last one hunter knows included."""
+        raw = self._values(f"{TAB}!A1:{SCAN_LAST_COL}")
+        if not raw:
             raise SheetError("Pipeline tab read returned no rows")
-        if grid[0] != list(canon_headers):
-            diffs = [(i, grid[0][i], canon_headers[i])
-                     for i in range(min(N_COLS, len(canon_headers)))
-                     if grid[0][i] != canon_headers[i]]
-            raise SheetError(f"Pipeline header row disagrees with canon 9.13: {diffs[:4]}; "
-                             f"run migrate-columns if the layout moved")
+        found = pad_row(raw[0], SCAN_WIDTH)
+        diffs = header_diffs(found, list(expected))
+        if diffs:
+            raise HeaderChanged(diffs, header_shift(found, list(expected)))
+        return [pad_row(r) for r in raw]
+
+    def read_pipeline(self, canon_headers: list[str]) -> list[SheetRow]:
+        grid = self._read_checked(canon_headers)
         if len(grid) > 1 and any(c.strip() for c in grid[1]):
             raise SheetError("Pipeline row 2 is expected to be intentionally blank")
         rows: list[SheetRow] = []
@@ -757,28 +1099,56 @@ class Sheet:
 
     # ---------- writing ----------
 
-    def append_rows(self, new_rows: list[list[str]]) -> str:
+    def append_rows(self, new_rows: list[list[str]], *, carry_his: bool = False) -> str:
+        """Write new rows after the last populated one and read them back.
+
+        A row hunter makes reaches the sheet with his two cells blank, and
+        anything else is refused before a cell is written. carry_his is for
+        the one caller that is putting HIS row back (cmd_restore), whose two
+        cells are his own words returning with it."""
         if not new_rows:
             return ""
         for n, cells in enumerate(new_rows):
             fails = validate_row(cells, is_append=True)
+            if not carry_his and len(cells) == N_COLS:
+                fails += [f"{HEADERS[i]} is his and must be blank on a new row"
+                          for i in sorted(HIS_IDX) if str(cells[i]).strip()]
             if fails:
                 raise SheetError(f"append row {n} failed validation: {fails}; "
                                  f"nothing was written")
         start = self.last_populated_row() + 1
         if start < DATA_START_ROW:
             raise SheetError(f"computed append start {start} is impossible")
-        rng = f"{TAB}!A{start}:{LAST_COL}{start + len(new_rows) - 1}"
-        self._write([(rng, new_rows)])
+        end = start + len(new_rows) - 1
+        rng = f"{TAB}!A{start}:{LAST_COL}{end}"
+        # His two cells never go through USER_ENTERED: they are blanked in
+        # the row write and, when carried, written again RAW, as archive_rows
+        # writes them to Applied. A reaction starting with a minus sign is a
+        # formula under USER_ENTERED and "10/12 call" is a date, so a restore
+        # failed its read-back after the write, leaving his row on both tabs
+        # with his words mangled on Pipeline.
+        self._write([(rng, [[("" if i in HIS_IDX else c) for i, c in enumerate(r)]
+                            for r in new_rows])])
+        if carry_his:
+            self._write([(f"{TAB}!{letter(n)}{start}:{letter(n)}{end}",
+                          [[r[COLS[n]]] for r in new_rows]) for n in sorted(HIS_COLS)],
+                        raw=True)
         landed = [pad_row(r) for r in self._values(rng)]
         if len(landed) != len(new_rows):
             raise SheetError(f"read-back on {rng} returned {len(landed)} row(s), "
                              f"expected {len(new_rows)}; inspect before retrying")
         problems = []
         for n, (want, got) in enumerate(zip(new_rows, landed)):
-            for name, w, g in row_diff(want, got):
+            diffs = row_diff(want, got)
+            for name, w, g in diffs:
                 problems.append(f"row {start + n} {name}: wrote {w!r}, "
                                 f"sheet holds {g!r}")
+            # his words byte for byte, where the trimmed comparison passed
+            named = {name for name, _, _ in diffs}
+            problems += [f"row {start + n} {HEADERS[i]}: wrote {str(want[i])[:60]!r}, "
+                         f"sheet holds {got[i][:60]!r}"
+                         for i in sorted(HIS_IDX)
+                         if HEADERS[i] not in named and str(want[i]) != got[i]]
         if problems:
             raise SheetError(
                 f"read-back mismatch on {rng}, {len(problems)} cell(s) differ. "
@@ -883,11 +1253,18 @@ class Sheet:
 
         sortRange moves whole rows, so column A and every other cell travel
         together and hunter rewrites nothing. The identity multiset is
-        compared before and after; a sort that lost or duplicated a row
-        raises.
+        compared before and after, his score and his reaction included, so a
+        sort that lost, duplicated or stranded any of them raises. It sorts
+        A to the last column hunter knows, so it refuses a header with
+        anything after that column: his new column would stay put while
+        every row moved past it.
         """
-        grid = self.read_grid()
+        grid = self._read_checked(HEADERS)
         rows = list(enumerate(grid, start=1))
+
+        def identity(c: list[str]) -> tuple:
+            return tuple(c[COLS[n]] for n in ("Verdict", "Business", "Role",
+                                              KRISH_SCORE, KRISH_REACTION))
         populated = [n for n, cells in rows if n >= DATA_START_ROW
                      and any(c.strip() for c in cells[:3])]
         if not populated:
@@ -896,23 +1273,22 @@ class Sheet:
         blanks = [n for n in range(DATA_START_ROW, last + 1) if n not in set(populated)]
         removed = self.delete_blank_rows(blanks) if blanks else 0
         last -= removed
-        before = sorted((c[COLS["Verdict"]], c[COLS["Business"]], c[COLS["Role"]])
-                        for n, c in rows if n in set(populated))
+        before = sorted(identity(c) for n, c in rows if n in set(populated))
         # Score cells the incumbent wrote are text, and Sheets sorts text
         # after numbers, so the 10s sank below the 6s. Make the column a
         # number column and rewrite every score as a number first.
         self._post(":batchUpdate", {"requests": [{"repeatCell": {
             "range": {"sheetId": self.sheet_id,
                       "startRowIndex": DATA_START_ROW - 1, "endRowIndex": last,
-                      "startColumnIndex": COLS["Score"], "endColumnIndex": COLS["Score"] + 1},
+                      "startColumnIndex": COLS[AI_SCORE], "endColumnIndex": COLS[AI_SCORE] + 1},
             "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}},
             "fields": "userEnteredFormat.numberFormat"}}]})
         fixed = []
         for n, c in rows:
             if DATA_START_ROW <= n <= last + removed and n not in set(blanks):
                 try:
-                    fixed.append((cell_range("Score", n - sum(1 for b in blanks if b < n)),
-                                  [[int(str(c[COLS["Score"]]).strip())]]))
+                    fixed.append((cell_range(AI_SCORE, n - sum(1 for b in blanks if b < n)),
+                                  [[int(str(c[COLS[AI_SCORE]]).strip())]]))
                 except (ValueError, TypeError):
                     pass
         if fixed:
@@ -921,13 +1297,12 @@ class Sheet:
             "range": {"sheetId": self.sheet_id,
                       "startRowIndex": DATA_START_ROW - 1, "endRowIndex": last,
                       "startColumnIndex": 0, "endColumnIndex": N_COLS},
-            "sortSpecs": [{"dimensionIndex": COLS["Score"], "sortOrder": "DESCENDING"}],
+            "sortSpecs": [{"dimensionIndex": COLS[AI_SCORE], "sortOrder": "DESCENDING"}],
         }}]})
         after_grid = self.read_grid()
         after_rows = [c for n, c in enumerate(after_grid, start=1)
                       if DATA_START_ROW <= n <= last]
-        after = sorted((c[COLS["Verdict"]], c[COLS["Business"]], c[COLS["Role"]])
-                       for c in after_rows)
+        after = sorted(identity(c) for c in after_rows)
         if after != before:
             raise SheetError("sort read-back changed the set of rows; inspect the "
                              "sheet before any further write")
@@ -936,7 +1311,7 @@ class Sheet:
             if not any(x.strip() for x in c[:3]):
                 raise SheetError("a blank row remains inside the data block after sorting")
             try:
-                scores.append(int(c[COLS["Score"]]))
+                scores.append(int(c[COLS[AI_SCORE]]))
             except (ValueError, TypeError):
                 scores.append(-1)
         if scores != sorted(scores, reverse=True):
@@ -971,123 +1346,55 @@ class Sheet:
                             return v["dataValidation"]
         return None
 
-    def migrate_columns(self, *, tab: str, sheet_id: int,
-                        trailing: tuple[str, ...] = (), apply: bool = False) -> dict:
-        """Take a tab from LEGACY_HEADERS to HEADERS in place.
+    def narrow_score_colours(self, *, sheet_id: int | None = None) -> dict:
+        """The colour rules keyed on AI Score, back onto AI Score alone.
 
-        Two structural requests, then the header, then the fill for the new
-        columns (no cell is ever blank). Column A is never part of a request,
-        so the dropdown and every column A format survive; Sheets shifts the
-        conditional-format and banded ranges with the grid. Verified by
-        reading back every row's identity and every Job Link URL. Idempotent:
-        a tab already on HEADERS reports noop.
+        Three custom-formula rules colour hunter's score by its value ($J at 9
+        or more, at 8, at 7 or less). When Krish inserted Krish Score beside
+        it on 2026-10-11 their range grew from J to J:K, so his own score was
+        painted with the colour of hunter's. No code here creates those
+        rules. This narrows any rule whose formula reads $J and whose range
+        starts at J and runs into his columns, leaves every other rule alone,
+        keeps each booleanRule byte for byte, and reads the result back.
+        Idempotent: a tab already narrowed is a no-op.
         """
-        idx = migration_indexes()
-        target = HEADERS + list(trailing)
-        width = max(len(target), len(LEGACY_HEADERS) + len(trailing)) + 3
-        raw = self._values(f"{tab}!A1:{col_letter(width - 1)}2000")
-        header = pad_row(raw[0] if raw else [], width)
-        state = column_state(header, trailing)
-        data = [pad_row(r, width) for r in raw[1:]]
-        data_rows = [i for i, r in enumerate(data, start=2)
-                     if any(str(c).strip() for c in r[:3])]
-        report = {"tab": tab, "state": state, "data_rows": len(data_rows),
-                  "plan": [], "applied": False, "noop": False}
-        if state == "unknown":
-            diffs = [(col_letter(i), header[i], (LEGACY_HEADERS + list(trailing) + [""] * width)[i])
-                     for i in range(width) if header[i] != (LEGACY_HEADERS + list(trailing) + [""] * width)[i]]
-            raise SheetError(f"{tab} header is neither the legacy nor the current "
-                             f"layout; first diffs {diffs[:4]}; not touching it")
-        if state == "done":
-            report["noop"] = True
-            return report
+        sid = self.sheet_id if sheet_id is None else sheet_id
+        j, his_end = COLS[AI_SCORE], COLS[KRISH_REACTION] + 1
+        key = f"${letter(AI_SCORE)}"
 
-        # the Job Link column in the current state, for the read-back check
-        link_before = {"legacy": LEGACY_HEADERS.index("Job Link"),
-                       "moved": idx["move_to"] + 1,
-                       "inserted": COLS["Job Link"]}[state]
-        links_before = {n: parse_hyperlink(data[n - 2][link_before]) for n in data_rows}
-        ident_before = [(data[n - 2][0], data[n - 2][1], data[n - 2][2]) for n in data_rows]
+        def keyed_on_j(rule: dict) -> bool:
+            cond = (rule.get("booleanRule") or {}).get("condition") or {}
+            return any(key in str(v.get("userEnteredValue", ""))
+                       for v in cond.get("values", []))
 
-        requests_body: list[dict] = []
-        if state == "legacy":
-            requests_body.append({"moveDimension": {
-                "source": {"sheetId": sheet_id, "dimension": "COLUMNS",
-                           "startIndex": idx["move_from"], "endIndex": idx["move_from"] + 1},
-                "destinationIndex": idx["move_to"]}})
-            report["plan"].append(f"move column {col_letter(idx['move_from'])} (JD Snippet) "
-                                  f"to {col_letter(idx['move_to'])}")
-        if state in ("legacy", "moved"):
-            requests_body.append({"insertDimension": {
-                "range": {"sheetId": sheet_id, "dimension": "COLUMNS",
-                          "startIndex": idx["insert_at"],
-                          "endIndex": idx["insert_at"] + idx["insert_count"]},
-                "inheritFromBefore": True}})
-            report["plan"].append(f"insert {idx['insert_count']} columns at "
-                                  f"{col_letter(idx['insert_at'])} for {idx['new_names']}")
-        report["plan"].append(f"write header row: {len(target)} names")
-        report["plan"].append(f"fill {DEFAULTS_BY_NAME['Warm Path']!r} / "
-                              f"{DEFAULTS_BY_NAME['Path Evidence']!r} on {len(data_rows)} rows")
-        meta_before = self._sheet_meta(sheet_id)
-        report["cf_rules"] = len(meta_before.get("conditionalFormats", []))
-        report["bands"] = len(meta_before.get("bandedRanges", []))
-        report["dropdown_found"] = self._validation_at(DATA_START_ROW, tab, sheet_id) is not None
-        if not apply:
-            return report
+        def too_wide(r: dict) -> bool:
+            return (r.get("startColumnIndex") == j
+                    and j + 1 < r.get("endColumnIndex", 0) <= his_end)
 
-        if requests_body:
-            self._post(":batchUpdate", {"requests": requests_body})
-        last_col = col_letter(len(target) - 1)
-        self._write([(f"{tab}!A1:{last_col}1", [target])])
-        # only fill where both cells are blank, so a rerun after a partial
-        # apply never overwrites a warm path already written
-        current = [pad_row(r, len(target)) for r in
-                   self._values(f"{tab}!A1:{last_col}2000")]
-        fills = []
-        for n in data_rows:
-            row = current[n - 1] if n - 1 < len(current) else [""] * len(target)
-            if not row[COLS["Warm Path"]].strip() and not row[COLS["Path Evidence"]].strip():
-                fills.append((f"{tab}!{letter('Warm Path')}{n}:{letter('Path Evidence')}{n}",
-                              [[WARM_NONE, EVIDENCE_NONE]]))
-        if fills:
-            self._write(fills)
-
-        after = [pad_row(r, len(target)) for r in self._values(f"{tab}!A1:{last_col}2000")]
-        if not after or after[0] != target:
-            raise SheetError(f"{tab} header read-back is {after[0][:6] if after else []}..., "
-                             f"expected HEADERS; inspect before any other write")
-        after_rows = [i for i, r in enumerate(after[1:], start=2)
-                      if any(str(c).strip() for c in r[:3])]
-        if after_rows != data_rows:
-            raise SheetError(f"{tab} data row set changed during migration: "
-                             f"{len(data_rows)} before, {len(after_rows)} after")
-        for n, ident in zip(data_rows, ident_before):
-            got = after[n - 1]
-            if (got[0], got[1], got[2]) != ident:
-                raise SheetError(f"{tab} row {n} identity changed: {ident} -> {got[:3]}")
-            if links_before[n] != parse_hyperlink(got[COLS["Job Link"]]):
-                raise SheetError(f"{tab} row {n} Job Link did not land at "
-                                 f"{letter('Job Link')}")
-            # a built date lands as a real date in Sheets, and a FORMULA read
-            # returns it as a day serial, so digits are a date here too
-            mb = got[COLS["Materials Built"]]
-            if mb and mb != "n/a" and not DATE_RE.match(mb) and not mb.isdigit():
-                raise SheetError(f"{tab} row {n} Materials Built reads {mb!r} at "
-                                 f"{letter('Materials Built')}")
-            if not got[COLS["Warm Path"]].strip() or not got[COLS["Path Evidence"]].strip():
-                raise SheetError(f"{tab} row {n} warm path cells are blank after fill")
-        meta_after = self._sheet_meta(sheet_id)
-        b_rules = [r.get("booleanRule", {}).get("condition") for r in meta_before.get("conditionalFormats", [])]
-        a_rules = [r.get("booleanRule", {}).get("condition") for r in meta_after.get("conditionalFormats", [])]
-        if b_rules != a_rules:
-            raise SheetError(f"{tab} conditional format rules changed during migration")
-        if len(meta_before.get("bandedRanges", [])) != len(meta_after.get("bandedRanges", [])):
-            raise SheetError(f"{tab} banded range count changed during migration")
-        if report["dropdown_found"] and self._validation_at(DATA_START_ROW, tab, sheet_id) is None:
-            raise SheetError(f"{tab} column A dropdown disappeared during migration")
-        report["applied"] = True
-        report["verified"] = True
-        return report
+        rules = self._sheet_meta(sid).get("conditionalFormats", [])
+        reqs, touched = [], []
+        for idx, rule in enumerate(rules):
+            if not keyed_on_j(rule) or not any(too_wide(r) for r in rule.get("ranges", [])):
+                continue
+            new = dict(rule)
+            new["ranges"] = [dict(r, endColumnIndex=j + 1) if too_wide(r) else r
+                             for r in rule.get("ranges", [])]
+            reqs.append({"updateConditionalFormatRule": {
+                "sheetId": sid, "index": idx, "rule": new}})
+            touched.append(idx)
+        if not reqs:
+            return {"narrowed": 0, "noop": True, "verified": True}
+        self._post(":batchUpdate", {"requests": reqs})
+        after = self._sheet_meta(sid).get("conditionalFormats", [])
+        if [r.get("booleanRule") for r in after] != [r.get("booleanRule") for r in rules]:
+            raise SheetError("a colour rule changed while its range was narrowed; "
+                             "inspect the conditional formats")
+        wide = [i for i in touched
+                if any(too_wide(r) for r in after[i].get("ranges", []))]
+        if wide:
+            raise SheetError(f"colour rule(s) {wide} still reach into "
+                             f"{KRISH_SCORE} after narrowing")
+        return {"narrowed": len(touched), "noop": False, "verified": True}
 
     def migrate_formatting(self) -> dict:
         """Extend the conditional-format rules, banded range, and column A
