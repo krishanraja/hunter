@@ -98,6 +98,24 @@ ARROGANCE_BANNED = (
 )
 
 
+_MARKUP = [(re.compile(r"\*\*(.+?)\*\*", re.S), r"\1"), (re.compile(r"__(.+?)__", re.S), r"\1"),
+           (re.compile(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])"), r"\1"),
+           (re.compile(r"\[([^\]]+)\]\((?:https?://)[^)]*\)"), r"\1"),
+           (re.compile(r"`([^`]*)`"), r"\1"), (re.compile(r"(?m)^\s{0,3}#{1,6}\s+"), "")]
+
+
+def plain_prose(text: str) -> str:
+    """Generated prose as the plain text a Google Doc or a form shows. The
+    prompts carry Markdown bold, and the model answers in kind: a CV went
+    out with "**14-agent autonomous AI operating system**", asterisks and
+    all. Emphasis, inline code, link syntax and heading marks are taken off,
+    the words kept; any asterisk left over goes too."""
+    out = text or ""
+    for rx, rep in _MARKUP:
+        out = rx.sub(rep, out)
+    return out.replace("**", "").replace("__", "")
+
+
 def package_banned(profile_banned=()) -> tuple[str, ...]:
     """Every phrase a package or an essay must not carry: his Profile's own
     VOICE AND TONE list, the Mindmake naming law, and the arrogance list.

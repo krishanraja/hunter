@@ -677,6 +677,10 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
         except json.JSONDecodeError:
             last_fails = ["response was not valid JSON"]
             continue
+        # What goes into a Doc is plain text, and the gates read what goes in.
+        for field in ("summary", "hook", "jd_mirror"):
+            if isinstance(data.get(field), str):
+                data[field] = voicegate.plain_prose(data[field])
         last_fails = validate(data, master_competencies, candidates, jd_text,
                               highlight_count=len(highlights))
         if not last_fails:
