@@ -221,8 +221,9 @@ def review_email(rows, staged: int, *, state: dict | None = None,
              else "Control Center")
     # Only what happens. A score builds in the hourly pass, a few an hour; a
     # Yes builds in the batch run or from the button, never hourly; and
-    # lowering a score cancels only what his score built (a Yes package keeps
-    # its application whatever K says until PR4, with his say on it).
+    # lowering a score below 7 cancels what his score built. A Yes he scores
+    # 1 to 5 leaves Pipeline once canon carries that ruling (run.leave_step),
+    # and cmd_run says so in the notes only then.
     tail = ["<p style='margin:18px 0 0;color:#555'>Score a role 7 or more and "
             "hunter builds the CV and the cover letter, a few an hour. A Yes in "
             "column A builds at the next batch run, or when you press Build "

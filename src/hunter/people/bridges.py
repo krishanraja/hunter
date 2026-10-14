@@ -256,9 +256,13 @@ def target_roles(cfg: Config, limit: int = 60) -> list[dict]:
     A role he has approved is the one thing in this system that must never
     churn.
     """
+    # set_aside: a Yes his score has since overridden (run.leave_step). The
+    # Yes stays in krish_verdict, because it was his and hunter never writes
+    # over it, but the role has left his sheet and nobody is to be found to
+    # get him into it.
     gos = db_get(cfg, "hunter_seen_roles", {
         "select": ROLE_FIELDS,
-        "krish_verdict": "not.is.null", "status": "neq.duplicate",
+        "krish_verdict": "not.is.null", "status": "not.in.(duplicate,set_aside)",
         "limit": ALL_ROWS})
     approved = [g for g in gos
                 if (g.get("krish_verdict") or "").strip().lower() in GO_WORDS]
@@ -290,8 +294,8 @@ def purge_orphan_bridges(cfg: Config) -> dict:
       a job_id that is not in hunter_seen_roles at all, left behind when the
       role row was deleted rather than archived;
 
-      a role he has since declined or applied to, where the reason to reach
-      out has gone;
+      a role he has since declined or applied to, or that his score set
+      aside, where the reason to reach out has gone;
 
       a posting recorded dead.
 
@@ -314,7 +318,9 @@ def purge_orphan_bridges(cfg: Config) -> dict:
             orphan.add(job_id)
             continue
         kind = verdicts.parse(role.get("krish_verdict") or "")[0]
-        if kind in ("applied", "rejection"):
+        # A role his score set aside is decided the same way: he scored it
+        # low, so the reason to reach out has gone with it.
+        if kind in ("applied", "rejection") or (role.get("status") or "") == "set_aside":
             decided.add(job_id)
         elif (role.get("status") or "") == "dead":
             dead.add(job_id)

@@ -912,10 +912,13 @@ def test_settle_and_process_insert_the_columns_before_anything_else(monkeypatch)
     monkeypatch.setattr(R, "build_context", lambda: (None, None))
     monkeypatch.setattr(R, "GoogleServiceAccount", lambda cfg: type("G", (), {"access_token": None})())
     monkeypatch.setattr(R, "Sheet", lambda token: Spy())
-    monkeypatch.setattr(R, "settle_step", lambda cfg, canon, sheet, summary, apply:
+    monkeypatch.setattr(R, "settle_step", lambda cfg, canon, sheet, summary, apply, **kw:
                         calls.append(("settle", apply)) or {"decided": 0})
+    monkeypatch.setattr(R, "leave_step", lambda cfg, canon, sheet, summary, apply, **kw:
+                        calls.append(("leave", apply)) or {})
     assert R.cmd_settle(apply=False) == 0
-    assert calls == [("ensure", False), ("settle", False)], "a dry run inserts nothing"
+    assert calls == [("ensure", False), ("settle", False), ("leave", False)], \
+        "a dry run inserts nothing"
     calls.clear()
 
     class Refuses(Spy):
@@ -1061,7 +1064,10 @@ def test_archive_rows_opts_out_because_it_has_already_copied_his_cells():
     s.delete_rows = spy
     s.archive_rows(s.read_pipeline(HEADERS), archive_tab="Applied",
                    archive_sheet_id=ARCHIVE_ID, headers=HEADERS)
-    assert calls == [{"expect_verdict": None, "his_copied": True}]
+    # His cells are already on Applied and read back, so the delete is told
+    # so; it still checks every target reads as it was copied.
+    assert calls == [{"expect_verdict": None, "his_copied": True, "expect_cells": {
+        3: ("Declined - comp below bar", "Globex", "VP Ops", "4", "Not my domain")}}]
     # and the real guard honours it
     f = FakeSheet(pipeline(his(data_row("Declined - comp", "B", "VP",
                                         "https://a.example/2"), "4", "thin")))

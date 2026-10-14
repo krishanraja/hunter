@@ -72,8 +72,16 @@ sheet in K and M. Column A Yes still builds.
   another country. Dead only when the board its own page names no longer
   lists the id; otherwise unverified (`run.board_key`). Two of his scored
   roles were in that state.
-- **Not yet.** Rows scored 1 to 5 leaving Pipeline, and his low score on a
-  column A Yes row (PR4, with the list put to him first).
+- **Low rows leave Pipeline** (`leave.py`, 2026-10-14, his choices of
+  2026-10-13). What he scored 1 to 5, answered with only a reaction, scored
+  past or called Duplicate moves to Applied with K and M kept and column A
+  untouched, in the same hourly move as his Applied and Declined rows; a Yes
+  he scored 1 to 5 moves too and its waiting application is cancelled, unless
+  another row of the role on Pipeline still asks for it, and it is never
+  built while it waits. A role is set aside only once no row of it is left
+  on Pipeline. A row on Applied he later scores 7 or more comes back.
+  Nothing moves for his score until canon 9.13 carries the rule; the first
+  list is put to him first (`python -m hunter.run leave --out PATH`).
 
 ---
 

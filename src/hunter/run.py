@@ -34,7 +34,7 @@ from . import config as config_mod
 from . import companyintel as companyintel_mod
 from .canon import Canon, CanonError, load_canon
 from .config import (ALL_ROWS, Config, GoogleOAuth, GoogleServiceAccount,
-                     db_get, db_insert, db_patch, load)
+                     db_get, db_insert, db_patch, db_patch_where, load)
 from .docbuild import DocBuild
 from .archetype import archetype
 from .gates import FLOOR, names_foreign_geo, run_gates
@@ -42,6 +42,7 @@ from . import alerts, amend, comp as comp_mod, employer, invariants, judge, layo
 from .report import report_run
 from . import verdicts
 from . import router
+from . import leave as leave_mod
 from .router import classify_verdict, is_warm_path, route_status, select_for_build
 from .score import BAR, score_role
 from . import sheet as sheet_mod
@@ -106,6 +107,9 @@ NOW = lambda: datetime.datetime.utcnow().isoformat() + "Z"
 # branch does not cover. Nothing recorded that the removal was deliberate, so
 # this does.
 REMOVED_STATUS = "removed"
+# A role his score sent to the Applied tab (leave.py). Defined there; named
+# here because reconcile and the discovery quota read it.
+SET_ASIDE_STATUS = leave_mod.SET_ASIDE
 APPLIED_STATE = "Applied"
 # Both spellings count as written, so rows already carrying the old one are not
 # re-processed.
@@ -524,6 +528,13 @@ def reconcile(cfg: Config, canon: Canon, sheet: Sheet,
         # not work, and it would do so every run forever. Read the deletion as
         # what it plainly is, record it as his, and stop. `restore <job_id>`
         # reverses it.
+        # Set aside by his score (leave_step): the row is on the Applied tab,
+        # and a role whose row this pass could not pair is not one he deleted.
+        # Never appended back, never recorded as his decline.
+        if d.get("status") == SET_ASIDE_STATUS:
+            ledger.skipped.append(
+                f"{d['job_id']}: set aside by your score; not put back on the sheet")
+            continue
         if d.get("presented_at") and not decided:
             deleted_by_krish.append(d)
             ledger.skipped.append(
@@ -1261,34 +1272,58 @@ def cmd_verify(apply: bool = False) -> int:
 
 
 def cmd_archive(apply: bool = False) -> int:
-    """Move decided rows off Pipeline onto the Applied tab.
+    """Move off Pipeline onto the Applied tab what leaves it: the one
+    predicate (leave.should_leave) through the one pass (leave_step).
 
-    Krish's ruling 2026-09-02: he only ever sets Applied or Declined, so
-    Pipeline should hold what still needs a decision and nothing else. Rows
-    still marked New or Yes stay: Yes is work in flight, not a decision made.
+    Krish's ruling 2026-09-02: Pipeline holds what still needs a decision,
+    so his Applied and Declined rows go. His rulings 2026-10-13, once canon
+    9.13 carries them: the rows he scored 1 to 5, gave only a reaction,
+    scored past or called Duplicate go too, and his score wins over an older
+    Yes. close-submitted and confirmations call this after writing Applied,
+    and it moves what settle would, no more and no less. The decided rows are
+    named, as they always were; a row his score moves is counted, never
+    named, because this prints to public logs.
     """
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     rows = sheet.read_pipeline(canon.sheet_headers)
-    movers = []
-    for r in rows:
+    decided = [r for r in rows if leave_mod.should_leave(r, None)]
+    print(f"{len(rows)} rows on Pipeline; {len(decided)} decided by column A")
+    for r in decided:
         kind, code = verdicts.parse(r.verdict)
-        if kind in ("applied", "rejection"):
-            movers.append((r, kind, code))
-    print(f"{len(rows)} rows on Pipeline; {len(movers)} decided and ready to archive; "
-          f"{len(rows) - len(movers)} stay")
-    for r, kind, code in movers:
         print(f"  row {r.row_number:>3}  {r.company[:20]:20} {r.role[:38]:38} "
               f"{kind}{' [' + code + ']' if code else ''}")
+    summary: list[str] = []
+    leave_step(cfg, canon, sheet, summary, apply=apply)
+    print("\n".join(summary))
     if not apply:
         print("\ndry run. add --apply to move these rows")
         return 0
-    moved = sheet.archive_rows([r for r, _, _ in movers],
-                               archive_tab=config_mod.ARCHIVE_TAB,
-                               archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
-                               headers=canon.sheet_headers)
     left = sheet.read_pipeline(canon.sheet_headers)
-    print(f"\narchived {moved} rows; Pipeline now has {len(left)} rows awaiting you")
+    print(f"\nPipeline now has {len(left)} rows awaiting you")
+    return 0
+
+
+def cmd_leave(apply: bool = False, out: str = "") -> int:
+    """What leaves Pipeline and what comes back, by his record and column A.
+
+    A dry run by default, and the list it gives is the one put to him before
+    the first apply: it is computed whether or not canon 9.13 carries the
+    rule yet, and says which. Printed as counts only, because the run log is
+    public; --out PATH writes the rows themselves (company, title, column A,
+    his score, why, the approvals that would be cancelled) to a local file,
+    which never goes anywhere hunter publishes. --apply moves them, and only
+    once canon carries the rule; until then it moves column A's rows alone.
+    """
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    summary: list[str] = []
+    leave_step(cfg, canon, sheet, summary, apply=apply, out_path=out or None)
+    print("\n".join(summary))
+    if out:
+        print(f"the rows themselves are in {out}")
+    if not apply:
+        print("dry run. add --apply to move them")
     return 0
 
 
@@ -1888,7 +1923,8 @@ def run_command(cfg: Config, command: str) -> str:
         counts = process_step(cfg, canon, sheet, summary)
         line = _process_line(counts)
     elif command == "packages":
-        rows = select_for_build(cfg, sheet, canon.sheet_headers)
+        rows = select_for_build(cfg, sheet, canon.sheet_headers,
+                                score_wins=leave_mod.in_canon(canon))
         built = 0
         for row in rows:
             try:
@@ -3425,9 +3461,11 @@ def known_company_keys(cfg: Config) -> set[str]:
     The discovery quota is for businesses he has never been shown. A company
     hunter staged last week is not a discovery however well it scores.
     """
+    # set_aside is a role he was shown and scored low (leave_step): it moved
+    # off "staging" without ever stopping being a company he has seen.
     try:
         rows = db_get(cfg, "hunter_seen_roles",
-                      {"select": "company", "status": "eq.staging",
+                      {"select": "company", "status": f"in.(staging,{SET_ASIDE_STATUS})",
                        "limit": ALL_ROWS})
     except Exception:
         return set()
@@ -4314,13 +4352,15 @@ def snapshot_step(cfg: Config, canon: Canon, sheet: Sheet) -> int:
 
 
 def archive_decided(sheet: Sheet, canon: Canon) -> tuple[int, list[str]]:
-    """Move every Applied and Declined row to the Applied tab. Yes and New
-    stay: Yes is work in flight, New is a decision not yet made."""
+    """Move every Applied and Declined row to the Applied tab: leave
+    .should_leave asked with no record of his, so column A alone decides.
+    Yes and New stay here. The rows his score moves leave in leave_step,
+    which reads his record first; process runs this one after the invariant
+    repairs, whose duplicate stamp is what makes a twin a decided row."""
     rows = sheet.read_pipeline(canon.sheet_headers)
     movers, lines = [], []
     for r in rows:
-        kind, code = verdicts.parse(r.verdict)
-        if kind in ("applied", "rejection"):
+        if leave_mod.should_leave(r, None):
             movers.append(r)
             lines.append(f"{r.company} / {r.role} [{r.verdict}]")
     if not movers:
@@ -4329,6 +4369,493 @@ def archive_decided(sheet: Sheet, canon: Canon) -> tuple[int, list[str]]:
                                archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
                                headers=canon.sheet_headers)
     return moved, lines
+
+
+def _pg_in(values) -> str:
+    """A PostgREST in.() list, each value quoted, so a job id is read as the
+    one value it is whatever it holds."""
+    quoted = ['"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"' for v in values]
+    return "in.(" + ",".join(quoted) + ")"
+
+
+def _roles_by_id(cfg: Config, job_ids) -> dict[str, dict]:
+    """The hunter_seen_roles rows of these roles, read by id in small pages
+    rather than all 9,500 rows, because the leave pass runs every hour."""
+    ids = sorted({j for j in job_ids if j})
+    out: dict[str, dict] = {}
+    for i in range(0, len(ids), 60):
+        for d in db_get(cfg, "hunter_seen_roles", {
+                "select": "job_id,company,title,location,url,job_url,status,"
+                          "package_trigger,krish_verdict",
+                "job_id": _pg_in(ids[i:i + 60]), "limit": ALL_ROWS}):
+            if d.get("job_id"):
+                out[d["job_id"]] = d
+    return out
+
+
+def _pipeline_holds(pipeline: list[SheetRow], rated: dict, roles: dict,
+                    filed: tuple = ()) -> dict[int, set]:
+    """row number -> the roles that row, still on Pipeline, holds, whatever
+    its K and M say. A role is held by a row his record files under it, by a
+    row carrying its link (same_link against url and job_url), and by a row
+    of its company, title and country (sources.placed_identity_keys, the
+    identity pair_sheet files two rows of one role by), read off the role's
+    record and off every row the record files under it elsewhere (`filed`:
+    job ids, company, title, location), since a title the database holds is
+    not always the one on the sheet.
+
+    Not from his record alone: a blank twin still pending is never stored,
+    nor is an "Awaiting reply" twin or a twin he edited since the last sync,
+    and each is still that role on his list. Counting only rows the record
+    held set a role aside while one of its rows waited on Pipeline, and
+    nothing ever put it back."""
+    index: dict[tuple, set] = {}
+    named = [((jid,), d.get("company"), d.get("title"), d.get("location"))
+             for jid, d in roles.items()] + list(filed)
+    for jids, company, title, location in named:
+        if company and title:
+            loc = (location or "").strip()
+            for k in placed_identity_keys(company, title, "" if loc == "Not stated" else loc,
+                                          seen=True):
+                index.setdefault(k, set()).update(jids)
+    out: dict[int, set] = {}
+    for x in pipeline:
+        got = set(rated[x.row_number].job_ids) if rated.get(x.row_number) else set()
+        loc = (x.cell("Location") or "").strip()
+        for k in placed_identity_keys(x.company, x.role, "" if loc == "Not stated" else loc,
+                                      seen=False):
+            got |= index.get(k, set())
+        got |= {jid for jid, d in roles.items()
+                if any(same_link(x.jd_url, u) for u in (d.get("url"), d.get("job_url")) if u)}
+        out[x.row_number] = got
+    return out
+
+
+def leave_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
+               apply: bool, out_path: str | None = None) -> dict:
+    """What leaves Pipeline this pass, in one move, and what comes back.
+
+    His rulings 2026-10-13 (leave.py has the whole rule): rows he scored 1 to
+    5, rows with only a reaction, blanks he has scored past and rows he called
+    Duplicate leave Pipeline for Applied with K and M as he wrote them, and
+    his score wins over an older Yes. Column A Applied and Declined leave as
+    they always have, in the SAME archive_rows call, from the one read the
+    decision is made on: a second call after the first would delete by row
+    numbers the first had shifted.
+
+    In order, each step needing the one before:
+
+    1. Pipeline, read once. His record (hunter_krish_ratings) is read when
+       canon 9.13 carries the rule (leave.in_canon), and on a dry run, which
+       lists what the rule would move before he has approved it. Without
+       the rule only column A moves a row, exactly as before.
+    2. The move (sheet.archive_rows): every target re-read before the copy
+       and again before the delete, a changed row refused, his cells and the
+       stamp written RAW and read back, a row already on Applied not copied
+       twice. Column A is never written.
+    3. The Applied tab, read once, for what the move leaves to the record:
+       every role his score has set aside there gets status set_aside
+       (counted as seen, so it is never staged again or appended back) and
+       its rating moved_at; a Yes his score overrode has every approval
+       still awaiting him or approved for its posting cancelled, with his
+       score as the reason. All read back. Done from Applied rather than
+       from the rows just moved, so a write that failed once is made on the
+       next pass: nothing here depends on the move having happened this hour.
+    4. The way back: a row on Applied, column A New, blank or Yes, that he
+       has since scored 7 or more goes back to Pipeline as he left it, its
+       status back to staging, so the score builds.
+
+    Never writes column A or krish_verdict. Every summary line is a count;
+    out_path, a local file for the dry run, is the only place names go.
+    """
+    from . import ratings
+    from .apply import approval
+    rule = leave_mod.in_canon(canon)
+    out: dict = {"rule": rule, "records": False, "decided": 0, "by_score": {},
+                 "moved": 0, "refused": 0, "already": 0, "changed": 0, "unrecorded": 0,
+                 "set_aside": 0, "moved_at": 0, "approvals_cancelled": 0,
+                 "would_cancel": 0, "back": 0, "back_both": 0, "restored": 0,
+                 "unconfirmed": 0, "applied_tab": "unread"}
+    detail: dict = {"rule_in_canon": rule, "apply": apply, "leave": [], "back": [],
+                    "set_aside_on_applied": []}
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    records = None
+    if rule or not apply:
+        try:
+            records = leave_mod.Records.of(db_get(cfg, ratings.TABLE, {
+                "select": "*", "order": "id.asc", "limit": ALL_ROWS}))
+            out["records"] = True
+        except Exception as e:
+            summary.append(f"leave: his ratings could not be read ({ratings.safe_error(e)}); "
+                           f"only rows column A decided move this pass")
+    rated: dict = records.rate(rows) if records else {}
+    roles: dict = _roles_by_id(cfg, [j for rr in rated.values() for j in rr.job_ids]) \
+        if rated else {}
+    rated = leave_mod.mark_score_built(rows, rated, roles)
+    moves = []
+    for r in rows:
+        why = leave_mod.should_leave(r, rated.get(r.row_number))
+        if why:
+            moves.append((r, why))
+        elif records is not None and r.row_number not in rated and leave_mod.unrecorded(r):
+            out["unrecorded"] += 1
+    out["decided"] = sum(1 for _, w in moves if w in leave_mod.DECIDED_REASONS)
+    by_score = {w: sum(1 for _, x in moves if x == w) for w in leave_mod.SCORE_REASONS}
+    out["by_score"] = by_score
+
+    # Approvals still open, read at most once a pass and only when a Yes is
+    # leaving or set aside: open_approvals_for then finds each posting's.
+    memo: list = []
+
+    def any_open() -> bool:
+        if not memo:
+            memo.append(db_get(cfg, approval.TABLE, {
+                "select": "token,job_id,state",
+                "state": f"in.({approval.AWAITING},{approval.APPROVED})", "limit": "500"}))
+        return bool(memo[0])
+
+    def waiting_for(rr) -> list[dict]:
+        if rr is None or not any_open():
+            return []
+        seen, found = set(), []
+        for jid in rr.job_ids:
+            d = roles.get(jid)
+            if not d:
+                continue
+            for o in open_approvals_for(cfg, d):
+                if o.get("token") and o["token"] not in seen:
+                    seen.add(o["token"])
+                    found.append(o)
+        return found
+
+    # 2. the move
+    rep: dict = {}
+    pipe_now = rows
+    if apply and moves:
+        # His edits to a row his score moves are read before it leaves the tab
+        # amend reads, as settle reads them on the rows column A decided.
+        scored_out = [(r, rated[r.row_number]) for r, w in moves
+                      if w in leave_mod.SCORE_REASONS and rated.get(r.row_number)]
+        if scored_out:
+            try:
+                snapshot = amend.load_state(cfg)
+                if snapshot:
+                    found = amend.detect([r for r, _ in scored_out],
+                                         {r.row_number: {"job_id": rr.job_ids[0]}
+                                          for r, rr in scored_out}, snapshot)
+                    out["amendments"] = amend.record(cfg, found)
+            except Exception as e:
+                summary.append(f"leave: edits on the rows leaving not read "
+                               f"({e.__class__.__name__})")
+        out["moved"] = sheet.archive_rows([r for r, _ in moves],
+                                          archive_tab=config_mod.ARCHIVE_TAB,
+                                          archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
+                                          headers=canon.sheet_headers, report=rep)
+        out["refused"] = len(rep.get("refused") or [])
+        out["already"] = len(rep.get("already") or [])
+        out["changed"] = len(rep.get("changed") or [])
+        pipe_now = sheet.read_pipeline(canon.sheet_headers)
+        left = [r for r in pipe_now if leave_mod.should_leave(r, None)]
+        if left:
+            summary.append(f"leave: {len(left)} decided row(s) still on Pipeline after "
+                           f"the move: " + "; ".join(f"{r.company} / {r.role}"
+                                                     for r in left[:5]))
+    # What stays on Pipeline: re-read after a move, and in a dry run every
+    # row the plan does not move.
+    staying = pipe_now if apply else [r for r in rows if not any(r is m for m, _ in moves)]
+
+    # 3 and 4, from the Applied tab
+    archived: list = []
+    if records is not None:
+        try:
+            grid = sheet.read_archive_grid()
+            state = sheet_mod.archive_layout(grid)
+            out["applied_tab"] = state or "unrecognised"
+            archived = sheet.read_archive() if state == "current" else []
+        except Exception as e:
+            out["applied_tab"] = f"unread ({e.__class__.__name__})"
+    arated = records.rate(archived) if records and archived else {}
+    more = [j for rr in arated.values() for j in rr.job_ids if j not in roles]
+    if more:
+        roles.update(_roles_by_id(cfg, more))
+    arated = leave_mod.mark_score_built(archived, arated, roles)
+
+    # The roles a row still on Pipeline holds (_pipeline_holds). Two rows of
+    # one role can part: a Duplicate he typed leaves while the twin he scored
+    # 9 stays, or a 3 leaves while its twin in another office is still blank.
+    # The role is still live through the row that stays: it is never set
+    # aside and its rating not marked moved, and one already set aside goes
+    # back to staging. An application is a posting's, and it is kept only
+    # while a row that stays still asks for it (`asking`).
+    holds = _pipeline_holds(staying, records.rate(staying) if records else {}, roles,
+                            filed=tuple((arated[a.row_number].job_ids, a.company, a.role,
+                                         a.cell("Location"))
+                                        for a in archived if a.row_number in arated))
+    held = set().union(*holds.values()) if holds else set()
+
+    def asking(job_ids) -> list:
+        want = set(job_ids)
+        return [x for x in staying if router.build_trigger(x)
+                and holds.get(x.row_number, set()) & want]
+
+    for r, why in moves:
+        rr = rated.get(r.row_number)
+        waiting = (waiting_for(rr) if why in leave_mod.YES_REASONS and rr
+                   and not asking(rr.job_ids) else [])
+        out["would_cancel"] += len(waiting)
+        detail["leave"].append({
+            "row": r.row_number, "company": r.company, "title": r.role,
+            "location": r.cell("Location"), "column_a": r.verdict,
+            "krish_score": r.cell(sheet_mod.KRISH_SCORE), "reason": why,
+            "kind": rr.kind if rr else None, "job_ids": list(rr.job_ids) if rr else [],
+            "statuses": {j: (roles.get(j) or {}).get("status") for j in (rr.job_ids if rr else ())},
+            "approvals_cancelled": [{"job_id": o.get("job_id"), "state": o.get("state")}
+                                    for o in waiting]})
+    aside = [(a, w) for a in archived
+             if (w := leave_mod.should_leave(a, arated.get(a.row_number)))
+             in leave_mod.SCORE_REASONS]
+    back = [a for a in archived if leave_mod.comes_back(a, arated.get(a.row_number))]
+    for a in back:
+        rr = arated[a.row_number]
+        detail["back"].append({
+            "applied_row": a.row_number, "company": a.company, "title": a.role,
+            "location": a.cell("Location"), "column_a": a.verdict,
+            "krish_score": a.cell(sheet_mod.KRISH_SCORE), "job_ids": list(rr.job_ids),
+            "statuses": {j: (roles.get(j) or {}).get("status") for j in rr.job_ids}})
+    out["back_planned"] = len(back)
+    for a, why in aside:
+        rr = arated[a.row_number]
+        stale = [] if held & set(rr.job_ids) else [
+            j for j in rr.job_ids if (roles.get(j) or {}).get("status") in leave_mod.LIVE_STATUSES]
+        waiting = (waiting_for(rr) if why in leave_mod.YES_REASONS and not apply
+                   and not asking(rr.job_ids) else [])
+        if stale or waiting:
+            detail["set_aside_on_applied"].append({
+                "applied_row": a.row_number, "company": a.company, "title": a.role,
+                "reason": why, "job_ids": stale,
+                "approvals_cancelled": [{"job_id": o.get("job_id"), "state": o.get("state")}
+                                        for o in waiting]})
+            out["would_cancel"] += len(waiting)
+
+    if apply and rule and records is not None:
+        _set_aside_step(cfg, records, roles, aside, arated, out, waiting_for=waiting_for,
+                        asking=asking, held=held)
+        _held_restore_step(cfg, roles, held, out)
+        _way_back_step(cfg, canon, sheet, roles, back, arated, out)
+
+    _leave_lines(out, summary, apply=apply)
+    if out_path:
+        import pathlib
+        detail["counts"] = {k: v for k, v in out.items() if k != "by_score"}
+        detail["counts"]["by_score"] = dict(by_score)
+        pathlib.Path(out_path).write_text(json.dumps(detail, indent=1, default=str))
+    return out
+
+
+def _set_aside_step(cfg: Config, records, roles: dict, aside: list, arated: dict,
+                    out: dict, *, waiting_for, asking, held: set) -> None:
+    """Step 3 of leave_step: the record of every row his score has set aside
+    on Applied. Status first, because it is what keeps the role from being
+    staged again; then moved_at; then, for a Yes his score overrode, what was
+    waiting on him for it. Each write is read back.
+
+    A role a row still on Pipeline holds (`held`) keeps its status and its
+    rating: it is still on his list. The application is decided apart from
+    that, by `asking` alone: an approval is for a posting, not a row
+    (open_approvals_for), so it is left while a row that stays still asks for
+    a package for the role (router.build_trigger), and cancelled otherwise,
+    whatever else holds the role. A twin he left New with a 6 does not ask
+    for the application his score took back from the Yes."""
+    from . import ratings
+    patched, stamped = [], []
+    by_rid = {r.get("id"): r for r in records.latest.values() if r.get("id") is not None}
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    for a, why in aside:
+        rr = arated[a.row_number]
+        if held & set(rr.job_ids):
+            out["held_by_pipeline"] = out.get("held_by_pipeline", 0) + 1
+        else:
+            for jid in rr.job_ids:
+                if (roles.get(jid) or {}).get("status") not in leave_mod.LIVE_STATUSES:
+                    continue
+                db_patch_where(cfg, "hunter_seen_roles",
+                               {"job_id": f"eq.{jid}",
+                                "status": _pg_in(leave_mod.LIVE_STATUSES)},
+                               {"status": leave_mod.SET_ASIDE})
+                patched.append(jid)
+            for rid in rr.record_ids:
+                if by_rid.get(rid, {}).get("moved_at") or rid in stamped:
+                    continue
+                db_patch(cfg, ratings.TABLE, {"id": str(rid)}, {"moved_at": now})
+                stamped.append(rid)
+        if why in leave_mod.YES_REASONS:
+            if asking(rr.job_ids):
+                out["kept_for_twin"] = out.get("kept_for_twin", 0) + 1
+                continue
+            tokens = [o["token"] for o in waiting_for(rr)]
+            _cancel_and_read_back(cfg, tokens, leave_mod.cancel_reason(a), out)
+    if patched:
+        got = _roles_by_id(cfg, patched)
+        ok = [j for j in patched if (got.get(j) or {}).get("status") == leave_mod.SET_ASIDE]
+        out["set_aside"] += len(ok)
+        out["unconfirmed"] += len(patched) - len(ok)
+        for j in ok:
+            roles.setdefault(j, {})["status"] = leave_mod.SET_ASIDE
+    if stamped:
+        back = db_get(cfg, ratings.TABLE, {"select": "id,moved_at", "id": _pg_in(stamped),
+                                           "limit": ALL_ROWS})
+        ok = {b.get("id") for b in back if b.get("moved_at")}
+        out["moved_at"] += sum(1 for rid in stamped if rid in ok)
+        out["unconfirmed"] += sum(1 for rid in stamped if rid not in ok)
+
+
+def _held_restore_step(cfg: Config, roles: dict, held: set, out: dict) -> None:
+    """A role set aside while a row of it is still on Pipeline goes back to
+    staging, read back. Set aside when its last row left and then held again
+    (a twin he has since scored, a row the way back returned under another
+    job id), or set aside before this pass knew a pending twin held it: the
+    status says the role has left his sheet, and a row of it is on his sheet.
+    Without this a twin he scored 8 stayed set aside for good, out of Roles to
+    rule on and the warm path, with its bridges purged as decided."""
+    relive = sorted(j for j in held if (roles.get(j) or {}).get("status") == leave_mod.SET_ASIDE)
+    if not relive:
+        return
+    for jid in relive:
+        db_patch_where(cfg, "hunter_seen_roles",
+                       {"job_id": f"eq.{jid}", "status": f"eq.{leave_mod.SET_ASIDE}"},
+                       {"status": leave_mod.BACK_STATUS})
+    got = _roles_by_id(cfg, relive)
+    ok = [j for j in relive if (got.get(j) or {}).get("status") == leave_mod.BACK_STATUS]
+    out["held_restored"] = out.get("held_restored", 0) + len(ok)
+    out["unconfirmed"] += len(relive) - len(ok)
+    for j in ok:
+        roles.setdefault(j, {})["status"] = leave_mod.BACK_STATUS
+
+
+def _way_back_step(cfg: Config, canon: Canon, sheet: Sheet, roles: dict, back: list,
+                   arated: dict, out: dict) -> None:
+    """Step 4 of leave_step: a row on Applied he has since scored 7 or more
+    goes back to Pipeline, his cells and column A as he left them (a blank A
+    is the fill default New), and comes off Applied only once Pipeline has
+    read it back. A row already on Pipeline under the same company, role,
+    location and link is not appended twice: its Applied copy goes, if his
+    cells agree, and is left for him to look at if they do not."""
+    if not back:
+        return
+    pipe = sheet.read_pipeline(canon.sheet_headers)
+    to_append, only_delete = [], []
+    for a in back:
+        twin = next((p for p in pipe if leave_mod.same_place(p, a)), None)
+        if twin is None:
+            to_append.append(a)
+        elif sheet_mod.recheck_cells(twin.cells)[3:] == sheet_mod.recheck_cells(a.cells)[3:]:
+            only_delete.append(a)
+        else:
+            out["back_both"] += 1
+    if to_append:
+        # The same safety as the move out: the row as Applied reads it now,
+        # against what it was chosen on.
+        now = {x.row_number: x for x in sheet.read_archive()}
+        fresh = [a for a in to_append if a.row_number in now and
+                 sheet_mod.recheck_cells(now[a.row_number].cells)
+                 == sheet_mod.recheck_cells(a.cells)]
+        out["refused"] += len(to_append) - len(fresh)
+        # A row Pipeline's own checks would refuse stays on Applied and is
+        # counted, rather than failing every hour's pass for the rest.
+        to_append = []
+        for a in fresh:
+            cells = leave_mod.pipeline_cells(a)
+            yes = leave_mod.is_yes(cells[sheet_mod.COLS["Verdict"]])
+            if sheet_mod.validate_row(cells, is_append=not yes):
+                out["back_invalid"] = out.get("back_invalid", 0) + 1
+            else:
+                to_append.append(a)
+        if to_append:
+            sheet.append_rows([leave_mod.pipeline_cells(a) for a in to_append],
+                              carry_his=True, carry_verdict=True)
+    done = to_append + only_delete
+    if not done:
+        return
+    sheet.delete_archive_rows([a.row_number for a in done],
+                              archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
+                              expect=[a.company for a in done],
+                              expect_cells=[sheet_mod.recheck_cells(a.cells) for a in done])
+    out["back"] += len(done)
+    restored = []
+    for a in done:
+        for jid in arated[a.row_number].job_ids:
+            if (roles.get(jid) or {}).get("status") != leave_mod.SET_ASIDE:
+                continue
+            db_patch_where(cfg, "hunter_seen_roles",
+                           {"job_id": f"eq.{jid}", "status": f"eq.{leave_mod.SET_ASIDE}"},
+                           {"status": leave_mod.BACK_STATUS})
+            restored.append(jid)
+    if restored:
+        got = _roles_by_id(cfg, restored)
+        ok = [j for j in restored if (got.get(j) or {}).get("status") == leave_mod.BACK_STATUS]
+        out["restored"] += len(ok)
+        out["unconfirmed"] += len(restored) - len(ok)
+
+
+def _leave_lines(out: dict, summary: list[str], *, apply: bool) -> None:
+    """Counts only: a row his score moved is a row he scored, and these lines
+    go to public Actions logs."""
+    s = out["by_score"]
+    n_score = sum(s.values())
+    yes = s.get("yes_scored_low", 0) + s.get("yes_reaction_only", 0)
+    parts = (f"{s.get('scored_low', 0)} scored 1 to 5, {s.get('reaction_only', 0)} with "
+             f"only a reaction, {s.get('blank_scored_past', 0)} blank and scored past, "
+             f"{s.get('duplicate', 0)} called Duplicate, {yes} Yes his score overrode")
+    if not out["rule"]:
+        summary.append(f"leave: {out['decided']} decided row(s) "
+                       + ("moved" if apply else "would move")
+                       + f"; canon 9.13 does not carry the rule for his score yet, so "
+                       f"none moves for it" + (f" (with it, {n_score} would: {parts})"
+                                              if not apply and out["records"] else ""))
+        return
+    if not out["records"]:
+        summary.append(f"leave: {out['decided']} decided row(s) "
+                       + ("moved" if apply else "would move")
+                       + "; his record unread, so none moves for his score")
+        return
+    verb = "left Pipeline" if apply else "would leave Pipeline (dry run)"
+    summary.append(f"leave: {out['decided']} decided row(s) and {n_score} by his score "
+                   f"({parts}) {verb}" + (f", {out['moved']} moved" if apply else ""))
+    if apply and (out["refused"] or out["already"] or out["changed"]):
+        summary.append(f"leave: {out['refused']} refused because a cell changed since "
+                       f"the read, {out['changed']} changed during the move and stayed, "
+                       f"{out['already']} already on {config_mod.ARCHIVE_TAB} and not "
+                       f"copied again")
+    if out["unrecorded"]:
+        summary.append(f"leave: {out['unrecorded']} row(s) his K and M say leave are not "
+                       f"in his record as they read now; they stay until a sync records them")
+    if apply:
+        summary.append(f"leave: {out['set_aside']} role(s) set aside, {out['moved_at']} "
+                       f"rating(s) marked moved, {out['approvals_cancelled']} waiting "
+                       f"application(s) cancelled, {out['back']} row(s) back on Pipeline "
+                       f"on a score of 7 or more ({out['restored']} role(s) restored)")
+        if out["back_both"]:
+            summary.append(f"leave: {out['back_both']} row(s) on both tabs with different "
+                           f"K or M, left for him")
+        if out.get("held_by_pipeline"):
+            summary.append(f"leave: {out['held_by_pipeline']} row(s) moved whose role "
+                           f"another row still holds on Pipeline; that role is left live")
+        if out.get("kept_for_twin"):
+            summary.append(f"leave: {out['kept_for_twin']} Yes row(s) left with their "
+                           f"application, because another row on Pipeline for the same "
+                           f"role still asks for it")
+        if out.get("held_restored"):
+            summary.append(f"leave: {out['held_restored']} role(s) set aside while a row of "
+                           f"it was still on Pipeline put back to staging")
+        if out.get("back_invalid"):
+            summary.append(f"leave: {out['back_invalid']} row(s) his score asks back could "
+                           f"not go back as they read on {config_mod.ARCHIVE_TAB}; left there")
+        if out["unconfirmed"]:
+            summary.append(f"leave: {out['unconfirmed']} write(s) did not read back as made")
+    else:
+        summary.append(f"leave: {out['would_cancel']} waiting application(s) would be "
+                       f"cancelled, {out.get('back_planned', 0)} row(s) would come back "
+                       f"to Pipeline on a score of 7 or more")
 
 
 def open_approvals_for(cfg: Config, d: dict) -> list[dict]:
@@ -4426,9 +4953,11 @@ def score_withdrawals_step(cfg: Config, canon: Canon, sheet: Sheet,
 
     Column A Applied is left to settle, which closes those as submitted. A
     row hunter cannot find on either tab is left alone and counted: a row he
-    deleted is not a score he lowered. A Yes in column A keeps the package,
-    whatever K says: Yes still builds (PR4 decides the Yes rows he scored
-    low, with his say on them). Counts only, because these lines are public.
+    deleted is not a score he lowered. A Yes in column A keeps the package
+    here whatever K says: Yes builds. A Yes he scores 1 to 5, or answers with
+    only a reaction, leaves Pipeline in leave_step once canon carries that
+    ruling, and that pass cancels what waits on him for it. Counts only,
+    because these lines are public.
     """
     from .apply import approval
     out = {"watched": 0, "withdrawn": 0, "reinstated": 0, "approvals_cancelled": 0,
@@ -4550,7 +5079,7 @@ def _cancel_and_read_back(cfg: Config, tokens: list[str], reason: str, out: dict
 
 
 def settle_step(cfg: Config, canon: Canon, sheet: Sheet,
-                summary: list[str], *, apply: bool = True) -> dict:
+                summary: list[str], *, apply: bool = True, archive: bool = True) -> dict:
     """What column A asks for that must not wait for the next batch.
 
     Typing Applied or Declined in column A used to do nothing until the next
@@ -4567,6 +5096,11 @@ def settle_step(cfg: Config, canon: Canon, sheet: Sheet,
     3. an Applied row is marked applied, on the sheet and in the database, and
        any approval still open for that posting is closed on his word;
     4. the row moves to the Applied tab, and the sheet is read back.
+
+    archive=False leaves step 4 to the caller. cmd_settle does that, since
+    his rulings of 2026-10-13: the decided rows move in the same one move as
+    the rows his score sends to Applied (leave_step), after his scores have
+    been read into the record, so nothing he wrote leaves Pipeline unread.
     """
     from .apply import approval
     out = {"decided": 0, "amendments": 0, "verdicts": 0, "applied": 0,
@@ -4646,7 +5180,7 @@ def settle_step(cfg: Config, canon: Canon, sheet: Sheet,
             out["approvals_closed"] += 1
 
     # 4. off Pipeline, and read back
-    if apply:
+    if apply and archive:
         moved, _lines = archive_decided(sheet, canon)
         out["archived"] = moved
         left = [r for r in sheet.read_pipeline(canon.sheet_headers)
@@ -4658,8 +5192,9 @@ def settle_step(cfg: Config, canon: Canon, sheet: Sheet,
     summary.append(
         f"settle: {out['decided']} decided, {out['verdicts']} verdict(s) recorded, "
         f"{out['amendments']} edit(s) read, {out['applied']} marked applied, "
-        f"{out['approvals_closed']} approval(s) closed, {out['archived']} moved "
-        f"to {config_mod.ARCHIVE_TAB}")
+        f"{out['approvals_closed']} approval(s) closed, "
+        + (f"{out['archived']} moved to {config_mod.ARCHIVE_TAB}" if archive else
+           f"moved to {config_mod.ARCHIVE_TAB} below, after his scores are read"))
     return out
 
 
@@ -4755,14 +5290,24 @@ def cmd_settle(apply: bool = False) -> int:
     except Exception as e:
         withdrawals_ok = False
         summary.append(f"score withdrawals failed: {e.__class__.__name__}")
-    out = settle_step(cfg, canon, sheet, summary, apply=apply)
+    out = settle_step(cfg, canon, sheet, summary, apply=apply, archive=False)
     # After settle, whether or not settle found anything decided: it returns
     # early on most hours, and his scores are read every hour regardless.
     ratings_step(cfg, canon, sheet, summary, apply=apply)
+    # Then the one move: what column A decided and what his score sends to
+    # Applied, after the record has read his scores back.
+    leave_ok = True
+    try:
+        leave_step(cfg, canon, sheet, summary, apply=apply)
+    except Exception as e:
+        leave_ok = False
+        # The class only: a move's error names the row it refused, and a row
+        # his score moves is a row he scored.
+        summary.append(f"leave pass failed: {e.__class__.__name__}")
     print("\n".join(summary))
     if not apply and out["decided"]:
         print("dry run. add --apply to record and move these rows")
-    return 0 if columns_ok and withdrawals_ok else 1
+    return 0 if columns_ok and withdrawals_ok and leave_ok else 1
 
 
 def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
@@ -4825,11 +5370,24 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
     rated = ratings_step(cfg, canon, sheet, summary, apply=True, roles=out.get("roles"))
     counts["ratings_new"] = rated.get("new", 0)
 
+    # What column A decided and what his score sends to Applied leave in one
+    # move, now that the record has read his scores: before the builds, so a
+    # Yes he has scored 3 is not built for in the same pass, and before the
+    # invariants, whose twin repair reads the rows that stay.
+    try:
+        lv = leave_step(cfg, canon, sheet, summary, apply=True)
+        counts["archived"] += lv.get("moved", 0)
+        counts["set_aside"] = lv.get("set_aside", 0)
+        counts["back_on_pipeline"] = lv.get("back", 0)
+    except Exception as e:
+        summary.append(f"leave pass failed: {e.__class__.__name__}")
+
     # packages for every Yes without one
     cache = disc.load_cache(cfg)
     try:
         todo = select_for_build(cfg, sheet, canon.sheet_headers,
-                                cap=max_packages, retry_dead=retry_dead)
+                                cap=max_packages, retry_dead=retry_dead,
+                                score_wins=leave_mod.in_canon(canon))
     except Exception as e:
         todo = []
         summary.append(f"package selection failed: {e.__class__.__name__}: {e}")
@@ -4897,8 +5455,9 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
     except Exception as e:
         summary.append(f"warm path pass failed: {e.__class__.__name__}: {e}")
 
-    # The invariants run BEFORE the archive, because the repair that stamps a
+    # The invariants run BEFORE this archive, because the repair that stamps a
     # duplicate row is what makes it a decided row the archive can then move.
+    # The rows his score moves, and the rows column A decided, left above.
     try:
         inv = invariants.enforce(sheet, canon.sheet_headers, apply=True,
                                  batches=funnel_batches(cfg, sheet, summary))
@@ -4908,10 +5467,11 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
     except Exception as e:
         summary.append(f"invariant pass failed: {e.__class__.__name__}: {e}")
 
-    # decided rows leave, the rest sort
+    # Rows the invariant repairs just decided (a twin stamped Declined -
+    # duplicate row) leave too, from a read of their own; the rest sort.
     try:
         moved, lines = archive_decided(sheet, canon)
-        counts["archived"] = moved
+        counts["archived"] += moved
         summary.append(f"archived {moved} decided row(s) to {config_mod.ARCHIVE_TAB}")
         for line in lines[:40]:
             summary.append(f"  {line}")
@@ -5061,6 +5621,11 @@ def cmd_run() -> int:
             if pcounts.get("amendments"):
                 notes.append(f"{pcounts['amendments']} edit(s) of yours were read "
                              f"as corrections and fed back into the scorer.")
+            # Said only while it is true: the move runs once canon carries it.
+            if leave_mod.in_canon(canon):
+                notes.append("A role you score 1 to 5, or answer with only a reaction, "
+                             "moves to the Applied tab with your score and reaction; "
+                             "score it 7 or more there and it comes back.")
             out = alerts.send_review_ready(cfg, fresh, counts.get("staged", 0),
                                            batches=funnel_batches(cfg, sheet, summary),
                                            notes=notes)
@@ -5537,8 +6102,11 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
     params = {"select": "*", "package_status": "eq.built",
               # A row the dedupe already marked is not a second application, it
               # is the same one twice. It was marked and then ignored here, so
-              # two Harvey emails went out for one posting.
-              "status": "neq.duplicate",
+              # two Harvey emails went out for one posting. A role his score
+              # set aside has left his sheet on a 1 to 5 or a reaction, and
+              # the sheet check below goes by company and title: a Yes row of
+              # the same title in another country let it be prepared again.
+              "status": f"not.in.(duplicate,{SET_ASIDE_STATUS})",
               "order": "package_built_at.desc", "limit": "50"}
     if job_id:
         params["job_id"] = f"eq.{job_id}"
@@ -7328,6 +7896,8 @@ def main(argv: list[str]) -> int:
         return cmd_verify(apply="--apply" in argv)
     if cmd == "archive":
         return cmd_archive(apply="--apply" in argv)
+    if cmd == "leave":
+        return cmd_leave(apply="--apply" in argv, out=_flag("--out"))
     if cmd == "set-dropdown":
         return cmd_set_dropdown()
     if cmd == "prune-sheet":

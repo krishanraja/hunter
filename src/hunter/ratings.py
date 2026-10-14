@@ -9,8 +9,9 @@ row per distinct thing he wrote about a role.
 
 It records. It decides nothing: since 2026-10-14 a build reads K itself,
 through router.build_trigger with this module's whole_score, so "7.5" is
-unreadable in both places; staging reads column A as before (PR4 moves the
-rows he scored low, with his approval).
+unreadable in both places; staging reads column A as before; and leave.py
+moves the rows he scored low off Pipeline by what this record holds, once
+canon carries his ruling of 2026-10-13.
 
 What it must never do, because each one has already been measured to go wrong:
 
@@ -372,12 +373,35 @@ def _first_scores(stored: list[dict]) -> dict[str, datetime.datetime]:
     return first
 
 
-def reviewed_batches(stored: list[dict], now: datetime.datetime) -> dict[str, datetime.datetime]:
+# system_config: a date, YYYY-MM-DD. A batch staged on or before it that he
+# has scored in counts as reviewed now, without REVIEW_WAIT. The wait runs
+# from first_seen_at, and this table first saw every score he typed between
+# 11 and 13 October on 14 October, the hour it was created; his words that
+# day were "leave the pipeline clean", about batches he had finished.
+REVIEWED_THROUGH_KEY = "hunter_reviewed_through"
+
+
+def reviewed_through(cfg) -> str:
+    """The configured date, or "" when it is unset or not a date. Never a
+    guess: a value that does not parse moves nothing."""
+    read = getattr(cfg, "optional", None)
+    raw = ((read(REVIEWED_THROUGH_KEY, "") if read else "") or "").strip()
+    try:
+        return datetime.date.fromisoformat(raw).isoformat() if raw else ""
+    except ValueError:
+        return ""
+
+
+def reviewed_batches(stored: list[dict], now: datetime.datetime,
+                     through: str = "") -> dict[str, datetime.datetime]:
     """batch -> when his first score on it was first seen, for batches where
-    that was REVIEW_WAIT or more ago. From hunter_krish_ratings.first_seen_at
-    only: a score this sync is seeing for the first time is minutes old, and
-    a table that does not exist yet knows of no score at all."""
-    return {b: t for b, t in _first_scores(stored).items() if now - t >= REVIEW_WAIT}
+    that was REVIEW_WAIT or more ago, or, when `through` is set, staged on or
+    before it. From hunter_krish_ratings.first_seen_at only: a score this sync
+    is seeing for the first time is minutes old, and a table that does not
+    exist yet knows of no score at all. Either way a batch he has not scored
+    in is never reviewed."""
+    return {b: t for b, t in _first_scores(stored).items()
+            if now - t >= REVIEW_WAIT or (through and b <= through)}
 
 
 def next_due(stored: list[dict], after: datetime.datetime) -> datetime.datetime | None:
@@ -423,11 +447,11 @@ class Rating:
 
 
 def rate(read: Read, paired: dict[int, Paired], stored: list[dict],
-         now: datetime.datetime) -> tuple[list[Rating], Counter, set]:
+         now: datetime.datetime, through: str = "") -> tuple[list[Rating], Counter, set]:
     """(one Rating per sheet row that carries one, rows by kind, the job ids
     of the pending rows). Every row gets exactly one kind; pending and
     column-A-only rows are counted and not rated."""
-    reviewed = reviewed_batches(stored, now)
+    reviewed = reviewed_batches(stored, now, through)
     out: list[Rating] = []
     by_kind: Counter = Counter()
     pending_roles: set = set()
@@ -435,8 +459,12 @@ def rate(read: Read, paired: dict[int, Paired], stored: list[dict],
         p = paired[id(s)]
         presented = _batch((p.db or {}).get("presented_at"))
         # Strictly later: his scores on the batch this row came in with say
-        # nothing about the rows of it he has not reached yet.
-        past = bool(presented) and any(b > presented for b in reviewed)
+        # nothing about the rows of it he has not reached yet. Except a batch
+        # on or before hunter_reviewed_through that he scored in: that date
+        # is him saying he has finished it, so its blanks are skipped ones.
+        past = bool(presented) and (
+            any(b > presented for b in reviewed)
+            or bool(through and presented <= through and presented in reviewed))
         k = (s.cell(KRISH_SCORE) or "").strip()
         m = norm(s.cell(KRISH_REACTION))
         kind = kind_of(k, m, s.verdict, reviewed_past=past)
@@ -490,8 +518,15 @@ def cleared(read: Read, paired: dict[int, Paired], roles: list[Rating],
 
 
 def _twin_record(t: Rating) -> dict:
+    """The other row of a role, as the record keeps it beside the winner.
+
+    Its own company and title, not only its location: pair_sheet files two
+    rows as one role on norm_title and the company's tokens, so "VP, Sales"
+    and "VP Sales" are one role, and a twin kept under the winner's text was
+    never found again by the row it came from (leave.Records)."""
     return {"tab": t.tab, "row": t.row.row_number, "kind": t.kind, "score": t.score,
             "score_text": t.score_text, "reaction": t.reaction,
+            "company": t.row.company.strip(), "title": t.row.role.strip(),
             "location": _location(t.row) or None}
 
 
@@ -641,9 +676,11 @@ def sync(cfg: Config, sheet, *, apply: bool, canon_headers: list[str],
     pairs = pair_sheet(read.rows, db)
     paired = {id(s): p for s, p in zip(read.rows, pairs)}
     out["pairing"] = Counter(p.pairing for p in pairs)
-    out["reviewed_batches"] = len(reviewed_batches(stored, now))
+    through = reviewed_through(cfg)
+    out["reviewed_batches"] = len(reviewed_batches(stored, now, through))
+    out["reviewed_through"] = through
 
-    ratings, by_kind, pending = rate(read, paired, stored, now)
+    ratings, by_kind, pending = rate(read, paired, stored, now, through)
     out["rows"] = by_kind
     roles = collapse(ratings)
     # A role is pending only when no row of it carries a rating: a blank twin

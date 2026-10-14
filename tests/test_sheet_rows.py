@@ -736,16 +736,20 @@ def test_archive_refuses_to_delete_when_the_copy_was_truncated(monkeypatch):
     column A alone. A row-count read-back called that a success and deleted
     the Pipeline row. Content is now compared, so a truncated copy raises
     and Pipeline keeps its row."""
-    s = FakeSheet([list(HEADERS), [""] * N_COLS])
     row = make_sheet_row(3, "MongoDB", "Head of AI Platform, GM",
                          "https://mdb.example/j", verdict="Applied")
+    # Pipeline holds the row, so the move's re-read finds it as chosen.
+    s = FakeSheet([list(HEADERS), [""] * N_COLS, list(row.cells)])
     deleted = []
     monkeypatch.setattr(s, "delete_rows", lambda ns, **kw: deleted.extend(ns))
     monkeypatch.setattr(s, "_post", lambda path, body: {})
 
     reads = {"n": 0}
+    pipeline_get = s._get
 
     def truncated_get(path, params=None):
+        if "/values/" in path and "Pipeline" in path:
+            return pipeline_get(path, params)
         if "/values/" in path and "Applied" in path:
             reads["n"] += 1
             if reads["n"] <= 2:

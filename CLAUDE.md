@@ -336,9 +336,43 @@ about 0: what reached him was ordered no better than chance.
   pays. A refused score build is not retried until K, the link or the
   masters change; a verification failure gets one more try first, and a
   build that raised is an error, tried again next hour.
-- **Not yet** (PR4, with his say on the list first): rows scored 1 to 5 leave
-  Pipeline, and his low score on a column A Yes row. Until then Yes builds
-  whatever K says.
+- **Low rows leave Pipeline, and his score wins over an older Yes**
+  (`leave.py`, his choices 2026-10-13: "Move 1-5 and skipped blanks", "My
+  score wins"). One predicate, `leave.should_leave`, for settle, process and
+  `archive`: column A New or blank with K 1 to 5, only a reaction, a blank
+  he has scored past or a Duplicate under 6; column A Yes with K 1 to 5 or
+  only a reaction that is not Duplicate. A Yes with K and M blank stays, a
+  Yes he has only called Duplicate stays, K 6 stays, a K that is not a whole
+  number stays, and a row his score built a package on stays unless K falls
+  to 5 or below. A row leaves only when the latest rating of its role on
+  record is what the row says now, so it is recorded first; a twin is found
+  under its own company, title and location. Decided rows and these move in
+  one `archive_rows` call after the ratings sync, before the invariants:
+  every target re-read before the copy and before the delete, a changed row
+  refused, his cells and Archived On RAW and read back, every other cell as
+  the text it was, nothing copied twice, column A never written. The role
+  becomes `set_aside` (seen by staging dedupe and reconcile, out of Roles to
+  rule on and approvals) only once no row of it is left on Pipeline, read
+  by link and by company, title and country (`run._pipeline_holds`), not by
+  his record, which never holds a pending blank; a role set aside that a
+  row on Pipeline holds again goes back to staging. Its rating gets
+  `moved_at`, and a leaving Yes has its waiting application cancelled with
+  his score as the reason unless a row of that role still on Pipeline asks
+  for one. Under the rule a Yes his score took back is never built, from
+  the packages button or process (`select_for_build(score_wins=True)`). A
+  row on Applied he later scores 7 or more comes back, its dates RAW and its
+  cells as the text they were. Nothing moves for his score until canon 9.13
+  carries `leave.CANON_RULE`; `leave` lists the move as counts, with `--out`
+  for the rows.
+- **A role he scored whose posting is gone leaves too** (his choice
+  2026-10-14, "Move the gone ones"): Package Status "Posting dead" on a row
+  column A leaves undecided. A Yes marked dead stays; the gh_jid bug once
+  marked a live Yes dead, and his Yes is his to clear. A gone row never comes
+  back. `system_config hunter_reviewed_through` (a date) counts every batch
+  staged on or before it that he scored in as finished, so its blanks move
+  without the 24 hour wait and without a later batch scored: the table first
+  saw every score he typed from 11 to 13 October on the 14th, the hour it was
+  created, so the wait ran from the wrong moment.
 
 ## 4. The Target Companies tab is his, and it is policy
 
@@ -534,6 +568,7 @@ src/hunter/
   targets.py        his Target Companies tab, read as policy and written back
   batchstats.py     accept rate per batch. The number nobody was watching
   ratings.py        his Krish Score and Reaction, recorded per role, never read as verdicts
+  leave.py          what leaves Pipeline for Applied on his score, and what comes back
   llm.py            one door to a model, with a second provider behind it
   spend.py          what every model call cost, and the month's ceiling
   employer.py       what kind of company, on evidence not on a taxonomy

@@ -319,6 +319,32 @@ def test_a_score_in_the_same_batch_says_nothing_about_the_rows_below_it(wire):
     assert out["roles"]["unscored_after_review"] == 0 and out["pending_roles"] == 1
 
 
+def test_a_batch_he_finished_by_the_date_he_set_has_its_blanks_skipped(wire):
+    """hunter_reviewed_through: a batch staged on or before it that he scored
+    in is one he has finished, so a blank in it is a role he passed over even
+    with no later batch scored. Without the date it waits; a batch after the
+    date waits; a batch on it he never scored in waits."""
+    def case(presented, through, scored_same_batch=True):
+        seen = [db_row("Larchmont", "Director, Strategy", presented=presented),
+                db_row("Fernhollow", "VP Partnerships", presented=presented)]
+        stored_rows = ([stored("Fernhollow", "VP Partnerships", 8, presented=presented,
+                               first_seen=NOW - HOURS)] if scored_same_batch else [])
+        wire(DB(seen=seen, stored=stored_rows))
+        sheet = tabs([cells("Larchmont", "Director, Strategy"),
+                      cells("Fernhollow", "VP Partnerships",
+                            k="8" if scored_same_batch else "")])
+        cfg = type("Cfg", (), {"optional": lambda self, key, default="":
+                               through if key == ratings.REVIEWED_THROUGH_KEY else default})()
+        out = ratings.sync(cfg, sheet, apply=False, canon_headers=HEADERS, now=NOW)
+        assert out["reviewed_through"] == through
+        return out["roles"].get("unscored_after_review", 0)
+
+    assert case("2026-10-11T09:00:00+00:00", "2026-10-13") == 1
+    assert case("2026-10-11T09:00:00+00:00", "") == 0
+    assert case("2026-10-15T09:00:00+00:00", "2026-10-13") == 0
+    assert case("2026-10-11T09:00:00+00:00", "2026-10-13", scored_same_batch=False) == 0
+
+
 def test_a_row_hunter_cannot_date_is_never_unscored(wire):
     out = batch_case(wire, later_presented="2026-10-08T09:00:00+00:00",
                      first_seen_ago=72 * HOURS, blank_db=False)
@@ -650,8 +676,11 @@ def test_settle_reads_his_scores_even_when_nothing_is_decided(monkeypatch):
     monkeypatch.setattr(R, "ratings_step",
                         lambda cfg, c, s, summary, apply, roles=None:
                         calls.append(("ratings", apply, roles)) or {})
+    # The one move comes after the record has read his scores (PR4).
+    monkeypatch.setattr(R, "leave_step", lambda cfg, c, s, summary, apply, **kw:
+                        calls.append(("leave", apply)) or {})
     assert R.cmd_settle(apply=True) == 0
-    assert calls == ["settle", ("ratings", True, None)]
+    assert calls == ["settle", ("ratings", True, None), ("leave", True)]
 
 
 def test_process_reads_his_scores_after_the_learning_step(monkeypatch):
