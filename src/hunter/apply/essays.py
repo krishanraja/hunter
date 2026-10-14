@@ -159,7 +159,8 @@ def _parse(raw: str, truncated: bool = False) -> tuple[str, str]:
     start, end = raw.find("{"), raw.rfind("}")
     if start >= 0 and end > start:
         try:
-            answer = (json.loads(raw[start:end + 1]).get("answer") or "").strip()
+            answer = voicegate.plain_prose(
+                (json.loads(raw[start:end + 1]).get("answer") or "")).strip()
             if answer:
                 return answer, ""
         except Exception:
@@ -167,7 +168,7 @@ def _parse(raw: str, truncated: bool = False) -> tuple[str, str]:
     # No object, or an object without the key. If what came back reads as the
     # answer itself, use it: the alternative is a blank box on his application.
     if raw and "{" not in raw and "}" not in raw:
-        return raw, ""
+        return voicegate.plain_prose(raw).strip(), ""
     # Its length, never its words. The reply is the model's, and the model
     # has his note in its system text; a reason is printed in the approval
     # run, which on the Prepare path is a public Actions log.

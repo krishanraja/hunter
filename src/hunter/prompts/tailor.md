@@ -53,7 +53,9 @@ onto this seat, and from why he wants it.
 How to use it:
 
 - Write like a person, not a profile. First person where the piece is first
-  person, as the hook and an answer are; the summary keeps the CV's register.
+  person, as the hook and an answer are; the summary keeps the CV's register,
+  and nothing calls him "he", "his" or "him". Plain text: no asterisks,
+  underscores or other Markdown for emphasis.
 - Be confident and concrete about what he would do first and how fast he can
   deliver: the first moves in the first weeks, the specific mechanic he would put
   to work, and what it would change for [[COMPANY]]. Say how fast in words ("in

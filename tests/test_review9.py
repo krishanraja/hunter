@@ -190,3 +190,39 @@ def test_the_live_path_formats_no_exception_message():
                 bad.append((name, node.lineno))
     assert bad == [], bad
     assert "{e}" not in inspect.getsource(actions)
+
+
+# ---------- plain text into the Doc ----------
+
+def test_markdown_the_model_writes_never_reaches_the_doc(monkeypatch):
+    """The tailor prompt carries Markdown bold, and the model answered in kind:
+    a CV went out with a phrase between double asterisks."""
+    from hunter.package import his_view as hv
+    from hunter.package import voicegate
+    from test_his_view import SUMMARY_OK, tailor_world
+    from test_review7 import model_reply, tailor_with
+    marked = SUMMARY_OK.replace("partner engine", "**partner engine**")
+    tailor_world(monkeypatch, [model_reply(summary=marked)])
+    tr = tailor_with(hv.HisView(score=9, reaction="Invented: the shape I want"))
+    assert tr.summary and "*" not in tr.summary and "partner engine" in tr.summary
+    assert voicegate.plain_prose("a __b__ and `c` with 3 * 4 and a $1.5M deal") == \
+        "a b and c with 3 * 4 and a $1.5M deal"
+
+
+def test_an_essay_answer_is_plain_text():
+    from hunter.apply import essays
+    got, why = essays._parse('{"answer": "I would **rebuild** the channel first."}')
+    assert (got, why) == ("I would rebuild the channel first.", "")
+    got, why = essays._parse("I would **rebuild** the channel first.")
+    assert got == "I would rebuild the channel first."
+
+
+def test_the_section_says_plain_text_and_no_third_person():
+    from hunter.package import his_view as hv
+    from test_review7 import model_reply  # noqa: F401
+    import hunter.package.tailor as tailor_mod
+    text = (pathlib.Path(tailor_mod.__file__).parent.parent / "prompts" / "tailor.md").read_text()
+    start, end = text.index("[[HIS_VIEW_START]]"), text.index("[[HIS_VIEW_END]]")
+    section = text[start:end]
+    assert '"he", "his" or "him"' in section and "no asterisks" in section
+    assert hv  # the section is his view's; with no view it is cut, byte for byte
