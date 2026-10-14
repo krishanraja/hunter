@@ -352,42 +352,127 @@ def validate_jd_mirror(mirror: str, jd_text: str) -> list[str]:
     return fails
 
 
-def validate_generated(data: dict, *, evidence: str,
-                       banned_phrases: tuple[str, ...],
-                       company: str, his_view=None) -> tuple[list[str], list[str]]:
-    """(hard failures that void the whole result, soft failures that only drop
-    the generated prose back to the block path).
-
-    A gate failure is SOFT on purpose. A model that invents a number must not
-    lose Krish the package; it must lose the generated prose and say so, leaving
-    the approved block in place.
+def gate_generated(data: dict, *, evidence: str,
+                   banned_phrases: tuple[str, ...],
+                   company: str, his_view=None) -> tuple[list[str], list[str]]:
+    """(the failures as the retry message tells the model, the same failures
+    as they may be stored and printed). One gate pass, two renderings.
 
     evidence is his CV and proof points, never his note: a figure, a name or
     an offer that only his note carries is refused like any other invention.
     With his view, a run of his words copied into the prose is refused too
-    (his_view.quotes_note) unless his CV says it as well, and no failure
-    names a word of his note (his_view.redact): these become build flags, and
-    build flags are printed in public run summaries.
+    (his_view.quotes_note) unless his CV says it as well. The model is told
+    exactly what it got wrong, because a retry that only hears "a figure was
+    left out" cannot find the figure. What is stored and printed goes
+    through his_view.redact: with a reaction of his, no refused figure or
+    name is quoted, because build flags reach public run summaries.
     """
-    soft: list[str] = []
+    for_model: list[str] = []
+    public: list[str] = []
     allow = frozenset({company} | set(company.split()))
     for name, key, lo, hi in (("summary", "summary", SUMMARY_MIN_CHARS,
                                SUMMARY_MAX_CHARS),
                               ("hook", "hook", HOOK_MIN_CHARS, HOOK_MAX_CHARS)):
         text = (data.get(key) or "").strip()
         if not text:
-            soft.append(f"{name} was not generated")
+            for_model.append(f"{name} was not generated")
+            public.append(f"{name} was not generated")
             continue
         verdict = voicegate.check(text, evidence=evidence,
                                   banned_phrases=banned_phrases,
                                   min_chars=lo, max_chars=hi, allow_names=allow)
-        failures = his_view_mod.redact(verdict.failures, his_view)
+        failures = list(verdict.failures)
         if his_view_mod.quotes_note(text, his_view, evidence):
             failures.append("copies his note word for word; say it in the letter's "
                             "own words")
         if failures:
-            soft.append(f"{name} rejected: " + "; ".join(failures))
-    return [], soft
+            for_model.append(f"{name} rejected: " + "; ".join(failures))
+            public.append(f"{name} rejected: "
+                          + "; ".join(his_view_mod.redact(failures, his_view)))
+    return for_model, public
+
+
+def validate_generated(data: dict, *, evidence: str,
+                       banned_phrases: tuple[str, ...],
+                       company: str, his_view=None) -> tuple[list[str], list[str]]:
+    """(hard failures that void the whole result, soft failures that only drop
+    the generated prose back to the block path), the soft ones as they may be
+    stored and printed (gate_generated).
+
+    A gate failure is SOFT on purpose. A model that invents a number must not
+    lose Krish the package; it must lose the generated prose and say so, leaving
+    the approved block in place.
+    """
+    _, public = gate_generated(data, evidence=evidence, banned_phrases=banned_phrases,
+                               company=company, his_view=his_view)
+    return [], public
+
+
+# Who the letter is addressed to, and the clause that mirrors the JD, are the
+# model's words written straight into the letter the employer reads. Both
+# were checked for shape only, and the prompt now carries his note, which can
+# name a contact ("X runs revenue there and asked me to apply", invented):
+# the letter went out "Dear X". So a hiring lead is accepted only when the
+# JD itself names that person, and the mirror passes the names and numbers
+# check against the JD and his evidence, never his note, and must not copy
+# his note. Either one that fails is replaced by the safe default, and the
+# flag says so without the name or figure it refused.
+DEFAULT_LEAD = "Hiring Team"
+LEAD_DROPPED = "hiring lead not named in the JD; the letter is addressed to the Hiring Team"
+MIRROR_DROPPED = ("jd_mirror carried a name, a figure or words the JD and the evidence "
+                  "do not support; the block's own clause is used")
+
+
+def gate_lead(lead: str, jd_text: str) -> tuple[str, str]:
+    """(the hiring lead to write, a flag or "")."""
+    lead = (lead or "").strip()
+    if not lead or lead == DEFAULT_LEAD:
+        return DEFAULT_LEAD, ""
+    jd = (jd_text or "").lower()
+    words = re.findall(r"[a-z0-9']+", lead.lower())
+    if words and all(re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", jd)
+                     for w in words):
+        return lead, ""
+    return DEFAULT_LEAD, LEAD_DROPPED
+
+
+def gate_mirror(mirror: str, jd_text: str, *, evidence: str, company: str,
+                his_view=None) -> tuple[str, str]:
+    """(the jd_mirror to write, a flag or ""). Empty is the block's default."""
+    mirror = (mirror or "").strip()
+    if not mirror:
+        return "", ""
+    hay = voicegate.build_evidence(jd_text, evidence)
+    verdict = voicegate.check(mirror, evidence=hay,
+                              allow_names=frozenset({company} | set(company.split())))
+    figures = [f for f in verdict.failures if f.startswith("number")]
+    if (figures or unsupported_names(mirror, hay, company)
+            or his_view_mod.quotes_note(mirror, his_view, hay)):
+        return "", MIRROR_DROPPED
+    return mirror, ""
+
+
+_WORD = r"[^\W_]+"
+
+
+def unsupported_names(text: str, hay: str, company: str) -> list[str]:
+    """The capitalised words of `text` that are not the company's and are not
+    a whole word of `hay` (lowercased JD and evidence), case-insensitive.
+    Whole words, because the gate's own name check is a substring test:
+    "Mark King" passed it inside "market" and "working", and the letter went
+    out naming a contact only his note knew. The first word counts too: the
+    mirror completes "[[COMPANY]] is ...", so it never opens a sentence, and
+    a name there was let through. Any letter, not only ASCII, so "Émilie" is
+    one word and not "milie". The words are for the caller to test, never
+    to print."""
+    own = {w.lower() for w in re.findall(_WORD, company or "")}
+    out = []
+    for w in re.findall(_WORD, text or ""):
+        if not w[0].isupper() or w.lower() in own:
+            continue
+        if not re.search(r"(?<![^\W_])" + re.escape(w.lower()) + r"(?![^\W_])", hay):
+            out.append(w)
+    return out
 
 
 def validate_highlight_order(order, count: int) -> list[str]:
@@ -600,12 +685,13 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
                 mirror = ""
             summary, hook = "", ""
             if generate:
-                _, soft = validate_generated(
+                retry, soft = gate_generated(
                     data, evidence=evidence, banned_phrases=banned_phrases,
                     company=company, his_view=his_view)
                 if soft and attempt == 0:
-                    # One regeneration, addressing every gate failure at once.
-                    last_fails = soft
+                    # One regeneration, addressing every gate failure at once,
+                    # told exactly what failed: the retry is not printed.
+                    last_fails = retry
                     continue
                 if soft:
                     flags.extend(soft)
@@ -613,16 +699,27 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
                 else:
                     summary = (data.get("summary") or "").strip()
                     hook = (data.get("hook") or "").strip()
+            mirror, why = gate_mirror(mirror, jd_text, evidence=evidence,
+                                      company=company, his_view=his_view)
+            if why:
+                flags.append(why)
+            lead, why = gate_lead(data["hiring_lead"], jd_text)
+            if why:
+                flags.append(why)
             return TailorResult(
                 competency_order=data["competency_order"],
                 letter_bullet_to_cut=data["letter_bullet_to_cut"],
                 block_key=data["block_key"],
                 jd_mirror=mirror,
-                hiring_lead=data["hiring_lead"].strip(),
+                hiring_lead=lead,
                 flags=flags,
                 summary=summary,
                 hook=hook,
                 highlight_order=list(data.get("highlight_order") or []),
             )
+    # What failed is stored as a flag and printed beside the role, so it goes
+    # through the same redaction as the gate's failures: a jd_mirror carrying
+    # a figure from his note was quoted here whole.
     return fallback_result(master_competencies, candidates,
-                           "validation failed twice: " + "; ".join(last_fails))
+                           "validation failed twice: "
+                           + "; ".join(his_view_mod.redact(last_fails, his_view)))

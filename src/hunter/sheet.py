@@ -1120,9 +1120,10 @@ class Sheet:
         for name in sorted(HIS_COLS):
             i = COLS[name] - first
             if got[i] != before[i]:
-                raise SheetError(f"row {row_number} {name} read {before[i][:40]!r} before "
-                                 f"the assessment write and {got[i][:40]!r} after; "
-                                 f"inspect the row before any other write")
+                # His cells are never quoted: this message can reach a public
+                # log, and K beside the row or his words are his.
+                raise SheetError(f"row {row_number} {name} changed across the assessment "
+                                 f"write; inspect the row before any other write")
 
     def read_tab_formulas(self, rng: str) -> list[list]:
         """Formula-rendered values from any tab. The answer tabs hold link cells

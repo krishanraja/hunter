@@ -121,8 +121,67 @@ def apply_queued(cfg: Config, sheet, canon_headers, *, apply: bool = False,
 
 def _prepare(job_id: str) -> tuple[bool, str]:
     """approvals --apply for one job: the filled form, the screenshot and the
-    "Apply:" email to him. Its exit code is the only honest signal it gives."""
+    "Apply:" email to him, and the note Control Center shows on its card.
+
+    Its stdout is kept out of the drain's log, as approvals --wanted keeps
+    it: that log is public, and the application (the open link, the essays
+    written from his reaction, every field value) is his email, not a log
+    line. What happened comes back as counts (tally) and error classes, and
+    the note is made from those alone (prepare_note): until 2026-10-14 the
+    note said "the email is on its way to you" on every exit 0, including a
+    posting that already had an application waiting and one refused for a
+    missing answer, where nothing was sent."""
+    import contextlib
+    import io
     from .run import cmd_approvals
-    code = cmd_approvals(apply=True, job_id=job_id)
-    return (code == 0, "application prepared; the email is on its way to you" if code == 0
-            else f"could not prepare it (approvals exited {code}); see the run log")
+    tally: dict = {}
+    failures: list[str] = []
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = cmd_approvals(apply=True, job_id=job_id, tally=tally, failures=failures)
+    except Exception as e:
+        # The class only, never the message: the note is shown on his card
+        # and printed in the drain's log.
+        return False, f"failed ({e.__class__.__name__}); nothing was sent"
+    return prepare_note(code, tally, failures)
+
+
+def prepare_note(code: int, tally: dict, failures: list[str]) -> tuple[bool, str]:
+    """(done, the note) for one Prepare, from what cmd_approvals counted.
+    Names the outcome, never a token, a key, an address, an essay or a
+    field value. A run that counted nothing claims nothing."""
+    from . import run
+    said = [(lambda: tally.get(run.SENT_UNRECORDED), False,
+             "the Apply email went, but its approval was not recorded, so its open link "
+             "will not work; press Prepare again"),
+            (lambda: tally.get(run.NOT_SENT), False,
+             "the email could not be sent; nothing reached you"),
+            (lambda: tally.get("sent"), True,
+             "sent: the Apply email is on its way to you"),
+            (lambda: tally.get(run.BY_HAND), True,
+             "sent as by hand: hunter cannot fill this form, so the documents were "
+             "emailed for you to apply yourself"),
+            (lambda: tally.get("taken"), True,
+             "already has an application waiting for you; no second email"),
+            (lambda: tally.get(run.REFUSED_BLOCKING), False,
+             "refused: a required question has no answer in your answer bank; nothing "
+             "sent"),
+            (lambda: tally.get(run.ESSAY_NOT_DRAFTED), False,
+             "an essay did not draft; nothing sent. Press Prepare again later"),
+            (lambda: tally.get(run.TAKEN_BACK), False,
+             "your score took this Yes back; nothing prepared"),
+            (lambda: tally.get("off_pipeline"), False,
+             "not on Pipeline any more; nothing prepared"),
+            (lambda: tally.get("no longer asked for"), False,
+             "the row no longer asks for an application; nothing prepared"),
+            (lambda: tally.get(run.NOT_BUILT), False,
+             "no built package for it yet; nothing prepared"),
+            (lambda: tally.get("retired"), False,
+             "the posting is gone; nothing sent")]
+    for seen, ok, note in said:
+        if seen():
+            return ok, note
+    if tally.get("failed"):
+        kinds = ", ".join(sorted(set(failures))) or "an error"
+        return False, f"failed ({kinds}); nothing was sent"
+    return False, f"approvals exited {code} and counted no outcome; nothing is known to be sent"

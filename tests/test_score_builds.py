@@ -698,8 +698,8 @@ def test_prepare_sends_one_only_while_its_row_still_asks(monkeypatch, capsys):
     assert reached == []
     assert "Ostravia" not in capsys.readouterr().out
     reached = _approvals_world(monkeypatch, k="8")
-    with pytest.raises(RuntimeError, match="stop here"):
-        run_mod.cmd_approvals(apply=True, job_id="ostravia:chief-of-staff")
+    # The stub mailbox is where it stops: reached, and counted as a failure.
+    assert run_mod.cmd_approvals(apply=True, job_id="ostravia:chief-of-staff") == 1
     assert reached == [True]
 
 
@@ -1055,13 +1055,18 @@ def test_an_error_after_the_package_was_built_leaves_it_built(monkeypatch):
     monkeypatch.setattr(disc, "load_cache", lambda cfg: {})
     monkeypatch.setattr(disc, "save_cache", lambda cfg, cache: None)
 
+    real = s.update_package_cells
+
     def boom(*a, **kw):
+        # The write landed; its read-back is what failed.
+        real(*a, **kw)
         raise sheet_mod.SheetError("read-back disagreed")
     monkeypatch.setattr(s, "update_package_cells", boom)
     detail = []
     out = run_mod.score_build_step(Cfg({"hunter_never_apply": "[]"}), FakeCanon(), s,
                                    apply=True, cap=3, detail=detail, masters=lambda: "m")
-    assert out["failed"] == 1
+    # Its row reads back with the new links: built, and counted as built.
+    assert out["built"] == 1 and out["failed"] == 0
     # The last word on the package's status, not the last patch: which of his
     # reasons it carries is written on its own after the built record.
     last = [v for _, _, v in rec["patches"] if "package_status" in v][-1]

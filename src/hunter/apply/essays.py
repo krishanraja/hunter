@@ -117,7 +117,8 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
     # letter's hook already works.
     messages = [{"role": "user", "content": prompt}]
     for attempt in range(TRIM_ATTEMPTS):
-        problem = _problem(answer, evidence, banned_phrases, his_view=his_view)
+        problem = _problem(answer, evidence, banned_phrases, his_view=his_view,
+                           public=False)
         if not problem:
             return answer, ""
         if attempt == TRIM_ATTEMPTS - 1:
@@ -175,10 +176,13 @@ def _parse(raw: str, truncated: bool = False) -> tuple[str, str]:
 
 
 def _problem(answer: str, evidence: str,
-             banned_phrases: tuple[str, ...], *, his_view=None) -> str:
-    """What is wrong with this draft, in words the model can act on. Never a
-    word of his note (his_view.redact): these reasons are printed in the
-    approval run."""
+             banned_phrases: tuple[str, ...], *, his_view=None,
+             public: bool = True) -> str:
+    """What is wrong with this draft. public False is the retry message to
+    the model, told exactly what failed so it can fix it; public True is the
+    reason returned and printed in the approval run and plan.notes, which
+    with a reaction of his quotes no refused figure or name
+    (his_view.redact)."""
     if len(answer) > MAX_CHARS:
         return (f"it runs to {len(answer)} characters and must be under "
                 f"{MAX_CHARS}")
@@ -188,8 +192,9 @@ def _problem(answer: str, evidence: str,
     verdict = voicegate.check(answer, evidence=evidence,
                               banned_phrases=banned_phrases)
     if not verdict.ok:
-        return ("the voice gate rejected it: "
-                + "; ".join(his_view_mod.redact(verdict.failures, his_view)[:3]))
+        failures = (his_view_mod.redact(verdict.failures, his_view) if public
+                    else list(verdict.failures))
+        return "the voice gate rejected it: " + "; ".join(failures[:3])
     if his_view_mod.quotes_note(answer, his_view, evidence):
         return ("it copies his note word for word; say it in the answer's own "
                 "words")

@@ -1931,8 +1931,14 @@ def run_command(cfg: Config, command: str) -> str:
                 if build_one(cfg, canon, sheet, row, summary):
                     built += 1
             except Exception as e:
-                summary.append(f"BUILD FAILED {row['job_id']}: "
-                               f"{e.__class__.__name__}: {e}")
+                # The class only, and the record decided from his row as it
+                # reads now, as process does (build_error_outcome).
+                summary.append(f"BUILD FAILED {row['job_id']}: {e.__class__.__name__}")
+                outcome, lines = build_error_outcome(cfg, row["job_id"], e, sheet=sheet,
+                                                     canon=canon, row=row)
+                summary.extend(lines)
+                if outcome == BUILD_KEPT:
+                    built += 1
         line = f"{built} of {len(rows)} package(s) built"
     else:
         raise ValueError(f"unknown command {command!r}")
@@ -2380,6 +2386,24 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         summary.append(f"SKIPPED {row['job_id']}: the row changed since it was "
                        f"chosen; the next pass builds it on what it reads then")
         return False
+    # His score wins over an older Yes (canon 9.13 from v11). The selections
+    # already refuse a Yes he has scored 1 to 5 or answered with only a
+    # reaction, but a run takes minutes a role and he scores while it runs:
+    # this is the last read before paying, and a package written from his no
+    # would be mailed to him the day he scores the role up again. Said
+    # without the role: the line is public, and the reason is his score.
+    if (trigger == router.YES_TRIGGER and leave_mod.in_canon(canon)
+            and leave_mod.yes_overridden(srow)):
+        summary.append("SKIPPED: a Yes his score has since taken back; nothing "
+                       "fetched or built")
+        return False
+    if rebuild and (srow is None or router.wants(srow) is None):
+        # A rebuild is for a role he still wants an application for, read
+        # off his row now: a Yes he has since scored 6, or called a
+        # Duplicate, keeps the package it has rather than a paid new one.
+        summary.append("SKIPPED: a rebuild for a row that no longer asks for an "
+                       "application; nothing fetched or built")
+        return False
     attempt = row.get("attempt") if trigger and trigger != router.YES_TRIGGER else None
 
     def refused(patch: dict, *, final: bool = True) -> dict:
@@ -2729,9 +2753,13 @@ def score_build_step(cfg: Config, canon: Canon, sheet: Sheet, *, apply: bool,
             else:
                 out["blocked"] += 1
         except Exception as e:
-            out["failed"] += 1
             detail.append(f"BUILD FAILED {row['job_id']}: {e.__class__.__name__}")
-            detail.extend(record_build_error(cfg, row["job_id"], e))
+            # Counted as what the record and his row say now, as process does:
+            # a package whose row reads back with its new links was built.
+            outcome, lines = build_error_outcome(cfg, row["job_id"], e, sheet=sheet,
+                                                 canon=canon, row=row)
+            detail.extend(lines)
+            out["built" if outcome == BUILD_KEPT else "failed"] += 1
     try:
         disc.save_cache(cfg, cache)
     except Exception:
@@ -2739,9 +2767,19 @@ def score_build_step(cfg: Config, canon: Canon, sheet: Sheet, *, apply: bool,
     return out
 
 
-def record_build_error(cfg: Config, job_id: str, e: Exception) -> list[str]:
-    """A score build that raised, written to its record as an error and
-    never as a refusal.
+# What a build that raised turned out to be, read back (build_error_outcome).
+BUILD_KEPT, BUILD_RETRY, BUILD_BLOCKED, BUILD_UNKNOWN = "built", "retry", "blocked", "unknown"
+# The status a record carries before its first build, and the one
+# select_for_build builds again: anything but "built".
+RETRY_STATUS = "none"
+
+
+def build_error_outcome(cfg: Config, job_id: str, e: Exception, *,
+                        sheet: Sheet | None = None, canon: Canon | None = None,
+                        row: dict | None = None) -> tuple[str, list[str]]:
+    """A build that raised, written to its record as an error and never as
+    a refusal, and what the record says now (BUILD_*), with the lines to
+    add to the private detail.
 
     No attempt fingerprint: a Sheets 429, a board's 5xx or a Docs error says
     nothing about the score, the link or the masters, so the role is tried
@@ -2751,26 +2789,81 @@ def record_build_error(cfg: Config, job_id: str, e: Exception) -> list[str]:
     scored 9 until he changed the score, with the sheet still saying "Not
     started".
 
-    And never over a package that was built: build_one records the package
-    as built before it writes the links to the sheet, so an error in that
-    write would otherwise mark a finished, paid-for package as not built,
-    and the next pass, seeing the links on the sheet or the record, would
-    never look at it again. A record that cannot be read back is left as it
+    A record build_one had already patched built is decided from his row as
+    it reads now, because build_one records the package before it writes
+    the links to the sheet, and that write can fail either way. The row
+    links the new documents: the write landed and only its read-back
+    failed, so the record stays built. The row links nothing: the write
+    never landed (a 429 on the batchUpdate POST), and a record left built
+    beside a row with no links was never selected again, so the Yes he
+    wanted never reached him; the record goes back to RETRY_STATUS, which
+    select_for_build builds again. The row still links an older package (a
+    rebuild): the record is put back to the documents the row links, and
+    stays built. A record or a row that cannot be read back is left as it
     is: unknown is not "not built". Lines only, for the private detail."""
     try:
-        now = db_get(cfg, "hunter_seen_roles", {"select": "package_status",
-                                                "job_id": f"eq.{job_id}", "limit": "1"})
+        now = db_get(cfg, "hunter_seen_roles", {
+            "select": "package_status,package_cv_url,package_letter_url",
+            "job_id": f"eq.{job_id}", "limit": "1"})
     except Exception:
-        return [f"  the record of {job_id} could not be read after the error; left as it was"]
+        return BUILD_UNKNOWN, [f"  the record of {job_id} could not be read after the "
+                               f"error; left as it was"]
     if now and (now[0].get("package_status") or "") == "built":
-        return [f"  {job_id} was built and recorded before the error; left as built"]
+        if sheet is None or canon is None or row is None:
+            return BUILD_KEPT, [f"  {job_id} was built and recorded before the error; "
+                                f"left as built"]
+        want = (now[0].get("package_cv_url") or "", now[0].get("package_letter_url") or "")
+        try:
+            srow = _sheet_row_for(sheet, canon, row)
+            landed = ((srow.package_urls.get("cv") or "", srow.package_urls.get("letter") or "")
+                      if srow is not None else None)
+        except Exception as x:
+            # Neither the write nor its read-back could be seen: unknown, and
+            # counted as unknown, never as built (CLAUDE.md 1).
+            return BUILD_UNKNOWN, [f"  {job_id} was recorded built before the error, and "
+                                   f"its row could not be read back ({x.__class__.__name__}); "
+                                   f"left as it was, not known to have reached his row"]
+        if landed is None:
+            return BUILD_UNKNOWN, [f"  {job_id} was recorded built before the error, and its "
+                                   f"row is not on Pipeline now; left as it was"]
+        if landed == want:
+            return BUILD_KEPT, [f"  {job_id} was built and its row reads back with the new "
+                                f"links; left as built"]
+        try:
+            if landed[0] and landed[1]:
+                db_patch(cfg, "hunter_seen_roles", {"job_id": job_id},
+                         {"package_cv_url": landed[0], "package_letter_url": landed[1]})
+                return BUILD_RETRY, ["  1 build whose row write did not land: its row "
+                                     "still links the package before, and the record says "
+                                     "so again"]
+            # And the links to documents that never reached his row go with
+            # it, so Control Center does not show a package that is not there.
+            db_patch(cfg, "hunter_seen_roles", {"job_id": job_id},
+                     {"package_status": RETRY_STATUS,
+                      "package_cv_url": None, "package_letter_url": None,
+                      "package_built_at": None,
+                      "rejection_reason": f"build error: {e.__class__.__name__}; the row "
+                                          f"write did not land"})
+        except Exception:
+            return BUILD_UNKNOWN, [f"  {job_id}: the row write did not land, and the record "
+                                   f"could not be put back"]
+        # Counts, without the role: said once for the run by the caller too.
+        return BUILD_RETRY, ["  1 build whose row write did not land: the record is set "
+                             "to be built again"]
     try:
         db_patch(cfg, "hunter_seen_roles", {"job_id": job_id},
                  {"package_status": "blocked",
                   "rejection_reason": f"build error: {e.__class__.__name__}"})
     except Exception:
-        return [f"  and the failure was not recorded on {job_id}"]
-    return []
+        return BUILD_UNKNOWN, [f"  and the failure was not recorded on {job_id}"]
+    return BUILD_BLOCKED, []
+
+
+def record_build_error(cfg: Config, job_id: str, e: Exception, *,
+                       sheet: Sheet | None = None, canon: Canon | None = None,
+                       row: dict | None = None) -> list[str]:
+    """build_error_outcome's lines alone."""
+    return build_error_outcome(cfg, job_id, e, sheet=sheet, canon=canon, row=row)[1]
 
 
 def score_build_lines(out: dict, *, apply: bool, cap: int) -> list[str]:
@@ -4440,15 +4533,17 @@ def amendment_step(cfg: Config, canon: Canon, sheet: Sheet,
 
         found += amend.detect_docs(cfg, read_doc, rows, paired, state)
     except Exception as e:
-        summary.append(f"document amendments skipped: {e.__class__.__name__}: {e}")
+        summary.append(f"document amendments skipped: {e.__class__.__name__}")
 
     n = amend.record(cfg, found)
     if n:
         summary.append(f"amendments read from your edits: {n}")
-        for a in found[:10]:
-            summary.append(f"  {a['company']} {a['field']}: "
-                           f"{(a['before_text'] or '')[:60]!r} became "
-                           f"{(a['after_text'] or '')[:60]!r}")
+        # Counts and field names only. The before and after are his letter,
+        # his CV and his own words in Why It Fits, beside the company, and
+        # this summary is printed in a public log; the record holds them.
+        from collections import Counter
+        for field, k in sorted(Counter(a.get("field") or "?" for a in found).items()):
+            summary.append(f"  {field}: {k} edit(s)")
         for p in amend.proposals(found):
             summary.append(f"  PATTERN: {p['question']}")
     else:
@@ -5472,7 +5567,7 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
     try:
         counts["amendments"] = amendment_step(cfg, canon, sheet, summary)
     except Exception as e:
-        summary.append(f"amendment pass skipped: {e.__class__.__name__}: {e}")
+        summary.append(f"amendment pass skipped: {e.__class__.__name__}")
 
     declines, notes = stored_company_declines(cfg)
     summary.extend(notes)
@@ -5536,21 +5631,34 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
                     counts["unverified"] += 1
             elif any(line.startswith(f"DEAD {row['job_id']}") for line in summary[before:]):
                 counts["dead"] += 1
-            elif any(line.startswith(f"SKIPPED {row['job_id']}") for line in summary[before:]):
+            elif any(line.startswith(f"SKIPPED {row['job_id']}") or line.startswith("SKIPPED:")
+                     for line in summary[before:]):
                 # Its row changed under the pass: nothing was fetched or paid
                 # for, and it is not a refusal.
                 counts["skipped"] = counts.get("skipped", 0) + 1
             else:
                 counts["blocked"] += 1
         except Exception as e:
-            counts["blocked"] += 1
-            summary.append(f"BUILD FAILED {row['job_id']}: {e.__class__.__name__}: {e}")
-            try:
-                db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
-                         {"package_status": "blocked",
-                          "rejection_reason": f"build error: {e.__class__.__name__}"})
-            except Exception:
-                pass
+            # The class only, as score-builds and rebuild-packages print it:
+            # a message can quote the letter (a paragraph anchor taken from
+            # the hook, written from his view), and this summary is public.
+            summary.append(f"BUILD FAILED {row['job_id']}: {e.__class__.__name__}")
+            # build_one records the package as built before it writes the
+            # links to his row, and that write reads back twice: a 429 there
+            # used to overwrite a built, paid-for package as blocked, and
+            # every path that sends an application skips a blocked one. What
+            # is counted is what the record and his row say now.
+            outcome, lines = build_error_outcome(cfg, row["job_id"], e, sheet=sheet,
+                                                 canon=canon, row=row)
+            summary.extend(lines)
+            if outcome == BUILD_KEPT:
+                counts["built"] += 1
+            elif outcome == BUILD_BLOCKED:
+                counts["blocked"] += 1
+            else:
+                # Raised, and set to be built again (or left as it was when
+                # nothing could be read back): a failure, not a refusal.
+                counts["failed"] = counts.get("failed", 0) + 1
     try:
         disc.save_cache(cfg, cache)
     except Exception:
@@ -5643,8 +5751,10 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
 
 
 def _process_line(counts: dict) -> str:
+    failed = (f"{counts['failed']} failed and tried again next pass, "
+              if counts.get("failed") else "")
     return (f"{counts.get('built', 0)} built ({counts.get('unverified', 0)} unverified), "
-            f"{counts.get('dead', 0)} dead, {counts.get('blocked', 0)} blocked, "
+            f"{counts.get('dead', 0)} dead, {counts.get('blocked', 0)} blocked, {failed}"
             f"{counts.get('warm_paths', 0)} warm paths, "
             f"{counts.get('archived', 0)} archived")
 
@@ -6158,17 +6268,63 @@ def hunt_url_for(cfg: Config, job_id: str) -> str:
     return f"{base}/#/people?lane=bridges&job={quote(job_id)}"
 
 
+# The query parameters that name a posting on a careers page, kept with
+# their values. Every other parameter is dropped: an allow-list, because the
+# parameters that only say where a click came from are open-ended. LinkedIn
+# adds position and pageNum to every link it hands out, so two sweeps of one
+# job came back with two links, and a deny-list of tracking parameters made
+# them two postings: two "Apply by hand" emails for one job.
+POSTING_PARAMS = frozenset({
+    "gh_jid", "id", "jid", "jobid", "job_id", "job", "posting", "postingid",
+    "posting_id", "reqid", "req_id", "requisitionid", "requisition_id", "jobreqid",
+    "opening", "openingid"})
+_LINKEDIN_VIEW = re.compile(r"(?:^|\.)linkedin\.com$")
+_LINKEDIN_JOB = re.compile(r"^/jobs/view/(?:[^/]*?-)?(\d+)/?$")
+
+
 def posting_key(row: dict) -> str:
     """One posting, however many role rows point at it.
 
-    The employer's form is what is being applied to, so its URL is the identity
-    that matters. job_id is not: the scheme changed between two sweeps and one
-    Harvey posting ended up under `harvey:head-gtm-strategy-ops-amer` and
+    The employer's form is what is being applied to, so the posting's own
+    identity is what matters. job_id is not: the scheme changed between two
+    sweeps and one Harvey posting ended up under
+    `harvey:head-gtm-strategy-ops-amer` and
     `harvey:head-of-gtm-strategy-operations-amer`, which are two ids for one
     application.
+
+    The board and its posting id where the link names one (board_key, the
+    posting id without any query or fragment), the Greenhouse posting id on
+    a careers page that carries it (gh_jid), a LinkedIn job by the number
+    at the end of its path, otherwise the link itself with its scheme,
+    fragment and trailing slash taken off and only the query parameters
+    that name a posting (POSTING_PARAMS) kept. It cut everything after "?"
+    until 2026-10-14, which made every posting on one careers path one
+    posting: the second wanted role was never mailed, the first one's
+    approval blocked the second for good, and his AMEND words for one were
+    written into the other's letter.
     """
-    url = (row.get("job_url") or row.get("url") or "").strip().lower()
-    return url.split("#")[0].split("?")[0].rstrip("/")
+    url = (row.get("job_url") or row.get("url") or "").strip()
+    if not url:
+        return ""
+    key = board_key(url)
+    if key:
+        # The Workday pattern's posting id runs to the end of the link, so a
+        # ?source=LinkedIn on one copy made it another posting.
+        ats, slug, pid = key
+        pid = pid.split("#")[0].split("?")[0].rstrip("/")
+        return "|".join((ats, slug, pid)).lower()
+    jid = gh_jid(url)
+    if jid:
+        return f"greenhouse-jid|{jid}"
+    parts = urlsplit(url.lower())
+    if _LINKEDIN_VIEW.search(parts.netloc):
+        m = _LINKEDIN_JOB.match(parts.path)
+        if m:
+            return f"linkedin|{m.group(1)}"
+    query = urlencode([(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+                       if k in POSTING_PARAMS])
+    out = parts.netloc + parts.path.rstrip("/")
+    return out + ("?" + query if query else "")
 
 
 def live_postings(cfg: Config) -> dict[str, tuple[str, str]]:
@@ -6242,13 +6398,22 @@ def posting_is_gone(row: dict) -> bool | None:
 
 
 def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *,
-                  chosen: list[dict] | None = None, tally: dict | None = None) -> int:
+                  chosen: list[dict] | None = None, tally: dict | None = None,
+                  failures: list[str] | None = None) -> int:
     """Build and, with --apply, send one approval email per built package.
 
-    Dry run by default: it prints the whole application as the email will show it,
-    and mints no token, so nothing can be approved by accident. A token is recorded
-    only when the mail is actually sent, because a token with no email behind it is
-    a live approval Krish never saw.
+    Dry run by default: it builds the whole application as the email would show
+    it and mints no token, so nothing can be approved by accident. A token is
+    recorded only when the mail is actually sent, because a token with no email
+    behind it is a live approval Krish never saw.
+
+    What it prints is counts and neutral outcomes, never the email itself, on
+    any path, dry run or not. Prepare in Control Center runs this in the hourly
+    drain, whose Actions log is public, and the email carries the open link
+    (the token and its key, which hand the fill payload, his CV and every
+    recorded answer to whoever holds them), his address, the essays drafted
+    from his reaction and every field value. The email is what he reads; the
+    log says that it went.
 
     chosen is the records cmd_approvals_wanted picked (wanted_for_approval):
     built packages for the roles he wants, one per posting. They replace the
@@ -6256,12 +6421,19 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
     what he did, each only while his row for it, found by its link, still
     asks for it now (router.wants). A form hunter cannot fill and one
     refused for a missing answer are marked as dealt with (mark_prepared),
-    so the next batch moves on. tally, when given, counts each outcome, for
-    a caller that prints counts and nothing else.
+    the refusal against his answer bank, and one waiting on an essay that
+    did not draft is marked for a day, so the next batch moves on. tally, when given, counts each outcome, for
+    a caller that prints counts and nothing else; failures, when given, gets
+    the class of each error that stopped one (actions._prepare's note).
     """
     def count(outcome: str) -> None:
         if tally is not None:
             tally[outcome] = tally.get(outcome, 0) + 1
+
+    def failed_as(e: BaseException) -> None:
+        count("failed")
+        if failures is not None:
+            failures.append(e.__class__.__name__)
 
     from . import notify
     from .apply import approval, merge
@@ -6284,6 +6456,7 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
         params["job_id"] = f"eq.{job_id}"
     rows = list(chosen) if chosen is not None else db_get(cfg, "hunter_seen_roles", params)
     if not rows:
+        count(NOT_BUILT)
         print("no built packages to send" + (f" for {job_id}" if job_id else ""))
         return 1
 
@@ -6327,12 +6500,14 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
         kept = []
         for r in rows:
             mine = own_sheet_row(srows, r)
+            # Counts, without the role: a row leaves Pipeline, and stops
+            # asking, on his score.
             if mine is None:
                 count("off_pipeline")
-                print(f"skip {r['job_id']}: no longer on the Pipeline sheet")
+                print("skip: a row no longer on the Pipeline sheet")
             elif router.wants(mine) is None:
                 count("no longer asked for")
-                print(f"skip {r['job_id']}: the row no longer asks for an application")
+                print("skip: a row that no longer asks for an application")
             else:
                 kept.append(r)
         if not kept:
@@ -6344,8 +6519,9 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
     if gone:
         for r in gone:
             count("off_pipeline")
-            print(f"skip {r['job_id']}: no longer on the Pipeline sheet "
-                  f"({r.get('company')} / {r.get('title')})")
+        # A row leaves Pipeline on his score as well as on column A, so which
+        # ones did is not said here: the log is public.
+        print(f"skip {len(gone)} package(s) whose row is no longer on the Pipeline sheet")
         drop = {r.get("job_id") for r in gone}
         rows = [r for r in rows if r.get("job_id") not in drop]
     if not rows:
@@ -6378,11 +6554,51 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
         asking = [x for r in scored for x in _rows_for(r, srows) if router.build_trigger(x)]
         if not asking:
             # Said without the role or the score: this log is public.
+            count("no longer asked for")
             print("REFUSING: the row no longer asks for an application, so none "
                   "is prepared")
             return 1
+    if job_id and chosen is None and leave_mod.in_canon(canon):
+        # Prepare on a Yes his score has since taken back (K 1 to 5, or only
+        # a reaction): his score wins over the older Yes (canon 9.13), and
+        # the essays would be drafted from his no. Whatever built the
+        # package: one his score built on a row that now reads Yes with K 3
+        # got past the score-built branch above, which asks build_trigger,
+        # and build_trigger says Yes for any Yes. A Yes with K 6 or K blank
+        # is still his to send; pressing Prepare is asking for it. Another
+        # row of the same posting that still asks (router.wants) holds it.
+        taken_back = [r for r in rows
+                      if any(leave_mod.yes_overridden(x) for x in _rows_for(r, srows))
+                      and not any(router.wants(x) for x in _rows_for(r, srows))]
+        if taken_back:
+            count(TAKEN_BACK)
+            print("REFUSING: his score has since taken this Yes back, so no "
+                  "application is prepared")
+            return 1
+    if not job_id and chosen is None:
+        # The bulk run, by hand: the same question every other path asks of
+        # his row now (router.wants), so a Yes he has since scored 3, or a
+        # score he lowered, is not mailed to him while it waits to leave.
+        # Counted, without the role.
+        asked = [r for r in rows if any(router.wants(x) for x in _rows_for(r, srows))]
+        if len(asked) < len(rows):
+            for _ in range(len(rows) - len(asked)):
+                count("no longer asked for")
+            print(f"skip {len(rows) - len(asked)} package(s) whose row no longer asks "
+                  f"for an application")
+            rows = asked
+            if not rows:
+                print("nothing else to send")
+                return 0
 
-    to = notify.mailbox(cfg)
+    try:
+        to = notify.mailbox(cfg)
+    except Exception as e:
+        # The class only: an address refused by the allow-list is named in
+        # the message.
+        failed_as(e)
+        print(f"REFUSING: his mailbox could not be read ({e.__class__.__name__})")
+        return 1
     bank = _answer_bank(sheet)
     oauth = GoogleOAuth(cfg)
     db = DocBuild(oauth.access_token())
@@ -6402,8 +6618,9 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
         key = posting_key(row)
         if key and key in taken:
             count("taken")
-            print(f"skip {row['job_id']}: {taken[key][1]} token already "
-                  f"{taken[key][0]} for this same posting")
+            # The state, never the token: a token is half of the open link.
+            print(f"skip {row['job_id']}: an approval is already "
+                  f"{taken[key][1]} for this same posting")
             continue
         # One posting must never take the batch with it. On 2026-09-20 a
         # single Ashby form carrying an EducationHistory block raised on row
@@ -6417,10 +6634,11 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
                 cfg, sheet, row, bank=bank,
                 view=his_view_for(cfg, sheet, row, pipeline=srows))
         except Exception as e:
-            count("failed")
-            failed.append(f"{row['job_id']}: {e.__class__.__name__}: "
-                          f"{str(e)[:160]}")
-            print(f"  SKIPPED {row['job_id']}: {e.__class__.__name__}: {e}")
+            failed_as(e)
+            # The class only: a message from the fill plan can carry a
+            # field value, an answer of his or an essay.
+            failed.append(f"{row['job_id']}: {e.__class__.__name__}")
+            print(f"  SKIPPED {row['job_id']}: {e.__class__.__name__}")
             continue
         token = approval.new_token(row["job_id"])
         if key:
@@ -6433,7 +6651,17 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
         letter_id = (row.get("package_letter_url") or "").split("/d/")[-1].split("/")[0]
         from .apply.audit import ATT_CV
         if cv_id and letter_id:
-            cv_pdf, letter_pdf = db.export_pdf(cv_id), db.export_pdf(letter_id)
+            try:
+                cv_pdf, letter_pdf = db.export_pdf(cv_id), db.export_pdf(letter_id)
+            except Exception as e:
+                # The class only: a Drive error names the document in its URL.
+                failed_as(e)
+                failed.append(f"{row['job_id']}: the documents could not be exported "
+                              f"({e.__class__.__name__})")
+                print(f"  SKIPPED {row['job_id']}: the documents could not be exported "
+                      f"({e.__class__.__name__})")
+                taken.pop(key, None)
+                continue
             if au.attachment_style == ATT_CV:
                 # One upload slot on the form, so one file: canon's merge order is
                 # the letter first, then the CV.
@@ -6467,8 +6695,7 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
                 shot_name = f"form_{slugify(role.company)}.png"
                 attachments.append((shot_name, pv["png"]))
             if pv["blocker"] or pv["error"]:
-                print(f"  form not filled in advance: "
-                      f"{pv['blocker'] or pv['error']}")
+                print("  form not filled in advance")
 
         # What the extension will put into the form. Built from the same plan and
         # the same documents the picture above was taken from, so what he sees in
@@ -6480,7 +6707,7 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
                                     names=attachment_names, bank=bank)
         except Exception as e:
             pay, open_key = None, ""
-            print(f"  no fill payload for this one: {e}")
+            print(f"  no fill payload for this one ({e.__class__.__name__})")
         open_url = (f"{pay['url']}#hunter={token}.{open_key}" if pay else "")
 
         email = approval.render(
@@ -6502,11 +6729,10 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
             # the text part was dropping notes.
             notes=plan.notes + form_notes)
 
-        print(f"\n{'=' * 72}\n{email.subject}\n{'=' * 72}")
-        print(email.text)
-        print(f"  fields: {len(plan.fields)}, blocking: {len(plan.blocking)}, "
-              f"flagged: {len(plan.flagged)}, attachments: "
-              f"{merged_name or 'two links'}")
+        print(f"  application built: fields {len(plan.fields)}, essays "
+              f"{len(plan.essays or {})}, blocking {len(plan.blocking)}, flagged "
+              f"{len(plan.flagged)}, attachments "
+              f"{'one merged file' if merged_name else 'two links'}")
         if not apply:
             count("dry")
             print("  (dry run, no token minted. pass --apply to send)")
@@ -6528,7 +6754,7 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
             # avoid. account_required already drew the distinction and this
             # branch ignored it.
             why = plan.notes[0] if plan.notes else "the form could not be read"
-            print(f"  REFUSING to send: {why}")
+            print("  REFUSING to send: the form could not be read")
             # Whether the POSTING has gone is a separate question from whether
             # its form could be parsed, and it is asked of the board rather
             # than guessed from the parse. A first attempt at this listed the
@@ -6546,26 +6772,31 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
             where = plan.jd_url or row.get("url") or "the posting"
             print(f"    the row stays: hunter could not read the form, and the "
                   f"posting is {'still live' if gone is False else 'not known to be gone'}. "
-                  f"Apply by hand at {where}")
+                  f"Apply by hand from the email")
             # Send him the application anyway. It was written, gated and built;
             # refusing to send meant it never reached him at all.
             if apply:
                 try:
-                    send_apply_by_hand(
+                    delivered = send_apply_by_hand(
                         cfg, company=role.company, role=role.title,
                         jd_url=where,
                         cv_url=row.get("package_cv_url") or "",
                         letter_url=row.get("package_letter_url") or "",
                         essays=plan.essays, why=why,
                         attachments=attachments or None)
-                    print(f"    documents emailed to {to} to apply by hand")
+                    if not (delivered or {}).get("sent"):
+                        count(NOT_SENT)
+                        failed.append(f"{row['job_id']}: the documents were not "
+                                      f"emailed (no mail channel)")
+                        print("    the documents were not emailed (no mail channel)")
+                        continue
+                    print("    documents emailed to him to apply by hand")
                 except Exception as e:
                     # The send failing IS a failure: the application did not
                     # reach him, which is the only thing this step is for.
                     # Only a delivered one is allowed to keep the run green.
-                    print(f"    could not email the documents: "
-                          f"{e.__class__.__name__}: {e}")
-                    count("failed")
+                    print(f"    could not email the documents ({e.__class__.__name__})")
+                    failed_as(e)
                     failed.append(f"{row['job_id']}: documents could not be "
                                   f"emailed: {e.__class__.__name__}")
                     continue
@@ -6577,30 +6808,76 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
                            f"filled automatically, documents emailed")
             continue
         if not plan.ready:
-            count(REFUSED_BLOCKING)
             print(f"  REFUSING to send: {len(plan.blocking)} required field(s) "
-                  f"have no answer: "
-                  + ", ".join(f.label for f in plan.blocking))
-            note = mark_prepared(cfg, row, REFUSED_BLOCKING)
+                  f"have no answer")
+            # Marked as dealt with for good only when every missing answer
+            # is one his answer bank has to give, and against that bank, so
+            # the answer he adds re-opens it. An essay that did not draft is
+            # hunter's own failure and may come through later: marked for a
+            # day (ESSAY_WAIT_HOURS), so the next batch moves on and the
+            # posting is tried again after it.
+            from .apply.resolve import NEEDS_ESSAY
+            if any((getattr(f, "reason", "") or "").startswith(NEEDS_ESSAY)
+                   for f in plan.blocking):
+                count(ESSAY_NOT_DRAFTED)
+                note = mark_prepared(cfg, row, ESSAY_NOT_DRAFTED)
+                if note:
+                    print(note)
+                continue
+            count(REFUSED_BLOCKING)
+            note = mark_prepared(cfg, row, REFUSED_BLOCKING, bank=bank)
             if note:
                 print(note)
             continue
-        out = notify.send_email(cfg, email.subject, email.html, to=to,
-                               text=email.text,
-                               attachments=attachments or None)
-        approval.record_sent(cfg, token=token, job_id=row["job_id"],
-                             company=role.company, role=role.title,
-                             fill_plan=plan.as_dict(),
-                             message_id=out.get("id", ""))
+        # The send and the token's record, each by class only on failure: a
+        # Gmail error quotes its response, an address refused names it, and
+        # a failed insert echoes the row it could not write, token first.
+        # The log is public; the run still goes on to the next posting and
+        # exits 1.
+        try:
+            out = notify.send_email(cfg, email.subject, email.html, to=to,
+                                   text=email.text,
+                                   attachments=attachments or None)
+        except Exception as e:
+            failed_as(e)
+            failed.append(f"{row['job_id']}: the Apply email was not sent "
+                          f"({e.__class__.__name__})")
+            print(f"  the Apply email was not sent ({e.__class__.__name__})")
+            taken.pop(key, None)
+            continue
+        if not (out or {}).get("sent"):
+            # No channel took it (gmail.send not granted). Recording a token
+            # here would leave an approval waiting for an email that does not
+            # exist, and every later Prepare would say one is waiting.
+            count(NOT_SENT)
+            failed.append(f"{row['job_id']}: the Apply email was not sent (no mail channel)")
+            print("  the Apply email was not sent (no mail channel)")
+            taken.pop(key, None)
+            continue
+        try:
+            approval.record_sent(cfg, token=token, job_id=row["job_id"],
+                                 company=role.company, role=role.title,
+                                 fill_plan=plan.as_dict(),
+                                 message_id=out.get("id", ""))
+        except Exception as e:
+            # The email went and its approval was not recorded: a reply to it
+            # finds no row. Said, and the run is red.
+            failed_as(e)
+            count(SENT_UNRECORDED)
+            failed.append(f"{row['job_id']}: the Apply email went, and its approval "
+                          f"was not recorded ({e.__class__.__name__})")
+            print(f"  the Apply email went, and its approval was not recorded "
+                  f"({e.__class__.__name__})")
+            continue
         try:
             db_patch(cfg, approval.TABLE, {"token": token},
                      {"fill_payload": pay, "open_key": open_key})
         except Exception as e:
-            print(f"  could not store the fill payload: {e}")
+            print(f"  could not store the fill payload ({e.__class__.__name__})")
         sent += 1
         count("sent")
-        print(f"  sent to {to}, token {token}, "
-              f"plan_hash {approval.plan_hash(plan.as_dict())}")
+        print(f"  Apply email sent: 1, fields {len(plan.fields)}, essays "
+              f"{len(plan.essays or {})}")
     if apply:
         print(f"\n{sent} approval email(s) sent")
     if failed:
@@ -6680,7 +6957,11 @@ def _tokens_by_posting(cfg: Config, known: list[dict],
     out: dict[str, list[dict]] = {}
     for t in toks:
         jid = t.get("job_id") or ""
-        key = posting_key(by_id.get(jid) or {}) or jid
+        posting = posting_key(by_id.get(jid) or {})
+        key = posting or jid
+        # Each token carries the posting it was filed against, so a reader
+        # can tell a twin of this posting from anything else under the key.
+        t = dict(t, _posting=posting)
         out.setdefault(key, []).append(t)
         if key != jid:
             out.setdefault(jid, []).append(t)
@@ -6731,9 +7012,13 @@ def amend_feedback(d: dict, tokens: dict[str, list[dict]]) -> str:
     say so; with them, it is the package he asked for with his reasons in it.
     The newest only: each amend rebuilds from its own words alone, so the
     newest is what the package on his row was written from."""
-    mine = tokens.get(posting_key(d) or d.get("job_id") or "", []) \
-        + tokens.get(d.get("job_id") or "", [])
-    said = [t for t in mine if (t.get("feedback") or "").strip()]
+    # Only a token filed under this record, or under a twin record of this
+    # same posting (posting_key): his words for another posting at the same
+    # company are about another letter.
+    jid, key = d.get("job_id") or "", posting_key(d)
+    mine = tokens.get(key or jid, []) + tokens.get(jid, [])
+    said = [t for t in mine if (t.get("feedback") or "").strip()
+            and (t.get("job_id") == jid or (key and t.get("_posting") == key))]
     if not said:
         return ""
     newest = max(said, key=lambda t: (t.get("decided_at") or "", t.get("sent_at") or ""))
@@ -6966,24 +7251,65 @@ def rebuild_targets(cfg: Config, sheet: Sheet, canon: Canon, *, job_id: str = ""
 # against its posting and the package it was for, in hunter_alerts beside
 # the other once-only marks (kind TROUBLE, under a prefix of its own, as the
 # ratings sync's marks are), and is not prepared again until the package
-# changes. approvals --job-id reads no mark: naming one is asking again.
+# changes. A refusal's mark carries his answer bank too (bank_hash), so the
+# answer he adds re-opens it. approvals --job-id reads no mark: naming one
+# is asking again.
 PREPARED_MARK = "prepared:"
 BY_HAND, REFUSED_BLOCKING = "by_hand", "refused_blocking"
+# An essay that did not draft (the month at its ceiling, a model error, the
+# gate refusing every try) is hunter's own failure and may come through
+# later, so it is never marked for good: marked for a day (ESSAY_WAIT_HOURS),
+# so the next batch moves on to other postings rather than paying for the
+# same refusal at the head of every batch, and tried again after it.
+ESSAY_NOT_DRAFTED = "essay not drafted, tried again after a day"
+ESSAY_WAIT_HOURS = 24
+# Counted by Prepare (approvals --job-id) for the note he reads on its card.
+TAKEN_BACK, NOT_BUILT = "his score took it back", "no built package"
+# The two outcomes a send can have that are neither sent nor not sent: Gmail
+# took no email (send_email's stdout fallback, gmail.send not granted), or
+# the email went and its approval was not recorded, so its open link and a
+# reply to it find no row. Each is counted apart, so the note he reads says
+# what happened (CLAUDE.md 1).
+NOT_SENT, SENT_UNRECORDED = "email not sent", "sent, approval not recorded"
 PREPARED_SKIPS = {BY_HAND: "sent to apply by hand before, package unchanged",
-                  REFUSED_BLOCKING: "refused before for a missing answer, package unchanged"}
+                  REFUSED_BLOCKING: "refused before for a missing answer, package and "
+                                    "answer bank unchanged",
+                  ESSAY_NOT_DRAFTED: "an essay did not draft within the last day"}
 
 
-def prepared_fingerprint(row: dict) -> str:
+def bank_hash(bank) -> str:
+    """16 hex characters of his answer bank as cmd_approvals reads it
+    (_answer_bank): any answer he adds, changes or clears changes it."""
+    import dataclasses
     import hashlib
-    blob = json.dumps([posting_key(row) or row.get("job_id") or "",
-                       row.get("package_built_at") or ""])
+    data = dataclasses.asdict(bank) if dataclasses.is_dataclass(bank) else bank
+    blob = json.dumps(data, sort_keys=True, default=str)
+    return hashlib.sha1(blob.encode()).hexdigest()[:16]
+
+
+def prepared_fingerprint(row: dict, outcome: str = BY_HAND, *, bank: str = "") -> str:
+    """The mark's key: the posting and the package it was for, and for a
+    refusal the answer bank it was refused on (bank, a bank_hash), for an
+    essay the outcome, so the two never share a key with a by-hand mark."""
+    import hashlib
+    parts = [posting_key(row) or row.get("job_id") or "", row.get("package_built_at") or ""]
+    if outcome == REFUSED_BLOCKING:
+        parts.append("bank:" + bank)
+    elif outcome == ESSAY_NOT_DRAFTED:
+        parts.append(outcome)
+    blob = json.dumps(parts)
     return PREPARED_MARK + hashlib.sha1(blob.encode()).hexdigest()[:16]
 
 
-def prepared_marks(cfg: Config) -> dict[str, str]:
-    """fingerprint -> outcome, for every posting a --wanted batch has dealt
-    with and minted no token for."""
-    out: dict[str, str] = {}
+def _now_utc() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def prepared_marks(cfg: Config) -> dict[str, dict]:
+    """fingerprint -> the mark's detail (outcome, job id, and for an essay
+    when it failed), for every posting a --wanted batch has dealt with and
+    minted no token for."""
+    out: dict[str, dict] = {}
     for x in db_get(cfg, alerts.TABLE, {"select": "fingerprint,detail",
                                         "kind": f"eq.{alerts.TROUBLE}",
                                         "fingerprint": f"like.{PREPARED_MARK}*",
@@ -6994,26 +7320,50 @@ def prepared_marks(cfg: Config) -> dict[str, str]:
                 detail = json.loads(detail)
             except ValueError:
                 detail = {}
-        out[x.get("fingerprint") or ""] = (detail or {}).get("outcome") or ""
+        out[x.get("fingerprint") or ""] = detail if isinstance(detail, dict) else {}
     return out
 
 
-def mark_prepared(cfg: Config, row: dict, outcome: str) -> str:
+def essay_wait_open(detail: dict | None) -> bool:
+    """An essay mark still inside its day. One whose time cannot be read is
+    over: unknown is not "failed today", and the posting is tried again."""
+    try:
+        at = datetime.datetime.fromisoformat(str((detail or {}).get("at") or "")
+                                             .replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=datetime.timezone.utc)
+    return _now_utc() - at < datetime.timedelta(hours=ESSAY_WAIT_HOURS)
+
+
+def mark_prepared(cfg: Config, row: dict, outcome: str, *, bank=None) -> str:
     """Record that this posting's package was dealt with and read it back.
     "" when it landed, otherwise the line to print. Never his words, and no
-    company: the detail is the outcome and the job id."""
-    fp = prepared_fingerprint(row)
+    company: the detail is the outcome and the job id. bank is the answer
+    bank a refusal was made on. An essay mark is written over the one
+    before, so its day runs from the latest failure."""
+    fp = prepared_fingerprint(row, outcome, bank=bank_hash(bank) if bank is not None else "")
+    detail = {"outcome": outcome, "job_id": row.get("job_id")}
+    essay = outcome == ESSAY_NOT_DRAFTED
+    if essay:
+        detail["at"] = _now_utc().isoformat()
     try:
         db_insert(cfg, alerts.TABLE, [{"kind": alerts.TROUBLE, "fingerprint": fp,
-                                       "detail": {"outcome": outcome,
-                                                  "job_id": row.get("job_id")}}],
-                  on_conflict="kind,fingerprint", ignore_duplicates=True)
-        back = db_get(cfg, alerts.TABLE, {"select": "id", "kind": f"eq.{alerts.TROUBLE}",
+                                       "detail": detail}],
+                  on_conflict="kind,fingerprint", merge=essay, ignore_duplicates=not essay)
+        back = db_get(cfg, alerts.TABLE, {"select": "id,detail", "kind": f"eq.{alerts.TROUBLE}",
                                           "fingerprint": f"eq.{fp}", "limit": "1"})
     except Exception as e:
         return (f"    not recorded as dealt with ({e.__class__.__name__}); the next "
                 f"batch prepares it again")
-    if not back:
+    got = (back[0].get("detail") if back else None) or {}
+    if isinstance(got, str):
+        try:
+            got = json.loads(got)
+        except ValueError:
+            got = {}
+    if not back or (essay and (got or {}).get("at") != detail["at"]):
         return "    not recorded as dealt with (did not read back); the next batch prepares it again"
     return ""
 
@@ -7068,6 +7418,20 @@ def wanted_for_approval(cfg: Config, sheet: Sheet, canon: Canon, *,
     live_ids = {t.get("job_id") for t in db_get(cfg, approval.TABLE, {
         "select": "job_id", "state": f"in.({','.join(in_play)})", "limit": ALL_ROWS})}
     handled = prepared_marks(cfg)
+    # His answer bank, read only when a refusal is on record: a refusal's
+    # mark holds the bank it was refused on. Unreadable, no refusal matches,
+    # and cmd_approvals, which reads the bank before anything is paid for,
+    # stops on it.
+    refusals = any(m.get("outcome") == REFUSED_BLOCKING for m in handled.values())
+    memo: list[str] = []
+
+    def bank_now() -> str:
+        if not memo:
+            try:
+                memo.append(bank_hash(_answer_bank(sheet)))
+            except Exception:
+                memo.append("unreadable")
+        return memo[0]
     picked = []
     for r, trig in asked:
         d = by_row.get(id(r))
@@ -7093,9 +7457,18 @@ def wanted_for_approval(cfg: Config, sheet: Sheet, canon: Canon, *,
         if key in live or d["job_id"] in live_ids:
             skip("approval already waiting or approved", r, d)
             continue
-        dealt = handled.get(prepared_fingerprint(d))
-        if dealt is not None:
-            skip(PREPARED_SKIPS.get(dealt, "dealt with before, package unchanged"), r, d)
+        # By hand, for this package. A mark under the same key with another
+        # outcome is a refusal made before the answer bank was in its key,
+        # and is not read as one made on today's bank.
+        if (handled.get(prepared_fingerprint(d)) or {}).get("outcome") == BY_HAND:
+            skip(PREPARED_SKIPS[BY_HAND], r, d)
+            continue
+        if refusals and prepared_fingerprint(
+                d, REFUSED_BLOCKING, bank=bank_now()) in handled:
+            skip(PREPARED_SKIPS[REFUSED_BLOCKING], r, d)
+            continue
+        if essay_wait_open(handled.get(prepared_fingerprint(d, ESSAY_NOT_DRAFTED))):
+            skip(PREPARED_SKIPS[ESSAY_NOT_DRAFTED], r, d)
             continue
         picked.append(dict(d, build_trigger=trig,
                            krish_score=whole_score(r.cell(sheet_mod.KRISH_SCORE)),
@@ -7177,8 +7550,16 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     rep: dict = {}
     read_doc = _safe_doc_reader(cfg)
-    targets = rebuild_targets(cfg, sheet, canon, job_id=job_id, report=rep,
-                              read_doc=read_doc)
+    try:
+        targets = rebuild_targets(cfg, sheet, canon, job_id=job_id, report=rep,
+                                  read_doc=read_doc)
+    except Exception as e:
+        # The class only. A Supabase error's message carries the request URL,
+        # and these requests name every target by job id: roles he scored 7
+        # or more or said Yes to, in a log that is public.
+        print(f"rebuild: the targets could not be read ({e.__class__.__name__}); "
+              f"nothing built")
+        return 1
     for line in rebuild_lines(rep, apply=apply, cap=max_builds):
         print(line)
     if not apply or not targets:
@@ -7198,6 +7579,8 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
         print("\n".join(lines))
         print("rebuild: preflight failed; nothing built")
         return 1
+    # Neither raises: a declines read that fails degrades to none, and the
+    # cache is read off cfg.
     declines, _notes = stored_company_declines(cfg)
     cache = disc.load_cache(cfg)
     out: Counter = Counter()
@@ -7208,6 +7591,14 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
         # extension opening the form, or his editing the letter may have
         # happened since the selection, which can be an hour behind by now.
         try:
+            # His row too: a Yes he scored 3, or a score he lowered to 6,
+            # while the run worked through the targets above it is no longer
+            # a role he wants an application for (router.wants), and a
+            # package written from that view would be mailed to him later.
+            mine = _sheet_row_for(sheet, canon, row)
+            if mine is None or router.wants(mine) is None:
+                out["no longer asked for since it was chosen"] += 1
+                continue
             if acted_on_now(cfg, row):
                 out["acted on since it was chosen"] += 1
                 continue
@@ -7228,7 +7619,8 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
         except Exception as e:
             out["failed"] += 1
             detail.append(f"BUILD FAILED {row['job_id']}: {e.__class__.__name__}")
-            detail.extend(record_build_error(cfg, row["job_id"], e))
+            detail.extend(record_build_error(cfg, row["job_id"], e, sheet=sheet,
+                                             canon=canon, row=row))
             continue
         said = detail[before:]
         jid = row["job_id"]
@@ -7242,7 +7634,7 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
             out["failed verification, the package before stays"] += 1
         elif any(x.startswith(f"DEAD {jid}") for x in said):
             out["posting gone"] += 1
-        elif any(x.startswith(f"SKIPPED {jid}") for x in said):
+        elif any(x.startswith(f"SKIPPED {jid}") or x.startswith("SKIPPED:") for x in said):
             out["row changed before its turn"] += 1
         else:
             out["refused at a gate"] += 1
@@ -7273,7 +7665,15 @@ def cmd_approvals_wanted(apply: bool = False, max_n: int = 0) -> int:
     import contextlib
     import io
     from collections import Counter
+    from . import spend
     cfg, canon = build_context()
+    # Before anything is read or paid for: each form drafts its essays, and
+    # with the month at its ceiling every one would come back empty and the
+    # whole batch would be refused for answers it only lacked for the day.
+    stop = spend.over_budget(cfg)
+    if stop:
+        print(f"prepare: waiting, {stop}")
+        return 0
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     rep: dict = {}
     try:
@@ -7302,6 +7702,15 @@ def cmd_approvals_wanted(apply: bool = False, max_n: int = 0) -> int:
     print(_counts_line("prepare: outcome", dict(tally)))
     if errors:
         print(_counts_line("prepare: errors", dict(errors)))
+    # What the essays cost, in counts and dollars (CLAUDE.md 3e).
+    for line in spend.summary():
+        print(line)
+    try:
+        line = spend.flush(cfg)
+        if line:
+            print(line)
+    except Exception as e:
+        print(f"spend: ledger not written ({e.__class__.__name__})")
     return 1 if tally["failed"] else 0
 
 
@@ -7332,61 +7741,82 @@ def cmd_approvals_drain(apply: bool = False) -> int:
     print(f"{len(replies)} message(s) carrying a token"
           f"{'' if apply else ' (dry run, pass --apply to act)'}\n")
     acted = 0
+    errors = 0
     for r in replies:
-        row = approval.get_row(cfg, r["token"]) or {}
-        action, detail = inbox.classify(r, row)
-        print(f"{action.upper():<8} {r['token']}")
-        if detail:
-            print(f"         {detail[:300]}")
-        if action == "skip":
-            continue
-        if action == "reject":
-            if apply:
+        # Every call keyed by the token, by class only on failure: a
+        # Supabase error names its request, token=eq.<token>, and a failed
+        # insert echoes the row. This log is public. The next reply is still
+        # read, and the drain exits 1.
+        try:
+            row = approval.get_row(cfg, r["token"]) or {}
+            action, detail = inbox.classify(r, row)
+            # The job, never the token (half of the open link to his filled form),
+            # and his own words on an approve or an amend only as a length: this
+            # log is public. A skip or a reject says why in hunter's words.
+            print(f"{action.upper():<8} {row.get('job_id') or 'no approval row'}")
+            if detail and action in ("approve", "amend"):
+                print(f"         his reply carries {len(detail)} characters of feedback")
+            elif detail and action == "skip":
+                print(f"         {detail[:300]}")
+            elif action == "reject":
+                # Not the sender's address: only that it was not acted on.
+                print("         not acted on: not from him, or no APPROVE and no feedback")
+            if action == "skip":
+                continue
+            if action == "reject":
+                if apply:
+                    approval.mark_processed(cfg, r["token"], r["message_id"],
+                                            row.get("processed_message_ids"))
+                continue
+            if not apply:
+                continue
+
+            if action == "approve":
+                approval.set_state(cfg, r["token"], approval.APPROVED,
+                                   decided_at=NOW())
                 approval.mark_processed(cfg, r["token"], r["message_id"],
                                         row.get("processed_message_ids"))
-            continue
-        if not apply:
-            continue
+                acted += 1
+                # Approved. He opens the filled form from Control Center or the
+                # email and his extension fills it. Nothing here presses anything.
+                print("         approved; open it from Control Center or the email")
+                continue
 
-        if action == "approve":
-            approval.set_state(cfg, r["token"], approval.APPROVED,
-                               decided_at=NOW())
+            # amend. The old token dies first: if the rebuild fails, the worst case is
+            # no live token, never a live token for the wrong package.
+            approval.supersede(cfg, r["token"])
             approval.mark_processed(cfg, r["token"], r["message_id"],
                                     row.get("processed_message_ids"))
+            db_patch(cfg, approval.TABLE, {"token": r["token"]}, {"feedback": detail})
+            job_id = row.get("job_id") or ""
+            rows = db_get(cfg, "hunter_seen_roles",
+                          {"select": "*", "job_id": f"eq.{job_id}", "limit": "1"})
+            if not rows:
+                print(f"         SUPERSEDED but cannot rebuild: no role row for {job_id}")
+                continue
+            summary: Summary = Summary()
+            ok = build_one(cfg, canon, sheet, rows[0], summary, feedback=detail)
+            for line in summary:
+                print("         " + line)
+            if not ok:
+                print("         SUPERSEDED and the rebuild failed. No live token; "
+                      "fix the build and re-run approvals.")
+                continue
+            rc = cmd_approvals(apply=True, job_id=job_id)
             acted += 1
-            # Approved. He opens the filled form from Control Center or the
-            # email and his extension fills it. Nothing here presses anything.
-            print("         approved; open it from Control Center or the email")
+            if rc:
+                print("         rebuilt, but the new approval email did not send")
+        except Exception as e:
+            errors += 1
+            print(f"         this reply stopped at an error ({e.__class__.__name__})")
             continue
 
-        # amend. The old token dies first: if the rebuild fails, the worst case is
-        # no live token, never a live token for the wrong package.
-        approval.supersede(cfg, r["token"])
-        approval.mark_processed(cfg, r["token"], r["message_id"],
-                                row.get("processed_message_ids"))
-        db_patch(cfg, approval.TABLE, {"token": r["token"]}, {"feedback": detail})
-        job_id = row.get("job_id") or ""
-        rows = db_get(cfg, "hunter_seen_roles",
-                      {"select": "*", "job_id": f"eq.{job_id}", "limit": "1"})
-        if not rows:
-            print(f"         SUPERSEDED but cannot rebuild: no role row for {job_id}")
-            continue
-        summary: Summary = Summary()
-        ok = build_one(cfg, canon, sheet, rows[0], summary, feedback=detail)
-        for line in summary:
-            print("         " + line)
-        if not ok:
-            print("         SUPERSEDED and the rebuild failed. No live token; "
-                  "fix the build and re-run approvals.")
-            continue
-        rc = cmd_approvals(apply=True, job_id=job_id)
-        acted += 1
-        if rc:
-            print("         rebuilt, but the new approval email did not send")
     if apply:
         print(f"\n{acted} reply(ies) acted on")
+    if errors:
+        print(f"{errors} reply(ies) stopped at an error")
     report_stalled_approvals(cfg, apply=apply)
-    return 0
+    return 1 if errors else 0
 
 
 def report_stalled_approvals(cfg: Config, *, apply: bool = False) -> list[str]:
@@ -7412,8 +7842,10 @@ def report_stalled_approvals(cfg: Config, *, apply: bool = False) -> list[str]:
             when = (r.get("decided_at") or r.get("sent_at") or "")
             if when and when > cutoff:
                 continue
+            # Never the token: it is half of the open link, and this prints
+            # in the drain's public log.
             stuck.append(f"{r['state']} since {when[:19] or 'unknown'}: "
-                         f"{r.get('company')} {r.get('role')} [{r['token']}]")
+                         f"{r.get('company')} {r.get('role')}")
     if not stuck:
         return stuck
     print("\nSTALLED, the machine should have moved these on:")
@@ -7674,8 +8106,10 @@ def send_applied_receipt(cfg: Config, *, company: str, role: str, when: str,
 
 def send_apply_by_hand(cfg: Config, *, company: str, role: str, jd_url: str,
                        cv_url: str, letter_url: str, essays: dict,
-                       why: str, attachments=None) -> None:
-    """The application, for a form hunter cannot fill.
+                       why: str, attachments=None) -> dict:
+    """The application, for a form hunter cannot fill. Returns what
+    notify.send_email returned, so the caller counts a delivery only when a
+    channel took it.
 
     Krish, 2026-09-24, about BOI: "BOI I can apply myself (still give me the
     application via email)". Before this the run refused and sent nothing, so
@@ -7712,7 +8146,7 @@ def send_apply_by_hand(cfg: Config, *, company: str, role: str, jd_url: str,
     bits.append("<p>Nothing was submitted and no approval is pending for this "
                 "one. Once you have sent it, type <b>Applied</b> in column A of "
                 "its Pipeline row. Hunter moves it within the hour.</p>")
-    notify.send_email(
+    return notify.send_email(
         cfg, f"Apply by hand: {company} {role}",
         "".join(bits), to=notify.mailbox(cfg),
         text=f"[hunter-outbound]\nApply by hand: {role} at {company}. "
@@ -8128,7 +8562,7 @@ def cmd_applied(token: str = "", job_ids: str = "") -> int:
     if token:
         row = approval.get_row(cfg, token)
         if not row:
-            print(f"no approval row for token {token!r}")
+            print("no approval row for that token")
             return 1
         rows.append(row)
     for jid in wanted:
@@ -8200,7 +8634,7 @@ def retire_dead_posting(cfg: Config, canon, sheet: Sheet, job_id: str, *,
                   "rejection_reason": why[:300]})
         note.append("role row marked dead")
     except Exception as e:
-        note.append(f"could not mark the role row dead: {e}")
+        note.append(f"could not mark the role row dead: {e.__class__.__name__}")
 
     rows = sheet.read_pipeline(canon.sheet_headers)
     want = ((company or "").strip().lower(), (role or "").strip().lower())
@@ -8216,7 +8650,7 @@ def retire_dead_posting(cfg: Config, canon, sheet: Sheet, job_id: str, *,
                 {rn: verdicts.DECLINE_PREFIX + verdicts.ALL_CODES["dead_posting"]})
             note.append(f"sheet row {rn} retired")
         except Exception as e:
-            note.append(f"sheet row {rn} not retired: {e}")
+            note.append(f"sheet row {rn} not retired: {e.__class__.__name__}")
     for line in note:
         print(f"    {line}")
 
@@ -8547,7 +8981,8 @@ def cmd_confirmations(apply: bool = False) -> int:
     if who.get("error"):
         print(f"mailbox: {who['error']}")
     else:
-        print(f"reading {who['address'] or 'an unnamed mailbox'} "
+        # Not the address: this prints in a public Actions log.
+        print(f"reading {'his mailbox' if who['address'] else 'an unnamed mailbox'} "
               f"({who['total']} messages in it)")
     try:
         messages = confirmations.fetch(cfg)

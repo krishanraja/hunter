@@ -173,10 +173,29 @@ def his_view(cfg, job_id: str, sheet_row, *, record: dict | None = None,
 # Which leaves the failures. A name or a figure refused because it came from
 # his note would be quoted back in the failure ("name 'X' is not in the
 # recorded evidence"), and those failures are stored as build flags and
-# printed in run summaries and approval runs, which are public. So any
-# failure quoting a word of his note is replaced by one that says what kind
-# of thing it was, and nothing of what it said.
+# printed in run summaries and approval runs, which are public. Matching the
+# quoted value against his note missed every other form of it: "310k" in his
+# note came back as "$310k" from the gate, "450k" as "$450000", a company he
+# shortened as its full name. So once he has written a reaction, no failure
+# that leaves tailor or the essays quotes a refused figure or name at all,
+# whether his note carries it or not: it says what kind of thing was left
+# out, and nothing of what it said. The specific failure goes only into the
+# retry message to the model, which is not printed anywhere.
 _QUOTED = re.compile(r"'([^']*)'|\"([^\"]*)\"")
+
+# Which failure is about a figure and which about a name is read from the
+# failure's own format, never guessed from what it quotes: the gate's
+# (voicegate.check, "number '...' is not in the recorded evidence" and
+# "name '...' is not in the recorded evidence") and tailor.validate's
+# number check on jd_mirror. Guessing from the words read validate()'s
+# "hiring_lead is empty; return 'Hiring Team' ..." as a refused name, and a
+# flag claimed a name was left out that nobody had written.
+_FIGURE_FORMATS = ("number ", "jd_mirror carries a number not in the JD verbatim")
+_NAME_FORMATS = ("name ",)
+
+FIGURE_LEFT_OUT = "a figure the evidence does not support was left out"
+NAME_LEFT_OUT = "a name the evidence does not support was left out"
+WORD_LEFT_OUT = "a word from his note was refused and left out"
 
 
 def _in_note(value: str, low: str, compact: str) -> bool:
@@ -190,29 +209,25 @@ def _in_note(value: str, low: str, compact: str) -> bool:
 
 
 def redact(failures: list[str], view: "HisView | None") -> list[str]:
-    """The gate's failures with every word of his note taken out. A failure
-    that quotes nothing of his stands as it was, so a refused name the model
-    invented on its own is still named, for the regeneration and for him."""
+    """The failures as they may be stored and printed. With no reaction of
+    his they stand exactly as they were. With one, a failure that quotes a
+    figure or a name becomes the generic form for its kind, and any other
+    failure quoting a word of his note says only that one was refused."""
     if view is None or not view.reaction:
         return list(failures)
-    low = view.reaction.lower()
+    low = normalise_quotes(view.reaction).lower()
     compact = low.replace(",", "").replace(" ", "")
     out: list[str] = []
     for f in failures:
         quoted = [a or b for a, b in _QUOTED.findall(f)]
-        if not any(_in_note(q, low, compact) for q in quoted):
-            out.append(f)
-            continue
-        if f.startswith("number"):
-            said = ("a figure from his note is not in the recorded evidence; leave "
-                    "it out")
-        elif f.startswith("name"):
-            said = ("a name from his note is not in the recorded evidence; leave "
-                    "it out")
-        elif f.startswith("banned phrase"):
-            said = "a banned phrase is in it; say it another way"
+        if f.startswith(_FIGURE_FORMATS):
+            said = FIGURE_LEFT_OUT
+        elif f.startswith(_NAME_FORMATS):
+            said = NAME_LEFT_OUT
+        elif any(_in_note(q, low, compact) for q in quoted):
+            said = WORD_LEFT_OUT
         else:
-            said = "a word from his note was refused; leave it out"
+            said = f
         if said not in out:
             out.append(said)
     return out
@@ -225,8 +240,22 @@ def redact(failures: list[str], view: "HisView | None") -> list[str]:
 QUOTE_WORDS = 7
 
 
+# A reaction typed on his phone carries typographic apostrophes and quotes
+# (U+2018, U+2019, U+201C, U+201D, and U+02BC from some keyboards), and the
+# model writes straight ones ("I've"). Tokenised as they came, every
+# contraction split on one side and not the other, so no run of seven words
+# matched and a copy of ten or so of his words passed. Both sides are brought
+# to the ASCII forms first.
+_TYPOGRAPHIC = str.maketrans({"\u2018": "'", "\u2019": "'", "\u02bc": "'",
+                              "\u201c": '"', "\u201d": '"'})
+
+
+def normalise_quotes(text: str) -> str:
+    return (text or "").translate(_TYPOGRAPHIC)
+
+
 def _words(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9$%']+", (text or "").lower())
+    return re.findall(r"[a-z0-9$%']+", normalise_quotes(text).lower())
 
 
 def quotes_note(text: str, view: HisView | None, evidence: str = "") -> bool:

@@ -99,7 +99,10 @@ def test_a_missing_scope_falls_back_to_stdout_instead_of_failing(monkeypatch, ca
     assert out["sent"] is False and "not granted" in out["reason"]
     printed = capsys.readouterr().out
     assert "hunter.oauth_grant" in printed, "the fallback must say how to fix it"
-    assert "body" in printed, "and must still show the content"
+    # Not the content: stdout is a public Actions log, and an Apply email
+    # carries the open link to his filled form (tests/test_review7.py).
+    assert "body" not in printed and "Harvey" not in printed
+    assert "characters" in printed, "it says that something was not sent"
 
 
 def test_a_real_failure_still_raises(monkeypatch):

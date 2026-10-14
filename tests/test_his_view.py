@@ -277,7 +277,7 @@ def test_a_figure_only_his_note_gives_is_refused_and_not_quoted(monkeypatch):
     tr = run_tailor(hv.HisView(score=8, reaction=REACTION))
     assert tr.summary == "" and tr.hook == ""
     flags = "; ".join(tr.flags)
-    assert "a figure from his note is not in the recorded evidence" in flags
+    assert hv.FIGURE_LEFT_OUT in flags
     assert "4.2" not in flags
 
 
@@ -289,10 +289,16 @@ def test_without_his_note_the_same_figure_is_refused_by_name(monkeypatch):
 
 
 def test_a_number_in_neither_his_record_nor_his_note_is_still_refused(monkeypatch):
+    """Refused all the same, and, with a reaction of his on the row, not
+    quoted either: the gate cannot tell which other form of his note's
+    figure the model wrote, so no refused figure is printed at all. The
+    retry message, which is not printed, names it."""
     bad = SUMMARY_OK.replace("into revenue", "past $7.7M")
-    tailor_world(monkeypatch, [reply(summary=bad)])
+    sent = tailor_world(monkeypatch, [reply(summary=bad)])
     tr = run_tailor(hv.HisView(score=8, reaction=REACTION))
-    assert tr.summary == "" and any("$7.7m" in f for f in tr.flags)
+    assert tr.summary == "" and hv.FIGURE_LEFT_OUT in "; ".join(tr.flags)
+    assert not any("7.7" in f for f in tr.flags)
+    assert "$7.7m" in sent[1][1]["text"], "the model is told what it got wrong"
     assert tr.hook == ""   # the whole generated pair falls back together
 
 
@@ -317,22 +323,24 @@ def test_nothing_only_his_note_carries_reaches_the_letter(monkeypatch, what, sen
     tr = run_tailor(hv.HisView(score=9, reaction=PRIVATE_NOTE))
     assert tr.summary == "", what
     flags = "; ".join(tr.flags)
-    assert "from his note is not in the recorded evidence" in flags, what
+    assert "the evidence does not support was left out" in flags, what
     for word in PRIVATE_WORDS:
         assert word.lower() not in flags.lower(), (what, word)
 
 
-def test_a_name_the_model_invented_itself_is_still_named():
-    """Redaction takes out his words, nothing else: a failure quoting a name
-    his note does not carry stands as it was."""
+def test_with_a_reaction_no_refused_name_or_figure_is_quoted():
+    """With a reaction of his, every refused name and figure is printed in
+    its generic form, his or not: a shortened name or a reworded figure of
+    his note does not match it. With no reaction, the failures stand."""
     view = hv.HisView(score=9, reaction=PRIVATE_NOTE)
     fails = ["name 'Zentrox' is not in the recorded evidence",
-             "name 'Ostrander' is not in the recorded evidence", "too short (9 chars, min 350)"]
-    assert hv.redact(fails, view) == [
-        "name 'Zentrox' is not in the recorded evidence",
-        "a name from his note is not in the recorded evidence; leave it out",
-        "too short (9 chars, min 350)"]
+             "name 'Ostrander' is not in the recorded evidence",
+             "number '$310k' is not in the recorded evidence",
+             "too short (9 chars, min 350)"]
+    assert hv.redact(fails, view) == [hv.NAME_LEFT_OUT, hv.FIGURE_LEFT_OUT,
+                                      "too short (9 chars, min 350)"]
     assert hv.redact(fails, hv.HisView(score=9)) == fails
+    assert hv.redact(fails, None) == fails
 
 
 def test_his_note_copied_word_for_word_is_refused_without_quoting_it(monkeypatch):
@@ -654,7 +662,7 @@ def test_an_essay_carrying_what_only_his_note_says_is_refused_without_quoting_it
     got, why = essays.draft_one(EssayCfg(), question="Why us?", company="Quillfield",
                                 role="VP", jd_text="jd", evidence=EVIDENCE,
                                 his_view=hv.HisView(score=8, reaction=PRIVATE_NOTE))
-    assert got == "" and "from his note is not in the recorded evidence" in why
+    assert got == "" and "the evidence does not support was left out" in why
     for word in PRIVATE_WORDS:
         assert word.lower() not in why.lower(), word
 
@@ -741,12 +749,16 @@ class FakeDb:
         self.reads.append(url)
         return self.documents.get(url, "")
 
-    def insert(self, cfg, table, rows, on_conflict="", ignore_duplicates=False, **kw):
+    def insert(self, cfg, table, rows, on_conflict="", ignore_duplicates=False,
+               merge=False, **kw):
         t = self.tables.setdefault(table, [])
         keys = [k for k in on_conflict.split(",") if k]
         for r in rows:
             same = [x for x in t if keys and all(x.get(k) == r.get(k) for k in keys)]
             if same and ignore_duplicates:
+                continue
+            if same and merge:
+                same[0].update(r)
                 continue
             t.append(dict(r, id=len(t) + 1))
 
@@ -1138,8 +1150,10 @@ def test_a_yes_he_called_a_duplicate_is_not_sent_twice(monkeypatch):
 def test_prepare_all_skips_a_posting_dealt_with_until_its_package_changes(monkeypatch):
     s, db = rebuild_world(monkeypatch, [L("ardent"), L("brisk"), L("cobalt")],
                           [rec("ardent"), rec("brisk"), rec("cobalt")])
+    monkeypatch.setattr(run_mod, "_answer_bank", lambda sheet: {})
     assert run_mod.mark_prepared(Cfg(), rec("ardent"), run_mod.BY_HAND) == ""
-    assert run_mod.mark_prepared(Cfg(), rec("cobalt"), run_mod.REFUSED_BLOCKING) == ""
+    assert run_mod.mark_prepared(Cfg(), rec("cobalt"), run_mod.REFUSED_BLOCKING,
+                                 bank={}) == ""
     # brisk was dealt with for a package since rebuilt: a new package is a new try
     assert run_mod.mark_prepared(Cfg(), rec("brisk", package_built_at="2026-10-01"),
                                  run_mod.BY_HAND) == ""
@@ -1223,9 +1237,9 @@ def approvals_world(monkeypatch, lines, roles, plan):
         "E", (), {"subject": "s", "text": "t", "html": "h"})())
     mailed = {"by_hand": [], "approval": []}
     monkeypatch.setattr(run_mod, "send_apply_by_hand",
-                        lambda cfg, **kw: mailed["by_hand"].append(kw["company"]))
+                        lambda cfg, **kw: mailed["by_hand"].append(kw["company"]) or {"sent": True})
     monkeypatch.setattr(notify_mod, "send_email",
-                        lambda *a, **kw: mailed["approval"].append(1) or {"id": "m"})
+                        lambda *a, **kw: mailed["approval"].append(1) or {"id": "m", "sent": True})
     monkeypatch.setattr(approval, "record_sent", lambda cfg, **kw: None)
     monkeypatch.setattr(run_mod, "db_patch", lambda *a, **kw: None)
     reached = []
@@ -1250,7 +1264,8 @@ def test_cmd_approvals_marks_what_it_dealt_with_and_minted_no_token_for(
     assert tally == {outcome: 1}
     marks = [m for m in db.tables.get("hunter_alerts", [])]
     assert [m["detail"]["outcome"] for m in marks] == [outcome]
-    assert marks[0]["fingerprint"] == run_mod.prepared_fingerprint(rec("ardent"))
+    assert marks[0]["fingerprint"] == run_mod.prepared_fingerprint(
+        rec("ardent"), outcome, bank=run_mod.bank_hash({}))
     assert mailed["by_hand"] == (["Ardent"] if outcome == "by_hand" else [])
 
 
