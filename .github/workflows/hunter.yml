@@ -29,7 +29,7 @@ on:
         type: choice
         default: process
         options: [process, run, source, packages, drain, approvals, approvals-drain,
-                  close-submitted, confirmations, settle, score-builds, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
+                  close-submitted, confirmations, settle, score-builds, rebuild-packages, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
                   door-coverage, door-cards, drafts, actions]
       extra:

@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 
 from ..config import Config
+from ..package import his_view as his_view_mod
 from ..package import voicegate
 
 # Long enough to answer, short enough to read. Application boxes are not essays
@@ -69,8 +70,15 @@ def _text(resp) -> str:
 
 def draft_one(cfg: Config, *, question: str, company: str, role: str,
               jd_text: str, evidence: str,
-              banned_phrases: tuple[str, ...] = ()) -> tuple[str, str]:
-    """(answer, why_not). An empty answer always carries a reason."""
+              banned_phrases: tuple[str, ...] = (),
+              his_view=None) -> tuple[str, str]:
+    """(answer, why_not). An empty answer always carries a reason.
+
+    his_view is what he said about the role (package.his_view), held to the
+    rules the package is: the same section of the tailor prompt goes into
+    the system text, and the answer is gated against the evidence alone,
+    never his note, so nothing only his note says reaches the form. With no
+    score and no reaction the system text is what it was."""
     if not evidence.strip():
         return "", "no evidence loaded, so nothing could be traced"
     from .. import llm
@@ -86,7 +94,11 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
     # it goes in the cached system text and the question comes after it.
     # Sent inside the prompt, all of it was paid for at the full input price
     # on every question and again on every retry.
-    system = SYSTEM + f"\n\nEVIDENCE (everything you may draw on):\n{evidence[:120000]}"
+    # His view before the evidence, in the cached text with it: the same for
+    # every question on this form, different on the next one.
+    view = his_view_mod.section(his_view, company=company)
+    system = (SYSTEM + (f"\n\n{view.rstrip()}" if view else "")
+              + f"\n\nEVIDENCE (everything you may draw on):\n{evidence[:120000]}")
     prompt = (f"COMPANY: {company}\nROLE: {role}\n\n"
               f"QUESTION:\n{question}\n\n"
               f"JOB DESCRIPTION:\n{jd_text[:6000]}"
@@ -105,7 +117,7 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
     # letter's hook already works.
     messages = [{"role": "user", "content": prompt}]
     for attempt in range(TRIM_ATTEMPTS):
-        problem = _problem(answer, evidence, banned_phrases)
+        problem = _problem(answer, evidence, banned_phrases, his_view=his_view)
         if not problem:
             return answer, ""
         if attempt == TRIM_ATTEMPTS - 1:
@@ -123,7 +135,8 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
         answer, why = _parse(raw)
         if not answer:
             return "", why
-    return "", _problem(answer, evidence, banned_phrases) or "unknown"
+    return "", (_problem(answer, evidence, banned_phrases, his_view=his_view)
+                or "unknown")
 
 
 def _parse(raw: str, truncated: bool = False) -> tuple[str, str]:
@@ -154,12 +167,18 @@ def _parse(raw: str, truncated: bool = False) -> tuple[str, str]:
     # answer itself, use it: the alternative is a blank box on his application.
     if raw and "{" not in raw and "}" not in raw:
         return raw, ""
-    return "", f"could not find an answer in the reply: {raw[:120]!r}"
+    # Its length, never its words. The reply is the model's, and the model
+    # has his note in its system text; a reason is printed in the approval
+    # run, which on the Prepare path is a public Actions log.
+    return "", (f"could not find an answer in the reply ({len(raw)} characters, "
+                f"no answer field)")
 
 
 def _problem(answer: str, evidence: str,
-             banned_phrases: tuple[str, ...]) -> str:
-    """What is wrong with this draft, in words the model can act on."""
+             banned_phrases: tuple[str, ...], *, his_view=None) -> str:
+    """What is wrong with this draft, in words the model can act on. Never a
+    word of his note (his_view.redact): these reasons are printed in the
+    approval run."""
     if len(answer) > MAX_CHARS:
         return (f"it runs to {len(answer)} characters and must be under "
                 f"{MAX_CHARS}")
@@ -169,21 +188,27 @@ def _problem(answer: str, evidence: str,
     verdict = voicegate.check(answer, evidence=evidence,
                               banned_phrases=banned_phrases)
     if not verdict.ok:
-        return "the voice gate rejected it: " + "; ".join(verdict.failures[:3])
+        return ("the voice gate rejected it: "
+                + "; ".join(his_view_mod.redact(verdict.failures, his_view)[:3]))
+    if his_view_mod.quotes_note(answer, his_view, evidence):
+        return ("it copies his note word for word; say it in the answer's own "
+                "words")
     return ""
 
 
 def draft_all(cfg: Config, questions: list[str], *, company: str, role: str,
               jd_text: str, evidence: str,
               banned_phrases: tuple[str, ...] = (),
-              notes: list[str] | None = None) -> dict[str, str]:
+              notes: list[str] | None = None,
+              his_view=None) -> dict[str, str]:
     """Every question that could be answered. A failure is loud, never silent."""
     note = notes if notes is not None else []
     out: dict[str, str] = {}
     for q in questions:
         answer, why = draft_one(cfg, question=q, company=company, role=role,
                                 jd_text=jd_text, evidence=evidence,
-                                banned_phrases=banned_phrases)
+                                banned_phrases=banned_phrases,
+                                his_view=his_view)
         if answer:
             out[q] = answer
             note.append(f"drafted an answer to {q[:60]!r}")

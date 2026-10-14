@@ -1359,6 +1359,23 @@ class Sheet:
         got = (back[0][0] if back and back[0] else "").strip()
         if got != package_status:
             raise SheetError(f"row {row_number} Package Status read back as {got!r}")
+        # And the links themselves. A rebuild replaces the documents on a row
+        # he may open at any moment, and a status that landed beside links
+        # that did not would send him to the package it was meant to replace.
+        want = [cv_url, letter_url, cv_pdf_url, letter_pdf_url]
+        landed = self.package_links(row_number)
+        if landed != want:
+            missing = sum(1 for a, b in zip(landed, want) if a != b)
+            raise SheetError(f"row {row_number}: {missing} of the 4 package links did "
+                             f"not read back as written")
+
+    def package_links(self, row_number: int) -> list[str]:
+        """The four package links one row carries now, CV Doc to CL PDF, as
+        the URLs inside their HYPERLINK formulas ("" for a cell with none)."""
+        cells = (self._values(cell_range("CV Doc", row_number, "CL PDF"), formulas=True)
+                 or [[]])[0]
+        cells = (list(cells) + [""] * 4)[:4]
+        return [(parse_hyperlink(c) or ("",))[0] for c in cells]
 
     def update_package_status(self, row_number: int, status: str) -> None:
         """Package Status alone. Used for the states that carry no links:

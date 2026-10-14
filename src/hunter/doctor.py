@@ -161,6 +161,25 @@ def check_table_columns(cfg) -> Check:
     return Check("approvals table", OK, f"all {len(need)} columns present")
 
 
+def check_his_view_column(cfg, *, get=None) -> Check:
+    """The record of which packages carry his reasons (migration cc6). Missing
+    is a warning, not a fault: every build still succeeds and says it could
+    not record it, but rebuild-packages refuses to pay until it is there."""
+    from .package.his_view import FIELD
+    if get is None:
+        from .config import db_get as get
+    try:
+        get(cfg, "hunter_seen_roles", {"select": f"job_id,{FIELD}", "limit": "1"})
+    except Exception as e:
+        return Check("his reasons on the record", WARN,
+                     f"hunter_seen_roles.{FIELD} could not be read "
+                     f"({e.__class__.__name__}); rebuild-packages will not rebuild",
+                     "apply migration cc6 (add the column)")
+    return Check("his reasons on the record", OK,
+                 f"hunter_seen_roles.{FIELD} is there; packages record which of "
+                 f"his reasons they carry")
+
+
 def check_live_payloads(cfg) -> Check:
     """Applications sitting in his inbox right now, against the current floor."""
     from .apply.payload import MIN_EXTENSION
@@ -311,7 +330,7 @@ def run(cfg, run_source: str, *, offline: bool = False) -> list[Check]:
                            name="payload endpoint"),
             check_endpoint(SUBMITTED_URL, method="POST", expect=400,
                            name="submitted endpoint"),
-            check_table_columns(cfg), check_live_payloads(cfg),
+            check_table_columns(cfg), check_his_view_column(cfg), check_live_payloads(cfg),
             check_sheet_header(cfg), check_model_keys(cfg), check_browser(),
         ]
     return checks
