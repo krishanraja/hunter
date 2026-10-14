@@ -369,9 +369,10 @@ about 0: what reached him was ordered no better than chance.
   column A leaves undecided. A Yes marked dead stays; the gh_jid bug once
   marked a live Yes dead, and his Yes is his to clear. A gone row never comes
   back. `system_config hunter_reviewed_through` (a date) counts every batch
-  staged on or before it as finished, so its blanks move without the 24 hour
-  wait: the table first saw every score he typed from 11 to 13 October on the
-  14th, the hour it was created, so the wait ran from the wrong moment.
+  staged on or before it that he scored in as finished, so its blanks move
+  without the 24 hour wait and without a later batch scored: the table first
+  saw every score he typed from 11 to 13 October on the 14th, the hour it was
+  created, so the wait ran from the wrong moment.
 
 ## 4. The Target Companies tab is his, and it is policy
 

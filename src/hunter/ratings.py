@@ -459,8 +459,12 @@ def rate(read: Read, paired: dict[int, Paired], stored: list[dict],
         p = paired[id(s)]
         presented = _batch((p.db or {}).get("presented_at"))
         # Strictly later: his scores on the batch this row came in with say
-        # nothing about the rows of it he has not reached yet.
-        past = bool(presented) and any(b > presented for b in reviewed)
+        # nothing about the rows of it he has not reached yet. Except a batch
+        # on or before hunter_reviewed_through that he scored in: that date
+        # is him saying he has finished it, so its blanks are skipped ones.
+        past = bool(presented) and (
+            any(b > presented for b in reviewed)
+            or bool(through and presented <= through and presented in reviewed))
         k = (s.cell(KRISH_SCORE) or "").strip()
         m = norm(s.cell(KRISH_REACTION))
         kind = kind_of(k, m, s.verdict, reviewed_past=past)
