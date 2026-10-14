@@ -884,6 +884,39 @@ def _one_role_two_offices(top_k="3", twin_k="", top_verdict="New", twin_verdict=
     return london, manchester
 
 
+def test_two_rows_of_one_role_that_both_leave_set_it_aside_once(monkeypatch):
+    """Live, 2026-10-14: two rows of one role, a 3 and a reaction, both left,
+    and the summary said one more role was set aside than the table held,
+    because the role was patched and counted once per row."""
+    london, manchester = _one_role_two_offices(top_k="3", twin_k="4")
+    db = DB(hunter_seen_roles=[role(london)]).install(monkeypatch)
+    patched = []
+    real = db.patch_where
+    monkeypatch.setattr(R, "db_patch_where", lambda cfg, table, params, body: (
+        patched.append((table, params.get("job_id"), body.get("status"))),
+        real(cfg, table, params, body))[1])
+    s = Tabs([london, manchester])
+    ratings.sync(None, s, apply=True, canon_headers=HEADERS, now=NOW)
+    out = R.leave_step(None, Canon(), s, [], apply=True)
+    assert out["moved"] == 2 and s.pipe() == []
+    assert db.status(jid(london)) == leave.SET_ASIDE
+    assert out["set_aside"] == 1, "one role, counted once"
+    assert [p for p in patched if p[2] == leave.SET_ASIDE] == [
+        ("hunter_seen_roles", f"eq.{jid(london)}", leave.SET_ASIDE)]
+
+
+def test_the_move_line_counts_the_gone_postings(monkeypatch):
+    gone = cells("Hooli", "VP Sales", k="9", **{"Package Status": sheet_mod.PKG_DEAD})
+    db = DB(hunter_seen_roles=[role(gone, status="dead")]).install(monkeypatch)
+    s = Tabs([gone])
+    ratings.sync(None, s, apply=True, canon_headers=HEADERS, now=NOW)
+    summary = []
+    out = R.leave_step(None, Canon(), s, summary, apply=True)
+    assert out["moved"] == 1
+    line = next(x for x in summary if "by his score (" in x)
+    assert "1 by his score" in line and "1 scored whose posting is gone" in line, line
+
+
 def test_a_pending_blank_twin_still_on_pipeline_keeps_the_role_live(monkeypatch):
     """He scored the London row 3 and has not reached the Manchester one. The
     3 leaves; the role is still on his list through the blank, so it is not

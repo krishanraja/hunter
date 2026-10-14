@@ -4678,6 +4678,8 @@ def _set_aside_step(cfg: Config, records, roles: dict, aside: list, arated: dict
             for jid in rr.job_ids:
                 if (roles.get(jid) or {}).get("status") not in leave_mod.LIVE_STATUSES:
                     continue
+                if jid in patched:
+                    continue  # two rows of one role: one role set aside, counted once
                 db_patch_where(cfg, "hunter_seen_roles",
                                {"job_id": f"eq.{jid}",
                                 "status": _pg_in(leave_mod.LIVE_STATUSES)},
@@ -4805,7 +4807,8 @@ def _leave_lines(out: dict, summary: list[str], *, apply: bool) -> None:
     yes = s.get("yes_scored_low", 0) + s.get("yes_reaction_only", 0)
     parts = (f"{s.get('scored_low', 0)} scored 1 to 5, {s.get('reaction_only', 0)} with "
              f"only a reaction, {s.get('blank_scored_past', 0)} blank and scored past, "
-             f"{s.get('duplicate', 0)} called Duplicate, {yes} Yes his score overrode")
+             f"{s.get('duplicate', 0)} called Duplicate, {s.get(leave_mod.GONE, 0)} scored "
+             f"whose posting is gone, {yes} Yes his score overrode")
     if not out["rule"]:
         summary.append(f"leave: {out['decided']} decided row(s) "
                        + ("moved" if apply else "would move")
