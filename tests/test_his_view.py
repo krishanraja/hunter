@@ -908,6 +908,10 @@ def test_rebuild_job_id_names_one_target(monkeypatch):
     assert target_ids(s, job_id="brisk:vp")[0] == ["brisk:vp"]
     assert target_ids(s, job_id="cobalt:vp")[0] == []
     assert target_ids(s)[0] == ["ardent:vp"]
+    # Several at once, comma separated, each named one rebuilt from his view
+    # as he holds it now; the one he acted on still is not.
+    assert sorted(target_ids(s, job_id="brisk:vp, ardent:vp,cobalt:vp")[0]) == \
+        ["ardent:vp", "brisk:vp"]
 
 
 def test_without_the_column_every_built_package_counts_as_without_his_view(monkeypatch):
