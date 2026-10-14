@@ -866,17 +866,18 @@ def test_rebuild_picks_only_unacted_packages_built_without_his_view(monkeypatch)
     rep = {}
     got = run_mod.rebuild_targets(Cfg(), s, FakeCanon(), report=rep)
     ids = [d["job_id"] for d in got]
-    # A Yes with only his reaction is rebuilt too ("include all the
-    # rationales that I've put in the new column"); a Yes with nothing of his
-    # (orbit) has nothing to add, and a role he scored 6 (moss) he never wanted.
+    # A Yes he answered with only a reaction (rill) is one his score took
+    # back (his ruling 2026-10-13, "My score wins"): it leaves Pipeline and is
+    # not rebuilt. A Yes with nothing of his (orbit) has nothing to add, and a
+    # role he scored 6 (moss) he never wanted.
     # A package he amended is rebuilt with his newest amend in it; one whose
     # letter he edited, or that cannot be read against what hunter wrote, is not.
-    assert ids == ["brisk:vp", "rill:vp", "ardent:vp", "pike:vp", "quarry:vp"], ids
+    assert ids == ["brisk:vp", "ardent:vp", "pike:vp", "quarry:vp"], ids
     assert rep["skips"] == {
         "carries his view": 1, "column A Applied": 1, "application status": 1,
         "applied on record": 1, "form opened": 1, "approved": 1,
         "awaiting, email sent": 1, "submitted": 1, "not built yet": 1,
-        "posting dead": 1, "not wanted now": 2, "same posting": 1,
+        "posting dead": 1, "not wanted now": 3, "same posting": 1,
         run_mod.DOCS_EDITED: 1, run_mod.DOCS_NO_BASELINE: 1, run_mod.DOCS_UNREAD: 1}
     assert rep["view_column"] is True and rep["with_amend"] == 1
     feedback = {d["job_id"]: d["amend_feedback"] for d in got}
@@ -1107,6 +1108,17 @@ def test_a_chosen_posting_with_a_live_approval_is_not_prepared_again(monkeypatch
     tally = {}
     run_mod.cmd_approvals(apply=True, chosen=[chosen], tally=tally)
     assert tally == {"taken": 1}
+
+
+def test_a_yes_he_answered_with_only_a_reaction_is_not_asked_for():
+    """His score wins over an older Yes, and a reaction with no score is his
+    no: the row leaves Pipeline on the next pass, and nothing is mailed for
+    it before then. A Yes with K and M blank is still asked for."""
+    words = row(verdict="Yes", k="", m="Not the shape I want")
+    assert router.build_trigger(words) == router.YES_TRIGGER
+    assert router.wants(words) is None
+    assert router.wants(row(verdict="Yes", k="", m="")) == router.YES_TRIGGER
+    assert router.wants(row(verdict="Yes", k="8", m="Not the shape I want")) == router.YES_TRIGGER
 
 
 def test_a_yes_he_called_a_duplicate_is_not_sent_twice(monkeypatch):

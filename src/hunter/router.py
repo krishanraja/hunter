@@ -320,6 +320,13 @@ def wants(row) -> str | None:
         return trig
     if says_duplicate(row.cell(KRISH_REACTION)):
         return None
+    # A Yes he answered with only a reaction is one his score took back
+    # (leave.yes_overridden), and it leaves Pipeline on the next pass: an
+    # application mailed in the hour before that would be for a role he
+    # has said no to.
+    from .leave import yes_overridden
+    if yes_overridden(row):
+        return None
     k = (row.cell(KRISH_SCORE) or "").strip()
     if not k:
         return trig

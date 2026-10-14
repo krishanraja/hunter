@@ -54,8 +54,9 @@ sounding confident and like I can deliver ASAP."
 - **`rebuild-packages [--apply] [--max N] [--job-id J]`.** A package built
   without his reasons, for a role he wants (the roles `approvals --wanted`
   prepares) whose row carries his score or his reaction, rebuilt from them
-  through build_one. A Yes with only a reaction is one: "include all the
-  rationales that I've put in the new column". Never one he has acted on (Applied, an
+  through build_one. A Yes he answered with only a reaction is not: his
+  score wins over an older Yes, and that row leaves Pipeline (`leave.py`).
+  Never one he has acted on (Applied, an
   Application Status, an approval opened, approved, submitted or waiting on
   him), and never one whose documents he has edited, cannot be read, or have
   no record of what hunter wrote into them, all checked again just before it
