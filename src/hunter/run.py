@@ -7174,12 +7174,15 @@ def rebuild_targets(cfg: Config, sheet: Sheet, canon: Canon, *, job_id: str = ""
     tokens = _tokens_by_posting(cfg, known)
     score_rule = scores_build_in_canon(canon)
     picked = []
+    # One job id, or several separated by commas: the packages a read-back
+    # found wanting are rebuilt in one run, not one dispatch each.
+    named = {j.strip() for j in (job_id or "").split(",") if j.strip()}
     for r, trig, k in asked:
         d = by_row.get(id(r))
         if d is None:
             skip("no record", r)
             continue
-        if job_id and d.get("job_id") != job_id:
+        if named and d.get("job_id") not in named:
             continue
         if d.get("status") == "duplicate":
             skip("duplicate record", r, d)
@@ -7192,7 +7195,7 @@ def rebuild_targets(cfg: Config, sheet: Sheet, canon: Canon, *, job_id: str = ""
             skip("not built yet", r, d)
             continue
         carried = (d.get(his_view_mod.FIELD) or "") if view_column else ""
-        if carried and not job_id:
+        if carried and not named:
             # Named with --job-id, it is rebuilt anyway: the way to bring a
             # reaction he has since rewritten into a package already built
             # from an earlier one, or to try a held one again. Never past the
