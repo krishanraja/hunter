@@ -102,22 +102,57 @@ def _esc(text) -> str:
 
 # ---------- the batch is ready ----------
 
-def batch_state(rows) -> dict:
-    """What the sheet holds right now, in his language."""
+def passed_over(cfg) -> set | None:
+    """The rows his record calls unscored_after_review: blanks he has scored
+    past (ratings.py, a batch rule with a 24 hour wait). Keyed the way the
+    record keeps them, by company, title and location as the row read. None
+    when the record cannot be read, which is not the same as none of them."""
+    from . import ratings
+    try:
+        latest = ratings.latest(cfg)
+    except Exception:
+        return None
+    return {ratings.ident_of_record(r) for r in latest.values()
+            if r.get("kind") == ratings.UNSCORED}
+
+
+def _to_score(r, skipped) -> bool:
+    """A row still waiting on him: column A undecided, nothing in K or M, and
+    not a blank he has already scored past."""
+    from . import ratings
+    from .sheet import KRISH_REACTION, KRISH_SCORE
+    if verdicts.parse(r.verdict or "")[0] != "none":
+        return False
+    if (r.cell(KRISH_SCORE) or "").strip() or (r.cell(KRISH_REACTION) or "").strip():
+        return False
+    return not (skipped and ratings.ident_of_row(r) in skipped)
+
+
+def batch_state(rows, skipped: set | None = None) -> dict:
+    """What the sheet holds right now, in his language.
+
+    to_review is what he has still to score: since 2026-10-13 he rules in K
+    and M, so a row he scored is reviewed whatever column A says, and a
+    blank his record says he scored past is not waiting either. `skipped`
+    is passed_over(cfg); None means it could not be read, and the count then
+    says so (skipped_read) rather than passing for an exact one. approved
+    is what builds: a Yes in column A or a score of 7 or more."""
+    from .router import build_trigger
+    from .sheet import PKG_DEAD
     new = approved = applied = dead_approved = 0
     for r in rows:
         kind = verdicts.parse(r.verdict or "")[0]
-        if kind == "none":
+        if _to_score(r, skipped):
             new += 1
-        elif kind == "go":
+        if build_trigger(r) is not None:
             approved += 1
-            from .sheet import PKG_DEAD
             if r.cell("Package Status").strip() == PKG_DEAD:
                 dead_approved += 1
         elif kind == "applied":
             applied += 1
     return {"to_review": new, "approved": approved, "applied": applied,
-            "dead_approved": dead_approved, "total": len(rows)}
+            "dead_approved": dead_approved, "total": len(rows),
+            "skipped_read": skipped is not None}
 
 
 def review_email(rows, staged: int, *, state: dict | None = None,
@@ -130,7 +165,8 @@ def review_email(rows, staged: int, *, state: dict | None = None,
     if batches:
         from . import batchstats
         notes = list(notes or []) + batchstats.lines(batches)
-    fresh = [r for r in rows if verdicts.parse(r.verdict or "")[0] == "none"]
+    skipped = st.get("skipped")
+    fresh = [r for r in rows if _to_score(r, skipped)]
 
     def score_of(r):
         try:
@@ -142,31 +178,23 @@ def review_email(rows, staged: int, *, state: dict | None = None,
     subject = (f"{staged} new role{'s' if staged != 1 else ''} to review, "
                f"{st['to_review']} waiting in total")
 
-    if act_url:
-        # One place he acts: the Hunt lane, where each role carries its case and
-        # Yes or No is one press. The sheet stays the record and is one link away.
-        head = [
-            "<p style='margin:0 0 14px'>Open the Hunt lane and say Yes or No on "
-            "each role. That is the whole job: everything after it happens on its "
-            "own, and the sheet is kept up to date for you.</p>",
-            f"<p style='margin:0 0 18px'><a href='{act_url}' "
-            f"style='background:#111;color:#fff;padding:10px 16px;border-radius:6px;"
-            f"text-decoration:none;display:inline-block'>Rule on them in Control Center</a>"
-            f"<span style='color:#555'> or <a href='{pipeline_url()}'>open the pipeline</a>"
-            f"</span></p>",
-        ]
-    else:
-        head = [
-            f"<p style='margin:0 0 14px'>Open the Pipeline tab and set column A on "
-            f"each row. That is the whole job: everything after it happens on its "
-            f"own.</p>",
-            f"<p style='margin:0 0 18px'><a href='{pipeline_url()}' "
-            f"style='background:#111;color:#fff;padding:10px 16px;border-radius:6px;"
-            f"text-decoration:none;display:inline-block'>Open the pipeline</a></p>",
-        ]
+    # He rules on the sheet, in K and M, since 2026-10-13. Until then this
+    # said "say Yes or No in the Hunt lane", which was no longer how he
+    # worked: the Hunt lane is where he applies, not where he rules.
+    head = [
+        "<p style='margin:0 0 14px'>Score each role 1 to 10 in K, Krish Score, "
+        "on the Pipeline tab. 7 or more builds the pack. Anything you want to "
+        "say about a role goes in M, Krish Reaction.</p>",
+        f"<p style='margin:0 0 18px'><a href='{pipeline_url()}' "
+        f"style='background:#111;color:#fff;padding:10px 16px;border-radius:6px;"
+        f"text-decoration:none;display:inline-block'>Score them on the pipeline</a></p>",
+    ]
+    unsure = "" if st.get("skipped_read", True) else (
+        " (that may include blanks you have already scored past; hunter could "
+        "not read which)")
     head.append(
-        f"<p style='margin:0 0 18px;color:#555'>{st['to_review']} to review, "
-        f"{st['approved']} approved and waiting on materials, "
+        f"<p style='margin:0 0 18px;color:#555'>{st['to_review']} to score{unsure}, "
+        f"{st['approved']} you want (a Yes or a score of 7 or more), "
         f"{st['applied']} applied.</p>")
 
     rowsx = []
@@ -189,11 +217,20 @@ def review_email(rows, staged: int, *, state: dict | None = None,
 
     # The pack used to be promised by email on its own. Nothing scheduled
     # sends it: he asks for it, with Prepare on the role in Control Center.
-    tail = ["<p style='margin:18px 0 0;color:#555'>Set a row to Yes and hunter "
-            "builds the CV and the cover letter. When you want to apply, press "
-            "Prepare on the role in Control Center and it fills the application "
-            "for you to open and submit yourself. Decline with a reason and it "
-            "learns the reason. Anything you edit, it reads as a correction.</p>"]
+    where = (f"<a href='{_esc(act_url)}'>Control Center</a>" if act_url
+             else "Control Center")
+    # Only what happens. A score builds in the hourly pass, a few an hour; a
+    # Yes builds in the batch run or from the button, never hourly; and
+    # lowering a score cancels only what his score built (a Yes package keeps
+    # its application whatever K says until PR4, with his say on it).
+    tail = ["<p style='margin:18px 0 0;color:#555'>Score a role 7 or more and "
+            "hunter builds the CV and the cover letter, a few an hour. A Yes in "
+            "column A builds at the next batch run, or when you press Build "
+            f"packages in {where}. When you want to apply, press Prepare on the "
+            f"role in {where} and it fills the application for you to open and "
+            "submit yourself. Lower the score below 7 on a role your score built "
+            "and anything waiting on you for it is cancelled. Anything you edit, "
+            "it reads as a correction.</p>"]
     if st["dead_approved"]:
         tail.insert(0, f"<p style='margin:18px 0 0;color:#a00'>"
                        f"{st['dead_approved']} role(s) you approved have closed "
@@ -206,12 +243,13 @@ def review_email(rows, staged: int, *, state: dict | None = None,
             + "".join(head) + table + "".join(tail) + "</div>")
 
     text_lines = [f"{staged} new roles staged. {st['to_review']} waiting for you.",
-                  act_url or pipeline_url(), ""]
+                  pipeline_url(), ""]
     for r in fresh[:top]:
         text_lines.append(f"  {score_of(r)}  {r.company} - {r.role} "
                           f"({r.cell('Location')}, {r.cell('Comp')})")
-    text_lines += ["", ("Say Yes or No on each in Control Center." if act_url else "Set column A.")
-                   + " Yes builds the pack, a reason teaches it."]
+    text_lines += ["", "Score each role 1 to 10 in K; 7 or more builds the pack."]
+    if act_url:
+        text_lines.append(f"Prepare an application from Control Center: {act_url}")
     return subject, body, "\n".join(text_lines)
 
 
@@ -224,14 +262,15 @@ def send_review_ready(cfg: Config, rows, staged: int, *,
     that both stage roles send one mail unless the count moved, and a rerun of
     the same run sends nothing at all.
     """
-    st = batch_state(rows)
+    skipped = passed_over(cfg)
+    st = batch_state(rows, skipped)
     if not staged and not force:
         return {"sent": False, "reason": "nothing new was staged"}
     fp = f"{_now():%Y-%m-%d}:{st['to_review']}"
     if not force and already_sent(cfg, REVIEW_READY, fp):
         return {"sent": False, "reason": "already told him about this batch"}
-    subject, body, text = review_email(rows, staged, state=st, notes=notes,
-                                       batches=batches, act_url=hunt_url(cfg))
+    subject, body, text = review_email(rows, staged, state=dict(st, skipped=skipped),
+                                       notes=notes, batches=batches, act_url=hunt_url(cfg))
     out = notify.send_email(cfg, subject, body, text=text)
     mark_sent(cfg, REVIEW_READY, fp, {"staged": staged, **st})
     return {"sent": bool(out.get("sent")), "subject": subject, **st}

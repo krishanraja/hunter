@@ -33,8 +33,10 @@ def test_the_state_counts_what_he_would_count():
     rows = [row(3), row(4), row(5, "Yes"), row(6, "Applied"),
             row(7, "Yes", **{"Package Status": PKG_DEAD})]
     st = alerts.batch_state(rows)
+    # skipped_read False: no record of the blanks he scored past was given,
+    # and the count must not pass for one that left them out.
     assert st == {"to_review": 2, "approved": 2, "applied": 1,
-                  "dead_approved": 1, "total": 5}
+                  "dead_approved": 1, "total": 5, "skipped_read": False}
 
 
 def test_a_declined_row_is_neither_waiting_nor_approved():
@@ -48,7 +50,7 @@ def test_the_subject_says_how_many_and_how_many_are_waiting():
     rows = [row(3), row(4), row(5, "Yes")]
     subject, html, text = alerts.review_email(rows, staged=2)
     assert subject == "2 new roles to review, 2 waiting in total"
-    assert "Open the pipeline" in html
+    assert "Score them on the pipeline" in html
     assert alerts.pipeline_url() in html and alerts.pipeline_url() in text
 
 
@@ -81,8 +83,17 @@ def test_html_from_a_posting_cannot_break_the_email():
 
 
 def test_the_email_says_what_happens_next():
+    """Only what hunter does: a score builds a few an hour, a Yes builds in
+    the batch run or from the button and never hourly, and a lowered score
+    cancels only what the score built (a Yes package keeps its application
+    whatever K says)."""
     _, html, _ = alerts.review_email([row(3)], staged=1)
-    assert "Set a row to Yes" in html
+    assert "Score a role 7 or more and hunter builds the CV and the cover letter, a few an hour." in html
+    assert ("A Yes in column A builds at the next batch run, or when you press "
+            "Build packages in Control Center.") in html
+    assert "Lower the score below 7 on a role your score built" in html
+    assert "within a few hours" not in html
+    assert "Lower a score below 7 and anything waiting" not in html
 
 
 # ---------- not sending ----------
@@ -283,11 +294,14 @@ def test_a_batch_the_schedule_gave_up_on_is_reported(monkeypatch):
     assert any(p["kind"] == "a batch could not run" for p in problems)
 
 
-def test_with_control_center_the_button_opens_the_hunt_lane_and_the_sheet_stays_a_link():
+def test_with_control_center_the_button_opens_the_sheet_and_prepare_stays_a_link():
+    """He rules on the sheet in K and M since 2026-10-13, so the button opens
+    Pipeline; Control Center is where he prepares an application."""
     url = "https://cc.example/#/people?lane=bridges"
     _, html, text = alerts.review_email([row(3)], staged=1, act_url=url)
-    assert html.index(url) < html.index(alerts.pipeline_url())
-    assert "Rule on them in Control Center" in html and url in text
+    assert html.index(alerts.pipeline_url()) < html.index(url)
+    assert "Score them on the pipeline" in html and "Rule on them" not in html
+    assert url in text and alerts.pipeline_url() in text
 
 
 def test_the_email_never_promises_a_pack_nothing_sends():

@@ -150,14 +150,25 @@ QUEUED = DEFAULTS_BY_NAME["Package Status"]
 KNOWN_STATES = PACKAGE_STATUSES | {QUEUED}
 
 
+def _asks_for_package(r) -> bool:
+    """A Yes in column A, or a Krish Score of 7 or more on a row column A
+    leaves undecided: the two things that build (router.build_trigger)."""
+    from .router import build_trigger
+    return build_trigger(r) is not None
+
+
 def check_yes_rows_accounted_for(rows) -> Finding:
-    """Every role he said Yes to is in a state hunter understands: materials
-    built, queued for the next build, or a stated reason there are none. A Yes
-    in none of those is a role quietly going nowhere, which is the single
-    worst state this system can be in."""
+    """Every role he said Yes to, or scored 7 or more, is in a state hunter
+    understands: materials built, queued for the next build, or a stated
+    reason there are none. One in none of those is a role quietly going
+    nowhere, which is the single worst state this system can be in.
+
+    A score build the hourly pass refused is still "Not started" here: the
+    refusal lives on the role's record, not in a new Package Status canon
+    has no word for, and the pass says how many are waiting every hour."""
     silent, waiting = [], 0
     for r in rows:
-        if verdicts.parse(r.verdict or "")[0] != "go":
+        if not _asks_for_package(r):
             continue
         built = r.package_urls.get("cv") and r.package_urls.get("letter")
         status = r.cell("Package Status").strip()
@@ -170,27 +181,28 @@ def check_yes_rows_accounted_for(rows) -> Finding:
             continue
         silent.append(r.row_number)
     if not silent:
-        detail = "each approved role has materials or is queued for the next build"
+        detail = ("each role you said Yes to or scored 7 or more has materials or "
+                  "is queued for the next build")
         if waiting:
-            detail = (f"{waiting} approved role(s) queued for the next build, "
-                      f"the rest have materials or a stated reason")
+            detail = (f"{waiting} role(s) you said Yes to or scored 7 or more queued "
+                      f"for the next build, the rest have materials or a stated reason")
         return Finding("every Yes is accounted for", OK, detail)
     return Finding("every Yes is accounted for", BROKEN,
-                   f"{len(silent)} approved role(s) are in a state hunter does "
-                   f"not understand", rows=silent)
+                   f"{len(silent)} role(s) you said Yes to or scored 7 or more are in "
+                   f"a state hunter does not understand", rows=silent)
 
 
 def check_dead_yes_rows(rows) -> Finding:
-    """He approved it and the posting has since closed. Hunter must not
-    archive this: it was his call, so it is his to withdraw."""
+    """He approved it, or scored it 7 or more, and the posting has since
+    closed. Hunter must not archive this: it was his call, so it is his to
+    withdraw."""
     dead = [r.row_number for r in rows
-            if verdicts.parse(r.verdict or "")[0] == "go"
-            and r.cell("Package Status").strip() == PKG_DEAD]
+            if _asks_for_package(r) and r.cell("Package Status").strip() == PKG_DEAD]
     if not dead:
         return Finding("approved roles still live", OK, "no dead approvals")
     return Finding("approved roles still live", WATCH,
-                   f"{len(dead)} role(s) you approved have closed since; they "
-                   f"stay until you decide", rows=dead)
+                   f"{len(dead)} role(s) you said Yes to or scored 7 or more have "
+                   f"closed since; they stay until you decide", rows=dead)
 
 
 def check_applied_state_agrees(rows) -> Finding:
@@ -225,16 +237,18 @@ def _his_mark(r) -> bool:
 
 
 def _standing(r) -> tuple:
-    """Which twin is the real row. His verdict outranks his score or his
-    reaction, which outrank a built package, which outranks being higher up
-    the sheet; a row he called a duplicate ranks below its twin. On
-    2026-10-13 one role sat on two rows: the upper one he had marked
-    Duplicate in Krish Reaction, the lower one he had scored 9. Row position
-    alone kept the upper row and stamped his 9 for archiving.
+    """Which twin is the real row. His verdict outranks a score of his that
+    builds (7 or more), which outranks any other score or reaction of his,
+    which outrank a built package, which outranks being higher up the sheet;
+    a row he called a duplicate ranks below its twin. On 2026-10-13 one role
+    sat on two rows: the upper one he had marked Duplicate in Krish
+    Reaction, the lower one he had scored 9. Row position alone kept the
+    upper row and stamped his 9 for archiving.
     Matches router.same_posting on everything else, so the sheet and the
     database agree on which twin survives."""
     kind = verdicts.parse(r.verdict or "")[0]
     return (kind in ("go", "applied"),
+            _asks_for_package(r),
             _his_mark(r),
             not _called_duplicate(r),
             bool(r.package_urls.get("cv") and r.package_urls.get("letter")),

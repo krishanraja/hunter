@@ -41,6 +41,7 @@ from .gates import FLOOR, names_foreign_geo, run_gates
 from . import alerts, amend, comp as comp_mod, employer, invariants, judge, layout, learn, preflight, schedule
 from .report import report_run
 from . import verdicts
+from . import router
 from .router import classify_verdict, is_warm_path, route_status, select_for_build
 from .score import BAR, score_role
 from . import sheet as sheet_mod
@@ -163,6 +164,13 @@ def norm_url(url: str | None) -> str | None:
 
 @lru_cache(maxsize=100_000)
 def ats_key(url: str | None) -> tuple | None:
+    """(ats, board slug, posting id): the posting's identity, for telling two
+    links to one posting apart from two postings.
+
+    A gh_jid link is a company's own careers page carrying a Greenhouse
+    posting id and no board, so its key is ("greenhouse", <posting id>, "")
+    and names no board at all. That shape is an identity and never something
+    to fetch: board_key is the one to ask before reading a board."""
     if not url:
         return None
     for ats, pat in ATS_URL_PATTERNS:
@@ -170,6 +178,50 @@ def ats_key(url: str | None) -> tuple | None:
         if m:
             return (ats, m.group(1), m.group(2))
     return None
+
+
+def board_key(url: str | None) -> tuple | None:
+    """ats_key, only when it names a board AND a posting on it, so it can be
+    fetched. None for a gh_jid link, whose key holds the posting id where the
+    slug should be and nothing after it.
+
+    Fetching that key asked boards-api.greenhouse.io/v1/boards/<posting id>
+    /jobs/, which answers 404, and a 404 from a board is read as the posting
+    being dead. Measured 2026-10-14 on two postings of his: a careers page
+    link with a gh_jid and a careers subdomain with one. Both were live on
+    their real boards (200). The first was already marked "Posting dead,
+    cannot build" on his sheet, and the second would have been the first
+    time his score asked for its package."""
+    key = ats_key(url)
+    return key if key and key[1] and key[2] else None
+
+
+_GH_JID = re.compile(r"[?&]gh_jid=(\d+)")
+
+
+def gh_jid(url: str | None) -> str:
+    """The Greenhouse posting id in a link that names no board, or ''."""
+    if not url or board_key(url):
+        return ""
+    m = _GH_JID.search(url)
+    return m.group(1) if m else ""
+
+
+def board_url(posting) -> str:
+    """A link to a board posting that board_key can read. A Greenhouse board
+    lists a company that hosts its own careers page under that page's link,
+    gh_jid and all, so relinking a row to what the board says would hand
+    the next check the same unfetchable key it started with."""
+    url = getattr(posting, "url", "") or ""
+    if board_key(url):
+        return url
+    ats, slug = getattr(posting, "ats", ""), getattr(posting, "ats_slug", "")
+    pid = getattr(posting, "ats_posting_id", "") or ""
+    if not (slug and pid):
+        return ""
+    return {"greenhouse": f"https://job-boards.greenhouse.io/{slug}/jobs/{pid}",
+            "ashby": f"https://jobs.ashbyhq.com/{slug}/{pid}",
+            "lever": f"https://jobs.lever.co/{slug}/{pid}"}.get(ats, "")
 
 
 TITLE_STOPWORDS = {"the", "and", "of", "to", "for", "a", "an", "in", "at"}
@@ -677,6 +729,11 @@ def full_title(paired: dict, srow) -> str:
     return (paired.get(srow.row_number) or {}).get("title") or srow.role
 
 
+# How a row his score asked a package for is shown when it is held: never
+# with the score beside the role, because these lines can reach a public log.
+ASKS_FOR_PACKAGE = "your score asks for a package"
+
+
 def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
                archive: bool = True) -> int:
     """Re-judge rows hunter never gated, and give every one a real rationale.
@@ -744,6 +801,13 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
     for r in all_rows:
         if r.row_number < from_row or (r.verdict or "").strip() != "New":
             continue
+        if router.build_trigger(r):
+            # A score of 7 or more is his approval for the rule that hunter
+            # never archives what he approved (canon v10), and a score build
+            # never writes krish_verdict, so the database check below cannot
+            # see it. Shown without the score: this output can be a log.
+            held.append((r, {"krish_verdict": ASKS_FOR_PACKAGE}))
+            continue
         d = standing_verdict(r)
         if d:
             held.append((r, d))
@@ -780,8 +844,8 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
             drop.append((r, 0, "function wrong",
                          f"G11: title {r.role!r} is none of his archetypes"))
             continue
-        if not ats_key(r.jd_url):
-            unresolved.append((r, "no ATS key on the URL, liveness unverifiable"))
+        if not board_key(r.jd_url):
+            unresolved.append((r, "no ATS board on the URL, liveness unverifiable"))
             continue
         try:
             full = full_title(paired, r)
@@ -1060,6 +1124,18 @@ def cmd_decline(pairs_in: list[tuple[int, str]], apply: bool = False) -> int:
 HUNTER_TOOK_OVER = "2026-08-31"
 
 
+def dead_but_his(r: SheetRow, d: dict) -> bool:
+    """A dead row hunter must not stamp or archive: his own verdict in the
+    database, or a row that asks for a package now, a Yes in column A or a
+    Krish Score of 7 or more (router.build_trigger). Canon 9.13 on a dead
+    posting: the row stays, column A untouched, Krish decides. A score build
+    never writes krish_verdict, so the database alone could not see that
+    the first score passes would mark six of his 7-or-more rows dead."""
+    if (d.get("krish_verdict") or "").strip() and not learn.is_auto(d):
+        return True
+    return router.build_trigger(r) is not None
+
+
 def cmd_verify(apply: bool = False) -> int:
     """Is every role on the sheet still live?
 
@@ -1091,7 +1167,7 @@ def cmd_verify(apply: bool = False) -> int:
     live, dead, unknown, relinked = [], [], [], {}
     for r in rows:
         title = full_title(paired, r)
-        key = ats_key(r.jd_url)
+        key = board_key(r.jd_url)
         if key:
             ats, slug, pid = key
             try:
@@ -1102,16 +1178,21 @@ def cmd_verify(apply: bool = False) -> int:
             (live if is_live else dead).append((r, f"{ats}/{slug}"))
             continue
 
-        state, hit, why = discover_posting(cfg, r.company, title, cache)
+        # A gh_jid link names no board: its own page and posting id find it.
+        jid = gh_jid(r.jd_url)
+        state, hit, why = (discover_posting(cfg, r.company, title, cache,
+                                            careers_url=r.jd_url or "", posting_id=jid)
+                           if jid else discover_posting(cfg, r.company, title, cache))
         if state == "unknown":
             unknown.append((r, why))
             continue
         if state == "absent":
             dead.append((r, why))
             continue
-        live.append((r, f"{why}, relinked"))
-        if hit.url:
-            relinked[r.row_number] = hit.url
+        link = board_url(hit)
+        live.append((r, f"{why}, relinked" if link else why))
+        if link:
+            relinked[r.row_number] = link
 
     print(f"LIVE {len(live)}, DEAD {len(dead)}, UNVERIFIABLE {len(unknown)}\n")
     for r, why in live:
@@ -1121,9 +1202,11 @@ def cmd_verify(apply: bool = False) -> int:
         d = paired.get(r.row_number) or {}
         his = (d.get("krish_verdict") or "").strip()
         held = his and not learn.is_auto(d)
+        asks = not held and dead_but_his(r, d)
         print(f"  DEAD  row {r.row_number:>3} {r.company[:22]:24} "
               f"{r.role[:36]:38} {why}"
-              + (f"  [your verdict {his!r}, held]" if held else ""))
+              + (f"  [your verdict {his!r}, held]" if held else "")
+              + (f"  [{ASKS_FOR_PACKAGE}, held]" if asks else ""))
     for r, why in unknown:
         print(f"  ?     row {r.row_number:>3} {r.company[:22]:24} "
               f"{r.role[:36]:38} {why}")
@@ -1160,7 +1243,7 @@ def cmd_verify(apply: bool = False) -> int:
     movers = []
     for r, why in dead:
         d = paired.get(r.row_number) or {}
-        if (d.get("krish_verdict") or "").strip() and not learn.is_auto(d):
+        if dead_but_his(r, d):
             continue  # his call, not hunter's
         if d.get("job_id"):
             movers.append((r, d["job_id"], "dead posting", why))
@@ -1847,7 +1930,8 @@ def fetch_with_retry(fetch, slug: str, pid: str, attempts: int = 2):
             time.sleep(2)
 
 
-def discover_posting(cfg: Config, company: str, title: str, cache: dict
+def discover_posting(cfg: Config, company: str, title: str, cache: dict, *,
+                     careers_url: str = "", posting_id: str = ""
                      ) -> tuple[str, object | None, str]:
     """Find a posting on its company's board without an ATS key.
 
@@ -1855,12 +1939,27 @@ def discover_posting(cfg: Config, company: str, title: str, cache: dict
     then a single close title. ("absent", None, why): the board exists and
     does not list it, which is verifiably dead. ("unknown", None, why): no
     board found or the board read failed, which is not an answer.
+
+    posting_id is a gh_jid's posting id, and with it in hand the posting id
+    is the only match: it is the posting itself, and a retitled posting
+    keeps its id. No title is ever matched for it. The same title under
+    another id is another posting, often the same seat in another country
+    (Sierra's London and Seoul RVP), and relinking to it built a package for
+    a role he never scored and called a closed one live. An id the board
+    does not list is "absent" only when the link's own careers page names
+    that board; a board from the cache or a guessed slug may be the wrong
+    one, so the answer is "unknown". careers_url is the page the link came
+    from, which names its own board more reliably than a slug guessed from
+    the name.
     """
     from .ats import discover as disc
     from .ats import ashby, greenhouse, lever
     boards = {"greenhouse": greenhouse.board, "ashby": ashby.board,
               "lever": lever.board}
-    found = disc.discover(cfg, company, cache)
+    # With no page in hand, the same three-argument call every other caller
+    # of discover makes.
+    found = (disc.discover(cfg, company, cache, careers_url=careers_url) if careers_url
+             else disc.discover(cfg, company, cache))
     if not found:
         return "unknown", None, "no job board found on greenhouse, ashby or lever"
     ats, slug = found
@@ -1868,6 +1967,23 @@ def discover_posting(cfg: Config, company: str, title: str, cache: dict
         postings = boards[ats](slug)
     except Exception as e:
         return "unknown", None, f"{ats}/{slug} board read failed: {e.__class__.__name__}"
+    if posting_id:
+        if ats != "greenhouse":
+            return "unknown", None, (f"the link names Greenhouse posting {posting_id} and "
+                                     f"the board found is {ats}/{slug}")
+        hit = next((p for p in postings
+                    if str(getattr(p, "ats_posting_id", "") or "") == posting_id), None)
+        if hit is not None:
+            return "found", hit, f"{ats}/{slug}, posting {posting_id}"
+        try:
+            own = disc.from_careers_page(careers_url) if careers_url else None
+        except Exception:
+            own = None
+        if own == (ats, slug):
+            return "absent", None, (f"posting {posting_id} not on the {ats}/{slug} board "
+                                    f"its own careers page names ({len(postings)} jobs)")
+        return "unknown", None, (f"posting {posting_id} not on {ats}/{slug}, a board its "
+                                 f"own page does not name")
     nt = _norm_title(title)
     hit = next((p for p in postings if _norm_title(p.title) == nt), None)
     if hit is None:
@@ -1921,13 +2037,23 @@ def resolve_for_build(cfg: Config, row: dict, cache: dict, *,
     title = row["title"]
     company = row.get("company") or ""
     flags: list[str] = []
-    if ats_key(url):
+    if board_key(url):
         return _resolve_for_build(row), None, flags
-    state, hit, why = discover_posting(cfg, company, title, cache)
-    if state == "found" and hit is not None and hit.url and ats_key(hit.url):
-        role = _resolve_for_build(dict(row, url=hit.url, job_url=hit.url))
+    # A gh_jid link has an ATS key and no board in it. It goes the way of a
+    # link with no key at all, its posting id and its own careers page in
+    # hand: found by its id, dead only when the board its own page names no
+    # longer lists that id, and otherwise unverified, never a dead posting
+    # read off a board that does not exist and never another posting of the
+    # same title.
+    jid = gh_jid(url)
+    state, hit, why = (discover_posting(cfg, company, title, cache,
+                                        careers_url=url, posting_id=jid) if jid
+                       else discover_posting(cfg, company, title, cache))
+    link = board_url(hit) if state == "found" and hit is not None else ""
+    if link:
+        role = _resolve_for_build(dict(row, url=link, job_url=link))
         flags.append(f"board discovery: {why}")
-        return role, hit.url, flags
+        return role, link, flags
     if state == "absent":
         flags.append(why)
         return ResolvedRole(company=company, title=title, url=url, jd_url=url,
@@ -1970,15 +2096,66 @@ def package_status_for(role: ResolvedRole, row: dict) -> str:
     return route_status(row)
 
 
+def same_link(a: str | None, b: str | None) -> bool:
+    """Two links that name one posting: the same ATS posting, or the same
+    page once tracking parameters are gone. Two empty links are not one."""
+    if not a or not b:
+        return False
+    ka, kb = ats_key(a), ats_key(b)
+    if ka and kb:
+        return ka == kb
+    return norm_url(a) == norm_url(b)
+
+
 def _sheet_row_for(sheet: Sheet, canon: Canon, row: dict) -> SheetRow | None:
-    pairs, _, _, _ = match_rows(sheet.read_pipeline(canon.sheet_headers), [row])
-    return pairs[0][0] if pairs else None
+    return own_sheet_row(sheet.read_pipeline(canon.sheet_headers), row)
+
+
+def own_sheet_row(pipeline: list[SheetRow], row: dict) -> SheetRow | None:
+    """The Pipeline row that is this record's posting, never a twin.
+
+    The row select_for_build chose first (sheet_link, then sheet_row while
+    it still carries the same company and title), then the record's own
+    link. This was match_rows(pipeline, [row]) alone, which walks Pipeline
+    from the top with one record to place, so the first row with the same
+    company and title took it through the job_id or exact-title pass even
+    when its link was another posting. Two postings of one title in two
+    countries are two rows, and his live list on 2026-10-14 had a pair of
+    them scored 10 and 9: one was skipped every hour as "changed", and with
+    equal scores both packages were written onto the upper row.
+
+    match_rows is the last resort, for a record whose link no row carries,
+    and its answer is refused when that row's link is another ATS posting.
+    """
+    chosen = row.get("sheet_link") or ""
+    if chosen:
+        hit = [r for r in pipeline if same_link(r.jd_url, chosen)]
+        exact = [r for r in hit if r.row_number == row.get("sheet_row")]
+        if exact or hit:
+            return (exact or hit)[0]
+    if row.get("sheet_row"):
+        ident = sheet_identity(row.get("company") or "", row.get("title") or "")
+        at = next((r for r in pipeline if r.row_number == row["sheet_row"]), None)
+        if at is not None and sheet_identity(at.company, at.role) == ident:
+            return at
+    mine = [u for u in (row.get("url"), row.get("job_url")) if u]
+    hit = [r for r in pipeline if any(same_link(r.jd_url, u) for u in mine)]
+    if hit:
+        return hit[0]
+    pairs, _, _, _ = match_rows(pipeline, [row])
+    if not pairs:
+        return None
+    s = pairs[0][0]
+    theirs, ours = ats_key(s.jd_url), {ats_key(u) for u in mine} - {None}
+    if theirs and ours and theirs not in ours:
+        return None
+    return s
 
 
 def _resolve_for_build(row: dict) -> ResolvedRole:
     from .ats import ashby, greenhouse, lever
     url = row.get("url") or row.get("job_url") or ""
-    key = ats_key(url)
+    key = board_key(url)
     live, jd, jd_url = False, "", url
     if key:
         ats, slug, pid = key
@@ -2014,6 +2191,38 @@ def _doc_text(db: DocBuild, doc_id: str) -> str:
 BUILD_SOFT_GATES = {"G2", "G3", "G4", "G5", "G6", "G7", "G11", "G12", "G13"}
 
 
+def record_trigger(cfg: Config, job_id: str, trigger: str) -> list[str]:
+    """Read back what build_one wrote as the package's trigger, and put a
+    score trigger on his rating of the role as well. Lines only when
+    something did not land: a score-built package whose trigger is missing
+    has no Prepare in Control Center, and that has to be said."""
+    out = []
+    try:
+        back = db_get(cfg, "hunter_seen_roles", {"select": "package_trigger",
+                                                 "job_id": f"eq.{job_id}", "limit": "1"})
+        if not back or (back[0].get("package_trigger") or "") != trigger:
+            out.append(f"  note {job_id}: package built, but its trigger did not read "
+                       f"back, so Control Center may not offer Prepare for it")
+    except Exception as e:
+        out.append(f"  note {job_id}: package trigger not read back ({e.__class__.__name__})")
+    score = router.built_on_score(trigger)
+    if score is None:
+        return out
+    from . import ratings
+    from .config import db_patch_where
+    try:
+        n = db_patch_where(cfg, ratings.TABLE, {"job_id": f"eq.{job_id}",
+                                                "kind": f"eq.{ratings.SCORED}",
+                                                "score": f"eq.{score}"},
+                           {"package_trigger": trigger})
+        if not n:
+            out.append(f"  note {job_id}: no recorded rating of this score to mark "
+                       f"as the one that built it")
+    except Exception as e:
+        out.append(f"  note {job_id}: rating not marked ({ratings.safe_error(e)})")
+    return out
+
+
 def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
               summary: list[str], *, cache: dict | None = None,
               company_declines: dict | None = None,
@@ -2027,6 +2236,38 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         from .ats import discover as disc
         cache = disc.load_cache(cfg)
     srow = _sheet_row_for(sheet, canon, row)
+    # Why this build is happening, read again off the row as it is now and
+    # before anything is fetched or paid for. A score he lowered, or a
+    # Declined he typed, between the selection and this row's turn used to
+    # be built anyway: nothing re-read the row but for its number. Only a
+    # row that came here for a reason is held to it; build --job-id and an
+    # amend of a package built before the trigger was recorded carry none.
+    was = row.get("build_trigger") or row.get("package_trigger") or ""
+    relies = (bool(row.get("build_trigger")) or was == router.YES_TRIGGER
+              or was.startswith(router.SCORE_TRIGGER) or was.startswith(router.WITHDRAWN))
+    trigger = router.build_trigger(srow) if srow else None
+    if relies and trigger is None:
+        summary.append(f"SKIPPED {row['job_id']}: the row no longer reads Yes in "
+                       f"column A or 7 or more in {sheet_mod.KRISH_SCORE}"
+                       + ("" if srow else ", or has left Pipeline")
+                       + "; nothing fetched or built")
+        return False
+    if row.get("build_trigger") and trigger != row["build_trigger"]:
+        # Still wanted, for a different reason or a different score than it
+        # was chosen on. The next pass chooses it again on what it reads then,
+        # so a refused build is recorded against the score that asked for it.
+        summary.append(f"SKIPPED {row['job_id']}: the row changed since it was "
+                       f"chosen; the next pass builds it on what it reads then")
+        return False
+    attempt = row.get("attempt") if trigger and trigger != router.YES_TRIGGER else None
+
+    def refused(patch: dict, *, final: bool = True) -> dict:
+        # A score build that fails is recorded with what it saw, so the hourly
+        # pass does not pay to fail the same way again (router.attempt_of).
+        if attempt:
+            patch["package_trigger"] = router.not_built(trigger, attempt, final=final)
+        return patch
+
     role, relink, rflags = resolve_for_build(
         cfg, row, cache,
         sheet_snippet=(srow.cell("JD Snippet") if srow else ""),
@@ -2036,8 +2277,8 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         # (canon: hunter never archives a role Krish approved); Package
         # Status says why nothing was built.
         db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
-                 {"status": "dead", "package_status": "blocked",
-                  "rejection_reason": "G1: posting dead at build time"})
+                 refused({"status": "dead", "package_status": "blocked",
+                          "rejection_reason": "G1: posting dead at build time"}))
         if srow:
             sheet.update_package_status(srow.row_number, sheet_mod.PKG_DEAD)
         summary.append(f"DEAD {row['job_id']}: posting verifiably gone "
@@ -2048,6 +2289,12 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         sheet.relink_jd_urls({srow.row_number: relink})
         db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
                  {"url": relink, "job_url": relink})
+        if attempt and row.get("attempt_masters"):
+            # What the next pass will see is the relinked row and record. A
+            # refusal fingerprinted on the old links would not match it, and
+            # the same refusal would be paid for a second time.
+            attempt = router.attempt_fingerprint(row.get("krish_score"), relink, relink,
+                                                 row["attempt_masters"])
     never = cfg.require_json("hunter_never_apply")
     # The employer index and the role's merit, so the gate reasons written
     # onto the row say what they actually mean rather than judging the
@@ -2066,11 +2313,18 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         if failed <= BUILD_SOFT_GATES:
             # Krish's Yes outranks the gates that decide what he is shown.
             # Seven of his 26 Yes rows were refused on 2026-09-07 for a
-            # location or a band he had already read on the sheet.
-            rflags.append(f"built on your Yes over {reasons}")
+            # location or a band he had already read on the sheet. So does
+            # his score of 7 or more (canon 9.4, v10): the row showed him the
+            # same band and the same location when he scored it.
+            # "your score", never the number: this line is printed by build
+            # and by the amend rebuild in approvals-drain, beside the role,
+            # in a public log (CLAUDE.md 3f). The record keeps the number.
+            why = ("your score" if trigger and trigger != router.YES_TRIGGER
+                   else "your Yes")
+            rflags.append(f"built on {why} over {reasons}")
         else:
             db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
-                     {"package_status": "blocked", "rejection_reason": reasons})
+                     refused({"package_status": "blocked", "rejection_reason": reasons}))
             summary.append(f"BLOCKED {row['job_id']}: {reasons}")
             return False
 
@@ -2137,9 +2391,14 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     if not ok:
         fails = ((result.letter_report.failures if result.letter_report else [])
                  + (result.cv_report.failures if result.cv_report else []))
+        # One more try on the same inputs, then it waits: the letter is a
+        # model's output and a second call can pass where the first did not,
+        # but every try is paid for.
+        final = bool(attempt) and router.retry_of(row.get("package_trigger")) == attempt
         db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
-                 {"package_status": "blocked",
-                  "rejection_reason": f"package verification failed: {fails}"})
+                 refused({"package_status": "blocked",
+                          "rejection_reason": f"package verification failed: {fails}"},
+                         final=final))
         # Said out loud, not only written to the row. This branch printed nothing at
         # all until 2026-09-15, so a build that correctly refused to ship a two-page
         # letter looked exactly like a build that did nothing.
@@ -2153,11 +2412,18 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
             summary.append(f"  CV {doc_url(result.cv_doc_id)} (left for review)")
         return False
 
-    db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]}, {
+    built = {
         "package_status": "built", "package_built_at": NOW(),
         "package_cv_url": result.cv_url, "package_letter_url": result.letter_url,
         "status": "staging" if row.get("status") in ("dead", "blocked") else row.get("status"),
-    })
+    }
+    if trigger:
+        # What asked for it, as it read on the row a moment ago. Never column
+        # A and never krish_verdict: a score of his is not a Yes of his.
+        built["package_trigger"] = trigger
+    db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]}, built)
+    if trigger:
+        summary.extend(record_trigger(cfg, row["job_id"], trigger))
     status = package_status_for(role, row)
     if srow:
         sheet.update_package_cells(
@@ -2199,6 +2465,233 @@ def cmd_build(target_job_id: str) -> int:
     ok = build_one(cfg, canon, sheet, rows[0], summary)
     print("\n".join(summary))
     return 0 if ok else 1
+
+
+# His ruling 2026-10-13: a Krish Score of 7 or more builds the package. The
+# backlog that ruling found was 32 scored rows with no package; built inside
+# process, which every full run calls before it sources, they would have
+# added more than an hour to the batch run he is waiting on, and a retry of
+# that run pays for its judging twice (CLAUDE.md 3e). So his scores build in
+# their own pass, hourly, a few at a time.
+SCORE_BUILDS_KEY = "hunter_max_score_builds_per_run"
+SCORE_BUILDS_DEFAULT = 3
+
+
+# The words canon 9.13 carries from v10, which Krish approves before the
+# pass may build. Read from the live canon every run, not from this file.
+CANON_SCORE_RULE = "a Krish Score of 7 or more in K"
+
+
+def scores_build_in_canon(canon: Canon) -> bool:
+    try:
+        return CANON_SCORE_RULE in canon.section_text("9.13")
+    except Exception:
+        return False
+
+
+def masters_fingerprint(cfg: Config) -> str | None:
+    """What a package is tailored from, as 16 hex characters: the text of the
+    master CV and the master letter, and his approved letter and summary
+    blocks. None when any of it cannot be read, which is not "unchanged"."""
+    import hashlib
+    from .package.tailor import load_blocks
+    try:
+        letter_blocks, cv_blocks = load_blocks(cfg)
+        db = DocBuild(GoogleOAuth(cfg).access_token)
+        texts = [_doc_text(db, config_mod.CV_MASTER_ID),
+                 _doc_text(db, config_mod.LETTER_MASTER_ID)]
+    except Exception:
+        return None
+    blob = json.dumps([texts, letter_blocks, cv_blocks], sort_keys=True)
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def score_build_step(cfg: Config, canon: Canon, sheet: Sheet, *, apply: bool,
+                     cap: int, detail: list[str], masters=None,
+                     company_declines: dict | None = None, gate=None) -> dict:
+    """Build at most `cap` packages his score asked for, best first.
+
+    Every number this returns is a count. What was built for which role is in
+    `detail`, which the caller never prints: the repository and its Actions
+    logs are public, and a role built here is a role he scored 7 or more.
+    hunter_seen_roles holds the outcome per role (package_trigger,
+    package_status, rejection_reason), and Control Center reads it there."""
+    from .ats import discover as disc
+    report: dict = {}
+    todo = select_for_build(cfg, sheet, canon.sheet_headers, cap=0,
+                            triggers=(router.SCORE,),
+                            masters=masters or (lambda: masters_fingerprint(cfg)),
+                            report=report)
+    out = {"eligible": len(todo), "chosen": 0, "built": 0, "unverified": 0, "dead": 0,
+           "blocked": 0, "skipped": 0, "failed": 0,
+           "waiting": len(report.get("waiting") or []),
+           "unpaired": report.get("unpaired", 0),
+           "masters_unread": bool(report.get("masters_unread")),
+           "preflight_failed": False}
+    # What a dry run can say: the rows the pass would start on. A posting
+    # found gone, or a row that changed under it, costs no tailor call and
+    # uses no place, so the pass goes on down the list; read live on
+    # 2026-10-14, the third row of the first pass was a posting already gone.
+    out["chosen"] = min(cap, len(todo)) if cap > 0 else 0
+    if not apply or not out["chosen"]:
+        return out
+    # The keys are proved before the first paid call, and only on an hour
+    # that has something to build.
+    if gate is not None and not gate():
+        out["preflight_failed"] = True
+        return out
+    cache = disc.load_cache(cfg)
+    out["chosen"] = 0
+    for row in todo:
+        if out["built"] + out["blocked"] + out["failed"] >= cap:
+            break
+        out["chosen"] += 1
+        before = len(detail)
+        try:
+            if build_one(cfg, canon, sheet, row, detail, cache=cache,
+                         company_declines=company_declines):
+                out["built"] += 1
+                if any("liveness unverified" in line for line in detail[before:]):
+                    out["unverified"] += 1
+                continue
+            said = detail[before:]
+            if any(line.startswith(f"DEAD {row['job_id']}") for line in said):
+                out["dead"] += 1
+            elif any(line.startswith(f"SKIPPED {row['job_id']}") for line in said):
+                out["skipped"] += 1
+            else:
+                out["blocked"] += 1
+        except Exception as e:
+            out["failed"] += 1
+            detail.append(f"BUILD FAILED {row['job_id']}: {e.__class__.__name__}")
+            detail.extend(record_build_error(cfg, row["job_id"], e))
+    try:
+        disc.save_cache(cfg, cache)
+    except Exception:
+        pass
+    return out
+
+
+def record_build_error(cfg: Config, job_id: str, e: Exception) -> list[str]:
+    """A score build that raised, written to its record as an error and
+    never as a refusal.
+
+    No attempt fingerprint: a Sheets 429, a board's 5xx or a Docs error says
+    nothing about the score, the link or the masters, so the role is tried
+    again next hour, and an error that keeps happening turns every hourly
+    run red (cmd_score_builds), which is the alarm. Before 2026-10-14 the
+    fingerprint went on here too, and one ConnectionError parked a role he
+    scored 9 until he changed the score, with the sheet still saying "Not
+    started".
+
+    And never over a package that was built: build_one records the package
+    as built before it writes the links to the sheet, so an error in that
+    write would otherwise mark a finished, paid-for package as not built,
+    and the next pass, seeing the links on the sheet or the record, would
+    never look at it again. A record that cannot be read back is left as it
+    is: unknown is not "not built". Lines only, for the private detail."""
+    try:
+        now = db_get(cfg, "hunter_seen_roles", {"select": "package_status",
+                                                "job_id": f"eq.{job_id}", "limit": "1"})
+    except Exception:
+        return [f"  the record of {job_id} could not be read after the error; left as it was"]
+    if now and (now[0].get("package_status") or "") == "built":
+        return [f"  {job_id} was built and recorded before the error; left as built"]
+    try:
+        db_patch(cfg, "hunter_seen_roles", {"job_id": job_id},
+                 {"package_status": "blocked",
+                  "rejection_reason": f"build error: {e.__class__.__name__}"})
+    except Exception:
+        return [f"  and the failure was not recorded on {job_id}"]
+    return []
+
+
+def score_build_lines(out: dict, *, apply: bool, cap: int) -> list[str]:
+    """Counts, never a role: see score_build_step."""
+    lines = [f"score builds: {out['eligible']} row(s) scored 7 or more with no package "
+             f"that can be built now; this pass took {out['chosen']} (at most {cap} "
+             f"builds; a posting found gone uses no place), "
+             f"{max(out['eligible'] - out['chosen'], 0)} wait for the next"]
+    if out["waiting"]:
+        lines.append(f"score builds: {out['waiting']} refused or found gone before and "
+                     f"unchanged since (same score, same link, same masters), not tried "
+                     f"again until one of those changes")
+    if out["unpaired"]:
+        lines.append(f"score builds: {out['unpaired']} row(s) with no record hunter "
+                     f"can build from")
+    if out["masters_unread"]:
+        lines.append("score builds: the master CV, letter or blocks could not be read, "
+                     "so nothing his score asked for was built")
+    if apply and out["chosen"]:
+        lines.append(f"score builds: {out['built']} built ({out['unverified']} liveness "
+                     f"unverified), {out['dead']} posting(s) gone, {out['blocked']} "
+                     f"refused, {out['skipped']} changed before their turn, "
+                     f"{out['failed']} failed; reasons are on each role's record")
+    elif out["chosen"]:
+        lines.append("score builds: dry run, nothing built. add --apply to build")
+    return lines
+
+
+def cmd_score_builds(apply: bool = False, max_builds: int | None = None) -> int:
+    """The hourly pass for his score: packages for rows he scored 7 or more.
+
+    Dry run unless --apply. Capped at hunter_max_score_builds_per_run (3
+    unless set; 0 switches the pass off), or --max N. Builds nothing until
+    canon 9.13 carries the rule (scores_build_in_canon). Never called from
+    process or run."""
+    from . import spend
+    cfg, canon = build_context()
+    cap = max_builds if max_builds is not None else int(
+        cfg.optional(SCORE_BUILDS_KEY, str(SCORE_BUILDS_DEFAULT)))
+    if cap <= 0:
+        # Off means off: no sheet read, no masters read, no red run. The likely
+        # reason to set 0 is a Docs or OAuth incident, and reading the masters
+        # anyway would turn the hourly run red for the whole of it.
+        print("score builds: switched off, the cap is 0")
+        return 0
+    if not scores_build_in_canon(canon):
+        # Canon supersedes code (assert_canon_alignment). Until canon 9.13 says
+        # a score builds, it says Yes is the only value that does, and this
+        # pass pays for nothing.
+        print("score builds: waiting, canon 9.13 does not yet say a Krish Score "
+              "of 7 or more builds a package")
+        return 0
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    if apply:
+        stop = spend.over_budget(cfg)
+        if stop:
+            # An honest empty answer (CLAUDE.md 3e): a package tailored with no
+            # model is the approved blocks alone, and his score asked for his.
+            print(f"score builds: waiting, {stop}")
+            return 0
+    detail: list[str] = []
+    declines, _notes = stored_company_declines(cfg)
+
+    def gate() -> bool:
+        may, lines = preflight.gate(preflight.run(cfg))
+        if not may:
+            print("\n".join(lines))
+        return may
+
+    out = score_build_step(cfg, canon, sheet, apply=apply, cap=cap, detail=detail,
+                           company_declines=declines, gate=gate)
+    if out["preflight_failed"]:
+        print("score builds: preflight failed; nothing built")
+        return 1
+    for line in score_build_lines(out, apply=apply, cap=cap):
+        print(line)
+    for line in spend.summary():
+        print(line)
+    try:
+        line = spend.flush(cfg)
+        if line:
+            print(line)
+    except Exception as e:
+        print(f"spend: ledger not written ({e.__class__.__name__})")
+    # Red when a build raised (recorded as an error, and tried again next
+    # hour) or when the masters could not be read with rows waiting on them.
+    # A refused or dead posting is an answer, not a fault.
+    return 1 if out["failed"] or out["masters_unread"] else 0
 
 
 def seen_identity_keys(cfg: Config) -> set:
@@ -2637,7 +3130,9 @@ def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
         board_posts, failed = a16z.family_sweep()
         learned = 0
         for bp in board_posts:
-            key = ats_key(bp.url)
+            # board_key: a gh_jid link's key holds a posting id where the
+            # slug goes, and learning it would file that id as the board.
+            key = board_key(bp.url)
             if key:
                 bp.ats, bp.ats_slug, bp.ats_posting_id = key
                 ck = slugify(bp.company)
@@ -3836,6 +4331,224 @@ def archive_decided(sheet: Sheet, canon: Canon) -> tuple[int, list[str]]:
     return moved, lines
 
 
+def open_approvals_for(cfg: Config, d: dict) -> list[dict]:
+    """Every approval still awaiting him or approved for this role's posting:
+    the same posting_key, whichever job_id it was filed under, because one
+    posting has been recorded under two ids and each got its own token."""
+    from .apply import approval
+    key = posting_key(d)
+    open_rows = db_get(cfg, approval.TABLE, {
+        "select": "token,job_id,state",
+        "state": f"in.({approval.AWAITING},{approval.APPROVED})", "limit": "500"})
+    same = {d["job_id"]}
+    if key:
+        ids = sorted({o["job_id"] for o in open_rows if o.get("job_id")})
+        if ids:
+            for x in db_get(cfg, "hunter_seen_roles", {
+                    "select": "job_id,job_url,url",
+                    "job_id": f"in.({','.join(ids)})", "limit": "500"}):
+                if posting_key(x) == key:
+                    same.add(x["job_id"])
+    return [o for o in open_rows if o.get("job_id") in same]
+
+
+def _rows_for(d: dict, rows: list[SheetRow]) -> list[SheetRow]:
+    """The sheet rows that are this record: its link first (same_link), then
+    company and title (sheet_identity) only when exactly one row carries
+    them. Two rows with one company and title are two postings, the same
+    seat in two countries as often as not, and either answer would be a
+    guess: the K of the wrong one let an application go out for a role he
+    had lowered. Not match_rows, which pairs the sheet against the whole
+    database and has a fuzzy phase that a short list of records gives the
+    wrong answer to."""
+    urls = [u for u in (d.get("url"), d.get("job_url")) if u]
+    hit = [r for r in rows if any(same_link(r.jd_url, u) for u in urls)]
+    if hit:
+        return hit
+    ident = sheet_identity(d.get("company") or "", d.get("title") or "")
+    same = [r for r in rows if sheet_identity(r.company, r.role) == ident]
+    return same if len(same) == 1 else []
+
+
+def withdrawn_because(row: SheetRow) -> str | None:
+    """Why a row no longer asks for its package, in his columns' words, or
+    None when it has not said so. The record is private; nothing here is
+    printed beside the role.
+
+    None is K holding something that is not a whole number ("8.5", "8/10",
+    "9?"). That is an absent observation, not a lower score (CLAUDE.md 1.3):
+    cancelling on it destroyed an APPROVE he had given, and fixing K back
+    did not restore it. Declined and Duplicate still say no whatever K holds."""
+    from .ratings import whole_score
+    if verdicts.parse(row.verdict or "")[0] == "rejection":
+        return "column A Declined"
+    if sheet_mod.says_duplicate(row.cell(sheet_mod.KRISH_REACTION)):
+        return f"{sheet_mod.KRISH_REACTION} says Duplicate"
+    k = (row.cell(sheet_mod.KRISH_SCORE) or "").strip()
+    if not k:
+        return f"{sheet_mod.KRISH_SCORE} cleared"
+    score = whole_score(k)
+    return f"{sheet_mod.KRISH_SCORE} now {score}" if score is not None else None
+
+
+def score_package(d: dict) -> bool:
+    """A package his score built, by its trigger and its documents.
+
+    Not by package_status: reconcile writes "blocked" on a row whose column A
+    has become a Decline, and so does settle, and either can run before the
+    hourly withdrawal sees the row. Watching package_status "built" alone
+    left the approval for a role he had declined waiting for good."""
+    t = d.get("package_trigger") or ""
+    if router.built_on_score(t) is None and not t.startswith(router.WITHDRAWN):
+        return False
+    return ((d.get("package_status") or "") == "built"
+            or bool(d.get("package_cv_url")) or bool(d.get("package_built_at")))
+
+
+def score_withdrawals_step(cfg: Config, canon: Canon, sheet: Sheet,
+                           summary: list[str], *, apply: bool) -> dict:
+    """A package his score built, after his score stopped asking for it.
+
+    His ruling 2026-10-13: 7 or more builds. A built package then sits with
+    an application waiting on him (an awaiting or approved token) until he
+    acts, and nothing undid it when he lowered the score: the watchdog would
+    have nagged him about an application for a role he had just marked
+    down. So, hourly, before settle moves anything: a role whose package his
+    score built (score_package), whose rows now read below 7, cleared,
+    Duplicate or Declined, has every open approval for its posting
+    cancelled, the reason recorded on the approval and on package_trigger,
+    and both read back. The documents stay where they are: they are his,
+    and a score he raises again puts the role back (package_trigger
+    reinstated) for Prepare. A K hunter cannot read as a whole number is
+    left alone and counted (withdrawn_because). An approval made after the
+    withdrawal, from a Hunt lane that had not caught up, is cancelled too
+    while the row still does not ask for it.
+
+    Column A Applied is left to settle, which closes those as submitted. A
+    row hunter cannot find on either tab is left alone and counted: a row he
+    deleted is not a score he lowered. A Yes in column A keeps the package,
+    whatever K says: Yes still builds (PR4 decides the Yes rows he scored
+    low, with his say on them). Counts only, because these lines are public.
+    """
+    from .apply import approval
+    out = {"watched": 0, "withdrawn": 0, "reinstated": 0, "approvals_cancelled": 0,
+           "unconfirmed": 0, "not_on_sheet": 0, "unreadable": 0, "late_cancelled": 0}
+    try:
+        recs = db_get(cfg, "hunter_seen_roles", {
+            "select": "job_id,company,title,url,job_url,package_status,package_trigger,"
+                      "package_cv_url,package_built_at",
+            "package_trigger": "not.is.null", "limit": ALL_ROWS})
+    except Exception as e:
+        summary.append(f"score withdrawals: not checked, the records could not be "
+                       f"read ({e.__class__.__name__})")
+        return out
+    watched = [d for d in recs if score_package(d)]
+    out["watched"] = len(watched)
+    if not watched:
+        return out
+    pipeline = sheet.read_pipeline(canon.sheet_headers)
+    try:
+        layout = sheet_mod.archive_layout(sheet.read_archive_grid())
+        archived = sheet.read_archive() if layout != "empty" else []
+    except Exception:
+        layout, archived = "unread", []
+    for d in watched:
+        trig = d.get("package_trigger") or ""
+        rows = _rows_for(d, pipeline)
+        if rows:
+            if any(verdicts.parse(r.verdict or "")[0] == "applied" for r in rows):
+                continue
+            now = [t for t in (router.build_trigger(r) for r in rows) if t]
+            if now:
+                if trig.startswith(router.WITHDRAWN):
+                    back = next((t for t in now if t != router.YES_TRIGGER), now[0])
+                    out["reinstated"] += 1
+                    if apply:
+                        db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]},
+                                 {"package_trigger": back})
+                        mark = db_get(cfg, "hunter_seen_roles", {
+                            "select": "package_trigger", "job_id": f"eq.{d['job_id']}",
+                            "limit": "1"})
+                        if not mark or mark[0].get("package_trigger") != back:
+                            out["unconfirmed"] += 1
+                continue
+            reason = withdrawn_because(rows[0])
+        else:
+            arows = _rows_for(d, archived)
+            if not arows:
+                out["not_on_sheet"] += 1
+                continue
+            kinds = {verdicts.parse(r.verdict or "")[0] for r in arows}
+            if "applied" in kinds:
+                continue
+            if "rejection" in kinds:
+                reason = "column A Declined"
+            elif layout != "current":
+                # Applied on its previous layout has no K to read: unknown is
+                # not lower.
+                continue
+            elif any(router.build_trigger(r) for r in arows):
+                continue
+            else:
+                reason = withdrawn_because(arows[0])
+        if reason is None:
+            out["unreadable"] += 1
+            continue
+        tokens = [o["token"] for o in open_approvals_for(cfg, d)]
+        if trig.startswith(router.WITHDRAWN):
+            # Withdrawn before, and still not asked for. A token here was made
+            # after the withdrawal (Prepare from a lane that had not caught
+            # up) and is cancelled on the reason already recorded.
+            if not tokens:
+                continue
+            out["late_cancelled"] += len(tokens)
+            if apply:
+                _cancel_and_read_back(cfg, tokens, trig, out)
+            continue
+        record = f"{router.WITHDRAWN}: {reason} (built on {trig})"
+        out["withdrawn"] += 1
+        if not apply:
+            out["approvals_cancelled"] += len(tokens)
+            continue
+        _cancel_and_read_back(cfg, tokens, record, out)
+        db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]},
+                 {"package_trigger": record})
+        mark = db_get(cfg, "hunter_seen_roles", {"select": "package_trigger",
+                                                 "job_id": f"eq.{d['job_id']}", "limit": "1"})
+        if not mark or mark[0].get("package_trigger") != record:
+            out["unconfirmed"] += 1
+    verb = "" if apply else " (dry run, nothing changed)"
+    summary.append(
+        f"score withdrawals: {out['watched']} package(s) built on a score watched, "
+        f"{out['withdrawn']} no longer asked for (below 7, cleared, Duplicate or "
+        f"Declined) and {out['approvals_cancelled']} waiting application(s) cancelled, "
+        f"{out['reinstated']} asked for again, {out['not_on_sheet']} not on the sheet "
+        f"and left alone, {out['unreadable']} with a {sheet_mod.KRISH_SCORE} that is "
+        f"not a whole number and left alone{verb}")
+    if out["late_cancelled"]:
+        summary.append(f"score withdrawals: {out['late_cancelled']} application(s) "
+                       f"prepared after the role was withdrawn, cancelled{verb}")
+    if out["unconfirmed"]:
+        summary.append(f"score withdrawals: {out['unconfirmed']} write(s) did not read "
+                       f"back as made")
+    return out
+
+
+def _cancel_and_read_back(cfg: Config, tokens: list[str], reason: str, out: dict) -> None:
+    """Cancel these approvals and read them back. A cancel set_state refused
+    (a submit Control Center recorded first is final) is said, not counted."""
+    from .apply import approval
+    if not tokens:
+        return
+    for t in tokens:
+        approval.set_state(cfg, t, approval.CANCELLED, failure_reason=reason)
+    gone = db_get(cfg, approval.TABLE, {
+        "select": "token,state", "token": f"in.({','.join(tokens)})", "limit": "500"})
+    done = sum(1 for g in gone if g.get("state") == approval.CANCELLED)
+    out["approvals_cancelled"] += done
+    out["unconfirmed"] += len(tokens) - done
+
+
 def settle_step(cfg: Config, canon: Canon, sheet: Sheet,
                 summary: list[str], *, apply: bool = True) -> dict:
     """What column A asks for that must not wait for the next batch.
@@ -3925,26 +4638,12 @@ def settle_step(cfg: Config, canon: Canon, sheet: Sheet,
         if apply:
             db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]},
                      {"application_state": APPLIED_STATE, "applied_at": NOW()})
-        key = posting_key(d)
-        open_rows = db_get(cfg, approval.TABLE, {
-            "select": "token,job_id,state",
-            "state": f"in.({approval.AWAITING},{approval.APPROVED})", "limit": "500"})
-        same = {d["job_id"]}
-        if key:
-            ids = sorted({o["job_id"] for o in open_rows if o.get("job_id")})
-            if ids:
-                for x in db_get(cfg, "hunter_seen_roles", {
-                        "select": "job_id,job_url,url",
-                        "job_id": f"in.({','.join(ids)})", "limit": "500"}):
-                    if posting_key(x) == key:
-                        same.add(x["job_id"])
-        for o in open_rows:
-            if o.get("job_id") in same:
-                if apply:
-                    approval.set_state(cfg, o["token"], approval.SUBMITTED,
-                                       submitted_at=NOW(),
-                                       failure_reason=f"{SAID_SO} (column A)")
-                out["approvals_closed"] += 1
+        for o in open_approvals_for(cfg, d):
+            if apply:
+                approval.set_state(cfg, o["token"], approval.SUBMITTED,
+                                   submitted_at=NOW(),
+                                   failure_reason=f"{SAID_SO} (column A)")
+            out["approvals_closed"] += 1
 
     # 4. off Pipeline, and read back
     if apply:
@@ -4048,6 +4747,14 @@ def cmd_settle(apply: bool = False) -> int:
         columns_ok = False
         print(f"{config_mod.ARCHIVE_TAB} columns NOT checked: "
               f"{e.__class__.__name__}: {e}")
+    # Before settle, which moves a Declined row off Pipeline: a package his
+    # score built is withdrawn while its row is still where it can be read.
+    withdrawals_ok = True
+    try:
+        score_withdrawals_step(cfg, canon, sheet, summary, apply=apply)
+    except Exception as e:
+        withdrawals_ok = False
+        summary.append(f"score withdrawals failed: {e.__class__.__name__}")
     out = settle_step(cfg, canon, sheet, summary, apply=apply)
     # After settle, whether or not settle found anything decided: it returns
     # early on most hours, and his scores are read every hour regardless.
@@ -4055,7 +4762,7 @@ def cmd_settle(apply: bool = False) -> int:
     print("\n".join(summary))
     if not apply and out["decided"]:
         print("dry run. add --apply to record and move these rows")
-    return 0 if columns_ok else 1
+    return 0 if columns_ok and withdrawals_ok else 1
 
 
 def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
@@ -4137,6 +4844,10 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
                     counts["unverified"] += 1
             elif any(line.startswith(f"DEAD {row['job_id']}") for line in summary[before:]):
                 counts["dead"] += 1
+            elif any(line.startswith(f"SKIPPED {row['job_id']}") for line in summary[before:]):
+                # Its row changed under the pass: nothing was fetched or paid
+                # for, and it is not a refusal.
+                counts["skipped"] = counts.get("skipped", 0) + 1
             else:
                 counts["blocked"] += 1
         except Exception as e:
@@ -4539,7 +5250,7 @@ def cmd_audit_forms(apply: bool = False, limit: int = 0) -> int:
         company = r.company or r.cell("Business") or ""
         url = r.jd_url or ""
         try:
-            spec = form_for(url, ats_key)
+            spec = form_for(url, board_key)
         except Exception as e:
             print(f"  {company[:24]:<26} form read failed: {e.__class__.__name__}: {e}")
             continue
@@ -4638,7 +5349,7 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
     from .ats import discover as disc
     role, _relink, _flags = resolve_for_build(cfg, row, disc.load_cache(cfg))
     bank = bank if bank is not None else _answer_bank(sheet)
-    spec = fetch.form_for(role.jd_url, ats_key)
+    spec = fetch.form_for(role.jd_url, board_key)
     au = audit_mod.audit(spec, bank, role_location=role.location)
     plan = fill.build_payload(spec, bank, company=role.company, role=role.title,
                               jd_url=role.jd_url, role_location=role.location,
@@ -4788,7 +5499,8 @@ def posting_is_gone(row: dict) -> bool | None:
     a form could be parsed. No answer is not an answer.
     """
     from .ats import ashby, greenhouse, lever, workday
-    key = ats_key(row.get("url") or row.get("job_url") or "")
+    # board_key: a gh_jid link names no board to ask, so it has no answer.
+    key = board_key(row.get("url") or row.get("job_url") or "")
     if not key:
         return None
     ats, slug, pid = key
@@ -4876,6 +5588,36 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True) -
     if not rows:
         print("every built package belongs to a row that has left the sheet")
         return 1
+
+    # A package his score built, or one withdrawn when he lowered the score,
+    # goes out one at a time, from Prepare in Control Center, never in a
+    # batch. A batch run mails every built package still on Pipeline with
+    # no live token, up to 50, and on 2026-09-15 that was 57 emails of
+    # which 37 were later cancelled; the scored backlog is about 30. With
+    # --job-id, the row must still ask for it at this moment: a Yes in
+    # column A or 7 or more in K, read off the sheet now.
+    def his_score_built(r: dict) -> bool:
+        t = r.get("package_trigger") or ""
+        return router.built_on_score(t) is not None or t.startswith(router.WITHDRAWN)
+
+    scored = [r for r in rows if his_score_built(r)]
+    if scored and not job_id:
+        print(f"skip {len(scored)} package(s) his Krish Score built: each is sent "
+              f"when he presses Prepare on it in Control Center")
+        rows = [r for r in rows if not his_score_built(r)]
+        if not rows:
+            print("nothing else to send")
+            return 0
+    elif scored:
+        # His row for THIS posting, by its link (_rows_for), never any row of
+        # the same company and title: the same seat in another country still
+        # scored 9 let the application for the one he lowered to 4 go out.
+        asking = [x for r in scored for x in _rows_for(r, srows) if router.build_trigger(x)]
+        if not asking:
+            # Said without the role or the score: this log is public.
+            print("REFUSING: the row no longer asks for an application, so none "
+                  "is prepared")
+            return 1
 
     to = notify.mailbox(cfg)
     bank = _answer_bank(sheet)
@@ -6044,7 +6786,7 @@ def cmd_retire(job_ids: str, apply: bool = False) -> int:
             # sitting there while the run reports success.
             print(f"no role matched job id {jid!r}")
             return 1
-        key = ats_key(row.get("url") or row.get("job_url") or "")
+        key = board_key(row.get("url") or row.get("job_url") or "")
         if key:
             # One liveness rule, shared with the approvals refusal branch.
             gone = posting_is_gone(row)
@@ -6080,6 +6822,10 @@ def cmd_retire(job_ids: str, apply: bool = False) -> int:
     return 0
 
 
+# Column A's undecided value, the dropdown's first entry (canon 9.13).
+UNDECIDED = "New"
+
+
 def cmd_unretire(job_ids: str, apply: bool = False) -> int:
     """Undo a retirement that should never have happened.
 
@@ -6096,6 +6842,11 @@ def cmd_unretire(job_ids: str, apply: bool = False) -> int:
 
     His verdict is restored from krish_verdict, which survives a retirement
     because it was written from column A and retire only rewrites the sheet.
+    With no verdict of his on record, column A goes back to New, never to
+    Yes: a role his score built has no krish_verdict by design (a score is
+    not a Yes), and writing Yes for it would be a verdict he never gave,
+    which the learning loop would then read as his. His K is untouched and
+    still asks for the package.
     """
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
@@ -6129,7 +6880,7 @@ def cmd_unretire(job_ids: str, apply: bool = False) -> int:
             print(f"REFUSING {jid}: {len(hits)} Pipeline rows match; "
                   f"this needs a person")
             return 1
-        verdict = (row.get("krish_verdict") or "").strip() or verdicts.BUILD
+        verdict = (row.get("krish_verdict") or "").strip() or UNDECIDED
         built = bool(row.get("package_cv_url") and row.get("package_letter_url"))
         plan.append((row, hits[0].row_number, verdict, "built" if built else "none"))
     print(f"{len(plan)} row(s) to put back:")
@@ -6532,6 +7283,9 @@ def main(argv: list[str]) -> int:
 
     if cmd == "settle":
         return cmd_settle(apply="--apply" in argv)
+    if cmd == "score-builds":
+        mx = _flag("--max")
+        return cmd_score_builds(apply="--apply" in argv, max_builds=int(mx) if mx else None)
     if cmd == "blind-set":
         return cmd_blind_set(refresh="--refresh" in argv)
     if cmd == "blind-eval":
@@ -6775,9 +7529,10 @@ def main(argv: list[str]) -> int:
         cfg, canon = build_context()
         sheet = Sheet(GoogleServiceAccount(cfg).access_token)
         rows = sheet.read_pipeline(canon.sheet_headers)
-        state = alerts.batch_state(rows)
+        skipped = alerts.passed_over(cfg)
+        state = alerts.batch_state(rows, skipped)
         subject, _html, text = alerts.review_email(rows, state["to_review"],
-                                                   state=state)
+                                                   state=dict(state, skipped=skipped))
         print(f"subject: {subject}\n\n{text}")
         if "--send" in argv:
             print("\n" + str(alerts.send_review_ready(
@@ -6895,6 +7650,7 @@ def main(argv: list[str]) -> int:
           f"run, reconcile, "
           f"build --job-id X, recon, learn [--apply], drain [--id X], verify, "
           f"bank-check, audit-forms [--apply] [--limit N], simulate [--send], bank-seed [--apply], "
+          "settle [--apply], score-builds [--apply] [--max N], "
           "gtm-seed [--apply], approvals [--apply] [--job-id X], "
           "approvals-drain [--apply], actions [--apply], drafts [--apply], "
           "newsletter [--apply] [--limit N], "

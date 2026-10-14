@@ -12,6 +12,68 @@ The target, four layers:
    essays, door-in openers, cold lookups, newsletter extraction). Every string
    still passes `package/voicegate.py`.
 4. Control Center is the one place he acts. The sheet is the record.
+   Amended 2026-10-14: since 2026-10-13 he rules on the sheet, in K Krish
+   Score and M Krish Reaction, and a score of 7 or more builds the pack (the
+   entry below). Control Center is where he applies: Prepare, Open the filled
+   form, I applied, What happened next.
+
+---
+
+## 2026-10-14: his score builds the pack
+
+His rulings of 2026-10-13. Asked whether a high Krish Score should build the
+package by itself, he answered "I'd take 7 or more"; and he rules on the
+sheet in K and M. Column A Yes still builds.
+
+- **What builds.** A whole number from 7 to 10 in K on a row column A leaves
+  undecided, with M not reading Duplicate (`router.build_trigger`). "7.5"
+  builds nothing: it is recorded as unreadable and never guessed. Applied or
+  Declined in column A always wins over K.
+- **Where.** A pass of its own, `score-builds --apply`, in the hourly drain
+  after settle, building scores only: at most
+  `hunter_max_score_builds_per_run` (3 unless set, 0 is off) a run, his score
+  from highest, then the oldest on his sheet. Never inside `run` or
+  `process`, which build Yes only, so the backlog of 32 scored rows found on
+  13 October clears over about 11 hours instead of landing in the batch
+  run. Each build is a paid tailor call; the pass stops at the month's
+  ceiling, builds nothing until canon 9.13 carries the rule, and its log
+  carries counts only.
+- **What it records.** package_trigger on hunter_seen_roles, "column A Yes"
+  or "Krish Score N", and the same on the rating that built it. Never column
+  A, never krish_verdict: every taste verdict is his. A build refused at a
+  gate, or a posting found gone, is recorded with what it saw and is not
+  tried again until K, the link or the masters change; a package that
+  failed verification gets one more try first. A build that raised is an
+  error, never a refusal: it is tried again next hour. Each build goes onto
+  the row it was chosen from, so two postings of one title in two countries
+  each get their own.
+- **When he takes it back.** Settle, hourly and before anything moves: a
+  score-built role whose K is now below 7, cleared or Duplicate, or whose
+  column A says Declined, has every open approval for its posting cancelled
+  with the reason, read back, and so has one made after it. A K that is not
+  a whole number is left alone. The documents stay; a score raised again
+  puts the role back for Prepare. build_one re-reads A and K before it
+  fetches, and verify and regate never archive a row his score asks for.
+- **Control Center.** /api/hunter/roles returns a score-built role like a Yes,
+  so Prepare and Open the filled form are on its card, and a score build
+  that was refused or found the posting gone too, with the reason, so it
+  never goes quiet; /api/hunter/review leaves it out of Roles to rule on.
+  Bulk `approvals` refuses score-built rows; Prepare sends one only while
+  its own row (by its link, never a twin's) still asks for it.
+- **The review email** links to Pipeline and says to score each role 1 to 10
+  in K, 7 or more builds the pack, a few an hour, and that a Yes builds at
+  the next batch run or from Build packages; "to score" counts rows with K
+  and M blank that he has not scored past.
+- **gh_jid links.** A careers page link carrying a Greenhouse posting id and
+  no board (`?gh_jid=`) was fetched as a board named by the posting id, which
+  answers 404, so a live posting read as dead. Such a link now finds its
+  board by its own page and is matched by the posting id alone, never by a
+  title, which would have relinked a closed posting to the same seat in
+  another country. Dead only when the board its own page names no longer
+  lists the id; otherwise unverified (`run.board_key`). Two of his scored
+  roles were in that state.
+- **Not yet.** Rows scored 1 to 5 leaving Pipeline, and his low score on a
+  column A Yes row (PR4, with the list put to him first).
 
 ---
 
@@ -82,9 +144,9 @@ necessary."
 | Layer | Commands and jobs |
 |---|---|
 | 1. Scheduled, no model | drain (the clock), run and source (sweeps, gates, function bar, company bar, radar, staging), process (reconcile, learn, people, invariants, archive, layout), settle, close-submitted, confirmations, actions, drafts, watchdog, stats, spend, doctor, preflight, recon, amendments, portfolios, discover, companies, verify, invariants, layout, archive, door-coverage, door-cards, bridges, review-email |
-| 2. API, unattended | judge (inside run and source); lookalike (once per company per 30 days); judge-eval, blind-set, blind-eval on demand; and, until the routine is on, every writing job as a fallback. All under the monthly ceiling |
+| 2. API, unattended | judge (inside run and source); lookalike (once per company per 30 days); score-builds (hourly, his score of 7 or more, at most 3 a run, from 2026-10-14); judge-eval, blind-set, blind-eval on demand; and, until the routine is on, every writing job as a fallback. All under the monthly ceiling |
 | 3. Subscription routine | the case for each row, the opening line on each door-in card (drafts.py, docs/ROUTINE_WRITER.md). Stays on the API, with the reason in ROUTINE_WRITER.md: tailor, essay, cold_targets, newsletter |
-| 4. Control Center | the Hunt lane: rule on roles, prepare and open applications, mark applied, record what happened; the Advisory lane: door-in cards with hunter's route and opening line. Emails link there |
+| 4. Control Center | the Hunt lane: prepare and open applications (for a Yes or a score of 7 or more), mark applied, record what happened, and rule on a role there if he wants to (since 2026-10-13 he rules on the sheet, in K and M); the Advisory lane: door-in cards with hunter's route and opening line. The new roles email links to the sheet |
 | Repair kit, by hand | retire, unretire, restore, decline, prune-sheet, regate, build, bank-check, bank-seed, gtm-seed, audit-forms, simulate, set-dropdown, approvals, applied, packages, learn, newsletter, reconcile |
 | Proposed for retirement, his call | migrate-columns, migrate-sheet, dedupe-db, recover-verdicts, clear-unverdicted, prune-orphans, disconnect (one-off repairs, done); apply-local and watch (a Windows script; the extension does this); submit (a headless press the bot check refuses; the last click is his) |
 

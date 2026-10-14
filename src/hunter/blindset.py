@@ -75,10 +75,12 @@ def pool(cfg: Config, days: int = 14) -> list[dict]:
 
 
 def is_live(row: dict) -> bool:
-    from .run import _resolve_for_build, ats_key, fetch_jd_plain
+    from .run import _resolve_for_build, board_key, fetch_jd_plain
     url = row.get("job_url") or row.get("url") or ""
     try:
-        if ats_key(url):
+        # board_key, not ats_key: a gh_jid link has no board to read and its
+        # own page is the posting.
+        if board_key(url):
             return bool(_resolve_for_build({"url": url, "title": row["title"],
                                             "company": row["company"]}).live)
         live, _ = fetch_jd_plain(url)

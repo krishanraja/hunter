@@ -29,7 +29,7 @@ on:
         type: choice
         default: process
         options: [process, run, source, packages, drain, approvals, approvals-drain,
-                  close-submitted, confirmations, settle, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
+                  close-submitted, confirmations, settle, score-builds, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
                   door-coverage, door-cards, drafts, actions]
       extra:
@@ -138,6 +138,19 @@ jobs:
       - name: Settle what he decided
         if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run settle --apply
+
+      # His Krish Score builds the package: 7 or more, on a row column A leaves
+      # undecided (his ruling 2026-10-13). A few an hour (system_config
+      # hunter_max_score_builds_per_run, 3 unless set), never inside the batch
+      # run, which builds column A Yes only. After settle on purpose: settle is
+      # where a score he lowered below 7 cancels what was waiting on him for
+      # it, so this never builds on a score he has just taken back. Each build
+      # is a paid tailor call; one that was refused is not tried again until
+      # his score, its link or the masters change. This log carries counts
+      # only, because a role built here is a role he scored 7 or more.
+      - name: Build what he scored 7 or more
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
+        run: python -u -m hunter.run score-builds --apply
 
       # Prose the writing routine left for hunter (src/hunter/drafts.py): each
       # answer is checked with the API path's validator and the voice gate and
