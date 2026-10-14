@@ -51,6 +51,16 @@ KRISH_SCORE = "Krish Score"
 KRISH_REACTION = "Krish Reaction"
 HIS_COLS = frozenset({KRISH_SCORE, KRISH_REACTION})
 
+
+def says_duplicate(reaction: str) -> bool:
+    """His reaction is the one word Duplicate, whatever the case, spacing,
+    full stop or exclamation mark. Not "Duplicate?", which is a doubt, and not
+    "(duplicate)" or "duplicate of row 5", which say something else as well.
+    One definition for the sheet's twin repair (invariants) and his Krish
+    Score record (ratings): they once disagreed on "Duplicate?", so one module
+    kept the row as his ruling while the other patched the role to duplicate."""
+    return (reaction or "").strip().strip(" .!").lower() == "duplicate"
+
 # Canon 9.13, exact, in order. run.assert_canon_alignment refuses to run
 # when canon says otherwise, so this list and the canon body cannot drift
 # apart silently.

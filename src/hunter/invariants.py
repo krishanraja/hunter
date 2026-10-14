@@ -38,7 +38,7 @@ from dataclasses import dataclass, field as dc_field
 from . import verdicts
 from .sheet import (AI_SCORE, BUILT_STATUSES, DATA_START_ROW, DEFAULTS_BY_NAME,
                     HIS_COLS, KRISH_REACTION, KRISH_SCORE, PACKAGE_STATUSES,
-                    PKG_DEAD, Sheet, cell_range)
+                    PKG_DEAD, Sheet, cell_range, says_duplicate)
 
 BROKEN, WATCH, OK = "broken", "watch", "ok"
 
@@ -211,12 +211,10 @@ def check_applied_state_agrees(rows) -> Finding:
                    rows=wrong)
 
 
-DUPLICATE_WORD = "duplicate"
-
-
 def _called_duplicate(r) -> bool:
-    """His reaction on this row is the one word Duplicate."""
-    return r.cell(KRISH_REACTION).strip().strip(" .!").lower() == DUPLICATE_WORD
+    """His reaction on this row is the one word Duplicate (sheet.says_duplicate,
+    the one definition ratings.py files a Duplicate by)."""
+    return says_duplicate(r.cell(KRISH_REACTION))
 
 
 def _his_mark(r) -> bool:
@@ -443,11 +441,18 @@ def check_accept_rate(batches) -> Finding:
     warn = batchstats.falling(batches or [])
     if warn:
         return Finding("accept rate holds up", BROKEN, warn)
+    # Column A first, then his Krish Score: as he moves his rulings to K the
+    # first falls silent and the second is the one still watching.
     settled = [b for b in (batches or []) if b.settled]
-    if not settled:
+    scored = [b for b in (batches or []) if b.score_settled]
+    # Scores that were not read are said to be unread, never "not enough".
+    unread = any(not b.ratings_read for b in (batches or []))
+    if not settled and not scored and not unread:
         return Finding("accept rate holds up", OK,
-                       "no batch has enough verdicts yet to have a rate")
-    return Finding("accept rate holds up", OK, batchstats.trend(batches))
+                       "no batch has enough verdicts or Krish Scores yet to have a rate")
+    parts = ([batchstats.trend(batches)] if settled else []) + (
+        [batchstats.score_trend(batches)] if scored or unread else [])
+    return Finding("accept rate holds up", OK, "; ".join(parts))
 
 
 # ---------- the pass ----------

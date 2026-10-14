@@ -3,8 +3,9 @@
 His sheet is the record of what he decided: column A on Pipeline and on the
 Applied tab, in his own words. The database supplies what the sheet does not
 hold: when the role was put in front of him, the posting's full text, and its
-URL. A row is paired to its database row with the same match_rows reconcile
-uses, so the pairing rules exist once.
+URL. A row is paired to its database row with the match_rows reconcile uses,
+read off ratings.pair_sheet (Paired.raw), so the pairing rules exist once and
+this module's output is what it was before his Krish Score was recorded.
 
 Kept out on purpose:
 - hunter's own codes (dead posting, duplicate row, already applied), which
@@ -86,7 +87,8 @@ def _clean(cell: str, default: str) -> str:
 
 def collect(cfg: Config, sheet, canon) -> tuple[list[Ruled], dict]:
     """(every ruled role, counts of what was left out and why)."""
-    from .run import match_rows
+    from .ratings import pair_sheet
+    from .sources import job_id as mint
     rows = list(sheet.read_pipeline(canon.sheet_headers)) + list(sheet.read_archive())
     db = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,url,job_url,comp,location,presented_at,"
@@ -96,9 +98,10 @@ def collect(cfg: Config, sheet, canon) -> tuple[list[Ruled], dict]:
                     {"select": "job_id,recorded_at", "order": "recorded_at.asc",
                      "limit": ALL_ROWS}):
         first_event.setdefault(e["job_id"], e["recorded_at"])
-    pairs, _, _, _ = match_rows(rows, db)
-    # Keyed on the row object: Pipeline row 7 and Applied row 7 are different rows.
-    paired = {id(s): d for s, d in pairs}
+    # match_rows' own pairing, as ratings.pair_sheet carries it, over the
+    # same rows in the same order. Keyed on the row object: Pipeline row 7 and
+    # Applied row 7 are different rows.
+    paired = {id(s): p for s, p in zip(rows, pair_sheet(rows, db))}
 
     out: list[Ruled] = []
     skipped = {"no_verdict": 0, "system_or_clearing": 0, "duplicate": 0}
@@ -109,8 +112,17 @@ def collect(cfg: Config, sheet, canon) -> tuple[list[Ruled], dict]:
             key = "no_verdict" if not (s.verdict or "").strip() else "system_or_clearing"
             skipped[key] += 1
             continue
-        d = paired.get(id(s)) or {}
-        from .sources import job_id as mint
+        # match_rows' pair as it made it, the untrusted ones included, and
+        # the bare id with no database row where it made none: exactly what
+        # this read before ratings.py. Taking ratings.py's identity hit
+        # instead changed 47 of the 242 ruled roles on 2026-10-14, all on
+        # Applied: their date or source, and one role's id. A changed date
+        # moves a role across judge-eval's cutoff, and judge_eval.json could
+        # no longer be reproduced. So the two modules agree on a row
+        # match_rows pairs within one country; a pair it made across two
+        # (a London row given its New York twin's record) is kept here as it
+        # always was, and ratings.py files that row under an id of its own.
+        d = paired[id(s)].raw or {}
         jid = d.get("job_id") or mint(s.company, s.role)
         if jid in seen:
             skipped["duplicate"] += 1
