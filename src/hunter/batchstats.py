@@ -19,19 +19,34 @@ from datetime import datetime, timezone
 
 from .config import ALL_ROWS, Config, db_get, db_insert
 from .sources import company_key
+from .verdicts import is_accept
 
 TABLE = "hunter_batch_stats"
 
 # Below this, across two batches he has finished ruling on, something is
 # wrong with the funnel rather than with one week's luck. Chosen from his
 # own record: his four best batches ran 77, 55, 50 and 43 percent, and the
-# collapse quarters he complained about ran 27, 25, 15.
+# collapse quarters he complained about ran 27, 25, 15. Those were counted
+# before an Applied verdict counted as a yes (verdicts.is_accept, 2026-10-14);
+# with it every batch reads higher, so this floor now fires less often, never
+# more.
 FLOOR = 0.35
 # One batch can be unlucky. Two in a row is a trend, and waiting for a third
 # is six more weeks of his life.
 BATCHES_CONSIDERED = 2
 # A batch he has barely started judging says nothing yet.
 MIN_VERDICTED = 6
+# The same alarm on his Krish Score, which is the ruling he gives now that he
+# has mostly stopped typing column A: the share of the roles he scored that
+# he scored 7 or more. His four scored batches ran 68, 60, 71 and 79 percent
+# (10-03 17 of 25, 10-04 6 of 10, 10-08 5 of 7, 10-11 11 of 14), so 40
+# percent is twenty points under the worst of them: at that worst rate, two
+# batches of seven (his smallest) both fall under it by chance about once in
+# a hundred. Paired by ratings.py on 2026-10-14, 10-04 reads 6 of 11 (55
+# percent) and the chance at that rate is one in thirty to forty, still a
+# rare false alarm.
+SCORE_FLOOR = 0.40
+GOOD_SCORE = 7
 
 
 @dataclass
@@ -42,6 +57,46 @@ class Batch:
     accepted: int = 0
     by_source: dict = field(default_factory=dict)
     by_tier: dict = field(default_factory=dict)
+    # His Krish Score on each role of the batch whose latest rating is a
+    # score, and (AI score, his score) where the AI score was recorded.
+    scores: list = field(default_factory=list)
+    ai_pairs: list = field(default_factory=list)
+    # Of ai_pairs, the ones where the AI score he scored against is the one
+    # recorded when the row reached him (hunter_seen_roles.ai_score_shown): a
+    # true holdout, because nothing could have tuned it to his answer.
+    prospective: int = 0
+    # Whether hunter_krish_ratings, and hunter_seen_roles.ai_score_shown,
+    # were read for this measurement. False is not zero scores: save leaves
+    # the stored columns alone, and the summary says the scores were not read.
+    ratings_read: bool = True
+    shown_read: bool = True
+
+    @property
+    def scored(self) -> int:
+        return len(self.scores)
+
+    @property
+    def score_settled(self) -> bool:
+        return self.scored >= MIN_VERDICTED
+
+    @property
+    def mean_score(self) -> float | None:
+        """None, as the accept rate is, until he has scored enough of it."""
+        return sum(self.scores) / self.scored if self.score_settled else None
+
+    @property
+    def share_7_plus(self) -> float | None:
+        if not self.score_settled:
+            return None
+        return sum(1 for x in self.scores if x >= GOOD_SCORE) / self.scored
+
+    @property
+    def spearman_ai(self) -> float | None:
+        return spearman([a for a, _ in self.ai_pairs], [b for _, b in self.ai_pairs])
+
+    @property
+    def spearman_n(self) -> int:
+        return len(self.ai_pairs)
 
     @property
     def rate(self) -> float | None:
@@ -59,8 +114,44 @@ class Batch:
         return self.rate is not None
 
 
+def _ranks(values: list[float]) -> list[float]:
+    """1-based ranks, ties sharing the mean of the ranks they span. His scores
+    are whole numbers from 1 to 10 across a couple of dozen roles, so most of
+    them tie, and a rank that broke ties by position would invent an order."""
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    ranks = [0.0] * len(values)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        for k in range(i, j + 1):
+            ranks[order[k]] = (i + j) / 2 + 1
+        i = j + 1
+    return ranks
+
+
+def spearman(xs: list[float], ys: list[float], *, min_n: int = MIN_VERDICTED
+             ) -> float | None:
+    """Spearman's rho with average ranks: Pearson's r on the ranks. The one
+    rank correlation hunter has, so every number called a Spearman means the
+    same thing. None, never zero, when there are fewer than min_n pairs or
+    either side does not vary: a constant has no order to agree with."""
+    if len(xs) != len(ys):
+        raise ValueError("spearman needs paired values")
+    n = len(xs)
+    if n < min_n or len(set(xs)) < 2 or len(set(ys)) < 2:
+        return None
+    rx, ry = _ranks(list(xs)), _ranks(list(ys))
+    mx, my = sum(rx) / n, sum(ry) / n
+    cov = sum((a - mx) * (b - my) for a, b in zip(rx, ry))
+    vx = sum((a - mx) ** 2 for a in rx)
+    vy = sum((b - my) ** 2 for b in ry)
+    return cov / (vx * vy) ** 0.5
+
+
 def _is_yes(verdict: str) -> bool:
-    return (verdict or "").strip().lower() in ("yes", "go", "approved")
+    return is_accept(verdict)
 
 
 def _is_ruled(verdict: str) -> bool:
@@ -68,7 +159,21 @@ def _is_ruled(verdict: str) -> bool:
     return bool(v) and not v.startswith("new")
 
 
-def measure(cfg: Config, tiers: dict[str, int] | None = None) -> list[Batch]:
+def _roles(cfg: Config) -> tuple[list[dict], bool]:
+    """(the roles, whether ai_score_shown was read with them)."""
+    base = "job_id,company,sweep_date,presented_at,status,krish_verdict,source"
+    try:
+        return db_get(cfg, "hunter_seen_roles",
+                      {"select": base + ",ai_score_shown", "limit": ALL_ROWS}), True
+    except Exception:
+        # Before the control-center migration adds ai_score_shown, or a read
+        # that failed for any other reason. Either way no prospective pair
+        # was observed, which is not the same as there being none.
+        return db_get(cfg, "hunter_seen_roles", {"select": base, "limit": ALL_ROWS}), False
+
+
+def measure(cfg: Config, tiers: dict[str, int] | None = None,
+            notes: list[str] | None = None) -> list[Batch]:
     """One Batch per sweep date, newest last.
 
     The verdict comes from hunter_verdict_events, not from
@@ -83,9 +188,7 @@ def measure(cfg: Config, tiers: dict[str, int] | None = None) -> list[Batch]:
     The batch is the day the role was put in front of him, which is
     presented_at and nothing else.
     """
-    roles = db_get(cfg, "hunter_seen_roles",
-                   {"select": "job_id,company,sweep_date,presented_at,status,"
-                              "krish_verdict,source", "limit": ALL_ROWS})
+    roles, shown_read = _roles(cfg)
     try:
         events = db_get(cfg, "hunter_verdict_events",
                         {"select": "job_id,verdict,source,recorded_at",
@@ -100,6 +203,18 @@ def measure(cfg: Config, tiers: dict[str, int] | None = None) -> list[Batch]:
             continue
         if e.get("job_id"):
             ruled[e["job_id"]] = e.get("verdict") or ""
+    # His Krish Score, one latest rating per role (ratings.latest). Read
+    # separately so a table that cannot be read leaves the accept rate
+    # standing and says so, rather than reading as a batch he never scored.
+    ratings_read = True
+    try:
+        from . import ratings
+        rated = ratings.latest(cfg)
+    except Exception as e:
+        rated, ratings_read = {}, False
+        if notes is not None:
+            notes.append(f"Krish Score by batch not measured: hunter_krish_ratings "
+                         f"not read ({e.__class__.__name__})")
     tiers = tiers or {}
     batches: dict[str, Batch] = {}
     for r in roles:
@@ -113,11 +228,20 @@ def measure(cfg: Config, tiers: dict[str, int] | None = None) -> list[Batch]:
         if not presented:
             continue
         key = presented
-        b = batches.setdefault(key, Batch(key=key))
+        b = batches.setdefault(key, Batch(key=key, ratings_read=ratings_read,
+                                          shown_read=shown_read))
         b.staged += 1
         source = (r.get("source") or "unknown").strip() or "unknown"
         tier = tiers.get(company_key(r.get("company") or ""))
         tier_key = f"tier {tier}" if tier else "unscored"
+        rating = rated.get(r.get("job_id") or "")
+        if rating and rating.get("kind") == "scored" and rating.get("score") is not None:
+            b.scores.append(int(rating["score"]))
+            ai = rating.get("ai_score_then")
+            if ai is not None:
+                b.ai_pairs.append((int(ai), int(rating["score"])))
+                if r.get("ai_score_shown") is not None and int(r["ai_score_shown"]) == int(ai):
+                    b.prospective += 1
         verdict = ruled.get(r.get("job_id") or "") or (r.get("krish_verdict") or "")
         if not _is_ruled(verdict):
             continue
@@ -133,16 +257,74 @@ def measure(cfg: Config, tiers: dict[str, int] | None = None) -> list[Batch]:
     return [batches[k] for k in sorted(batches)]
 
 
-def save(cfg: Config, batches: list[Batch]) -> None:
+RATING_COLUMNS = ("scored", "mean_score", "share_7_plus", "spearman_ai", "spearman_n",
+                  "prospective_n")
+
+
+class NotSaved(RuntimeError):
+    pass
+
+
+def _round(x: float | None) -> float | None:
+    return round(x, 4) if x is not None else None
+
+
+def _row(b: Batch, now: str) -> dict:
+    """One batch as stored. A measurement that did not read his scores, or
+    did not read ai_score_shown, leaves those columns out, so the merge
+    upsert keeps what an earlier run observed rather than writing zero
+    scored over it."""
+    row = {"batch_key": b.key, "staged": b.staged, "verdicted": b.verdicted,
+           "accepted": b.accepted,
+           "accept_rate": _round(b.rate),
+           "by_source": b.by_source, "by_tier": b.by_tier, "measured_at": now}
+    if b.ratings_read:
+        row.update({"scored": b.scored, "mean_score": _round(b.mean_score),
+                    "share_7_plus": _round(b.share_7_plus),
+                    "spearman_ai": _round(b.spearman_ai), "spearman_n": b.spearman_n})
+        if b.shown_read:
+            row["prospective_n"] = b.prospective
+    return row
+
+
+def _names_rating_column(e: Exception) -> bool:
+    """The server refused a Krish Score column by name: PostgREST's PGRST204
+    "Could not find the 'scored' column", or Postgres's 42703 'column
+    "scored" ... does not exist'. Nothing else is evidence that the migration
+    is missing."""
+    body = getattr(getattr(e, "response", None), "text", "") or str(e)
+    return any(f"'{c}'" in body or f'"{c}"' in body for c in RATING_COLUMNS)
+
+
+def save(cfg: Config, batches: list[Batch]) -> str:
+    """Write every batch. Returns "" when all of it landed, or the sentence
+    saying what did not; raises NotSaved when nothing did.
+
+    The caller used to catch any failure here and print "accept rate not
+    measured", which was false (it was measured, and printed) and hid the
+    failed write. The Krish Score columns arrive with a control-center
+    migration; while the server names one of them as missing, the accept
+    rate is written without them and the summary says so. Any other failure
+    is that failure, and is raised as one."""
     now = datetime.now(timezone.utc).isoformat()
-    rows = [{"batch_key": b.key, "staged": b.staged, "verdicted": b.verdicted,
-             "accepted": b.accepted,
-             "accept_rate": round(b.rate, 4) if b.rate is not None else None,
-             "by_source": b.by_source, "by_tier": b.by_tier,
-             "measured_at": now}
-            for b in batches]
-    if rows:
+    rows = [_row(b, now) for b in batches]
+    if not rows:
+        return ""
+    try:
         db_insert(cfg, TABLE, rows, on_conflict="batch_key", merge=True)
+        return ""
+    except Exception as e:
+        first = f"{e.__class__.__name__}: {str(e)[:160]}"
+        if not _names_rating_column(e):
+            raise NotSaved(f"{TABLE} NOT written ({first})") from None
+    try:
+        db_insert(cfg, TABLE, [{k: v for k, v in r.items() if k not in RATING_COLUMNS}
+                               for r in rows], on_conflict="batch_key", merge=True)
+    except Exception as e:
+        raise NotSaved(f"{TABLE} NOT written ({first}; and without the Krish Score "
+                       f"columns: {e.__class__.__name__}: {str(e)[:160]})") from None
+    return (f"{TABLE} written without the Krish Score columns ({first}); the "
+            f"control-center migration that adds them has not been applied")
 
 
 def trend(batches: list[Batch], limit: int = 8) -> str:
@@ -154,12 +336,64 @@ def trend(batches: list[Batch], limit: int = 8) -> str:
     return "accept rate by batch: " + ", ".join(parts)
 
 
+def score_trend(batches: list[Batch], limit: int = 8) -> str:
+    """His Krish Score by batch, and whether hunter's AI score ranked the
+    batch the way he did."""
+    if any(not b.ratings_read for b in batches):
+        return ("Krish Score by batch not measured this run: hunter_krish_ratings "
+                "was not read")
+    settled = [b for b in batches if b.score_settled][-limit:]
+    if not settled:
+        return "no batch has enough Krish Scores yet to have a share"
+    parts = []
+    for b in settled:
+        rho = (f", AI rho {b.spearman_ai:+.2f} over {b.spearman_n}"
+               + (f" ({b.prospective} prospective)" if b.prospective else "")
+               if b.spearman_ai is not None else "")
+        parts.append(f"{b.key[5:]} {sum(1 for x in b.scores if x >= GOOD_SCORE)}/{b.scored} "
+                     f"at {GOOD_SCORE}+ (mean {b.mean_score:.1f}{rho})")
+    return "Krish Score by batch: " + "; ".join(parts)
+
+
+def column_a_line(batches: list[Batch], limit: int = 8) -> str:
+    """How many column A verdicts each batch drew. G12, the employer
+    approvals and the Yes and No on the Target Companies tab learn from
+    column A alone; as he scores in K instead, this falls toward zero and
+    those stop learning. The line makes that visible rather than silent."""
+    recent = [b for b in batches if b.staged][-limit:]
+    if not recent:
+        return ""
+    return ("column A verdicts by batch (what G12 and the Target Companies Yes and "
+            "No learn from): " + ", ".join(f"{b.key[5:]} {b.verdicted}/{b.staged}"
+                                           for b in recent))
+
+
+def score_falling(batches: list[Batch]) -> str:
+    """The Krish Score's drift alarm: fewer than SCORE_FLOOR of the roles he
+    scored at 7 or more, for BATCHES_CONSIDERED settled batches running."""
+    recent = [b for b in batches if b.score_settled][-BATCHES_CONSIDERED:]
+    if len(recent) < BATCHES_CONSIDERED:
+        return ""
+    if any(b.share_7_plus >= SCORE_FLOOR for b in recent):
+        return ""
+    worst = ", ".join(f"{b.key} at {round(100 * b.share_7_plus)}%" for b in recent)
+    return (f"Fewer than {round(100 * SCORE_FLOOR)}% of the roles you scored got "
+            f"{GOOD_SCORE} or more for {len(recent)} batches ({worst}). The sourcing "
+            f"is filling the sheet with roles you do not want, and the fix is "
+            f"upstream of the sheet.")
+
+
 def falling(batches: list[Batch]) -> str:
-    """The sentence to put in front of him, or an empty string.
+    """The sentence to put in front of him, or an empty string: the accept
+    rate's alarm, his Krish Score's, or both.
 
     Empty means the funnel is doing its job, and an empty string is the
     honest answer: this raises nothing when there is nothing to raise.
     """
+    return " ".join(x for x in (accept_falling(batches), score_falling(batches)) if x)
+
+
+def accept_falling(batches: list[Batch]) -> str:
     settled = [b for b in batches if b.settled]
     recent = settled[-BATCHES_CONSIDERED:]
     if len(recent) < BATCHES_CONSIDERED:
@@ -175,7 +409,7 @@ def falling(batches: list[Batch]) -> str:
 
 def lines(batches: list[Batch]) -> list[str]:
     """What the run summary says about the funnel."""
-    out = [trend(batches)]
+    out = [trend(batches), score_trend(batches), column_a_line(batches)]
     settled = [b for b in batches if b.settled]
     if settled:
         last = settled[-1]

@@ -132,11 +132,54 @@ def from_targets(sheet) -> list[Company]:
     return out
 
 
-def from_yes(cfg: Config) -> list[Company]:
-    """Every company he has said Yes to a role at, from his recorded verdicts."""
+# His Krish Score at or above this says Yes to the role as plainly as column
+# A does; at or below RATED_NO it overrides an older column A Yes, because he
+# ruled on 2026-10-13 that his score wins over column A. A 7 builds the
+# package (PR3) but is not, on its own, a statement that the business is one
+# of his.
+RATED_YES = 8
+RATED_NO = 7
+RATED_NOT_WANTED = ("reaction_only", "unscored_after_review")
+
+
+def yes_job_ids(events: list[dict], rated: dict[str, dict]) -> tuple[set, dict]:
+    """(the roles he has said Yes to, {job_id: company} for those only his
+    score names). Column A's Yes, minus every role whose latest rating says
+    otherwise (scored 7 or less, a reaction with no score, a blank he passed
+    over), plus every role he scored 8 or more.
+
+    This can make a company a top company (Company.top, with lookalike 5 or
+    more), which opens his top-company rules in the gates, exempts it from
+    the company bar and raises its staging priority. That is the point: a
+    company he scores 8 is one he wants roles from."""
     from .judgedata import label_of
+    yes = {e["job_id"] for e in events if label_of(e.get("verdict") or "")[0] == "yes"}
+    named: dict[str, str] = {}
+    for jid, r in rated.items():
+        kind, score = r.get("kind"), r.get("score")
+        if kind == "scored" and score is not None and int(score) >= RATED_YES:
+            yes.add(jid)
+            if r.get("company"):
+                named[jid] = r["company"]
+        elif (kind == "scored" and score is not None and int(score) <= RATED_NO) \
+                or kind in RATED_NOT_WANTED:
+            yes.discard(jid)
+    return yes, named
+
+
+def from_yes(cfg: Config) -> list[Company]:
+    """Every company he has said Yes to a role at: his column A verdicts and
+    his Krish Score (yes_job_ids). A ratings table that cannot be read leaves
+    column A alone and says so, rather than reading as no scores at all."""
     events = db_get(cfg, "hunter_verdict_events", {"select": "job_id,verdict", "limit": ALL_ROWS})
-    yes_ids = {e["job_id"] for e in events if label_of(e.get("verdict") or "")[0] == "yes"}
+    try:
+        from . import ratings
+        rated = ratings.latest(cfg)
+    except Exception as e:
+        rated = {}
+        print(f"companies you said Yes to: from column A only, Krish Scores not read "
+              f"({e.__class__.__name__})")
+    yes_ids, named = yes_job_ids(events, rated)
     if not yes_ids:
         return []
     names: dict[str, str] = {}
@@ -144,6 +187,10 @@ def from_yes(cfg: Config) -> list[Company]:
     for r in rows:
         if r["job_id"] in yes_ids and r.get("company"):
             names.setdefault(key_of(r["company"]), r["company"])
+    # A role his score names that hunter holds no record of (a minted id)
+    # still names its company, from the sheet row he scored.
+    for jid, company in named.items():
+        names.setdefault(key_of(company), company)
     return [Company(name=n, key=k, sources=[SAID_YES]) for k, n in names.items()]
 
 

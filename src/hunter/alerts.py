@@ -247,6 +247,14 @@ SHEET_UNOPENED = "the sheet could not be opened"
 # run, so never counted as a failed one: one header change otherwise came
 # back an hour later as a second email saying runs were failing.
 WATCHDOG_KINDS = frozenset({COLUMNS_CHANGED, APPLIED_CHANGED, CANON_DISAGREES})
+# The Krish Score sync's record of a failure that persists (record_step
+# _failure). A step of a run, not a run, so it is never counted as a failed
+# one either. Reproduced offline in review: a row from every failing hourly
+# settle would have put "runs are failing" in his inbox once a day, and
+# after twelve hours "no successful hunter run at all", which nothing had
+# observed.
+RATINGS_FAILED = "Krish Score sync failed"
+NOT_RUNS = WATCHDOG_KINDS | {RATINGS_FAILED}
 # These conditions by fingerprint prefix. Each fingerprint is the change
 # itself with no date in it, so it is forgotten when the thing reads clean
 # (forget_cleared); otherwise the same change made again a month later was
@@ -383,7 +391,7 @@ def trouble_checks(cfg: Config, sheet=None, *, observed: dict | None = None,
                               f"Check the Actions schedule and the repository "
                               f"secrets."})
     real = [r for r in runs if not (isinstance(r.get("outcome"), str)
-                                    and r["outcome"] in WATCHDOG_KINDS)]
+                                    and r["outcome"] in NOT_RUNS)]
     fails = [r for r in real[:3] if str(r.get("status") or "").lower()
              in ("failed", "error")]
     if len(fails) >= 2:
@@ -467,6 +475,49 @@ def trouble_email(problems: list[dict]) -> tuple[str, str, str]:
             f"pipeline</a></p></div>")
     text = "\n".join([f"- {p['kind']}: {p['detail']}" for p in problems])
     return subject, body, text
+
+
+# A step that fails is noted the first time and recorded the second time in
+# a row, once: a transient blip in an hourly step is a summary line, not a
+# tier 3 banner that stands until the next full run. Both marks live in
+# hunter_alerts beside the watchdog's, under a prefix of their own that
+# forget_cleared never touches.
+SEEN_ONCE = "once:"
+
+
+def record_step_failure(cfg: Config, prefix: str, why: str, *, kind: str,
+                        started_at: datetime.datetime) -> str:
+    """The sentence for the summary about recording this failure. `why` is
+    the failure as a class and status, never server text, because these
+    marks and the run row are read in public logs and on Control Center."""
+    from .report import report_run
+    # A digest, as for a header change: the failure is the condition, and a
+    # fingerprint with no punctuation in it is safe in an eq and a like.
+    recorded, once = prefix + _digest(why), prefix + SEEN_ONCE + _digest(why)
+    if already_sent(cfg, TROUBLE, recorded):
+        return "  already sent once to workflow_runs; not again while it lasts"
+    if not already_sent(cfg, TROUBLE, once):
+        mark_sent(cfg, TROUBLE, once, {"kind": kind, "why": why})
+        return ("  not recorded as a failure yet: the same failure on the next sync "
+                "is recorded, once")
+    # report_run prints and swallows a failed write of its own, so this says
+    # sent, not recorded: nothing here read the row back.
+    report_run(cfg, started_at=started_at, ok=False, counts={}, spend_usd=0.0,
+               summary_line=kind, error=why)
+    mark_sent(cfg, TROUBLE, recorded, {"kind": kind, "why": why})
+    return "  one failed run row sent to workflow_runs: it failed the same way twice in a row"
+
+
+def forget_step_failure(cfg: Config, prefix: str) -> bool:
+    """A healthy step forgets its failure marks, so the next failure is
+    noted afresh. One read when there is nothing to forget, which is almost
+    every hour."""
+    held = db_get(cfg, TABLE, {"select": "id", "kind": f"eq.{TROUBLE}",
+                               "fingerprint": f"like.{prefix}*", "limit": "1"})
+    if not held:
+        return False
+    db_delete(cfg, TABLE, {"kind": f"eq.{TROUBLE}", "fingerprint": f"like.{prefix}*"})
+    return True
 
 
 def forget_cleared(cfg: Config, observed: dict) -> None:

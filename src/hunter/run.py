@@ -1402,17 +1402,7 @@ def learning_step(cfg: Config, *, apply: bool) -> dict:
                            "title": r.get("title"), "verdict": kind,
                            "reason_code": code, "reason_text": r["krish_verdict"]})
 
-    findings = learn.system_findings(events, roles)
-    fixed = []
-    for f in findings:
-        twin = f.get("twin")
-        if not twin:
-            continue
-        if apply:
-            db_patch(cfg, "hunter_seen_roles", {"job_id": f["job_id"]},
-                     {"status": "duplicate", "rejection_code": f["code"],
-                      "rejection_reason": f"duplicate of {twin} ({f['quote']})"})
-        fixed.append(f["job_id"])
+    findings, fixed = duplicate_path(cfg, events, roles, apply=apply)
 
     # A rejection no gate caught is a question about the archetypes, not a
     # rule. Named for him, never acted on.
@@ -1427,6 +1417,83 @@ def learning_step(cfg: Config, *, apply: bool) -> dict:
             "opens": learn.open_applications(roles),
             "allow": allow,
             "company_declines": learn.company_declines(events, allow)}
+
+
+def duplicate_path(cfg: Config, events: list[dict], roles: list[dict], *,
+                   apply: bool) -> tuple[list[dict], list[str]]:
+    """What each system-code event says hunter missed, and the recorded twin
+    marked duplicate where there is one. The events may be his column A
+    verdicts or, from ratings.sync, roles he marked Duplicate in his reaction
+    column; those are in memory only and this path never records an event."""
+    findings = learn.system_findings(events, roles)
+    fixed = []
+    for f in findings:
+        twin = f.get("twin")
+        if not twin:
+            continue
+        if apply:
+            db_patch(cfg, "hunter_seen_roles", {"job_id": f["job_id"]},
+                     {"status": "duplicate", "rejection_code": f["code"],
+                      "rejection_reason": f"duplicate of {twin} ({f['quote']})"})
+        fixed.append(f["job_id"])
+    return findings, fixed
+
+
+RATINGS_FAILED = alerts.RATINGS_FAILED
+# The hunter_alerts prefix the sync's failure marks live under.
+RATINGS_MARK = "ratings:"
+
+
+def ratings_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
+                 apply: bool, roles: list[dict] | None = None) -> dict:
+    """K and M into hunter_krish_ratings, after column A has been dealt with.
+
+    Never fatal: a failure is a summary line, and the rest of the run still
+    happens. It reaches workflow_runs once, when the same failure comes
+    twice in a row (alerts.record_step_failure), never once an hour: settle
+    runs this hourly, and a row per hour would have been a "runs are failing"
+    email a day and, after twelve hours, a watchdog claiming hunter had no
+    successful run at all. The error is named by class and status only, because a
+    database error can quote the row it refused and the row holds his words.
+
+    With `roles` (the learning step's, from process), the sync re-pairs
+    whatever the hash says and a role he marked Duplicate goes through the
+    duplicate path. Settle passes none: it reports, and the hourly settle
+    reaching an edit first no longer leaves process with nothing to check."""
+    from . import ratings
+    started = datetime.datetime.now(datetime.timezone.utc)
+    try:
+        out = ratings.sync(cfg, sheet, apply=apply, canon_headers=canon.sheet_headers,
+                           force=roles is not None)
+    except Exception as e:
+        why = ratings.safe_error(e)
+        summary.append(f"{RATINGS_FAILED}: {why}")
+        if apply:
+            try:
+                summary.append(alerts.record_step_failure(
+                    cfg, RATINGS_MARK, why, kind=RATINGS_FAILED, started_at=started))
+            except Exception as e2:
+                summary.append(f"  and the failure was not recorded: {e2.__class__.__name__}")
+        return {}
+    summary.extend(ratings.lines(out))
+    if apply:
+        try:
+            alerts.forget_step_failure(cfg, RATINGS_MARK)
+        except Exception as e:
+            summary.append(f"Krish Score: an earlier failure's mark not cleared "
+                           f"({e.__class__.__name__})")
+    events = out.get("duplicate_events") or []
+    if events and roles is None:
+        summary.append("Krish Score duplicates: not checked here; the next process "
+                       "run checks them against the recorded roles")
+    elif events:
+        try:
+            findings, fixed = duplicate_path(cfg, events, roles, apply=apply)
+            summary.append(f"Krish Score duplicates: {len(findings)} checked, "
+                           f"{len(fixed)} marked duplicate of a recorded twin")
+        except Exception as e:
+            summary.append(f"Krish Score duplicates not checked: {e.__class__.__name__}")
+    return out
 
 
 def learning_lines(out: dict) -> list[str]:
@@ -2797,13 +2864,24 @@ def funnel_batches(cfg: Config, sheet: Sheet | None = None,
                     tiers[company_key(k) or k] = v
             except Exception:
                 pass
-        batches = batchstats.measure(cfg, tiers)
+        notes: list[str] = []
+        batches = batchstats.measure(cfg, tiers, notes=notes)
         if save:
-            batchstats.save(cfg, batches)
+            # A failed write is its own line. It used to raise into the
+            # handler below, which said "accept rate not measured" about a
+            # rate that had been measured, and dropped the lines with it.
+            try:
+                written = batchstats.save(cfg, batches)
+                if written:
+                    notes.append(written)
+            except Exception as e:
+                notes.append(str(e) if isinstance(e, batchstats.NotSaved)
+                             else f"{batchstats.TABLE} NOT written: {e.__class__.__name__}")
         if into is not None:
             into.extend(batches)
         if summary is not None:
             summary.extend(batchstats.lines(batches))
+            summary.extend(notes)
         return batches
     except Exception as e:
         if summary is not None:
@@ -2837,7 +2915,7 @@ def company_outcomes(cfg: Config) -> dict[str, dict]:
             if not e.get("company") or ("krish" not in src and "column a" not in src):
                 continue
             r = row(company_key(e["company"]))
-            if (e.get("verdict") or "").lower() in ("go", "yes", "approved"):
+            if verdicts.is_accept(e.get("verdict") or ""):
                 r["yes"] += 1
             else:
                 r["no"] += 1
@@ -3435,9 +3513,10 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                              jd_verified=(role.liveness != "unverified"))
                     for role, result, snippet, why in staged_rows]
         sheet.append_rows(new_rows)
-        for role, _, _, _ in staged_rows:
-            db_patch(cfg, "hunter_seen_roles", {"job_id": role.job_id},
-                     {"presented_at": NOW()})
+        shown = PresentedMarker(cfg, summary)
+        for role, result, _, _ in staged_rows:
+            shown.mark(role.job_id, {"presented_at": NOW()}, result.score)
+        shown.report()
         counts["staged"] = len(staged_rows)
     elif staged_rows:
         # Ranked on the company AND the seat, not the seat alone. Under the
@@ -3518,12 +3597,56 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                              jd_verified=(role.liveness != "unverified"))
                     for role, result, snippet, why in staged_rows]
         sheet.append_rows(new_rows)
-        for role, _, _, why in staged_rows:
-            db_patch(cfg, "hunter_seen_roles", {"job_id": role.job_id},
-                     {"presented_at": NOW(), "why_it_fits": why})
+        shown = PresentedMarker(cfg, summary)
+        for role, result, _, why in staged_rows:
+            shown.mark(role.job_id, {"presented_at": NOW(), "why_it_fits": why},
+                       result.score)
+        shown.report()
         counts["staged"] = len(staged_rows)
 
     return counts
+
+
+class PresentedMarker:
+    """presented_at and the AI Score he is shown, written in one patch.
+
+    The score is the integer make_row put in column J, recorded at the moment
+    the row reaches him, because J does not stay still: regate and the
+    drafts pass rewrite it, and a score read back after he has seen the row
+    cannot measure whether it predicted him. Recorded once, here, it can.
+
+    If the column is not there yet (the control-center migration not
+    applied), presented_at is written alone and the summary says so: a role
+    with no presented_at is staged again next run, which is the worse
+    failure by far."""
+
+    COLUMN = "ai_score_shown"
+
+    def __init__(self, cfg: Config, summary: list[str]):
+        self.cfg, self.summary = cfg, summary
+        self.missing = False
+        self.without = 0
+
+    def mark(self, job_id: str, patch: dict, shown: int) -> None:
+        if not self.missing:
+            try:
+                db_patch(self.cfg, "hunter_seen_roles", {"job_id": job_id},
+                         dict(patch, **{self.COLUMN: int(shown)}))
+                return
+            except requests.HTTPError as e:
+                body = getattr(getattr(e, "response", None), "text", "") or ""
+                if self.COLUMN not in body:
+                    raise
+                self.missing = True
+        db_patch(self.cfg, "hunter_seen_roles", {"job_id": job_id}, patch)
+        self.without += 1
+
+    def report(self) -> None:
+        if self.without:
+            self.summary.append(
+                f"{self.COLUMN} not recorded for {self.without} staged row(s): the "
+                f"column does not exist yet (control-center migration); presented_at "
+                f"was written")
 
 
 def write_warm_paths(cfg: Config, sheet: Sheet, canon: Canon,
@@ -3926,6 +4049,9 @@ def cmd_settle(apply: bool = False) -> int:
         print(f"{config_mod.ARCHIVE_TAB} columns NOT checked: "
               f"{e.__class__.__name__}: {e}")
     out = settle_step(cfg, canon, sheet, summary, apply=apply)
+    # After settle, whether or not settle found anything decided: it returns
+    # early on most hours, and his scores are read every hour regardless.
+    ratings_step(cfg, canon, sheet, summary, apply=apply)
     print("\n".join(summary))
     if not apply and out["decided"]:
         print("dry run. add --apply to record and move these rows")
@@ -3986,6 +4112,11 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
         summary.extend(learning_lines(out))
     except Exception as e:
         summary.append(f"learning loop skipped: {e.__class__.__name__}: {e}")
+
+    # His scores after his column A verdicts, so the duplicate path sees the
+    # roles the learning step just read. Nothing here feeds G12.
+    rated = ratings_step(cfg, canon, sheet, summary, apply=True, roles=out.get("roles"))
+    counts["ratings_new"] = rated.get("new", 0)
 
     # packages for every Yes without one
     cache = disc.load_cache(cfg)
@@ -5697,7 +5828,7 @@ def staged_company_lines(cfg: Config, limit: int = 25) -> list[str]:
         c["staged"] += 1
         c["sources"].add((r.get("source") or "unknown").strip() or "unknown")
         v = (ruled.get(r.get("job_id") or "") or "").strip().lower()
-        if v in ("yes", "go", "approved"):
+        if verdicts.is_accept(v):
             c["yes"] += 1
         elif v and not v.startswith("new"):
             c["no"] += 1
@@ -6491,10 +6622,15 @@ def main(argv: list[str]) -> int:
         cfg = load()
         sheet = Sheet(GoogleServiceAccount(cfg).access_token)
         batches = funnel_batches_measure(cfg, sheet)
-        print(f"{'batch':12} {'staged':>7} {'ruled':>6} {'yes':>4} {'rate':>6}")
+        print(f"{'batch':12} {'staged':>7} {'ruled':>6} {'yes':>4} {'rate':>6} "
+              f"{'scored':>7} {'7+':>5} {'AI rho':>7}")
         for b in batches:
             rate = f"{round(100 * b.rate)}%" if b.rate is not None else "-"
-            print(f"{b.key:12} {b.staged:7} {b.verdicted:6} {b.accepted:4} {rate:>6}")
+            share = (f"{round(100 * b.share_7_plus)}%" if b.share_7_plus is not None
+                     else "-")
+            rho = f"{b.spearman_ai:+.2f}" if b.spearman_ai is not None else "-"
+            print(f"{b.key:12} {b.staged:7} {b.verdicted:6} {b.accepted:4} {rate:>6} "
+                  f"{b.scored:7} {share:>5} {rho:>7}")
         print()
         for line in batchstats.lines(batches):
             print(line)
@@ -6524,8 +6660,9 @@ def main(argv: list[str]) -> int:
                                            leg_of=source_leg):
             print(line)
         if "--apply" in argv:
-            batchstats.save(cfg, batches)
-            print(f"\nwrote {len(batches)} batch(es) to {batchstats.TABLE}")
+            note = batchstats.save(cfg, batches)
+            print(f"\nwrote {len(batches)} batch(es) to {batchstats.TABLE}"
+                  + (f"; {note}" if note else ""))
         return 0
     if cmd == "companies":
         # Score the companies on his Target Companies tab and show the

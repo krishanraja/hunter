@@ -84,3 +84,20 @@ def parse(text: str) -> tuple[str, str | None]:
 
 def is_system_code(code: str | None) -> bool:
     return code in SYSTEM_CODES
+
+
+# What counts as him taking a role, in every vocabulary a verdict is stored
+# in: the event log's go and applied, the sheet's Yes and Applied, the
+# approval ledger's approved. Three counters kept their own tuple of yes, go
+# and approved, so a role he APPLIED to counted as a decline in the accept
+# rate, in the Target Companies Yes and No columns and in the staged company
+# table: the event log held 34 applied verdicts when this was measured on
+# 2026-10-13, and not one counted. One definition, used by all three.
+ACCEPT_WORDS = frozenset({"go", "applied", "yes", "approved"})
+
+
+def is_accept(text: str) -> bool:
+    low = (text or "").strip().lower()
+    if low in ACCEPT_WORDS:
+        return True
+    return parse(text)[0] in ("go", "applied")

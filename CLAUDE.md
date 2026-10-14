@@ -280,6 +280,33 @@ retry started again.
   reads the cache only some of the time; the batched holdout runs cost 8 to
   15 cents a role against 4 to 6 direct. Measure before moving a call to it.
 
+## 3f. His score is the signal, and column A is the older record
+
+On 2026-10-11 he inserted K Krish Score (1 to 10) and M Krish Reaction (his
+own words) on Pipeline, and asked that hunter learn from them rather than from
+column A, which he barely uses. Measured that day over the 61 roles he scored,
+the AI Score (score.py) ranked them at Spearman -0.19 against his scores and the judge's fit at
+about 0: what reached him was ordered no better than chance.
+
+- **K and M are his** (`sheet.HIS_COLS`). Hunter never writes, defaults,
+  repairs, prunes or deletes them; a move to Applied carries them RAW and
+  reads them back. A header he changes stops every write and is mailed once,
+  in plain words.
+- **`ratings.py` records them** in `hunter_krish_ratings`, hourly. One kind
+  per role: scored, score_unreadable (never guessed into a number),
+  reaction_only, unscored_after_review (a blank he has scored past, under a
+  batch rule with a 24 hour wait), yes_unscored, duplicate, cleared. The
+  unique key holds a hash of his words, never the words.
+- **His reactions never reach the verdict paths**: not `verdicts.parse`,
+  `learn.*`, `hunter_verdict_events`, `krish_verdict` or G12. Fed to the
+  free-text inference, six of them would have become company blocks,
+  including one at a company he scored 7 for another role.
+- **The repo is public.** No reaction text and no real company beside one of
+  his scores in any repo file, fixture, test or log line. Counts only.
+- His rulings of 2026-10-13: a score of 7 or more builds the package, his
+  score wins over an older column A Yes, rows scored 1 to 5 and blanks he has
+  scored past leave Pipeline, and he rules on the sheet in K and M.
+
 ## 4. The Target Companies tab is his, and it is policy
 
 53 companies, five categories, a tier each, and a TIER LEGEND in his own
@@ -308,6 +335,12 @@ could see the line going down.
   reconcile pairs a sheet row to a database row, which is the same failure
   that left 89 declines out of the learning loop.
 - A batch he has barely judged has NO rate, not a rate of zero.
+- Applied counts as accepted (`verdicts.is_accept`). Until 2026-10-14 it
+  did not, so every batch he applied from read lower than it was.
+- Since he scores instead of ruling, the score is watched too: share scored
+  7 or more per batch, its floor (`batchstats.SCORE_FLOOR`), and the Spearman
+  of the AI Score he was shown against his score. That last one, on batches
+  scored after they were shown, is the prospective measure of the predictor.
 - The invariants check for it has no repair, deliberately. What to change
   when the funnel drifts is a judgement, and it is his.
 
@@ -467,6 +500,7 @@ src/hunter/
   prospect.py       companies he has not named, found in what hunter discards
   targets.py        his Target Companies tab, read as policy and written back
   batchstats.py     accept rate per batch. The number nobody was watching
+  ratings.py        his Krish Score and Reaction, recorded per role, never read as verdicts
   llm.py            one door to a model, with a second provider behind it
   spend.py          what every model call cost, and the month's ceiling
   employer.py       what kind of company, on evidence not on a taxonomy
