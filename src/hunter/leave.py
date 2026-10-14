@@ -30,6 +30,12 @@ low, and a score is never guessed. A row whose package his score built stays
 unless K falls to 5 or below, because the package is the answer his 7 or
 more gave and a cleared cell is not a new one.
 
+The gone rule overrides that hold (GONE, his choice 2026-10-14, "Move the
+gone ones"): a row he scored, with column A undecided, whose Package
+Status reads Posting dead leaves whatever built its package, because a
+posting that cannot be applied to has no package worth keeping on
+Pipeline. A Yes marked dead stays: his Yes is his to clear.
+
 The role a row leaves is set aside (SET_ASIDE) only once no row of it is
 left on Pipeline (run._pipeline_holds), and goes back to staging when one
 is: two rows of one role part when he scores one 3 and has not reached the
@@ -158,6 +164,12 @@ def should_leave(row: SheetRow, rating: RowRating | None) -> str | None:
     if k and score is None:
         return None
     low = score is not None and score <= LEAVES_AT_OR_BELOW
+    if not yes and score is not None and not low and _gone(row):
+        # Before the score-built guard: a posting that cannot be applied to
+        # leaves whatever built its package. rebuild-packages re-checks
+        # liveness on packages his score built, and one it found gone was
+        # kept on Pipeline as dead with stale links for good.
+        return GONE
     if rating.score_built and not low:
         return None
     if yes:

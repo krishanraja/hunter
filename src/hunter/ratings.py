@@ -392,6 +392,14 @@ def reviewed_through(cfg) -> str:
         return ""
 
 
+def with_through(fingerprint: str, through: str) -> str:
+    """The sheet's hash, with the reviewed-through date folded in when one is
+    set. Unset, it is the sheet's hash as it always was."""
+    if not through:
+        return fingerprint
+    return hashlib.sha256(f"{fingerprint}|{through}".encode()).hexdigest()
+
+
 def reviewed_batches(stored: list[dict], now: datetime.datetime,
                      through: str = "") -> dict[str, datetime.datetime]:
     """batch -> when his first score on it was first seen, for batches where
@@ -644,6 +652,10 @@ def sync(cfg: Config, sheet, *, apply: bool, canon_headers: list[str],
     read = read_tabs(sheet, canon_headers)
     out["applied_tab"] = read.applied
     out["rows_read"] = len(read.rows)
+    # The date he set is part of what the last sync read: moving it changes
+    # which blanks are past, with K and M the same, so it changes the hash.
+    through = reviewed_through(cfg)
+    fp = with_through(read.fingerprint, through)
     try:
         stored = load(cfg)
     except Exception as e:
@@ -659,7 +671,7 @@ def sync(cfg: Config, sheet, *, apply: bool, canon_headers: list[str],
                    default=None)
         last_rows = [r for r in stored if _when(r.get("last_seen_at")) == last]
         due = next_due(stored, last) if last else None
-        if (last and last_rows and all(r.get("sheet_hash") == read.fingerprint
+        if (last and last_rows and all(r.get("sheet_hash") == fp
                                        for r in last_rows)
                 and (due is None or due > now)):
             out["unchanged"] = True
@@ -676,7 +688,6 @@ def sync(cfg: Config, sheet, *, apply: bool, canon_headers: list[str],
     pairs = pair_sheet(read.rows, db)
     paired = {id(s): p for s, p in zip(read.rows, pairs)}
     out["pairing"] = Counter(p.pairing for p in pairs)
-    through = reviewed_through(cfg)
     out["reviewed_batches"] = len(reviewed_batches(stored, now, through))
     out["reviewed_through"] = through
 
@@ -718,7 +729,7 @@ def sync(cfg: Config, sheet, *, apply: bool, canon_headers: list[str],
     firsts = first_of(stored)
     now_iso = now.isoformat()
     writes = roles + gone
-    payload = [_payload(r, firsts.get(r.paired.job_id), now_iso, read.fingerprint)
+    payload = [_payload(r, firsts.get(r.paired.job_id), now_iso, fp)
                for r in writes]
     out["new"] = sum(1 for r in writes if r.key not in stored_keys)
     out["seen_again"] = len(writes) - out["new"]

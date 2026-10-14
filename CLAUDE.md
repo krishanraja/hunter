@@ -303,6 +303,11 @@ about 0: what reached him was ordered no better than chance.
   including one at a company he scored 7 for another role.
 - **The repo is public.** No reaction text and no real company beside one of
   his scores in any repo file, fixture, test or log line. Counts only.
+  `approvals` prints counts and neutral outcomes on every path, never the
+  Apply email, its open link, the token, his address, an essay or a field
+  value, and with a reaction on the row no flag or reason quotes a refused
+  figure or name (`his_view.redact`); only the retry message to the model
+  names it.
 - His rulings of 2026-10-13: a score of 7 or more builds the package, his
   score wins over an older column A Yes, rows scored 1 to 5 and blanks he has
   scored past leave Pipeline, and he rules on the sheet in K and M.
@@ -359,16 +364,18 @@ about 0: what reached him was ordered no better than chance.
   `moved_at`, and a leaving Yes has its waiting application cancelled with
   his score as the reason unless a row of that role still on Pipeline asks
   for one. Under the rule a Yes his score took back is never built, from
-  the packages button or process (`select_for_build(score_wins=True)`). A
-  row on Applied he later scores 7 or more comes back, its dates RAW and its
-  cells as the text they were. Nothing moves for his score until canon 9.13
+  the packages button or process (`select_for_build(score_wins=True)`),
+  nor by `build_one`, the last read before paying, nor prepared by Prepare
+  whatever built its package, and a rebuild needs a row that still asks for
+  an application (`router.wants`). A row on Applied he later scores 7 or more comes back,
+  its dates RAW and its cells as the text they were. Nothing moves for his score until canon 9.13
   carries `leave.CANON_RULE`; `leave` lists the move as counts, with `--out`
   for the rows.
 - **A role he scored whose posting is gone leaves too** (his choice
   2026-10-14, "Move the gone ones"): Package Status "Posting dead" on a row
-  column A leaves undecided. A Yes marked dead stays; the gh_jid bug once
-  marked a live Yes dead, and his Yes is his to clear. A gone row never comes
-  back. `system_config hunter_reviewed_through` (a date) counts every batch
+  column A leaves undecided, whatever built its package. A Yes marked dead
+  stays; the gh_jid bug once marked a live Yes dead, and his Yes is his to
+  clear. A gone row never comes back. `system_config hunter_reviewed_through` (a date) counts every batch
   staged on or before it that he scored in as finished, so its blanks move
   without the 24 hour wait and without a later batch scored: the table first
   saw every score he typed from 11 to 13 October on the 14th, the hour it was
@@ -506,7 +513,11 @@ what he asked for.
 - **The tests run offline.** No sockets. `pytest` must pass with no network.
 - **One approval per posting, not per row.** The job id scheme changed once and he
   received the same application twice. `posting_key` and `live_postings` exist for
-  that.
+  that. The key is the posting's identity (board and posting id, a gh_jid, a
+  LinkedIn job number, or the link with only the query parameters that name a
+  posting), never the link cut at "?", which made every posting on one careers
+  path one posting, and never the link less a list of tracking parameters, which
+  made one LinkedIn job two.
 - **A role is company, title and country** (`sources.placed_identity_keys`). On
   company and title alone, Sierra's London Regional VP was filed as the Seoul one,
   and the Suno London role he asked about as the New York one he had declined:

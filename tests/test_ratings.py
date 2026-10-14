@@ -611,6 +611,33 @@ def test_a_re_sort_alone_is_not_a_change(wire):
     assert sync(tabs([b, a]), apply=True, now=NOW + HOURS)["unchanged"]
 
 
+def test_setting_the_reviewed_date_re_reads_with_k_and_m_the_same(wire):
+    """The hourly sync skips when the sheet hashes as it did. Setting
+    hunter_reviewed_through changes which blanks are past with no cell
+    changed, so it has to count as a change, or the date waits for process."""
+    db = wire(DB(seen=[db_row("Larchmont", "Director, Strategy",
+                              presented="2026-10-11T09:00:00+00:00"),
+                       db_row("Fernhollow", "VP Partnerships",
+                              presented="2026-10-11T09:00:00+00:00")]))
+    sheet = tabs([cells("Larchmont", "Director, Strategy"),
+                  cells("Fernhollow", "VP Partnerships", k="8")])
+
+    def cfg(through):
+        return type("Cfg", (), {"optional": lambda self, key, default="":
+                                through if key == ratings.REVIEWED_THROUGH_KEY else default})()
+
+    def run(through, at):
+        return ratings.sync(cfg(through), sheet, apply=True, canon_headers=HEADERS, now=at)
+
+    first = run("", NOW)
+    assert first["pending_roles"] == 1
+    assert run("", NOW + HOURS)["unchanged"]
+    dated = run("2026-10-13", NOW + 2 * HOURS)
+    assert not dated["unchanged"] and dated["roles"]["unscored_after_review"] == 1
+    assert run("2026-10-13", NOW + 3 * HOURS)["unchanged"], "the same date is no change"
+    assert ratings.with_through("abc", "") == "abc", "unset, the hash is as it was"
+
+
 def test_time_alone_re_reads_when_a_batch_becomes_reviewed(wire):
     db = wire(DB(seen=[db_row("Larchmont", "Director, Strategy"),
                        db_row("Fernhollow", "VP Partnerships",

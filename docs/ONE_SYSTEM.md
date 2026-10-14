@@ -19,6 +19,109 @@ The target, four layers:
 
 ---
 
+## 2026-10-14: his reasons are in every package he wants
+
+His words that day: "Make sure that, when you're creating all the packages,
+you include all the rationales that I've put in the new column, as well as
+the combined rationale ... more human without sounding arrogant, but
+sounding confident and like I can deliver ASAP."
+
+- **His view** (`package/his_view.py`): K, M and hunter's case in L, read off
+  his row as it reads now, the record only when there is no row. Empty
+  stays empty, and with no K and no M the tailor prompt is byte for byte
+  what it was (`tests/fixtures/tailor_prompt_no_view.txt`).
+- **Where it goes.** `build_one` reads it for every build (the hourly score
+  builds, process's Yes builds, an amend, a rebuild), and the tailor prompt
+  carries it in its own section of `prompts/tailor.md`, "Why he wants this
+  role, in his own words", with the rules: his reasons are the spine; first
+  person, confident and concrete about the first moves; never arrogant;
+  never his note quoted or his score mentioned; nothing about location,
+  salary, other offers, people he knows or pedigree. The essays get the same
+  section. His note is not evidence: the gate traces every number and name
+  against his CV and proof points alone, so a contact, an employer, an offer
+  or a figure only his note carries is refused. Once he has written a
+  reaction, no flag or reason that leaves tailor or the essays quotes any
+  refused figure or name, his or not: it says "a figure the evidence does
+  not support was left out" or the same of a name (`his_view.redact`),
+  because his note's figure comes back from the model in other forms and
+  build flags reach public logs. Which failure is a figure and which a
+  name is read from the gate's own failure formats, never guessed from what
+  a failure quotes. Only the retry message to the model names what failed.
+  A run of seven of his words copied into the prose does not pass either,
+  with curly and straight apostrophes read as one. The hiring lead is kept
+  only when the JD names that person, word for word, and the JD mirror
+  passes the numbers check, has every capitalised word past its first, not
+  the company's, as a whole word of the JD or his evidence (the gate's own
+  name check is a substring test, which let a contact through inside
+  "market" and "working"), and must not copy his note; either one that
+  fails becomes "Hiring Team" or the block's own clause, with a flag that
+  names nothing. The arrogance phrases are one list of generic
+  phrases (`voicegate.ARROGANCE_BANNED`, joined by `package_banned`) that the
+  prompt names and the gate refuses; a phrase from his own notes belongs in
+  his Profile's VOICE AND TONE list, never in this public repository.
+- **What it records.** `package_his_view` on hunter_seen_roles: a hash of
+  the view a package was written from, or null. Not package_trigger, which
+  Control Center parses exactly. The column needs migration cc6; until it
+  is there a build says it could not record it and `rebuild-packages`
+  refuses to pay.
+- **`rebuild-packages [--apply] [--max N] [--job-id J]`.** A package built
+  without his reasons, for a role he wants (the roles `approvals --wanted`
+  prepares) whose row carries his score or his reaction, rebuilt from them
+  through build_one. A Yes he answered with only a reaction is not: his
+  score wins over an older Yes, and that row leaves Pipeline (`leave.py`).
+  His row is read again before each target is paid for (router.wants), and
+  build_one refuses a rebuild whose row no longer asks for an application.
+  Never one he has acted on (Applied, an
+  Application Status, an approval opened, approved, submitted or waiting on
+  him), and never one whose documents he has edited, cannot be read, or have
+  no record of what hunter wrote into them, all checked again just before it
+  pays. His newest AMEND instructions go into the rebuild. A rebuild whose
+  prose did not come through, or whose letter failed verification, leaves
+  the earlier package in place, and one the gate held or verification
+  failed is recorded as tried and not paid for again until his view, the
+  package or the link changes (`--job-id` tries it regardless). Counts only:
+  a selection that cannot be read says the exception's class and builds
+  nothing.
+- **`approvals --wanted [--apply] [--max N]`.** The Apply email with the
+  one-click link, one per posting, for every built package of a role he
+  wants (a score of 7 or more, or Yes with K at 7 or more or blank), through
+  cmd_approvals one role at a time, each found on his row by its link and
+  sent only while that row still asks for it. Skips a posting with an
+  approval in play, a dead posting, a role applied for, a Yes he called a
+  Duplicate, and one already sent to apply by hand or refused for a missing
+  answer for the same package (marked in hunter_alerts under `prepared:`), so
+  a `--max` batch moves on to the rest. A refusal is marked against his
+  answer bank as well, so the answer he adds re-opens it; a form waiting on
+  an essay that did not draft is marked for a day only, so the next batch
+  moves on and the posting is tried again after it. With the month at its
+  ceiling the command waits before reading anything. A dry run prepares
+  nothing. Counts only, and what the essays cost.
+- **One posting is its posting's identity** (`run.posting_key`): the board
+  and posting id where the link names one (without any query, so a Workday
+  link with and without `?source=` is one), the Greenhouse id of a
+  `?gh_jid=` careers page, a LinkedIn job by the number at the end of its
+  path, otherwise the link with only the query parameters that name a
+  posting kept (`POSTING_PARAMS`: id, jobId, reqId and the like). Cutting
+  at "?" made every posting on one careers path one posting; keeping every
+  parameter but a list of tracking ones made one LinkedIn job, swept twice
+  with two `position` values, two postings. His AMEND words reach only a
+  rebuild of the posting he wrote them for.
+- **Nothing of the application is printed.** `approvals`, on every path and
+  in a dry run, prints counts and neutral outcomes ("Apply email sent: 1,
+  fields 14, essays 2"), never the email, the open link, the token or its
+  key, his address, an essay or a field value, and an error by its class
+  alone (the send, the token's record and every token-keyed call in the
+  reply drain included, so a Supabase error naming its request never
+  reaches the log). Prepare from Control Center keeps its stdout out of the
+  drain's log as well, and the note on his card says what happened, from
+  what approvals counted: sent, already has an application waiting, refused
+  for a missing answer, an essay did not draft, sent as by hand, not on
+  Pipeline, his score took it back, or failed with the error's class. The
+  reply drain prints the job and the length of his words, and the mail
+  fallback prints a length. process prints a build that raised by its class
+  and his edits by field and count. The drain's Actions log is public, and
+  the open link hands the fill payload to whoever holds it.
+
 ## 2026-10-14: his score builds the pack
 
 His rulings of 2026-10-13. Asked whether a high Krish Score should build the
@@ -44,7 +147,11 @@ sheet in K and M. Column A Yes still builds.
   gate, or a posting found gone, is recorded with what it saw and is not
   tried again until K, the link or the masters change; a package that
   failed verification gets one more try first. A build that raised is an
-  error, never a refusal: it is tried again next hour. Each build goes onto
+  error, never a refusal: it is tried again next hour. One that raised
+  after its record was patched built is decided from his row as it reads
+  then: the row links the new documents and it stays built; the row write
+  never landed and the record is set to be built again; the row still links
+  the package before and the record says so again. Each build goes onto
   the row it was chosen from, so two postings of one title in two countries
   each get their own.
 - **When he takes it back.** Settle, hourly and before anything moves: a
@@ -78,8 +185,13 @@ sheet in K and M. Column A Yes still builds.
   untouched, in the same hourly move as his Applied and Declined rows; a Yes
   he scored 1 to 5 moves too and its waiting application is cancelled, unless
   another row of the role on Pipeline still asks for it, and it is never
-  built while it waits. A role is set aside only once no row of it is left
-  on Pipeline. A row on Applied he later scores 7 or more comes back.
+  built while it waits: build_one, the last read before paying, refuses it
+  too, and Prepare refuses a Yes his score took back, whatever built its
+  package, unless another row of the posting still asks; the bulk
+  `approvals` run asks router.wants of every row. A row he scored whose
+  posting hunter found gone leaves, whatever built its package; a Yes marked
+  dead stays. A role is set aside only once no row of it is left on
+  Pipeline. A row on Applied he later scores 7 or more comes back.
   Nothing moves for his score until canon 9.13 carries the rule; the first
   list is put to him first (`python -m hunter.run leave --out PATH`).
 

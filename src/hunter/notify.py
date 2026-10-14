@@ -174,9 +174,14 @@ def send_email(cfg: Config, subject: str, html: str, *,
         return {"sent": True, "channel": "gmail", "to": to,
                 "id": r.json().get("id", "")}
     if r.status_code == 403 and scope_missing(r.text):
-        print(f"[notify] gmail.send is not granted yet, so this went nowhere. "
-              f"Run: python -m hunter.oauth_grant\n\nSubject: {subject}\n")
-        print(text or re.sub(r"<[^>]+>", " ", html))
+        # Not the message: this prints in an Actions log, which is public, and
+        # an Apply email carries the open link to his filled form, his
+        # address and every answer on it. He can be sent it again once the
+        # grant is in.
+        body = text or re.sub(r"<[^>]+>", " ", html)
+        print(f"[notify] gmail.send is not granted yet, so this email "
+              f"({len(body)} characters) went nowhere. "
+              f"Run: python -m hunter.oauth_grant")
         return {"sent": False, "channel": "stdout fallback",
                 "reason": "gmail.send not granted"}
     raise NotifyError(f"gmail send failed ({r.status_code}): {r.text[:300]}")

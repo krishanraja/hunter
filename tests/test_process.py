@@ -745,7 +745,7 @@ def test_one_unreadable_form_does_not_stop_the_other_applications(monkeypatch,
 
     seen = []
 
-    def flaky(cfg, sheet, row, bank=None):
+    def flaky(cfg, sheet, row, bank=None, view=None):
         seen.append(row["job_id"])
         if row["job_id"] == "c1:role":
             raise ValueError("unmapped Ashby field type 'EducationHistory'")
@@ -762,7 +762,10 @@ def test_one_unreadable_form_does_not_stop_the_other_applications(monkeypatch,
         f"the batch stopped early: only reached {seen}")
     assert code == 1, "a run that could not prepare some postings is a failure"
     out = capsys.readouterr().out
-    assert "EducationHistory" in out and "could not be prepared" in out
+    # Named by its job id and the exception's class, never its message: a
+    # message from the fill plan can carry a field value (the log is public).
+    assert "c1:role: ValueError" in out and "could not be prepared" in out
+    assert "EducationHistory" not in out
 
 
 def test_the_advert_hunter_already_holds_reaches_the_company_scorer(monkeypatch):

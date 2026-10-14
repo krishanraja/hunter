@@ -236,7 +236,6 @@ def select_for_build(cfg: Config, sheet=None, headers=None, *,
     rep["candidates"] = len(candidates)
     if not candidates:
         return []
-    from .run import match_rows
     if want == {SCORE} and masters and _all_waiting(cfg, candidates, masters_once, rep):
         return []
     known = db_get(cfg, "hunter_seen_roles", {
@@ -244,16 +243,7 @@ def select_for_build(cfg: Config, sheet=None, headers=None, *,
                   "warm_path_person,warm_path_tier,package_status,krish_verdict,"
                   "rejection_reason,status,presented_at,package_trigger",
         "limit": ALL_ROWS})
-    pairs, _, _, ambiguous = match_rows([c[0] for c in candidates], list(known))
-    by_row = {id(s): d for s, d in pairs}
-    # The incumbent recorded some postings twice under two job_ids with one
-    # URL, so the matcher calls them ambiguous and nothing was ever built for
-    # ElevenLabs GM UK, Cloudflare Chief of Staff or Harvey AMER. The same
-    # ATS posting is the same posting; take the row with the most standing.
-    for srow, _n in ambiguous:
-        d = same_posting(srow, known)
-        if d:
-            by_row[id(srow)] = d
+    by_row = pair_records([c[0] for c in candidates], known)
     picked = []
     for srow, trig, kind, _dead in candidates:
         d = by_row.get(id(srow))
@@ -289,6 +279,59 @@ def select_for_build(cfg: Config, sheet=None, headers=None, *,
         out.append(d)
     rep["eligible"] = len(out)
     return out[:cap] if cap else out
+
+
+def pair_records(srows: list, known: list[dict]) -> dict[int, dict]:
+    """id(sheet row) -> the record that is its posting, for the rows given.
+
+    run.match_rows first. The incumbent recorded some postings twice under
+    two job_ids with one URL, so the matcher calls them ambiguous and
+    nothing was ever built for ElevenLabs GM UK, Cloudflare Chief of Staff or
+    Harvey AMER. The same ATS posting is the same posting; the record with
+    the most standing is taken (same_posting). One pairing for the build
+    selection, rebuild-packages and the prepare-all selection, so the three
+    cannot disagree on which record a row is."""
+    from .run import match_rows
+    pairs, _, _, ambiguous = match_rows(list(srows), list(known))
+    by_row = {id(s): d for s, d in pairs}
+    for srow, _n in ambiguous:
+        d = same_posting(srow, known)
+        if d:
+            by_row[id(srow)] = d
+    return by_row
+
+
+def wants(row) -> str | None:
+    """Why this row is a role he wants an application for now, or None.
+
+    A score build (his score of 7 or more on a row column A leaves
+    undecided), or his Yes in column A with K at 7 or more or K blank. A Yes
+    he has since scored below 7, or scored with something hunter cannot read
+    as a whole number, is not asked for here: his score is the newer word
+    (his ruling 2026-10-13), and unknown is not 7 or more. Nor is a Yes he
+    has called a Duplicate in M: the twin he did not mark is the role, and
+    an application for each would be one application sent twice. A Yes
+    builds whatever M says (build_trigger); asking him to send it is this."""
+    from .ratings import whole_score
+    trig = build_trigger(row)
+    if trig is None:
+        return None
+    if trig != YES_TRIGGER:
+        return trig
+    if says_duplicate(row.cell(KRISH_REACTION)):
+        return None
+    # A Yes he answered with only a reaction is one his score took back
+    # (leave.yes_overridden), and it leaves Pipeline on the next pass: an
+    # application mailed in the hour before that would be for a role he
+    # has said no to.
+    from .leave import yes_overridden
+    if yes_overridden(row):
+        return None
+    k = (row.cell(KRISH_SCORE) or "").strip()
+    if not k:
+        return trig
+    score = whole_score(k)
+    return trig if score is not None and score >= SCORE_BUILDS else None
 
 
 def _all_waiting(cfg: Config, candidates: list, masters, rep: dict) -> bool:
