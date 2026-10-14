@@ -91,6 +91,12 @@ COLS = {name: i for i, name in enumerate(HEADERS)}
 HIS_IDX = frozenset(COLS[n] for n in HIS_COLS)
 ARCHIVE_TRAILING = ("Archived On",)
 ARCHIVE_WIDTH = N_COLS + len(ARCHIVE_TRAILING)
+# What a move re-reads on every target before it writes and again before it
+# deletes: the cells the decision to move was made on. Column A and his two
+# cells are the ruling; Business and Role say the row number still holds the
+# same row. A row that reads differently is refused and stays.
+RECHECK = ("Verdict", "Business", "Role", KRISH_SCORE, KRISH_REACTION)
+RECHECK_IDX = tuple(COLS[n] for n in RECHECK)
 # How far right a header read looks. Reading only to the last column hunter
 # knows makes a column he adds after it invisible: the guard compared the
 # first thirty cells, saw them agree, and the sort would then have moved every
@@ -303,6 +309,28 @@ def archive_header_diffs(grid: list[list]) -> list[tuple[str, str, str]]:
     header = pad_row(grid[0] if grid else [], SCAN_WIDTH)
     return min((header_diffs(header, list(names) + list(ARCHIVE_TRAILING))
                 for names in (HEADERS, PREVIOUS_HEADERS)), key=len)
+
+
+def recheck_cells(cells: list) -> tuple:
+    return tuple(pad_row(cells)[i] for i in RECHECK_IDX)
+
+
+def _same_text(text) -> str:
+    return " ".join(str(text or "").split()).lower()
+
+
+def move_key(cells: list) -> tuple:
+    """A row as the Applied tab holds it once it has moved: company, role and
+    location as text, column A, his two cells exactly, and the link. A move
+    whose copy landed and whose delete then failed leaves this on Applied,
+    and the next move of that row must find it rather than copy it twice.
+    The link is in it because the Applied tab holds 369 older rulings with
+    his cells blank, and a role posted again and declined again is a second
+    row, not the first one found."""
+    c = pad_row(cells)
+    return (_same_text(c[COLS["Business"]]), _same_text(c[COLS["Role"]]),
+            _same_text(c[COLS["Location"]]), c[COLS["Verdict"]].strip(),
+            c[COLS[KRISH_SCORE]], c[COLS[KRISH_REACTION]], c[COLS["Job Link"]].strip())
 
 
 def his_insert_indexes() -> list[int]:
@@ -539,7 +567,8 @@ class Sheet:
     def delete_rows(self, row_numbers: list[int], *,
                     expect_verdict: str | None = "New",
                     named: set[int] | frozenset[int] = frozenset(),
-                    his_copied: bool = False) -> int:
+                    his_copied: bool = False,
+                    expect_cells: dict[int, tuple] | None = None) -> int:
         """Remove data rows, refusing any row Krish has written on.
 
         Deleting is the one destructive thing this module does, so it re-reads
@@ -562,6 +591,12 @@ class Sheet:
         re-read with column A, and a target with either filled is refused
         unless he named it. `his_copied` is for archive_rows alone, which has
         already written both cells to Applied and read them back.
+
+        `expect_cells` (row number -> recheck_cells) is archive_rows' last
+        look: every target must still read, in column A, Business, Role and
+        his two cells, what the copy on Applied was made from, or nothing is
+        deleted. Since 2026-10-13 a row moves on his score, and he can change
+        his score in the second between the copy and the delete.
         """
         targets = sorted({int(n) for n in row_numbers}, reverse=True)
         if not targets:
@@ -569,6 +604,14 @@ class Sheet:
         if min(targets) < DATA_START_ROW:
             raise SheetError(f"refusing to delete row {min(targets)}: rows 1 and 2 "
                              f"are the header and the intentional blank")
+        if expect_cells is not None:
+            now = self.read_grid()
+            moved = [n for n in targets
+                     if recheck_cells(now[n - 1] if len(now) >= n else []) != tuple(
+                         expect_cells.get(n, ()))]
+            if moved:
+                raise SheetError(f"refusing to delete: rows {sorted(moved)[:5]} no longer "
+                                 f"read as they did when they were copied; nothing deleted")
         grid = self._column_a()
         dirty = []
         exempt = {int(n) for n in named}
@@ -747,10 +790,31 @@ class Sheet:
         return report
 
     def archive_rows(self, rows: list["SheetRow"], *, archive_tab: str,
-                     archive_sheet_id: int, headers: list[str]) -> int:
-        """Copy decided rows to the archive tab, then delete them from
-        Pipeline. Copy first and verify the landing before deleting anything:
-        a half-done move that loses a row Krish decided on is unacceptable."""
+                     archive_sheet_id: int, headers: list[str],
+                     report: dict | None = None) -> int:
+        """Copy rows to the archive tab, then delete them from Pipeline, and
+        return how many left Pipeline. Copy first and verify the landing
+        before deleting anything: a half-done move that loses a row Krish
+        decided on is unacceptable.
+
+        Since 2026-10-13 a row also moves on his score, which he edits in
+        place, so a move is checked at each end. Before anything is written,
+        every target is re-read against the cells it was chosen on (RECHECK:
+        column A, Business, Role, his two cells) and one that reads
+        differently is refused and stays. A target the Applied tab already
+        holds (move_key: an earlier move copied it and then failed to delete)
+        is not copied again. Column A goes across as he left it: nothing here
+        writes it. His two cells and the Archived On stamp are written RAW, so
+        they land as the text they are, and read back cell by cell with
+        Business and Role. Just before the delete every target is read once
+        more; a row he changed between the copy and the delete has its copy
+        taken back off Applied and stays, and the rest go.
+
+        `report`, when given, is filled with row numbers: refused, already
+        (on Applied before this call), changed (between copy and delete) and
+        moved (deleted from Pipeline)."""
+        rep = report if report is not None else {}
+        rep.update({"refused": [], "already": [], "changed": [], "moved": []})
         if not rows:
             return 0
         # close-submitted and confirmations archive before settle runs, so
@@ -776,6 +840,20 @@ class Sheet:
             "sheetId": archive_sheet_id, "startRowIndex": 0,
             "startColumnIndex": 0, "endColumnIndex": ARCHIVE_WIDTH}}})
         self._post(":batchUpdate", {"requests": reqs})
+
+        # 1. Every target as Pipeline reads it now, against what it was
+        # chosen on. A row that changed is his to finish changing.
+        now = self.read_grid()
+        keep = []
+        for r in rows:
+            line = now[r.row_number - 1] if 0 < r.row_number <= len(now) else []
+            if recheck_cells(line) != recheck_cells(r.cells):
+                rep["refused"].append(r.row_number)
+            else:
+                keep.append(r)
+        if not keep:
+            return 0
+
         existing = self._values(f"{archive_tab}!A1:{SCAN_LAST_COL}2000")
         header_written = bool(existing) and any(str(c).strip() for c in existing[0])
         want = list(headers) + list(ARCHIVE_TRAILING)
@@ -789,45 +867,112 @@ class Sheet:
                     f"{archive_tab} header is not Pipeline's columns plus "
                     f"{ARCHIVE_TRAILING[0]}: {header_diffs(head, want)[:4]}; "
                     f"nothing deleted from Pipeline")
-        payload = []
-        if not header_written:
-            payload.append(want)
+
+        # 2. Already there: copied by a move whose delete did not happen.
+        held: dict = {}
+        for line in (existing[1:] if header_written else []):
+            k = move_key(pad_row(line, ARCHIVE_WIDTH)[:N_COLS])
+            held[k] = held.get(k, 0) + 1
+        to_copy, already = [], []
+        for r in keep:
+            k = move_key(r.cells)
+            if held.get(k, 0) > 0:
+                held[k] -= 1
+                already.append(r)
+            else:
+                to_copy.append(r)
+        rep["already"] = [r.row_number for r in already]
+
+        # 3. The copy. The row goes USER_ENTERED for its formulas (the links,
+        # a linked Warm Path), with his two cells and the stamp blank in it;
+        # those three then go RAW, so they land as text. Under USER_ENTERED a
+        # reaction starting with a minus sign is a formula, "8/10" is a date
+        # and the stamp a serial. Every other cell that is not a formula goes
+        # as_text, so Applied holds the text Pipeline did: "$225,000" landed
+        # as 225000, and a row his score later brought back carried a Comp he
+        # never wrote, which the next amendment pass read as his correction.
         stamp = datetime.date.today().isoformat()
-        for r in rows:
-            payload.append(list(r.cells) + [stamp])
+        raw_cols = [COLS[n] for n in sorted(HIS_COLS)] + [ARCHIVE_WIDTH - 1]
+        payload = [list(r.cells) + [stamp] for r in to_copy]
         start = (len(existing) if header_written else 0) + 1
-        end = start + len(payload) - 1
-        rng = f"{archive_tab}!A{start}:{ARCHIVE_LAST_COL}{end}"
-        self._write([(rng, payload)])
-        # His two cells again, RAW, so they land as the text he typed. Under
-        # USER_ENTERED a reaction starting with a minus sign is a formula and
-        # "8/10" is a date.
-        self._write([(f"{archive_tab}!{letter(n)}{start}:{letter(n)}{end}",
-                      [[row[COLS[n]]] for row in payload]) for n in sorted(HIS_COLS)],
-                    raw=True)
-        back = self._values(rng)
-        if len(back) != len(payload):
-            raise SheetError(f"archive read-back wrote {len(back)} of "
-                             f"{len(payload)} rows; nothing deleted from Pipeline")
-        # Count is not proof. Compare the identity columns cell by cell, or a
-        # truncated write looks like a clean one and Pipeline loses the row.
-        # His two cells are compared too: they exist nowhere else once the
-        # Pipeline row is gone.
-        for want_row, got in zip(payload, back):
-            got = pad_row(got, ARCHIVE_WIDTH)
-            if [str(want_row[1]).strip(), str(want_row[2]).strip()] != [got[1].strip(),
-                                                                        got[2].strip()]:
-                raise SheetError(
-                    f"archive read-back mismatch: wrote {want_row[1]!r}/{want_row[2]!r}, "
-                    f"read {got[1]!r}/{got[2]!r}; nothing deleted from Pipeline")
-            for n in sorted(HIS_COLS):
-                if str(want_row[COLS[n]]) != got[COLS[n]]:
+        first = start + (0 if header_written else 1)
+        landed_at: dict[int, int] = {}
+        if payload:
+            block = ([] if header_written else [want]) + [
+                ["" if i in raw_cols else (c if str(c).startswith("=") else as_text(str(c)))
+                 for i, c in enumerate(row)] for row in payload]
+            end = start + len(block) - 1
+            rng = f"{archive_tab}!A{start}:{ARCHIVE_LAST_COL}{end}"
+            self._write([(rng, block)])
+            last = first + len(payload) - 1
+            try:
+                self._write([(f"{archive_tab}!{col_letter(i)}{first}:{col_letter(i)}{last}",
+                              [[row[i]] for row in payload]) for i in raw_cols], raw=True)
+            except Exception:
+                # The row landed without his cells or the stamp. Left there it
+                # is a row he never scored, with no move_key the next move
+                # could find, so the next move would copy the row again
+                # beside it. Take it back off, then fail as before: Pipeline
+                # still holds the row, and the next pass moves it once.
+                try:
+                    self.delete_archive_rows(list(range(first, last + 1)),
+                                             archive_sheet_id=archive_sheet_id,
+                                             expect=[r.company for r in to_copy])
+                except Exception:
+                    pass
+                raise
+            back = self._values(rng)
+            if len(back) != len(block):
+                raise SheetError(f"archive read-back wrote {len(back)} of "
+                                 f"{len(block)} rows; nothing deleted from Pipeline")
+            # Count is not proof. Compare the identity columns cell by cell, or
+            # a truncated write looks like a clean one and Pipeline loses the
+            # row. His two cells are compared too: they exist nowhere else once
+            # the Pipeline row is gone. And the stamp, as the text it was.
+            for r, want_row, got in zip(to_copy, payload, back[len(block) - len(payload):]):
+                got = pad_row(got, ARCHIVE_WIDTH)
+                if [str(want_row[1]).strip(), str(want_row[2]).strip()] != [got[1].strip(),
+                                                                            got[2].strip()]:
                     raise SheetError(
-                        f"archive read-back mismatch on {want_row[1]!r}/{want_row[2]!r} "
-                        f"{n}: wrote {str(want_row[COLS[n]])[:60]!r}, read "
-                        f"{got[COLS[n]][:60]!r}; nothing deleted from Pipeline")
-        return self.delete_rows([r.row_number for r in rows], expect_verdict=None,
-                                his_copied=True)
+                        f"archive read-back mismatch: wrote {want_row[1]!r}/{want_row[2]!r}, "
+                        f"read {got[1]!r}/{got[2]!r}; nothing deleted from Pipeline")
+                # Named by row number, never by company: the message reaches
+                # public logs, and a row moved on his score is a row he scored.
+                for n in sorted(HIS_COLS):
+                    if str(want_row[COLS[n]]) != got[COLS[n]]:
+                        raise SheetError(
+                            f"archive read-back mismatch on Pipeline row {r.row_number} "
+                            f"{n}: the cell did not land as he typed it; nothing "
+                            f"deleted from Pipeline")
+                if got[ARCHIVE_WIDTH - 1] != stamp:
+                    raise SheetError(
+                        f"archive read-back mismatch on Pipeline row {r.row_number} "
+                        f"{ARCHIVE_TRAILING[0]}: wrote {stamp!r}, read "
+                        f"{got[ARCHIVE_WIDTH - 1][:20]!r}; nothing deleted from Pipeline")
+            landed_at = {r.row_number: first + i for i, r in enumerate(to_copy)}
+
+        # 4. One more look, then the delete. A row he changed since step 1
+        # stays, and the copy made of it this call comes back off Applied, so
+        # Applied never holds a ruling he has since replaced.
+        again = self.read_grid()
+        go, changed = [], []
+        for r in to_copy + already:
+            line = again[r.row_number - 1] if 0 < r.row_number <= len(again) else []
+            (go if recheck_cells(line) == recheck_cells(r.cells) else changed).append(r)
+        undo = [r for r in changed if r.row_number in landed_at]
+        if undo:
+            self.delete_archive_rows([landed_at[r.row_number] for r in undo],
+                                     archive_sheet_id=archive_sheet_id,
+                                     expect=[r.company for r in undo],
+                                     expect_cells=[recheck_cells(r.cells) for r in undo])
+        rep["changed"] = [r.row_number for r in changed]
+        if not go:
+            return 0
+        n = self.delete_rows([r.row_number for r in go], expect_verdict=None,
+                             his_copied=True,
+                             expect_cells={r.row_number: recheck_cells(r.cells) for r in go})
+        rep["moved"] = sorted(r.row_number for r in go)
+        return n
 
     def set_verdicts(self, mapping: dict[int, str]) -> int:
         """Write column A on named rows and read it back.
@@ -898,19 +1043,28 @@ class Sheet:
         return len(mapping)
 
     def delete_archive_rows(self, row_numbers: list[int], *,
-                            archive_sheet_id: int, expect: list[str]) -> int:
+                            archive_sheet_id: int, expect: list[str],
+                            expect_cells: list[tuple] | None = None) -> int:
         """Remove rows from the archive tab, checking first that each still
         holds the company it did when it was chosen. Used only to undo a move
-        that should never have happened; descending, like every delete here."""
+        that should never have happened, or a row his score has taken back to
+        Pipeline; descending, like every delete here.
+
+        expect_cells (recheck_cells per row) holds the row to column A,
+        Business, Role and his two cells as well: a row he edited on Applied
+        after it was chosen is not the row that was chosen."""
         if not row_numbers:
             return 0
         grid = self._values(f"{config.ARCHIVE_TAB}!A1:{ARCHIVE_LAST_COL}2000")
-        for rn, want in zip(row_numbers, expect):
+        for i, (rn, want) in enumerate(zip(row_numbers, expect)):
             row = grid[rn - 1] if rn - 1 < len(grid) else []
             got = str(row[1]).strip() if len(row) > 1 else ""
             if got != want.strip():
                 raise SheetError(f"archive row {rn} reads company {got!r}, "
                                  f"expected {want!r}; nothing deleted")
+            if expect_cells is not None and recheck_cells(row) != tuple(expect_cells[i]):
+                raise SheetError(f"archive row {rn} no longer reads as it did when it "
+                                 f"was chosen; nothing deleted")
         reqs = [{"deleteDimension": {"range": {
             "sheetId": archive_sheet_id, "dimension": "ROWS",
             "startIndex": rn - 1, "endIndex": rn}}}
@@ -1109,17 +1263,27 @@ class Sheet:
 
     # ---------- writing ----------
 
-    def append_rows(self, new_rows: list[list[str]], *, carry_his: bool = False) -> str:
+    def append_rows(self, new_rows: list[list[str]], *, carry_his: bool = False,
+                    carry_verdict: bool = False) -> str:
         """Write new rows after the last populated one and read them back.
 
         A row hunter makes reaches the sheet with his two cells blank, and
         anything else is refused before a cell is written. carry_his is for
-        the one caller that is putting HIS row back (cmd_restore), whose two
-        cells are his own words returning with it."""
+        the callers putting HIS row back (cmd_restore, and a row his score
+        brings back from Applied), whose two cells are his own words
+        returning with it. carry_verdict, with carry_his only, lets column A
+        come back as he left it when it read Yes: the row his score sent to
+        Applied and then brought back was his Yes before and is his Yes now,
+        and nothing hunter decides is written there. Any other column A is
+        still refused."""
         if not new_rows:
             return ""
+        if carry_verdict and not carry_his:
+            raise SheetError("carry_verdict is for his own row coming back, with carry_his")
         for n, cells in enumerate(new_rows):
-            fails = validate_row(cells, is_append=True)
+            verdict = str(cells[COLS["Verdict"]]).strip() if len(cells) == N_COLS else ""
+            his_yes = carry_verdict and verdict.lower() in ("yes", "y", "go", "build")
+            fails = validate_row(cells, is_append=not his_yes)
             if not carry_his and len(cells) == N_COLS:
                 fails += [f"{HEADERS[i]} is his and must be blank on a new row"
                           for i in sorted(HIS_IDX) if str(cells[i]).strip()]
@@ -1136,12 +1300,18 @@ class Sheet:
         # writes them to Applied. A reaction starting with a minus sign is a
         # formula under USER_ENTERED and "10/12 call" is a date, so a restore
         # failed its read-back after the write, leaving his row on both tabs
-        # with his words mangled on Pipeline.
-        self._write([(rng, [[("" if i in HIS_IDX else c) for i, c in enumerate(r)]
-                            for r in new_rows])])
-        if carry_his:
-            self._write([(f"{TAB}!{letter(n)}{start}:{letter(n)}{end}",
-                          [[r[COLS[n]]] for r in new_rows]) for n in sorted(HIS_COLS)],
+        # with his words mangled on Pipeline. A date goes RAW too, as every
+        # date hunter writes does: a row coming back from Applied carries its
+        # Materials Built, which under USER_ENTERED landed as a date, read
+        # back as its serial and failed the check below after the write.
+        dated = sorted(i for i in DATE_COLS
+                       if any(str(r[i]).strip() not in ("", "n/a") for r in new_rows))
+        raw_idx = (set(HIS_IDX) if carry_his else set()) | set(dated)
+        self._write([(rng, [[("" if i in HIS_IDX or i in dated else c)
+                             for i, c in enumerate(r)] for r in new_rows])])
+        if raw_idx:
+            self._write([(f"{TAB}!{col_letter(i)}{start}:{col_letter(i)}{end}",
+                          [[r[i]] for r in new_rows]) for i in sorted(raw_idx)],
                         raw=True)
         landed = [pad_row(r) for r in self._values(rng)]
         if len(landed) != len(new_rows):

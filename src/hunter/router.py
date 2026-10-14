@@ -157,7 +157,7 @@ def build_order(d: dict) -> tuple:
 def select_for_build(cfg: Config, sheet=None, headers=None, *,
                      cap: int | None = None, retry_dead: bool = False,
                      triggers: tuple = (YES,), masters=None,
-                     report: dict | None = None) -> list[dict]:
+                     report: dict | None = None, score_wins: bool = False) -> list[dict]:
     """Rows to build packages for.
 
     Authority is the sheet as it reads now, not a DB field. Krish's ruling
@@ -184,6 +184,13 @@ def select_for_build(cfg: Config, sheet=None, headers=None, *,
     again once its score, its link or the masters have changed. `report`,
     when given, is filled with counts only.
 
+    score_wins: canon 9.13 carries his ruling that his score wins over an
+    older Yes (leave.in_canon). A Yes row he has scored 1 to 5, or answered
+    with only a reaction, is then not built (leave.yes_overridden): it is on
+    its way off Pipeline, and the packages button pressed before the hourly
+    pass moved it paid for a build and opened an application his score had
+    already declined. Counted in report["overridden"], never named.
+
     Every row returned carries build_trigger, krish_score, the sheet row it
     was chosen from (sheet_row, sheet_link: build_one builds onto that row
     and no other, because two postings of one title in two countries are
@@ -192,7 +199,7 @@ def select_for_build(cfg: Config, sheet=None, headers=None, *,
     """
     rep = report if report is not None else {}
     rep.update({"candidates": 0, "eligible": 0, "waiting": [],
-                "unpaired": 0, "masters_unread": False})
+                "unpaired": 0, "masters_unread": False, "overridden": 0})
     if sheet is None or headers is None:
         return []
     if cap is None:
@@ -220,6 +227,11 @@ def select_for_build(cfg: Config, sheet=None, headers=None, *,
         dead = r.cell("Package Status").strip() == PKG_DEAD
         if dead and not retry_dead and kind == YES:
             continue
+        if score_wins and kind == YES:
+            from .leave import yes_overridden
+            if yes_overridden(r):
+                rep["overridden"] += 1
+                continue
         candidates.append((r, trig, kind, dead))
     rep["candidates"] = len(candidates)
     if not candidates:

@@ -650,8 +650,11 @@ def test_settle_reads_his_scores_even_when_nothing_is_decided(monkeypatch):
     monkeypatch.setattr(R, "ratings_step",
                         lambda cfg, c, s, summary, apply, roles=None:
                         calls.append(("ratings", apply, roles)) or {})
+    # The one move comes after the record has read his scores (PR4).
+    monkeypatch.setattr(R, "leave_step", lambda cfg, c, s, summary, apply, **kw:
+                        calls.append(("leave", apply)) or {})
     assert R.cmd_settle(apply=True) == 0
-    assert calls == ["settle", ("ratings", True, None)]
+    assert calls == ["settle", ("ratings", True, None), ("leave", True)]
 
 
 def test_process_reads_his_scores_after_the_learning_step(monkeypatch):

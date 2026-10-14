@@ -104,8 +104,9 @@ def line(verdict, company, role, url, k="", m="", **over):
 def test_the_truth_table_of_what_builds(verdict, k, m, want):
     """A score is a whole number from 7 to 10 on a row column A leaves
     undecided, and M not calling it a duplicate. Column A Applied or
-    Declined always wins; a Yes still builds whatever K says (PR4 decides
-    the Yes rows he scored low, with his say)."""
+    Declined always wins; the trigger reads a Yes as a Yes whatever K says
+    (leave.py moves a Yes he scored 1 to 5 off Pipeline, and under canon v11
+    select_for_build(score_wins=True) refuses to build it while it waits)."""
     assert router.build_trigger(srow(verdict, k, m)) == want
 
 
