@@ -81,6 +81,33 @@ _NAME = re.compile(r"\b([A-Z][A-Za-z0-9&/.\-]{1,}(?:\s+[A-Z][A-Za-z0-9&/.\-]+)*)
 _SENTENCE_START = re.compile(r"(?:^|[.!?]['\")\]]?\s+)$")
 
 
+# Arrogance, banned in everything written in his name. His words, 2026-10-14,
+# on what his reasons should do for a package: "more human without sounding
+# arrogant, but sounding confident and like I can deliver ASAP". A note
+# written to oneself can say what a letter must not, and a model handed such
+# a note reaches for its register. So the phrases are named for the model
+# (tailor's [[VOICE_RULES]], the essay prompt) and refused by this gate, from
+# this one list. Generic phrases only, because this file is public: a phrase
+# taken from his own notes goes in his Profile's VOICE AND TONE list, which
+# package_banned joins at runtime, never here. Lowercase substrings, as every
+# banned phrase is matched.
+ARROGANCE_BANNED = (
+    "perfect fit", "no-brainer", "no brainer", "best candidate", "second to none",
+    "world-class", "world class", "unmatched", "unparalleled", "rockstar",
+    "rock star", "look no further", "dream job", "like no one else",
+)
+
+
+def package_banned(profile_banned=()) -> tuple[str, ...]:
+    """Every phrase a package or an essay must not carry: his Profile's own
+    VOICE AND TONE list, the Mindmake naming law, and the arrogance list.
+    The one place they are put together, so the prompt that names them and
+    the gate that refuses them cannot read two different lists."""
+    from ..apply.gtmseed import NAME_VARIANTS_BANNED
+    joined = tuple(profile_banned) + NAME_VARIANTS_BANNED + ARROGANCE_BANNED
+    return tuple(dict.fromkeys(p for p in joined if p))
+
+
 class VoiceGateError(RuntimeError):
     pass
 

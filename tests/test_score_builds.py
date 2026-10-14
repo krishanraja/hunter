@@ -1061,7 +1061,9 @@ def test_an_error_after_the_package_was_built_leaves_it_built(monkeypatch):
     out = run_mod.score_build_step(Cfg({"hunter_never_apply": "[]"}), FakeCanon(), s,
                                    apply=True, cap=3, detail=detail, masters=lambda: "m")
     assert out["failed"] == 1
-    last = rec["patches"][-1][2]
+    # The last word on the package's status, not the last patch: which of his
+    # reasons it carries is written on its own after the built record.
+    last = [v for _, _, v in rec["patches"] if "package_status" in v][-1]
     assert last.get("package_status") == "built" and last["package_trigger"] == "Krish Score 8"
     assert any("left as built" in x for x in detail)
 

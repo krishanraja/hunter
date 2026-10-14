@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from importlib import resources
 
 from ..config import Config
+from . import his_view as his_view_mod
 from . import voicegate
 
 BLOCK_KEYS = [
@@ -191,6 +192,25 @@ HOOK_MIN_CHARS = 110
 # proxy and the master letter can move again.
 HOOK_MAX_CHARS = 190
 
+# Said only inside the section that carries his view, which only a role he
+# has scored or reacted to has: the hook's range further up the prompt reads
+# 150 to 650, wider than the HOOK_MAX_CHARS this module accepts, and his
+# reason is the first thing a model would overrun it with. Correcting that
+# range itself would change the prompt of every package with no view, which
+# this change keeps byte for byte as it was.
+HIS_VIEW_PIECE_NOTE = (
+    f"The hook is short: at most {HOOK_MAX_CHARS} characters, which is checked, so "
+    f"his reason goes into it as one mechanic, not a list. The summary has the "
+    f"room for what he would do first.")
+
+
+# The flag a result carries when the voice gate refused the generated prose
+# twice and the approved blocks stand in for it: an answer about the inputs,
+# unlike a missing key, a spent month or an API error, which say nothing
+# about them. A rebuild held for this one is recorded as tried
+# (run.record_held); the others are tried again next run.
+GATE_FELL_BACK = "fell back to the approved block for the rejected piece"
+
 
 class TailorError(RuntimeError):
     pass
@@ -334,13 +354,20 @@ def validate_jd_mirror(mirror: str, jd_text: str) -> list[str]:
 
 def validate_generated(data: dict, *, evidence: str,
                        banned_phrases: tuple[str, ...],
-                       company: str) -> tuple[list[str], list[str]]:
+                       company: str, his_view=None) -> tuple[list[str], list[str]]:
     """(hard failures that void the whole result, soft failures that only drop
     the generated prose back to the block path).
 
     A gate failure is SOFT on purpose. A model that invents a number must not
     lose Krish the package; it must lose the generated prose and say so, leaving
     the approved block in place.
+
+    evidence is his CV and proof points, never his note: a figure, a name or
+    an offer that only his note carries is refused like any other invention.
+    With his view, a run of his words copied into the prose is refused too
+    (his_view.quotes_note) unless his CV says it as well, and no failure
+    names a word of his note (his_view.redact): these become build flags, and
+    build flags are printed in public run summaries.
     """
     soft: list[str] = []
     allow = frozenset({company} | set(company.split()))
@@ -354,8 +381,12 @@ def validate_generated(data: dict, *, evidence: str,
         verdict = voicegate.check(text, evidence=evidence,
                                   banned_phrases=banned_phrases,
                                   min_chars=lo, max_chars=hi, allow_names=allow)
-        if not verdict.ok:
-            soft.append(f"{name} rejected: " + "; ".join(verdict.failures))
+        failures = his_view_mod.redact(verdict.failures, his_view)
+        if his_view_mod.quotes_note(text, his_view, evidence):
+            failures.append("copies his note word for word; say it in the letter's "
+                            "own words")
+        if failures:
+            soft.append(f"{name} rejected: " + "; ".join(failures))
     return [], soft
 
 
@@ -412,12 +443,18 @@ def _prompt(canon, company: str, title: str, jd_text: str,
             master_competencies: list[str], candidates: list[str],
             letter_blocks: dict, *, highlights: list[str] | None = None,
             evidence_view: str = "", voice_rules: str = "",
-            angle: str = "", keep_verbatim: tuple[str, ...] = ()) -> str:
+            angle: str = "", keep_verbatim: tuple[str, ...] = (),
+            his_view: "his_view_mod.HisView | None" = None) -> str:
+    """The tailor prompt. his_view is what he said about the role (his_view
+    .his_view); with no score and no reaction the section that carries it is
+    cut out whole, and the prompt is the one this function built before his
+    columns existed, byte for byte (tests/fixtures/tailor_prompt_no_view.txt)."""
     template = resources.files("hunter").joinpath("prompts/tailor.md").read_text()
+    template = his_view_mod.place(template, his_view)
     blocks_view = "\n\n".join(
         f"### {k}\n{letter_blocks[k]['text']}" for k in candidates)
     hl = highlights or []
-    return (template
+    prompt = (template
             .replace("[[COMPANY]]", company)
             .replace("[[ROLE]]", title)
             .replace("[[CANDIDATES]]", ", ".join(candidates))
@@ -431,6 +468,8 @@ def _prompt(canon, company: str, title: str, jd_text: str,
             .replace("[[EVIDENCE]]", evidence_view)
             .replace("[[VOICE_RULES]]", voice_rules)
             .replace("[[JD]]", jd_text[:20000]))
+    # Last, so nothing he wrote is ever read as a slot by a replacement above.
+    return his_view_mod.fill(prompt, his_view, piece_note=HIS_VIEW_PIECE_NOTE)
 
 
 def fallback_result(master_competencies: list[str], candidates: list[str],
@@ -450,13 +489,21 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
            highlights: list[str] | None = None, evidence: str = "",
            banned_phrases: tuple[str, ...] = (),
            feedback: str = "",
-           keep_verbatim: tuple[str, ...] = ()) -> TailorResult:
+           keep_verbatim: tuple[str, ...] = (),
+           his_view: "his_view_mod.HisView | None" = None) -> TailorResult:
     """evidence is the haystack voicegate traces every generated number and name
     against: the master's own text plus Krish's recorded proof points. Passing it
     empty disables generation rather than allowing ungated prose, because an
     empty haystack would reject everything anyway and silently.
 
     feedback is Krish's own words from an amend reply, passed through verbatim.
+
+    his_view is his score, his reaction and hunter's case for the role
+    (his_view.his_view). The prompt carries it whole, as the angle to write
+    from. The gate does not: it traces every number and name against
+    `evidence` alone, so a contact, an employer, an offer or a figure that
+    only his note carries never reaches a document in his name, and its
+    failure never quotes him (validate_generated).
     """
     candidates, flags = select_candidates(title, jd_text)
     highlights = highlights or []
@@ -493,7 +540,8 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
                      voice_rules="\n".join(f"- never write {p!r}"
                                            for p in banned_phrases),
                      angle=AI_NATIVE_ANGLE if native else "",
-                     keep_verbatim=keep_verbatim)
+                     keep_verbatim=keep_verbatim,
+                     his_view=his_view)
     if feedback:
         prompt += ("\n\n## Krish's feedback on the previous draft\n\n"
                    "Apply this exactly. It overrides your earlier choices.\n\n"
@@ -554,15 +602,14 @@ def tailor(cfg: Config, canon, *, company: str, title: str, jd_text: str,
             if generate:
                 _, soft = validate_generated(
                     data, evidence=evidence, banned_phrases=banned_phrases,
-                    company=company)
+                    company=company, his_view=his_view)
                 if soft and attempt == 0:
                     # One regeneration, addressing every gate failure at once.
                     last_fails = soft
                     continue
                 if soft:
                     flags.extend(soft)
-                    flags.append("fell back to the approved block for the "
-                                 "rejected piece")
+                    flags.append(GATE_FELL_BACK)
                 else:
                     summary = (data.get("summary") or "").strip()
                     hook = (data.get("hook") or "").strip()

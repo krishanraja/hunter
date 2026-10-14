@@ -39,6 +39,46 @@ If the job description does not give you enough to make a real observation, writ
 a shorter hook grounded only in what it does say. A vague hook is worse than a
 short one.
 
+[[HIS_VIEW_START]]
+## Why he wants this role, in his own words
+
+Krish has read this posting and said why it fits him. That is the best evidence
+you have of what he wants and of what he believes he brings to [[COMPANY]], so it
+is the spine of what you write: the angle of the summary, the mechanic in the
+hook, the substance of an answer. Build from what he says he has done that maps
+onto this seat, and from why he wants it.
+
+[[HIS_VIEW_FACTS]]
+
+How to use it:
+
+- Write like a person, not a profile. First person where the piece is first
+  person, as the hook and an answer are; the summary keeps the CV's register.
+- Be confident and concrete about what he would do first and how fast he can
+  deliver: the first moves in the first weeks, the specific mechanic he would put
+  to work, and what it would change for [[COMPANY]]. Say how fast in words ("in
+  the first weeks", "within the first month"), not a count of days, unless that
+  count is in the evidence.
+- Never arrogant. No superlatives about himself, no claims about how others
+  would judge him, nothing like "a perfect fit", "a no-brainer" or
+  "second to none", and no comparison that runs anyone down. Confidence here
+  is specifics and pace, not volume.
+- Never say or imply he is looking for work or free to start; he is choosing
+  this seat while running an active portfolio.
+- Never quote or paraphrase his note as a note, and never mention his score. A
+  reader must not be able to tell that a note exists.
+- Never carry from his note anything about where he wants to live or work, pay,
+  other offers, people he knows, or the pedigree of anyone at [[COMPANY]]. Where
+  an application question itself asks about location or pay, answer only from
+  the evidence.
+- Every number and every name you write still comes from the evidence below.
+  If his note gives a figure, a product or a name the evidence does not, leave it
+  out. Never name a person from his note at all.
+- Honest beats impressive. Where his note claims something the evidence does not
+  show, lean on what the evidence shows.
+- US spelling, as in his CV and letter.
+
+[[HIS_VIEW_END]]
 ## Hard rules on both pieces
 
 These are checked mechanically after you answer. A failure means your prose is
