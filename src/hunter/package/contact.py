@@ -44,6 +44,12 @@ _SAYS_WHERE = (
     re.compile(r"\bremote\s*\(([^)\n]{2,40})\)", re.I),
 )
 
+# The words hunter asks him with, wherever a role waits on his pick: the
+# Prepare note, and the reason on a build held for it. Control Center shows
+# its US and UK header buttons on a role whose reason carries them
+# (control-center src/lib/hunterActions.ts HEADER_ASK), so they must not drift.
+HEADER_ASK = "which header, US or UK?"
+
 HOLD_BOTH = "the role names places in both the US and the UK or Europe"
 HOLD_ELSEWHERE = "the role is outside the US, the UK and Europe"
 HOLD_UNKNOWN = "the role does not say where it is"

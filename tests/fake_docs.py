@@ -3,8 +3,15 @@ plus the Drive calls build.py needs. Maintains Docs index arithmetic over a
 captured documents.get fixture so the bold-run retention tests run offline.
 
 Scope is deliberately narrow: replaceAllText, deleteContentRange, insertText,
-updateTextStyle (backgroundColor only), sequential batch semantics. Anything
-else raises. The letter master is ASCII plus BMP punctuation, so Python string
+updateTextStyle, updateParagraphStyle and updateDocumentStyle (each with a
+field mask, "*" included), sequential batch semantics. Anything else raises.
+
+Since 2026-10-15 every character carries its whole textStyle, every
+paragraph its whole paragraphStyle and bullet, and an inline image is one
+index, as in Docs: his house style (package/house.py) is read back from
+fonts, sizes, colours, links and his banner, so an emulator that kept only
+bold would pass a document that dropped all of them. It refuses what the API
+refuses: an empty range, an unknown field in a mask, an output-only key. The letter master is ASCII plus BMP punctuation, so Python string
 positions equal Docs UTF-16 indexes for this corpus; a guard rejects
 astral-plane characters rather than miscounting them.
 """
@@ -16,25 +23,86 @@ import json
 from hunter.docbuild import DocBuild
 
 
-class Char:
-    __slots__ = ("ch", "bold", "bg", "meta")
+# One index in Docs, and never matched as text.
+OBJECT = "\ufffc"
+TEXT_FIELDS = {"bold", "italic", "underline", "strikethrough", "smallCaps",
+               "backgroundColor", "foregroundColor", "fontSize", "weightedFontFamily",
+               "baselineOffset", "link"}
+PARAGRAPH_FIELDS = {"namedStyleType", "alignment", "lineSpacing", "direction",
+                    "spacingMode", "spaceAbove", "spaceBelow", "indentFirstLine",
+                    "indentStart", "indentEnd", "keepLinesTogether", "keepWithNext",
+                    "avoidWidowAndOrphan", "shading", "borderTop", "borderBottom",
+                    "borderLeft", "borderRight", "borderBetween"}
+# Set by Docs, refused in a request.
+OUTPUT_ONLY = {"headingId"}
+DOCUMENT_FIELDS = {"marginTop", "marginBottom", "marginLeft", "marginRight",
+                   "pageSize", "background", "useFirstPageHeaderFooter"}
+# What Docs gives a link when the request sets no colour or underline of its own.
+LINK_BLUE = {"color": {"rgbColor": {"red": 0.06666667, "green": 0.33333334,
+                                    "blue": 0.8}}}
 
-    def __init__(self, ch, bold=False, bg=None, meta=None):
+
+def _mask(fields: str, known: set) -> set:
+    names = {f.strip() for f in (fields or "").split(",") if f.strip()}
+    if not names:
+        raise ValueError("an update needs a field mask")
+    if names == {"*"}:
+        return set(known)
+    if names & OUTPUT_ONLY:
+        raise ValueError(f"output-only field in the mask: {sorted(names & OUTPUT_ONLY)}")
+    unknown = names - known
+    if unknown:
+        raise NotImplementedError(f"emulator does not know the field(s) {sorted(unknown)}")
+    return names
+
+
+class Char:
+    __slots__ = ("ch", "style", "meta", "obj")
+
+    def __init__(self, ch, bold=False, bg=None, meta=None, style=None, obj=None):
         if ord(ch) > 0xFFFF:
             raise ValueError("astral-plane character; emulator index math would drift")
         self.ch = ch
-        self.bold = bold
-        self.bg = bg
+        self.style = copy.deepcopy(style) if style is not None else {}
+        if bold:
+            self.style["bold"] = True
+        if bg:
+            self.style["backgroundColor"] = copy.deepcopy(bg)
         self.meta = meta  # paragraph properties, only on '\n'
+        self.obj = obj    # inline object id, only on OBJECT
+
+    @property
+    def bold(self):
+        return bool(self.style.get("bold"))
+
+    @bold.setter
+    def bold(self, value):
+        if value:
+            self.style["bold"] = True
+        else:
+            self.style.pop("bold", None)
+
+    @property
+    def bg(self):
+        return self.style.get("backgroundColor")
+
+    @bg.setter
+    def bg(self, value):
+        if value:
+            self.style["backgroundColor"] = copy.deepcopy(value)
+        else:
+            self.style.pop("backgroundColor", None)
 
     def style_key(self):
-        return (self.bold, json.dumps(self.bg, sort_keys=True) if self.bg else None)
+        return (json.dumps(self.style, sort_keys=True), self.obj)
 
 
 class FakeDoc:
-    def __init__(self, chars, base):
+    def __init__(self, chars, base, extra=None):
         self.chars = chars
         self.base = base
+        # namedStyles, inlineObjects, documentStyle: carried through to_json.
+        self.extra = copy.deepcopy(extra) if extra else {}
 
     @classmethod
     def from_fixture(cls, doc_json):
@@ -45,22 +113,27 @@ class FakeDoc:
             if not p:
                 continue
             if base is None:
-                base = el["startIndex"]
-            meta = {
-                "bullet": copy.deepcopy(p.get("bullet")),
-                "style": p.get("paragraphStyle", {}).get("namedStyleType", "NORMAL_TEXT"),
-            }
+                base = el.get("startIndex", 1)
+            pstyle = copy.deepcopy(p.get("paragraphStyle") or {})
+            pstyle.setdefault("namedStyleType", "NORMAL_TEXT")
+            meta = {"bullet": copy.deepcopy(p.get("bullet")), "paragraphStyle": pstyle}
             for e in p.get("elements", []):
+                if "inlineObjectElement" in e:
+                    ioe = e["inlineObjectElement"]
+                    chars.append(Char(OBJECT, style=ioe.get("textStyle") or {},
+                                      obj=ioe.get("inlineObjectId")))
+                    continue
                 tr = e.get("textRun")
                 if not tr:
                     continue
                 ts = tr.get("textStyle", {})
                 for ch in tr["content"]:
-                    chars.append(Char(ch, bold=bool(ts.get("bold")),
-                                      bg=copy.deepcopy(ts.get("backgroundColor"))))
+                    chars.append(Char(ch, style=ts))
             if chars and chars[-1].ch == "\n":
                 chars[-1].meta = meta
-        return cls(chars, base if base is not None else 1)
+        extra = {k: doc_json[k] for k in ("namedStyles", "inlineObjects", "documentStyle")
+                 if k in doc_json}
+        return cls(chars, base if base is not None else 1, extra)
 
     # ---------- rendering back to Docs API shape ----------
 
@@ -80,22 +153,25 @@ class FakeDoc:
             i += 1
         if para_start < len(self.chars):  # trailing paragraph without newline
             content.append(self._render_para(para_start, len(self.chars) - 1))
-        return {"body": {"content": content}}
+        out = {"body": {"content": content}}
+        out.update(copy.deepcopy(self.extra))
+        return out
 
     def _render_para(self, start, last):
-        meta = self.chars[last].meta or {"bullet": None, "style": "NORMAL_TEXT"}
+        meta = self.chars[last].meta or {"bullet": None,
+                                         "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"}}
         elements = []
         run_start = start
         i = start
         while i <= last:
-            if (i > run_start
-                    and self.chars[i].style_key() != self.chars[run_start].style_key()):
+            if i > run_start and (
+                    self.chars[i].obj or self.chars[run_start].obj
+                    or self.chars[i].style_key() != self.chars[run_start].style_key()):
                 elements.append(self._render_run(run_start, i))
                 run_start = i
             i += 1
         elements.append(self._render_run(run_start, last + 1))
-        para = {"elements": elements,
-                "paragraphStyle": {"namedStyleType": meta.get("style", "NORMAL_TEXT")}}
+        para = {"elements": elements, "paragraphStyle": copy.deepcopy(meta["paragraphStyle"])}
         if meta.get("bullet"):
             para["bullet"] = meta["bullet"]
         return {"startIndex": self.base + start, "endIndex": self.base + last + 1,
@@ -103,14 +179,13 @@ class FakeDoc:
 
     def _render_run(self, start, end):
         c = self.chars[start]
-        style = {}
-        if c.bold:
-            style["bold"] = True
-        if c.bg:
-            style["backgroundColor"] = c.bg
+        if c.obj:
+            return {"startIndex": self.base + start, "endIndex": self.base + start + 1,
+                    "inlineObjectElement": {"inlineObjectId": c.obj,
+                                            "textStyle": copy.deepcopy(c.style)}}
         return {"startIndex": self.base + start, "endIndex": self.base + end,
                 "textRun": {"content": "".join(x.ch for x in self.chars[start:end]),
-                            "textStyle": style}}
+                            "textStyle": copy.deepcopy(c.style)}}
 
     # ---------- the four operations ----------
 
@@ -124,6 +199,30 @@ class FakeDoc:
             self._insert(req["insertText"]["location"]["index"], req["insertText"]["text"])
         elif "updateTextStyle" in req:
             self._update_style(req["updateTextStyle"])
+        elif "updateParagraphStyle" in req:
+            self._update_paragraph(req["updateParagraphStyle"])
+        elif "insertInlineImage" in req:
+            body = req["insertInlineImage"]
+            if not str(body.get("uri", "")).startswith("https://"):
+                raise ValueError("insertInlineImage needs an https uri")
+            pos = body["location"]["index"] - self.base
+            if not (0 <= pos <= len(self.chars)):
+                raise IndexError(f"insertInlineImage out of bounds: {body['location']}")
+            objects = self.extra.setdefault("inlineObjects", {})
+            oid = f"kix.inserted{len(objects) + 1}"
+            objects[oid] = {"objectId": oid, "inlineObjectProperties": {"embeddedObject": {
+                "size": copy.deepcopy(body.get("objectSize") or {}),
+                "imageProperties": {"contentUri": body["uri"]}}}}
+            self.chars[pos:pos] = [Char(OBJECT, obj=oid)]
+        elif "updateDocumentStyle" in req:
+            body = req["updateDocumentStyle"]
+            names = _mask(body.get("fields"), DOCUMENT_FIELDS)
+            style = self.extra.setdefault("documentStyle", {})
+            for f in names:
+                if f in body.get("documentStyle", {}):
+                    style[f] = copy.deepcopy(body["documentStyle"][f])
+                else:
+                    style.pop(f, None)
         else:
             raise NotImplementedError(f"emulator does not support: {list(req)}")
 
@@ -138,13 +237,22 @@ class FakeDoc:
             if idx < 0:
                 break
             style_src = self.chars[idx]
-            new = [Char(ch, bold=style_src.bold, bg=copy.deepcopy(style_src.bg))
-                   for ch in replacement]
+            new = [Char(ch, style=style_src.style) for ch in replacement]
             self.chars[idx:idx + len(needle)] = new
             pos = idx + len(replacement)
 
+    def _range(self, r):
+        s, e = r["startIndex"] - self.base, r["endIndex"] - self.base
+        if s >= e:
+            raise ValueError(f"the range should not be empty: {r}")
+        if not (0 <= s < e <= len(self.chars)):
+            raise IndexError(f"range out of bounds: {r}")
+        return s, e
+
     def _delete(self, start, end):
         s, e = start - self.base, end - self.base
+        if s == e:
+            raise ValueError("the range should not be empty")
         if not (0 <= s < e <= len(self.chars)):
             raise IndexError(f"deleteContentRange out of bounds: {start}..{end}")
         del self.chars[s:e]
@@ -155,9 +263,16 @@ class FakeDoc:
             raise IndexError(f"insertText out of bounds: {index}")
         ref = self.chars[pos] if pos < len(self.chars) else (
             self.chars[pos - 1] if pos else None)
-        bold = ref.bold if (ref and ref.ch != "\n") else False
-        bg = copy.deepcopy(ref.bg) if (ref and ref.ch != "\n") else None
-        self.chars[pos:pos] = [Char(ch, bold=bold, bg=bg) for ch in text]
+        style = ref.style if (ref and ref.ch != "\n" and not ref.obj) else (
+            {k: v for k, v in ref.style.items() if k not in ("bold", "backgroundColor")}
+            if ref else {})
+        # A newline splits its paragraph, and both halves keep its style and
+        # bullet: the paragraph mark is the next newline at or after pos.
+        end = next((c for c in self.chars[pos:] if c.ch == "\n"), None)
+        para_meta = copy.deepcopy(end.meta) if end is not None and end.meta else None
+        self.chars[pos:pos] = [Char(ch, style=style,
+                                    meta=copy.deepcopy(para_meta) if ch == "\n" else None)
+                               for ch in text]
 
     def _update_style(self, body):
         """backgroundColor for clear_highlighting, bold for the bold_substrings
@@ -167,20 +282,43 @@ class FakeDoc:
         CV fixture happens to have no money phrases, so `wanted` was always empty
         and the emulator was never asked. The hook swap in build_letter asks.
         """
-        fields = body.get("fields", "")
+        names = _mask(body.get("fields", ""), TEXT_FIELDS)
         style = body.get("textStyle", {})
-        known = {"backgroundColor", "bold"}
-        unknown = {f.strip() for f in fields.split(",") if f.strip()} - known
-        if unknown:
-            raise NotImplementedError(
-                f"emulator supports {sorted(known)} updates, not {sorted(unknown)}")
-        r = body["range"]
-        s, e = r["startIndex"] - self.base, r["endIndex"] - self.base
+        s, e = self._range(body["range"])
+        default_link = ("link" in names and style.get("link")
+                        and not ({"foregroundColor", "underline"} & names))
         for c in self.chars[s:e]:
-            if "backgroundColor" in fields:
-                c.bg = copy.deepcopy(style.get("backgroundColor"))
-            if "bold" in fields:
-                c.bold = bool(style.get("bold"))
+            for f in names:
+                if f in style and style[f] not in (None, False):
+                    c.style[f] = copy.deepcopy(style[f])
+                else:
+                    c.style.pop(f, None)
+            if default_link:
+                c.style["foregroundColor"] = copy.deepcopy(LINK_BLUE)
+                c.style["underline"] = True
+
+    def _update_paragraph(self, body):
+        names = _mask(body.get("fields", ""), PARAGRAPH_FIELDS)
+        style = body.get("paragraphStyle", {})
+        if set(style) & OUTPUT_ONLY:
+            raise ValueError(f"output-only key in the style: {sorted(set(style) & OUTPUT_ONLY)}")
+        s, e = self._range(body["range"])
+        # Every paragraph the range touches: its mark is the next newline at
+        # or after each position.
+        marks = set()
+        for i in range(s, e):
+            j = next((k for k in range(i, len(self.chars)) if self.chars[k].ch == "\n"), None)
+            if j is not None:
+                marks.add(j)
+        for j in marks:
+            c = self.chars[j]
+            c.meta = c.meta or {"bullet": None, "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"}}
+            ps = c.meta["paragraphStyle"]
+            for f in names:
+                if f in style:
+                    ps[f] = copy.deepcopy(style[f])
+                else:
+                    ps.pop(f, None)
 
 
 class FakeDocBuild(DocBuild):
@@ -210,7 +348,7 @@ class FakeDocBuild(DocBuild):
         self._copies += 1
         new_id = f"copy_{self._copies}_{title[:24]}"
         src = self.docs[master_id]
-        self.docs[new_id] = FakeDoc(copy.deepcopy(src.chars), src.base)
+        self.docs[new_id] = FakeDoc(copy.deepcopy(src.chars), src.base, src.extra)
         return new_id
 
     def find_by_name(self, name, parent_id):

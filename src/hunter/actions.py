@@ -170,12 +170,13 @@ def prepare_note(code: int, tally: dict, failures: list[str]) -> tuple[bool, str
     field value. A run that counted nothing claims nothing."""
     from . import run
     from .package import style
+    from .package.contact import HEADER_ASK
     said = [(lambda: tally.get(style.OLD_STYLE), False,
              "built before your house style, so nothing was sent; it is rebuilt in "
              "your style before any application goes"),
             (lambda: tally.get(run.NO_BASE), False,
-             "which header, US or UK? The form asks for your phone or address, and "
-             "this role has no header yet; nothing sent"),
+             f"{HEADER_ASK} The form asks for your phone or address, and this role "
+             f"has no header yet; nothing sent. Press US header or UK header"),
             (lambda: tally.get(run.SENT_UNRECORDED), False,
              "the Apply email went, but its approval was not recorded, so its open link "
              "will not work; press Prepare again"),
