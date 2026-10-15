@@ -27,6 +27,11 @@ DRIVE = "https://www.googleapis.com/drive/v3/files"
 DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 
 
+# Paragraph properties a reorder puts back (docbuild.reorder_paragraphs).
+KEPT_PARAGRAPH = ("indentStart", "indentFirstLine", "indentEnd", "spaceAbove",
+                  "spaceBelow", "lineSpacing", "alignment")
+
+
 def _coalesce(ranges):
     """Merge touching or overlapping (start, end) pairs, so a block of bullets is
     created as one list rather than several adjacent ones."""
@@ -96,6 +101,7 @@ class DocBuild:
                         "text": tr["content"],
                         "bold": bool(tr.get("textStyle", {}).get("bold")),
                         "bg": tr.get("textStyle", {}).get("backgroundColor"),
+                        "style": dict(tr.get("textStyle") or {}),
                     })
             out.append({
                 "start": el["startIndex"], "end": el["endIndex"],
@@ -104,6 +110,7 @@ class DocBuild:
                 "style": p.get("paragraphStyle", {}).get("namedStyleType", "NORMAL_TEXT"),
                 "runs": runs,
                 "images": images,
+                "pstyle": dict(p.get("paragraphStyle") or {}),
             })
         return out
 
@@ -278,7 +285,11 @@ class DocBuild:
             raise RuntimeError(f"paragraphs are not contiguous: {positions}")
 
         # Capture each paragraph's text and its bold ranges as offsets INTO that
-        # paragraph, so they survive being moved.
+        # paragraph, so they survive being moved. Since 2026-10-15 every run's
+        # whole style and the paragraph's indents and spacing too: his CV is
+        # Arial at set sizes, and insertText takes the style of whatever sits
+        # beside it, so a reorder that restored only bold could hand a
+        # highlight another font or size and no check would see it.
         captured = []
         for p in found:
             text = p["text"]
@@ -293,7 +304,10 @@ class DocBuild:
                     rel_start = r["start"] - p["start"]
                     bolds.append((rel_start, rel_start + len(r["text"]),
                                   r["text"]))
-            captured.append({"text": text, "bolds": bolds,
+            runs = [(r["start"] - p["start"], r["end"] - p["start"], r.get("style") or {})
+                    for r in p["runs"] if r["text"].strip()]
+            pstyle = {k: v for k, v in (p.get("pstyle") or {}).items() if k in KEPT_PARAGRAPH}
+            captured.append({"text": text, "bolds": bolds, "runs": runs, "pstyle": pstyle,
                              "bullet": bool(p["bullet"])})
         expected_bold = sorted(b[2].strip() for c in captured for b in c["bolds"])
 
@@ -316,6 +330,14 @@ class DocBuild:
             cap = captured[i]
             body = cap["text"]
             length = len(body if body.endswith("\n") else body + "\n")
+            # Each run's own style, whole: a "*" mask sets every field to
+            # the captured value and clears what the run did not set, so the
+            # moved text is exactly what it was, bold included.
+            for rel_start, rel_end, style in cap["runs"]:
+                reqs.append({"updateTextStyle": {
+                    "range": {"startIndex": cursor + rel_start,
+                              "endIndex": cursor + rel_end},
+                    "textStyle": style, "fields": "*"}})
             for rel_start, rel_end, _ in cap["bolds"]:
                 reqs.append({"updateTextStyle": {
                     "range": {"startIndex": cursor + rel_start,
@@ -332,6 +354,18 @@ class DocBuild:
             reqs.append({"createParagraphBullets": {
                 "range": {"startIndex": rng_start, "endIndex": rng_end},
                 "bulletPreset": "BULLET_DISC_CIRCLE_SQUARE"}})
+        # The indents and spacing each paragraph had, after its bullet: a new
+        # bullet brings the list's own indents.
+        cursor = start
+        for i in order:
+            cap = captured[i]
+            length = len(cap["text"] if cap["text"].endswith("\n") else cap["text"] + "\n")
+            if cap["pstyle"]:
+                reqs.append({"updateParagraphStyle": {
+                    "range": {"startIndex": cursor, "endIndex": cursor + length},
+                    "paragraphStyle": cap["pstyle"],
+                    "fields": ",".join(sorted(cap["pstyle"]))}})
+            cursor += length
         if reqs:
             self.batch(doc_id, reqs)
 
@@ -361,6 +395,27 @@ class DocBuild:
             raise RuntimeError(
                 "reorder lost or moved bold runs; expected "
                 f"{expected_bold!r}, got {got_bold!r}")
+        # And every run's font, size and colour, read back.
+        def sig(style: dict) -> tuple:
+            font = ((style.get("weightedFontFamily") or {}).get("fontFamily")
+                    or style.get("fontFamily"))
+            size = (style.get("fontSize") or {}).get("magnitude")
+            colour = json.dumps(style.get("foregroundColor"), sort_keys=True)
+            return (font, size, colour)
+        # Counted per visible character: Docs may merge or split runs of one
+        # style, so run boundaries are not compared, only what each character
+        # looks like.
+        from collections import Counter
+        want_styles = Counter()
+        for c in captured:
+            for a, b, st in c["runs"]:
+                want_styles[sig(st)] += len(c["text"][a:b].strip())
+        got_styles = Counter()
+        for p in moved:
+            for r in p["runs"]:
+                got_styles[sig(r.get("style") or {})] += len(r["text"].strip())
+        if +want_styles != +got_styles:
+            raise RuntimeError("reorder changed the font, size or colour of a moved run")
         return len(order)
 
     def delete_paragraph(self, doc_id, anchor):

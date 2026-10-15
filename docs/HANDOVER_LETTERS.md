@@ -20,7 +20,7 @@ EOF
 The review findings are under the key `hunter_handover_letters_review` (plain text).
 Never copy any of it into a repo file, a test, a fixture or a log line.
 
-## Where it stands (updated 2026-10-15, after L0, L1 and L2)
+## Where it stands (updated 2026-10-15, after L0 to L3)
 
 - **The plan is approved by him.** Read `/tmp/plan.md` from the snippet above before anything else.
 - **L1 is live on main** ([krishanraja/hunter#25](https://github.com/krishanraja/hunter/pull/25), merge e82f8f5), on his yes.
@@ -50,6 +50,28 @@ Never copy any of it into a repo file, a test, a fixture or a log line.
   - Prepare's note for a role with no base: "which header, US or UK?". The `header` button kind is handled in `actions.py`. The Control Center buttons are NOT built yet.
   - Measured on the 80 roles he built or wants, 15 October: 71 US, 6 UK, 3 hold (no place given). The posting phrases placed one more role; one held role would have read as US from the posting's prose.
   - L3's composer must record `header_base` at build, from `base_for`, and hold when it is empty.
+- **L3 is live on main** ([krishanraja/hunter#27](https://github.com/krishanraja/hunter/pull/27) and #28, and the reorder fix after them), on his yes.
+  - `package/house.py`: his typography as data, `snapshot()` with effective styles (run, then named style, then normal text, then Docs' built-in Arial 11pt; his letter sets no font anywhere), and `check()` for gates A6, A7, A9 to A12.
+  - `tests/fake_docs.py` carries whole styles, images and masks, and refuses what the API refuses.
+  - `reorder_paragraphs` restores whole run styles and indents, read back.
+  - **The masters were made in his Drive on his yes, 15 October**:
+    - **Letter master v5** `1PPtRc1YN9z9kIQQIcMSvUWrDnw5OjO5VSuy4mdU1H6E`:
+      - a copy of his Sonos letter, with 14 slots;
+      - margins 36pt top and bottom, 38pt sides;
+      - `letter-master --check` read back 0 problems;
+      - the rendered PDF is one page.
+    - **CV master (house style)** `1TC_X8eWe5jS423LHPpG5-iyhZAmgzdva2lY2Df6CLb8`:
+      - 100 runs restyled to Arial and 5 headings kept;
+      - his letter's header, link row and banner, with no email;
+      - two pages at the original margins, banner kept.
+  - **Nothing switches to them yet.** `config.LETTER_MASTER_ID`, `config.CV_MASTER_ID` and canon 9.9 change together, on his yes, when the composer (L5) can fill them. The old builder cannot.
+  - Both masters carry `{{PLACE}}  ·  {{PHONE}}`. The letter also carries `{{DATE}}`, `{{HIRING_LEAD}}` (twice), `{{COMPANY}}`, `Re: {{ROLE}}`, `{{HOOK}}`, `{{IDENTITY}}`, `{{BULLET_1}}` to `{{BULLET_4}}`, `{{WHY_NOW}}` and `{{CLOSE}}`. The composer bolds bullet labels, figures and the inline role and company, as his letter does.
+- **Header buttons are live** in Control Center ([krishanraja/control-center#459](https://github.com/krishanraja/control-center/pull/459), deployed). They show on a role whose reason carries `contact.HEADER_ASK`.
+- **His UK postcode is recorded** in `hunter_contact_bases` (KT6 7NW), read back.
+- **Two separate sessions are queued as task cards:**
+  - make Control Center private safely;
+  - remove his personal Gmail from hunter's git history. This session's proxy refused the force-push; the rewrite itself was verified (Gmail gone from all 258 commits, main's files byte-identical).
+  - He chose to keep his phone numbers, postcodes and equal-opportunity answers in history.
 - **For L5 and L6:**
   - The new composer must write `package_style = style.HOUSE_STYLE` in build_one's `built` patch, and set `COMPOSER_LIVE = True`.
   - The style rebuild (`rebuild-packages --reason style`) must choose every unstamped built package he still wants. Today `rebuild_targets` requires his score or reaction, and skips packages that "carry his view".

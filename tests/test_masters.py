@@ -243,3 +243,33 @@ def test_check_reads_a_made_master_back_and_makes_nothing(monkeypatch, capsys):
     assert run_mod.main(["letter-master", "--check", out["made"]]) == 0
     assert "checked, 0 problem(s)" in capsys.readouterr().out
     assert set(db.docs) == before
+
+
+
+def test_reordering_cv_highlights_keeps_every_font_size_and_indent():
+    """The CV's highlights are reordered per role (canon 9.12). insertText
+    takes the style of what sits beside it, here a heading, so a reorder that
+    restored only bold would hand them the heading's font and size."""
+    from hunter.docbuild import DocBuild
+    db, out = cv_made()
+    doc_id = out["made"]
+    paras = db.paragraphs(db.get(doc_id))
+    for p in paras:
+        if p["bullet"]:
+            el = p
+            db.batch(doc_id, [{"updateParagraphStyle": {
+                "range": {"startIndex": p["start"], "endIndex": p["end"]},
+                "paragraphStyle": {"indentStart": {"magnitude": 18, "unit": "PT"},
+                                   "indentFirstLine": {"magnitude": 4, "unit": "PT"}},
+                "fields": "indentStart,indentFirstLine"}}])
+    before = house.snapshot(db.get(doc_id))
+    sig = lambda ps: sorted((house.norm(p.text), tuple((r.font, r.size, r.bold) for r in p.runs
+                                                       if r.text.strip())) for p in ps if p.bullet)
+    db.reorder_paragraphs(doc_id, ["Built an invented region", "Grew an invented line"], [1, 0])
+    after = house.snapshot(db.get(doc_id))
+    assert sig(after) == sig(before)
+    texts = [house.norm(p.text) for p in after if p.bullet]
+    assert texts[0].startswith("Grew") and texts[1].startswith("Built")
+    raw = [el["paragraph"]["paragraphStyle"] for el in db.get(doc_id)["body"]["content"]
+           if "paragraph" in el and "bullet" in el["paragraph"]]
+    assert {(ps["indentStart"]["magnitude"], ps["indentFirstLine"]["magnitude"]) for ps in raw} == {(18, 4)}
