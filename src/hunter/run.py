@@ -9280,7 +9280,7 @@ def cmd_simulate(send: bool = False) -> int:
     return 0 if result.ok else 1
 
 
-def cmd_letter_master(source: str, apply: bool = False) -> int:
+def cmd_letter_master(source: str, apply: bool = False, check: bool = False) -> int:
     """Letter master v5 from the letter he edited (package/masters.py). Dry
     run unless --apply: reads his letter and plans the slots. With --apply it
     copies the letter into the letters folder, brings the margins in until
@@ -9289,9 +9289,16 @@ def cmd_letter_master(source: str, apply: bool = False) -> int:
     is his. Nothing switches to it here; config and canon 9.9 change together,
     on his yes, when the composer that fills it lands."""
     from .apply.merge import page_count
-    from .package import masters
+    from .package import house, masters
     cfg = load()
     db = DocBuild(GoogleOAuth(cfg).access_token)
+    if check:
+        # Read only: a master made before, read back again.
+        problems = masters.template_problems(house.snapshot(db.get(source)))
+        print(f"letter-master: checked, {len(problems)} problem(s)")
+        for line in problems:
+            print(f"letter-master: PROBLEM {line}")
+        return 1 if problems else 0
     try:
         out = masters.build_v5(db, source, folder_id=config_mod.LETTER_FOLDER_ID,
                                page_count=page_count, apply=apply)
@@ -9356,8 +9363,14 @@ def main(argv: list[str]) -> int:
     if cmd == "letter-master":
         i = argv.index("--from") if "--from" in argv else -1
         src = argv[i + 1] if 0 <= i < len(argv) - 1 else ""
+        if "--check" in argv:
+            j = argv.index("--check")
+            src = argv[j + 1] if j < len(argv) - 1 else ""
+            if src:
+                return cmd_letter_master(src, check=True)
         if not src:
-            print("usage: python -m hunter.run letter-master --from <doc_id> [--apply]")
+            print("usage: python -m hunter.run letter-master --from <doc_id> [--apply] "
+                  "| --check <doc_id>")
             return 2
         return cmd_letter_master(src, apply="--apply" in argv)
     if cmd == "run":
