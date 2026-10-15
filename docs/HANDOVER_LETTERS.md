@@ -31,6 +31,12 @@ Never copy any of it into a repo file, a test, a fixture or a log line.
   - `config.HOUSE_LETTER_MASTER_ID` and `HOUSE_CV_MASTER_ID` hold the new masters; `config.LETTER_MODEL_ID` is his edited letter, the writer's model.
 - **The scratch preview** (his yes): Sonos (US, his line), River AI (US) and Reddit (London). Letters written in the session, checked with the writer's own check, written to `hunter_drafts` (ids 43 to 45, drafted_by session), built by `build-preview --apply --preview-folder` into "hunter preview" in his Drive. The first live run found a real bug (`load_bases` returns a pair); fixed with a test that would have caught it.
 - **L6 is on the branch:** `docedits.py` (hourly `doc-edits --apply` before the replies; words and formatting; an edit after the Apply email cancels it so Prepare sends his version), his newest edits reach the writer as examples, the batch record's edit numbers, and `rebuild-packages --reason style`.
+- **Written for the role, checked (his words on 15 October: "not much of this is actually written personally for the role?" and "are you sure its ok that the CV's professional summary has close to zero personalization?"):**
+  - A16 refuses a letter that copies an 8-word run of the model letter, a hook or why-now without the company, an identity and close with nothing of the company or the posting, or fewer than 2 bullets tied to the role.
+  - The CV summary is required, written for the role, may not copy a 10-word run of his own summary, and names the company or 2 posting terms. Its figures and his own bold phrases are bolded, a money range whole.
+  - His CV highlights come in the role's order (canon 9.12): the writer is shown them numbered and must order every one once; `build_cv` reorders them with `reorder_paragraphs`, which reads his bold back and keeps his order if anything moved.
+  - Sentences he writes into a letter in the first person become HIS OWN WORDS for the writer and count as evidence; his 9.14 lines never do.
+  - The brief is `letter-2026-10-15d`, so every earlier letter is asked again.
 - **Go-live, in order, each on his yes:**
   1. his verdict on the preview;
   2. switch `config.LETTER_MASTER_ID` and `CV_MASTER_ID` to the house masters and canon 9.9 together (just after :13);

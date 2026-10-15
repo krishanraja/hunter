@@ -458,3 +458,58 @@ def test_the_built_cv_carries_the_role_summary_with_its_figures_bold():
     bold = [r.text for r in para.runs if r.bold]
     assert bold == ["$2M to $9M"]
     assert all((r.font, r.size) == ("Arial", 9.0) for r in para.runs if r.text.strip())
+
+
+def test_a_money_range_is_bolded_whole():
+    t = "I took the region from $0 to $12M ARR and closed deals up to $600K, 30% from partners."
+    assert compose.summary_bold(t, []) == ["$0 to $12M ARR", "$600K", "30%"]
+
+
+# ---------- his CV highlights, in the role's order (canon 9.12) ----------
+
+def test_a_letter_must_order_every_highlight_once_when_his_cv_has_them():
+    def shape(a):
+        return [f for f in probs(a, highlights=3) if "highlight" in f]
+    assert shape(answer()) == ["shape: no order for his CV highlights; put them in this role's order"]
+    bad = "shape: the CV highlight order must use each of 0 to 2 once"
+    assert shape(answer(cv_highlight_order=[0, 0, 1])) == [bad]
+    assert shape(answer(cv_highlight_order=[0, 1])) == [bad]
+    assert shape(answer(cv_highlight_order=["2", "0", "1"])) == [bad]
+    assert shape(answer(cv_highlight_order=[2, 0, 1])) == []
+    assert [f for f in probs(answer()) if "highlight" in f] == [], "no highlights asked, none owed"
+
+
+def test_the_writer_sees_his_highlights_numbered_in_his_order():
+    db, m = cv_master()
+    got = compose.cv_highlights(house.snapshot(db.get(m)))
+    assert got == ["Built an invented region from $0 to $5M", "Grew an invented line $2M to $8M"]
+    ctx = compose.shared_context(model_letter="", evidence_text="", bank_words=[], highlights=got)
+    assert "0. Built an invented region from $0 to $5M\n1. Grew an invented line $2M to $8M" in ctx
+
+
+def highlight_texts(db, doc_id):
+    paras = house.snapshot(db.get(doc_id))
+    return [(house.norm(p.text), [r.text for r in p.runs if r.bold and r.text.strip()])
+            for p in paras if p.text.startswith(("Built an invented", "Grew an invented"))]
+
+
+def test_the_built_cv_puts_his_highlights_in_the_roles_order_with_his_bold():
+    db, m = cv_master()
+    got = compose.build_cv(db, master_id=m, title="c", folder_id="f", base=US_BASE, bases=BASES,
+                           page_count=page_count, heading_sizes=heading_sizes(db, m),
+                           highlight_order=[1, 0])
+    assert got.problems == [] and "highlights in this role's order" in got.notes
+    assert highlight_texts(db, got.doc_id) == [
+        ("Grew an invented line $2M to $8M", ["$2M to $8M"]),
+        ("Built an invented region from $0 to $5M", ["$0 to $5M"])]
+
+
+def test_an_order_for_other_highlights_leaves_his_order_and_says_so():
+    db, m = cv_master()
+    got = compose.build_cv(db, master_id=m, title="c", folder_id="f", base=US_BASE, bases=BASES,
+                           page_count=page_count, heading_sizes=heading_sizes(db, m),
+                           highlight_order=[2, 0, 1])
+    assert got.problems == []
+    assert "highlights kept in his order (the CV's highlights changed)" in got.notes
+    assert [t for t, _ in highlight_texts(db, got.doc_id)] == [
+        "Built an invented region from $0 to $5M", "Grew an invented line $2M to $8M"]

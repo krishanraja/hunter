@@ -51,6 +51,7 @@ SCHEMA = {
         "why_now": {"type": "string"},
         "close": {"type": "string"},
         "cv_summary": {"type": "string"},
+        "cv_highlight_order": {"type": "array", "items": {"type": "integer"}},
         "asks": {"type": "array", "items": {
             "type": "object", "required": ["ask", "quote", "answered_by"],
             "properties": {"ask": {"type": "string"}, "quote": {"type": "string"},
@@ -73,6 +74,7 @@ class Letter:
     close: str
     cv_summary: str = ""
     asks: list[dict] = field(default_factory=list)
+    cv_highlight_order: list = field(default_factory=list)
 
     def prose(self) -> list[str]:
         return [self.hook, self.identity, self.why_now, self.close]
@@ -102,7 +104,8 @@ def parse(output) -> Letter:
                   hook=_one_line(data.get("hook")), identity=_one_line(data.get("identity")),
                   bullets=bullets, why_now=_one_line(data.get("why_now")),
                   close=_one_line(data.get("close")),
-                  cv_summary=_one_line(data.get("cv_summary")), asks=asks)
+                  cv_summary=_one_line(data.get("cv_summary")), asks=asks,
+                  cv_highlight_order=list(data.get("cv_highlight_order") or []))
 
 
 # ---------- spelling, by base ----------
@@ -311,6 +314,18 @@ def shape_problems(letter: Letter) -> list[str]:
     return out
 
 
+def highlight_problems(letter: Letter, count: int) -> list[str]:
+    """The order of his CV's highlights for this role: every one, once."""
+    if not count:
+        return []
+    order = letter.cv_highlight_order
+    if not order:
+        return ["shape: no order for his CV highlights; put them in this role's order"]
+    if not all(isinstance(i, int) for i in order) or sorted(order) != list(range(count)):
+        return [f"shape: the CV highlight order must use each of 0 to {count - 1} once"]
+    return []
+
+
 def lead_problems(letter: Letter, jd_text: str) -> list[str]:
     """The letter is addressed to the hiring team, or to a person the posting
     names: never to a name the writer supplied."""
@@ -371,6 +386,7 @@ def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None 
     # His own words from 9.14 are evidence: they are his.
     hay = "\n".join([evidence or "", *(meta.get("entries") or [])]).lower()
     out = shape_problems(letter)
+    out += highlight_problems(letter, int(meta.get("highlights") or 0))
     out += lead_problems(letter, meta.get("jd") or prompt)
     out += asks_problems(letter, meta.get("jd") or prompt)
     out += register_problems(letter)
@@ -475,7 +491,8 @@ def respelled(letter: Letter, base_key: str) -> Letter:
                   identity=spell(letter.identity, base_key),
                   bullets=[(spell(a, base_key), spell(b, base_key)) for a, b in letter.bullets],
                   why_now=spell(letter.why_now, base_key), close=spell(letter.close, base_key),
-                  cv_summary=spell(letter.cv_summary, base_key), asks=letter.asks)
+                  cv_summary=spell(letter.cv_summary, base_key), asks=letter.asks,
+                  cv_highlight_order=letter.cv_highlight_order)
 
 
 # ---------- the request the routine answers ----------
@@ -513,6 +530,9 @@ Never copy a sentence from it; write every paragraph fresh for this role.
   sentences in the first person, as his CV's summary is: lead with the part of his record this
   seat needs, give the figures that prove it, and end on what he would be in this role. His
   facts only.
+- cv_highlight_order: his CV's career highlights (CV HIGHLIGHTS below, numbered from 0) in
+  the order this role should read them, strongest for this seat first. Every number once;
+  his words are never changed, only their order (canon 9.12).
 - When PERSONAL LINE is given, the letter must carry it, his words as written, in the hook
   or the close. When none is given, never write anything personal about his life.
 - His company is "Mindmake", one name, never "mind/make", "Mind Make" or "Mindmaker".
@@ -536,7 +556,8 @@ def strip_his_lines(text: str, bank_words: list[str]) -> str:
 
 
 def shared_context(*, model_letter: str, evidence_text: str, bank_words: list[str],
-                   examples: str = "", his_words: str = "") -> str:
+                   examples: str = "", his_words: str = "",
+                   highlights: list[str] | None = None) -> str:
     parts = [
         RULES,
         "SCHEMA\n" + json.dumps(SCHEMA),
@@ -547,6 +568,9 @@ def shared_context(*, model_letter: str, evidence_text: str, bank_words: list[st
         + ("\n\nHIS OWN WORDS (sentences he wrote into letters; his facts)\n" + his_words
            if his_words else ""),
     ]
+    if highlights:
+        parts.append("CV HIGHLIGHTS (his order, numbered from 0)\n"
+                     + "\n".join(f"{i}. {h}" for i, h in enumerate(highlights)))
     if examples:
         parts.append("HIS EDITS (newest first): what he changed in letters hunter wrote. Write "
                      "the way he edits; these are examples, never evidence\n" + examples)
@@ -774,7 +798,11 @@ def cv_spelling_requests(doc: dict, base_key: str) -> list[dict]:
                                 "replaceText": wrong[w]}} for w in safe]
 
 
-_MONEY = re.compile(r"\$\s?\d[\d,.]*\s*[KkMmBb]?(?:\s+(?:to|and)\s+\$?\s?\d[\d,.]*\s*[KkMmBb]?)?"
+# The unit is optional as a whole, space and letter together: "\s*[KkMmBb]?"
+# took the space after "$0" and left "to $12M" unjoined, so a range was bolded
+# in two pieces on the first live summary.
+_MONEY = re.compile(r"\$\s?\d[\d,.]*(?:\s*[KkMmBb]\b)?"
+                    r"(?:\s+(?:to|and)\s+\$?\s?\d[\d,.]*(?:\s*[KkMmBb]\b)?)?"
                     r"(?:\s+ARR)?|\d[\d,.]*\s*%")
 
 
@@ -822,6 +850,22 @@ def summary_requests(doc: dict, anchor: str, count: int, text: str,
     return reqs
 
 
+def cv_highlights(paras: list[house.Para]) -> list[str]:
+    """His CV's career highlights, in his order."""
+    from .assertions import CV_HEADINGS
+    idx = next((i for i, p in enumerate(paras) if house.norm(p.text) == "CAREER HIGHLIGHTS"), None)
+    if idx is None:
+        return []
+    out = []
+    for p in paras[idx + 1:]:
+        t = house.norm(p.text)
+        if t in CV_HEADINGS:
+            break
+        if t:
+            out.append(t)
+    return out
+
+
 def cv_summary_span(paras: list[house.Para]) -> tuple[str, int]:
     """(anchor, count) of the CV's summary paragraphs: every non-empty
     paragraph between PROFESSIONAL SUMMARY and the next heading."""
@@ -844,7 +888,8 @@ def cv_summary_span(paras: list[house.Para]) -> tuple[str, int]:
 
 def build_cv(db, *, master_id: str, title: str, folder_id: str, base, bases: dict,
              page_count, heading_sizes: dict, summary: str = "",
-             summary_anchor: str = "", summary_count: int = 1) -> Built:
+             summary_anchor: str = "", summary_count: int = 1,
+             highlight_order: list | None = None) -> Built:
     """Copy the house CV master, fill its header, respell for the base, keep
     it to two pages (the banner goes before anything of his is cut), read it
     back."""
@@ -860,6 +905,19 @@ def build_cv(db, *, master_id: str, title: str, folder_id: str, base, bases: dic
         db.batch(out.doc_id, summary_requests(doc, summary_anchor, summary_count,
                                               spell(summary, base.key), keep_bold=keep))
         out.notes.append("summary written for the role")
+    order = list(highlight_order or [])
+    if order and order != list(range(len(order))):
+        anchors = [h[:60] for h in cv_highlights(house.snapshot(db.get(out.doc_id)))]
+        if len(anchors) == len(order) and sorted(order) == list(range(len(order))):
+            try:
+                db.reorder_paragraphs(out.doc_id, anchors, order)
+                out.notes.append("highlights in this role's order")
+            except Exception as e:
+                # reorder_paragraphs reads its own work back and raises when his
+                # bold did not land where it was: his order then stands.
+                out.notes.append(f"highlights kept in his order ({e.__class__.__name__})")
+        else:
+            out.notes.append("highlights kept in his order (the CV's highlights changed)")
     db.batch(out.doc_id, cv_spelling_requests(db.get(out.doc_id), base.key))
     pdf = db.export_pdf(out.doc_id)
     pages = page_count(pdf)

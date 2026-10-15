@@ -34,7 +34,9 @@ from .package import style as style_mod
 # 15 October c: the CV summary is written for the role too (his words: "are
 # you sure its ok that the CV's professional summary has close to zero
 # personalization?").
-PROMPT_VERSION = "letter-2026-10-15c"
+# 15 October d: his CV's highlights are put in the role's order again, as
+# canon 9.12 asks and the builder before this one did.
+PROMPT_VERSION = "letter-2026-10-15d"
 WAITING = "waiting on the writer"
 HELD_BASE = f"held: {contact.HEADER_ASK}"
 RECORD_FIELDS = "job_id,company,title,location,jd_text,judge_answers,header_base,package_status"
@@ -141,7 +143,7 @@ def hold(cfg: Config, job_id: str, reason: str, *, base_key: str = "") -> None:
 def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_text: str,
           judge_answers, view_text: str, model_letter: str, evidence_text: str,
           evidence: str, banned: tuple[str, ...], examples: str = "",
-          his_words: str = "") -> bool:
+          his_words: str = "", highlights: list[str] | None = None) -> bool:
     """Ask the routine for this role's letter. A request for older inputs is
     expired first, so the routine never writes for a letter nobody will use."""
     d = latest_draft(cfg, p.job_id)
@@ -154,13 +156,15 @@ def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_t
                                  judge_answers=judge_answers, his_view=view_text,
                                  entries=p.entries, needs=p.needs)
     context = compose.shared_context(model_letter=model_letter, evidence_text=evidence_text,
-                                     bank_words=p.bank, examples=examples, his_words=his_words)
+                                     bank_words=p.bank, examples=examples, his_words=his_words,
+                                     highlights=highlights)
     # His own sentences are his facts: the gate traces them like the rest.
     if his_words:
         evidence = evidence + "\n" + his_words.lower()
     meta = {"company": company, "short_name": short_name(company), "role": title,
             "base": p.base_key, "needs": p.needs, "entries": p.entries, "bank": p.bank,
             "banned": list(banned), "fingerprint": p.fingerprint, "job_id": p.job_id,
+            "highlights": len(highlights or []),
             "prompt_version": PROMPT_VERSION}
     return drafts.request(cfg, compose.KIND, p.job_id, prompt, context=context,
                           schema=compose.SCHEMA, evidence=evidence, meta=meta)

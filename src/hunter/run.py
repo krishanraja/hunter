@@ -2717,8 +2717,10 @@ def house_evidence(cfg: Config, sheet: Sheet, db: DocBuild, jd_text: str) -> dic
     the gate."""
     from .apply.infobank import load_bank
     from .package.voicegate import build_evidence, package_banned
-    cv_text = _doc_text(db, config_mod.CV_MASTER_ID if style_mod.COMPOSER_LIVE
-                        else config_mod.HOUSE_CV_MASTER_ID)
+    from .package import compose, house
+    cv_id = config_mod.CV_MASTER_ID if style_mod.COMPOSER_LIVE else config_mod.HOUSE_CV_MASTER_ID
+    cv_text = _doc_text(db, cv_id)
+    highlights = compose.cv_highlights(house.snapshot(db.get(cv_id)))
     model = _doc_text(db, config_mod.LETTER_MODEL_ID)
     bank = load_bank(lambda tab: sheet.read_tab_formulas(f"{tab}!A1:Z400"))
     parts = [cv_text, "\n".join(bank.profile.values()), "\n".join(bank.interview.values()),
@@ -2726,7 +2728,8 @@ def house_evidence(cfg: Config, sheet: Sheet, db: DocBuild, jd_text: str) -> dic
              cfg.optional("hunter_ai_gtm_evidence") or ""]
     text = "\n\n".join(x for x in parts if x)
     return {"text": text, "haystack": build_evidence(text, jd_text, model),
-            "banned": package_banned(bank.banned_phrases), "model": model}
+            "banned": package_banned(bank.banned_phrases), "model": model,
+            "highlights": highlights}
 
 
 def examples_of(cfg: Config, bank_words: list[str]) -> str:
@@ -2768,7 +2771,8 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
                           view_text=view_text, model_letter=ev["model"],
                           evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"],
                           examples=examples_of(cfg, plan.bank),
-                          his_words=his_words_of(cfg, plan.bank))
+                          his_words=his_words_of(cfg, plan.bank),
+                          highlights=ev.get("highlights"))
         letters_mod.hold(cfg, job, letters_mod.WAITING, base_key=plan.base_key)
         summary.append(f"SKIPPED {job}: {letters_mod.WAITING}; the letter is asked of the "
                        f"routine, never the API")
@@ -2809,7 +2813,7 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
                             slugify(role.title)),
         folder_id=config_mod.CV_FOLDER_ID, base=base, bases=bases, page_count=page_count,
         heading_sizes=masters_mod._cv_heading_sizes(cv_paras), summary=letter.cv_summary,
-        summary_anchor=anchor, summary_count=count)
+        summary_anchor=anchor, summary_count=count, highlight_order=letter.cv_highlight_order)
     fails = lt.problems + cv.problems
     if not fails:
         pkg = run_gates(role, never_apply=never, package_texts=(
@@ -2940,7 +2944,8 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
                 location=r.get("location") or "", jd_text=r.get("jd_text") or "",
                 judge_answers=plan.judge_answers, view_text=text, model_letter=ev["model"],
                 evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"],
-                examples=examples_of(cfg, plan.bank), his_words=his_words_of(cfg, plan.bank))
+                examples=examples_of(cfg, plan.bank), his_words=his_words_of(cfg, plan.bank),
+                highlights=ev.get("highlights"))
             print(f"{job}: letter {'asked of the writer' if made else 'already asked'}")
             continue
         letter, problems = letters_mod.checked(plan, letters_mod.context_of(cfg, plan.draft))
@@ -2966,7 +2971,7 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
             title=" ".join(x for x in ("PREVIEW", label, "CV", role.company) if x),
             folder_id=folder, base=base, bases=bases, page_count=page_count,
             heading_sizes=masters_mod._cv_heading_sizes(paras), summary=letter.cv_summary,
-            summary_anchor=anchor, summary_count=count)
+            summary_anchor=anchor, summary_count=count, highlight_order=letter.cv_highlight_order)
         # A baseline under its own key, so his edits to a preview become
         # pairs for the writer without touching the role's own record.
         try:
