@@ -465,20 +465,45 @@ def test_without_the_column_the_build_still_stands_and_says_so(monkeypatch):
     assert any("was not recorded" in x for x in summary)
 
 
+def _blocked_as_rebuild(rec) -> list[dict]:
+    return [v for _, _, v in rec["patches"] if v.get("package_status") == "blocked"
+            and (v.get("rejection_reason") or "").startswith(run_mod.REBUILD_REFUSED)]
+
+
 def test_a_rebuild_whose_prose_did_not_come_through_makes_no_document(monkeypatch):
+    """No document is made, and the package built before is no longer sent:
+    a rebuild is asked for because it is not what he wants sent (his ruling,
+    2026-10-15). Until then it stayed built, and every send path sent it."""
     made = []
     ok, rec, summary, _ = _build(monkeypatch, tr_summary="", rebuild=True, made=made)
     assert ok is False and made == []
     assert any(x.startswith("HELD ostravia:chief-of-staff") for x in summary)
-    assert not any("package_status" in v for _, _, v in rec["patches"]), \
-        "the package built before stays recorded as it was"
+    assert len(_blocked_as_rebuild(rec)) == 1
+    assert not any(v.get("package_status") == "built" for _, _, v in rec["patches"])
+    assert not any("not recorded as blocked" in x or "read-back" in x for x in summary)
 
 
-def test_a_rebuild_that_fails_verification_leaves_the_package_built(monkeypatch):
+def test_a_rebuild_that_fails_verification_takes_the_package_out_of_sending(monkeypatch):
     ok, rec, summary, _ = _build(monkeypatch, rebuild=True, verify_fails=1)
     assert ok is False
     assert any(x.startswith("REBUILD FAILED ostravia:chief-of-staff") for x in summary)
-    assert not any(v.get("package_status") == "blocked" for _, _, v in rec["patches"])
+    blocked = _blocked_as_rebuild(rec)
+    assert len(blocked) == 1 and "two pages" in blocked[0]["rejection_reason"]
+
+
+def test_a_rebuild_block_that_does_not_read_back_says_so(monkeypatch):
+    """Written and not found is said, by class and never by company: the
+    summary is public."""
+    monkeypatch.setattr(run_mod, "db_patch", lambda cfg, table, match, values: None)
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: [
+        {"package_status": "built"}])
+    lines = run_mod.rebuild_did_not_land(Cfg({}), {"job_id": "ostravia:chief-of-staff",
+                                                  "company": "Ostravia"}, "why")
+    assert lines and "read-back did not find it" in lines[0]
+    assert "Ostravia" not in lines[0]
+    monkeypatch.setattr(run_mod, "db_get", lambda cfg, table, params: [
+        {"package_status": "blocked"}])
+    assert run_mod.rebuild_did_not_land(Cfg({}), {"job_id": "x"}, "why") == []
 
 
 def test_a_rebuild_the_gate_held_is_recorded_as_tried(monkeypatch):
@@ -1341,7 +1366,7 @@ def test_rebuild_prints_counts_and_never_a_role_or_his_words(monkeypatch, capsys
     monkeypatch.setattr(run_mod, "build_one", build_one)
     assert run_mod.cmd_rebuild_packages(apply=True) == 0
     out = capsys.readouterr().out
-    assert "rebuild: done: 2 held, the package before stays, 1 rebuilt" in out
+    assert "rebuild: done: 2 held, the package before is not sent, 1 rebuilt" in out
     for leak in (MARK, "Ardent", "Brisk", "Cobalt", "ardent:vp", "cobalt:vp"):
         assert leak not in out, leak
 

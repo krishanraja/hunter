@@ -201,6 +201,31 @@ def detect_docs(cfg: Config, read_doc, rows, paired: dict,
     return out
 
 
+def edit_pairs(read_doc, docs: dict[str, str], baseline: dict | None, *,
+               job_id: str, company: str = "", title: str = "") -> list[dict]:
+    """His edits to one package's documents, as amendments: what hunter wrote
+    into each (baseline, from STATE_TABLE) and what the document says now.
+
+    docs maps the stored field ("letter_text", "cv_text") to the document's
+    link. A document with no baseline, or one that cannot be read, gives
+    nothing: unknown is not an edit, and a permissions blip must never
+    present as Krish rewriting his letter. Plain text only, so an edit that
+    changes formatting alone is not seen here."""
+    out: list[dict] = []
+    for stored, url in (docs or {}).items():
+        field = {"letter_text": "cover letter", "cv_text": "cv"}.get(stored)
+        was = (baseline or {}).get(stored)
+        if not (field and url and was):
+            continue
+        text = read_doc(url)
+        if not text or norm(text) == norm(was):
+            continue
+        out.append({"job_id": job_id, "company": company, "title": title,
+                    "field": field, "before_text": was[:6000],
+                    "after_text": text[:6000], "lesson": MEANING.get(field, "")})
+    return out
+
+
 def _url_of(cell: str) -> str:
     from .sheet import parse_hyperlink
     hit = parse_hyperlink(str(cell or ""))
