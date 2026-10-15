@@ -76,13 +76,18 @@ class DocBuild:
 
     @staticmethod
     def paragraphs(doc):
-        """Every paragraph with its range, text, bullet flag and styled runs."""
+        """Every paragraph with its range, text, bullet flag, styled runs and
+        inline images (their object ids). His banner is an inline image with
+        no text, so a layer reading text runs alone saw an empty paragraph
+        where it is, and could delete it as one."""
         out = []
         for el in doc["body"]["content"]:
             p = el.get("paragraph")
             if not p:
                 continue
             runs = []
+            images = [e["inlineObjectElement"].get("inlineObjectId", "")
+                      for e in p.get("elements", []) if "inlineObjectElement" in e]
             for e in p.get("elements", []):
                 tr = e.get("textRun")
                 if tr:
@@ -98,6 +103,7 @@ class DocBuild:
                 "bullet": "bullet" in p,
                 "style": p.get("paragraphStyle", {}).get("namedStyleType", "NORMAL_TEXT"),
                 "runs": runs,
+                "images": images,
             })
         return out
 
