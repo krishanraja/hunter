@@ -388,7 +388,10 @@ words saying what each tier means for sweeping. No code read any of it while
 canon 9.1 held a second copy that had already drifted by three names.
 
 - `targets.py` reads it every run and it wins over canon 9.1. The drift is
-  filed as a `workflow_proposals` row; canon is never edited from code.
+  filed as a `workflow_proposals` row; canon is never edited from code. The
+  one exception is his own words: `canonwrite.py` appends his reply to a
+  personal-line ask to canon 9.14 exactly as he wrote it, version locked and
+  read back, and takes it back on his UNDO (his ruling 2026-10-15).
 - **Columns A to H are his.** Hunter writes Score, Computed Tier, Board, Last
   Swept, Roles Seen, Yes, No and Evidence to the right of them, and reads
   them back.

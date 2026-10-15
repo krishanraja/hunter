@@ -9754,6 +9754,31 @@ def main(argv: list[str]) -> int:
                                          apply="--apply" in argv):
             print(line)
         return 0
+    if cmd == "facts":
+        # A personal line a letter needs (facts.py): queued asks are mailed to
+        # him, and his replies are written to canon 9.14 as he wrote them,
+        # confirmed back to him, and taken back on UNDO. Counts only here:
+        # his words never reach this log. Dry run unless --apply.
+        from . import canonwrite, facts, notify
+        from .apply import inbox
+        cfg, _canon = build_context()
+        if "--apply" not in argv:
+            open_rows = db_get(cfg, facts.TABLE, {"select": "status"})
+            by: dict[str, int] = {}
+            for r in open_rows:
+                by[r["status"]] = by.get(r["status"], 0) + 1
+            print(f"facts (dry run): {dict(sorted(by.items()))}; 9.14 in canon: "
+                  f"{bool(canonwrite.section_body(cfg))}")
+            return 0
+        sent = facts.ask(cfg, notify.send_email)
+        try:
+            got = facts.read(cfg, fetch=facts.fetch_replies, send=notify.send_email).counts
+        except inbox.InboxError as exc:
+            print(f"facts: replies not read ({type(exc).__name__})")
+            got = {}
+        print(f"facts: asked {sent['asked']}, not sent {sent['not_sent']}; "
+              f"replies {dict((k, v) for k, v in got.items() if v)}")
+        return 0
     if cmd == "drafts":
         # Use the subscription routine's checked answers; fall back to the API
         # for requests it left unanswered (drafts.py). Dry run unless --apply.

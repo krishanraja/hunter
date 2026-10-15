@@ -31,7 +31,7 @@ on:
         options: [process, run, source, packages, drain, approvals, approvals-drain,
                   close-submitted, confirmations, settle, score-builds, rebuild-packages, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
-                  door-coverage, door-cards, drafts, actions, letter-master, cv-master]
+                  door-coverage, door-cards, drafts, actions, facts, letter-master, cv-master]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string
@@ -151,6 +151,14 @@ jobs:
       - name: Build what he scored 7 or more
         if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run score-builds --apply
+
+      # A personal line a letter needs (src/hunter/facts.py, his ruling
+      # 2026-10-15): asks are mailed to him, one per kind of business, and his
+      # reply is written to canon 9.14 exactly as he wrote it, confirmed back
+      # to him and taken back on UNDO. This log carries counts only.
+      - name: Ask for and write his personal lines
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
+        run: python -u -m hunter.run facts --apply
 
       # Prose the writing routine left for hunter (src/hunter/drafts.py): each
       # answer is checked with the API path's validator and the voice gate and

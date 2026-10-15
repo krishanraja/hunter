@@ -2,6 +2,8 @@
 scoring, gates, the sourcing universe, and the sheet contract. hunter fails hard
 and runs nothing paid if canon is absent, incomplete, or disagrees with the
 verified artifact IDs. hunter never edits canon; changes go to workflow_proposals.
+The one exception is his own words: canonwrite.py appends his answer to a
+fact request to 9.14 as he wrote it (his ruling 2026-10-15), and nothing else.
 
 Parser notes, verified against the live body 2026-08-31:
   - Headings mix two styles: bare "9.1 SOURCING UNIVERSE. ..." and markdown
