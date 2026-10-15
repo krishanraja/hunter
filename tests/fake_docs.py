@@ -201,6 +201,19 @@ class FakeDoc:
             self._update_style(req["updateTextStyle"])
         elif "updateParagraphStyle" in req:
             self._update_paragraph(req["updateParagraphStyle"])
+        elif "createParagraphBullets" in req:
+            body = req["createParagraphBullets"]
+            s, e = self._range(body["range"])
+            for i in range(s, e):
+                j = next((k for k in range(i, len(self.chars)) if self.chars[k].ch == "\n"), None)
+                if j is not None:
+                    c = self.chars[j]
+                    c.meta = c.meta or {"bullet": None,
+                                        "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"}}
+                    c.meta["bullet"] = {"listId": "kix.created"}
+                    # A new list brings its own indents, as in Docs.
+                    c.meta["paragraphStyle"]["indentStart"] = {"magnitude": 36, "unit": "PT"}
+                    c.meta["paragraphStyle"]["indentFirstLine"] = {"magnitude": 18, "unit": "PT"}
         elif "insertInlineImage" in req:
             body = req["insertInlineImage"]
             if not str(body.get("uri", "")).startswith("https://"):
