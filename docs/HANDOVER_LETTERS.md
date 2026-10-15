@@ -20,7 +20,7 @@ EOF
 The review findings are under the key `hunter_handover_letters_review` (plain text).
 Never copy any of it into a repo file, a test, a fixture or a log line.
 
-## Where it stands (updated 2026-10-15, after L0 and L1)
+## Where it stands (updated 2026-10-15, after L0, L1 and L2)
 
 - **The plan is approved by him.** Read `/tmp/plan.md` from the snippet above before anything else.
 - **L1 is live on main** ([krishanraja/hunter#25](https://github.com/krishanraja/hunter/pull/25), merge e82f8f5), on his yes.
@@ -36,10 +36,14 @@ Never copy any of it into a repo file, a test, a fixture or a log line.
   - `hunter_private_bank_seeds` is NOT written. bank-seed leaves those rows alone without it, and the workbook still holds them.
   - Git history still holds the old values. Rewriting it is his call; ask once.
 - **L0 is applied live** on his yes and read back: 14 columns, 3 tables, the widened checks.
-  - The file is on control-center branch `claude/elegant-keller-bk4lra`, in [krishanraja/control-center#458](https://github.com/krishanraja/control-center/pull/458). That PR only records it, and merging it needs his yes.
+  - The file is on control-center main ([krishanraja/control-center#458](https://github.com/krishanraja/control-center/pull/458), merged on his yes).
 - **Old links:** the 14 open Apply links from 15 October were superseded on his yes (state cancelled, read back). The live payload endpoint answers 410 for them. The one he had submitted is untouched.
 - **Score builds:** the cap is still 0. Restore it to 3 only after he approves the scratch preview.
-- **L2 is built** on branch `claude/elegant-keller-bk4lra`. Merging it needs his yes, and so does writing `hunter_contact_bases`.
+- **L2 is live on main** ([krishanraja/hunter#26](https://github.com/krishanraja/hunter/pull/26), merge 27ebdc5), on his yes.
+  - `hunter_contact_bases` is written on his yes and read back through `load_bases`; doctor says ok.
+    - us: place, display phone, international phone (in the format forms got before) and country. City, postal code, state and street fall back to his Info Bank rows.
+    - uk: place London, city London, his UK number as he typed it, the international form, and country.
+    - No UK postcode is recorded, so a UK form asking for one asks him.
   - `package/contact.py` holds `base_for` (the location field, then only explicit phrases in the posting), `load_bases`, `Base.header_line()` for L3, and `check_plan`.
   - The resolver has one phone path ahead of everything. The address fields come from the base; the US base falls back to his Info Bank rows, and the UK base never does.
   - `build_fill_plan` uses the base recorded on the role (`header_base`), never a fresh guess. It stops before drafting essays when a form needs his phone and the role has no base, and raises `ContactMismatch` when the plan carries the other base's number or place.
@@ -160,11 +164,16 @@ do not have to rediscover it.
 
 ## Approvals still owed to him (ask at the moment of each)
 
-Done on 15 October, each on his yes: write `hunter_allowed_recipients`, merge L1, supersede the old links, apply the L0 migration.
+Done on 15 October, each on his yes:
+- write `hunter_allowed_recipients`;
+- merge L1;
+- supersede the old links;
+- apply the L0 migration and merge its file;
+- write `hunter_contact_bases`;
+- merge L2.
 
-- Merge control-center#458 (records L0, already live).
-- Write `hunter_contact_bases` (us and uk: place, phone_display, phone_international, country, and city, postal, state and street where known; the private notes hold his numbers).
-- Merge L2, and each later piece.
+Still owed:
+- Merge L3, and each later piece.
 - Create the v5 letter master and update the CV master in Drive, and update canon 9.9 and add 9.14.
 - Rebuild live packages and send.
 
