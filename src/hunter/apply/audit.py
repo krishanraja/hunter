@@ -116,7 +116,7 @@ def _additional_questions(spec: FormSpec) -> str:
 def audit(spec: FormSpec, bank: AnswerBank, *,
           today: datetime.date | None = None,
           account_required: bool = False,
-          role_location: str = "") -> Audit:
+          role_location: str = "", contact=None) -> Audit:
     day = (today or datetime.date.today()).isoformat()
     fmt = ATS_FORMATS.get(spec.ats, FMT_UNKNOWN)
 
@@ -132,7 +132,7 @@ def audit(spec: FormSpec, bank: AnswerBank, *,
             form_audit_date=day,
             unresolved=(spec.note,) if spec.note else ())
 
-    resolver = Resolver(bank, role_location=role_location)
+    resolver = Resolver(bank, role_location=role_location, contact=contact)
     unresolved: list[str] = []
     flagged: list[str] = []
     essay_blocked = False

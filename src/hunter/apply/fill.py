@@ -118,10 +118,12 @@ def build_payload(spec: FormSpec, bank: AnswerBank, *, company: str, role: str,
                   jd_url: str = "", role_location: str = "",
                   summary: str = "", hook: str = "",
                   essays: dict[str, str] | None = None,
-                  attachment_style: str = "") -> FillPlan:
-    """Resolve every field on the form into a plan. Pure function."""
+                  attachment_style: str = "", contact=None) -> FillPlan:
+    """Resolve every field on the form into a plan. Pure function. contact
+    is the role's header base (package.contact.Base): his phone and postal
+    details, or None, which leaves them unanswered."""
     essays = dict(essays or {})
-    resolver = Resolver(bank, role_location=role_location)
+    resolver = Resolver(bank, role_location=role_location, contact=contact)
     notes: list[str] = []
     if not spec.readable:
         notes.append(spec.note or "the form could not be read")

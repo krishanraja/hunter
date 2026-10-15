@@ -315,12 +315,13 @@ def test_essays_are_not_resolved_here():
     assert isinstance(got, Unanswered) and "essay" in got.reason
 
 
-def test_linkedin_and_contact_fields_resolve_from_the_bank():
-    r = Resolver(build_bank())
+def test_linkedin_and_contact_fields_resolve_from_the_bank_and_the_base():
+    from contact_bases import US_BASE
+    r = Resolver(build_bank(), contact=US_BASE)
     assert isinstance(r.resolve(field("LinkedIn URL", kind="url")), Answer)
-    assert r.resolve(field("Phone Number", kind="phone")).value.startswith("+1")
+    assert r.resolve(field("Phone Number", kind="phone")).value == US_BASE.phone_international
     assert r.resolve(field("What is your home zip code?",
-                           kind="short_text")).value == "11222"
+                           kind="short_text")).value == US_BASE.postal
     assert r.resolve(field("How did you hear about us?",
                            kind="short_text")).value == "LinkedIn"
 

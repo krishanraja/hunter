@@ -39,6 +39,13 @@ Never copy any of it into a repo file, a test, a fixture or a log line.
   - The file is on control-center branch `claude/elegant-keller-bk4lra`, in [krishanraja/control-center#458](https://github.com/krishanraja/control-center/pull/458). That PR only records it, and merging it needs his yes.
 - **Old links:** the 14 open Apply links from 15 October were superseded on his yes (state cancelled, read back). The live payload endpoint answers 410 for them. The one he had submitted is untouched.
 - **Score builds:** the cap is still 0. Restore it to 3 only after he approves the scratch preview.
+- **L2 is built** on branch `claude/elegant-keller-bk4lra`. Merging it needs his yes, and so does writing `hunter_contact_bases`.
+  - `package/contact.py` holds `base_for` (the location field, then only explicit phrases in the posting), `load_bases`, `Base.header_line()` for L3, and `check_plan`.
+  - The resolver has one phone path ahead of everything. The address fields come from the base; the US base falls back to his Info Bank rows, and the UK base never does.
+  - `build_fill_plan` uses the base recorded on the role (`header_base`), never a fresh guess. It stops before drafting essays when a form needs his phone and the role has no base, and raises `ContactMismatch` when the plan carries the other base's number or place.
+  - Prepare's note for a role with no base: "which header, US or UK?". The `header` button kind is handled in `actions.py`. The Control Center buttons are NOT built yet.
+  - Measured on the 80 roles he built or wants, 15 October: 71 US, 6 UK, 3 hold (no place given). The posting phrases placed one more role; one held role would have read as US from the posting's prose.
+  - L3's composer must record `header_base` at build, from `base_for`, and hold when it is empty.
 - **For L5 and L6:**
   - The new composer must write `package_style = style.HOUSE_STYLE` in build_one's `built` patch, and set `COMPOSER_LIVE = True`.
   - The style rebuild (`rebuild-packages --reason style`) must choose every unstamped built package he still wants. Today `rebuild_targets` requires his score or reaction, and skips packages that "carry his view".
@@ -156,7 +163,7 @@ do not have to rediscover it.
 Done on 15 October, each on his yes: write `hunter_allowed_recipients`, merge L1, supersede the old links, apply the L0 migration.
 
 - Merge control-center#458 (records L0, already live).
-- Write `hunter_contact_bases`.
+- Write `hunter_contact_bases` (us and uk: place, phone_display, phone_international, country, and city, postal, state and street where known; the private notes hold his numbers).
 - Merge L2, and each later piece.
 - Create the v5 letter master and update the CV master in Drive, and update canon 9.9 and add 9.14.
 - Rebuild live packages and send.

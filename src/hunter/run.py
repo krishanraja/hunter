@@ -6221,6 +6221,22 @@ def his_view_for(cfg: Config, sheet: Sheet, row: dict, *, pipeline=None,
                                  latest=latest)
 
 
+class ContactMismatch(RuntimeError):
+    """A fill plan whose contact fields disagree with the role's header base.
+    Raised, so the send path counts a failure and sends nothing; its message
+    names bases and never a digit."""
+
+
+def contact_for(cfg: Config, row: dict):
+    """(the role's header base as a package.contact.Base or None, every base
+    system_config holds). The base is the one recorded on the role
+    (header_base), never worked out again here: the letter and the CV were
+    built with that header, and the form must agree with them."""
+    from .package import contact as contact_mod
+    bases, _note = contact_mod.load_bases(cfg)
+    return bases.get((row.get("header_base") or "").strip()), bases
+
+
 def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
                     bank=None, summary: str = "", hook: str = "",
                     draft_essays: bool = True, essays: dict[str, str] | None = None,
@@ -6241,11 +6257,18 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
     role, _relink, _flags = resolve_for_build(cfg, row, disc.load_cache(cfg))
     bank = bank if bank is not None else _answer_bank(sheet)
     spec = fetch.form_for(role.jd_url, board_key)
-    au = audit_mod.audit(spec, bank, role_location=role.location)
+    from .apply.resolve import NEEDS_BASE
+    from .package import contact as contact_mod
+    contact, bases = contact_for(cfg, row)
+    au = audit_mod.audit(spec, bank, role_location=role.location, contact=contact)
     plan = fill.build_payload(spec, bank, company=role.company, role=role.title,
                               jd_url=role.jd_url, role_location=role.location,
                               summary=summary, hook=hook,
-                              attachment_style=au.attachment_style)
+                              attachment_style=au.attachment_style, contact=contact)
+    if any((f.reason or "").startswith(NEEDS_BASE) for f in plan.blocking):
+        # Refused before any essay is drafted and paid for: the form needs
+        # his phone or address, and which ones is his header's call.
+        return plan, au, role
     # The open questions. FillPlan has carried an `essays` slot since it was
     # written and nothing ever filled it, so "What makes you excited about the
     # ElevenLabs mission?" came back blank on every form since the first
@@ -6259,7 +6282,7 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
                 spec, bank, company=role.company, role=role.title,
                 jd_url=role.jd_url, role_location=role.location,
                 summary=summary, hook=hook, essays=essays,
-                attachment_style=au.attachment_style)
+                attachment_style=au.attachment_style, contact=contact)
             plan.notes.append(f"reused {len(essays)} approved essay(s); none redrafted")
     elif draft_essays:
         from .apply.resolve import NEEDS_ESSAY
@@ -6278,8 +6301,14 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
                     spec, bank, company=role.company, role=role.title,
                     jd_url=role.jd_url, role_location=role.location,
                     summary=summary, hook=hook, essays=drafted,
-                    attachment_style=au.attachment_style)
+                    attachment_style=au.attachment_style, contact=contact)
                 plan.notes.extend(notes)
+    if contact is not None:
+        # Read back from the plan itself: every phone field carries this
+        # base's number, and nothing carries the other base's number or place.
+        problems = contact_mod.check_plan(plan, contact, bases)
+        if problems:
+            raise ContactMismatch("; ".join(problems))
     return plan, au, role
 
 
@@ -6894,7 +6923,14 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
             # hunter's own failure and may come through later: marked for a
             # day (ESSAY_WAIT_HOURS), so the next batch moves on and the
             # posting is tried again after it.
-            from .apply.resolve import NEEDS_ESSAY
+            from .apply.resolve import NEEDS_BASE, NEEDS_ESSAY
+            if any((getattr(f, "reason", "") or "").startswith(NEEDS_BASE)
+                   for f in plan.blocking):
+                # Which header the role takes is his call (US or UK), never a
+                # missing answer of his: not marked, so it is prepared again
+                # the moment the role has a base.
+                count(NO_BASE)
+                continue
             if any((getattr(f, "reason", "") or "").startswith(NEEDS_ESSAY)
                    for f in plan.blocking):
                 count(ESSAY_NOT_DRAFTED)
@@ -7383,6 +7419,9 @@ ESSAY_NOT_DRAFTED = "essay not drafted, tried again after a day"
 ESSAY_WAIT_HOURS = 24
 # Counted by Prepare (approvals --job-id) for the note he reads on its card.
 TAKEN_BACK, NOT_BUILT = "his score took it back", "no built package"
+# A form that asks for his phone or address, for a role with no header base
+# (package/contact.py). Never marked: it goes as soon as the role has one.
+NO_BASE = "no header base"
 # The two outcomes a send can have that are neither sent nor not sent: Gmail
 # took no email (send_email's stdout fallback, gmail.send not granted), or
 # the email went and its approval was not recorded, so its open link and a
@@ -9211,7 +9250,10 @@ def cmd_simulate(send: bool = False) -> int:
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     bank = _answer_bank(sheet)
     to = notify.mailbox(cfg)
-    result = simulate.run(bank, to=to)
+    from .package import contact as contact_mod
+    bases, _note = contact_mod.load_bases(cfg)
+    result = simulate.run(bank, to=to,
+                          contact=bases.get(contact_mod.base_for("New York, NY")[0]))
 
     print(f"simulation against {len(bank.entries)} stored answers, "
           f"recipient {to}\n")

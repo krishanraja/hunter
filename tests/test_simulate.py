@@ -53,7 +53,8 @@ def bank():
 
 
 def test_the_whole_rehearsal_passes_with_a_complete_bank():
-    result = simulate.run(bank(), to="krish@themindmaker.ai")
+    from contact_bases import US_BASE
+    result = simulate.run(bank(), to="krish@themindmaker.ai", contact=US_BASE)
     assert result.ok, [f"{n}: {d}" for n, _, d in result.failures]
     assert len(result.checks) >= 25
 
