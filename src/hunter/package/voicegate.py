@@ -207,13 +207,15 @@ def check(text: str, *, evidence: str, banned_phrases: tuple[str, ...] = (),
 
     # His company has one name, written one way (gtmseed.COMPANY_NAME): a
     # check that knows case, which the lowercased list below cannot.
-    from ..apply.gtmseed import name_problems
+    from ..apply.gtmseed import COMPANY_NAME, name_problems
     failures += name_problems(body)
 
     low = body.lower()
     for phrase in banned_phrases:
         p = (phrase or "").strip().lower()
-        if p and p in low:
+        # A list stored before his ruling banned "Mind/Make", which lowercases
+        # to his name: no list may ban it.
+        if p and p in low and p != COMPANY_NAME:
             failures.append(f"banned phrase {phrase!r}")
 
     # The factual gate. Every number must be somewhere in his recorded evidence.

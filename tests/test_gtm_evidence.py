@@ -119,6 +119,13 @@ def test_each_variant_is_caught(bad):
     assert any(f.startswith("company name") for f in verdict.failures), verdict.failures
 
 
+def test_a_banned_list_from_before_his_ruling_never_bans_his_name():
+    """Letters queued before 2026-10-15 carry the old list, "Mind/Make" in it."""
+    hay = voicegate.build_evidence(EVIDENCE)
+    assert voicegate.check("I built it at mind/make.", evidence=hay,
+                           banned_phrases=("Mind/Make", "Mindmaker")).ok
+
+
 def test_the_law_is_in_the_evidence_so_the_model_reads_it():
     assert "naming law" in EVIDENCE and "written mind/make" in EVIDENCE
     assert "Never Mindmake" in EVIDENCE
