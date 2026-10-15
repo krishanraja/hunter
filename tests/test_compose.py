@@ -331,3 +331,71 @@ def test_the_date_is_written_the_way_the_roles_country_writes_it():
     day = datetime.date(2026, 10, 5)
     assert compose.date_for("uk", day) == "5 October 2026"
     assert compose.date_for("us", day) == "October 5, 2026"
+
+
+
+# ---------- written for this role (A16) ----------
+
+MODEL = ("Zentrox is clearly busy. I'm a commercial leader born of technical roots, who has "
+         "scaled a business to nine figures and carried a P&L. Worth saying why I am looking. "
+         "I'd rather show you the system than describe it.")
+CONTEXT = "RULES\n\nMODEL LETTER (his own)\n" + MODEL + "\n\nEVIDENCE (x)\nfacts"
+
+
+def role(a, **meta):
+    return [f for f in compose.problems(a, evidence=EVIDENCE, meta=dict(META, **meta),
+                                        context=CONTEXT) if f.startswith("A16")]
+
+
+def written_for_zentrox(**over):
+    a = answer(
+        identity="I'm a commercial leader with technical roots, and I build the platform "
+                 "partnerships and licensing deals a home audio platform needs.",
+        why_now="I am looking for a platform business like Zentrox, where partnerships are "
+                "the growth line.",
+        close="I'd rather show you the partner engines I have built, starting with Zentrox's "
+              "licensing deals.",
+        bullets=[{"label": "Quorra:", "text": "grew a partner engine from $2M to $9M, the "
+                                               "platform partnerships work this seat leads."},
+                 {"label": "Velmont:", "text": "licensed the stack to three businesses, the "
+                                                "licensing deals Zentrox runs."},
+                 {"label": "Halcyon:", "text": "closed a $1.5M partnership."}])
+    a.update(over)
+    return a
+
+
+def test_a_letter_written_for_the_role_passes():
+    assert role(written_for_zentrox()) == []
+
+
+def test_a_paragraph_copied_from_his_model_letter_is_refused():
+    a = written_for_zentrox(identity="I'm a commercial leader born of technical roots, who has "
+                                     "scaled a business to nine figures and carried a P&L.")
+    assert "A16 the identity copies his model letter; write it for this role" in role(a)
+
+
+def test_a_generic_paragraph_is_refused_and_says_which():
+    a = written_for_zentrox(close="I'd rather show you what I have built than describe it to you.")
+    got = role(a)
+    assert "A16 the close says nothing about this company or this seat" in got
+    a = written_for_zentrox(why_now="I am looking for a platform business with growth ahead.")
+    assert "A16 the why_now does not name the company" in role(a)
+
+
+def test_bullets_must_say_what_they_mean_for_the_role():
+    a = written_for_zentrox(bullets=[{"label": "Quorra:", "text": "grew a partner engine."},
+                                     {"label": "Velmont:", "text": "licensed the stack."},
+                                     {"label": "Halcyon:", "text": "closed a $1.5M deal."}])
+    assert "A16 fewer than two bullets say what they mean for this role" in role(a)
+
+
+def test_his_personal_line_never_counts_as_a_copy():
+    line = "I'm a commercial leader born of technical roots, who has scaled a business to nine figures."
+    a = written_for_zentrox(hook=written_for_zentrox()["hook"] + " " + line)
+    assert role(a, entries=[line], needs=["voice_audio_speech"], bank=[line]) == []
+
+
+def test_without_the_context_the_role_check_is_not_run():
+    assert not [f for f in compose.problems(answer(close="I'd rather show you the system than "
+                                                         "describe it."),
+                                            evidence=EVIDENCE, meta=META) if f.startswith("A16")]

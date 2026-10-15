@@ -2735,6 +2735,13 @@ def examples_of(cfg: Config, bank_words: list[str]) -> str:
     return docedits.edit_examples(cfg, bank_words)
 
 
+def his_words_of(cfg: Config, bank_words: list[str]) -> str:
+    """The first-person sentences he has written into letters
+    (docedits.his_own_sentences): his facts, for the writer and the gate."""
+    from . import docedits
+    return docedits.his_own_sentences(cfg, bank_words)
+
+
 def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
                 summary: list[str], *, plan, view, view_text: str, trigger, refused, attempt,
                 rebuild: bool, rflags: list[str], never, company_declines,
@@ -2760,12 +2767,13 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
                           jd_text=role.jd_text, judge_answers=plan.judge_answers,
                           view_text=view_text, model_letter=ev["model"],
                           evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"],
-                          examples=examples_of(cfg, plan.bank))
+                          examples=examples_of(cfg, plan.bank),
+                          his_words=his_words_of(cfg, plan.bank))
         letters_mod.hold(cfg, job, letters_mod.WAITING, base_key=plan.base_key)
         summary.append(f"SKIPPED {job}: {letters_mod.WAITING}; the letter is asked of the "
                        f"routine, never the API")
         return False
-    letter, problems = letters_mod.checked(plan)
+    letter, problems = letters_mod.checked(plan, letters_mod.context_of(cfg, plan.draft))
     if letter is not None and his_view_mod.quotes_note(" ".join(letter.spans()), view,
                                                        plan.draft.get("evidence") or ""):
         problems = ["the letter quotes his note"]
@@ -2887,7 +2895,7 @@ PREVIEW_FOLDER = "hunter preview"
 
 def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bool,
                       preview_folder: bool = False, db: DocBuild | None = None,
-                      page_count=None) -> int:
+                      page_count=None, label: str = "") -> int:
     """The scratch preview (his review before anything live changes): for each
     role, the letter is asked of the writer (--queue), and once written, the
     letter and CV are built in his house style into `folder` (--apply) from
@@ -2932,10 +2940,10 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
                 location=r.get("location") or "", jd_text=r.get("jd_text") or "",
                 judge_answers=plan.judge_answers, view_text=text, model_letter=ev["model"],
                 evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"],
-                examples=examples_of(cfg, plan.bank))
+                examples=examples_of(cfg, plan.bank), his_words=his_words_of(cfg, plan.bank))
             print(f"{job}: letter {'asked of the writer' if made else 'already asked'}")
             continue
-        letter, problems = letters_mod.checked(plan)
+        letter, problems = letters_mod.checked(plan, letters_mod.context_of(cfg, plan.draft))
         if problems:
             print(f"{job}: the written letter fails its check: " + "; ".join(problems))
             continue
@@ -2946,14 +2954,16 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
         role = types.SimpleNamespace(company=r.get("company") or "", title=r.get("title") or "")
         lt = compose.build_letter(
             db, letter, master_id=config_mod.HOUSE_LETTER_MASTER_ID,
-            title=f"PREVIEW CoverLetter {role.company}", folder_id=folder, base=base,
+            title=" ".join(x for x in ("PREVIEW", label, "CoverLetter", role.company) if x),
+            folder_id=folder, base=base,
             bases=bases, date_text=compose.date_for(plan.base_key),
             company=role.company, role=role.title, page_count=page_count, needs=plan.needs,
             entries=plan.entries, bank_words=plan.bank)
         paras = house.snapshot(db.get(config_mod.HOUSE_CV_MASTER_ID))
         anchor, count = compose.cv_summary_span(paras)
         cv = compose.build_cv(
-            db, master_id=config_mod.HOUSE_CV_MASTER_ID, title=f"PREVIEW CV {role.company}",
+            db, master_id=config_mod.HOUSE_CV_MASTER_ID,
+            title=" ".join(x for x in ("PREVIEW", label, "CV", role.company) if x),
             folder_id=folder, base=base, bases=bases, page_count=page_count,
             heading_sizes=masters_mod._cv_heading_sizes(paras), summary=letter.cv_summary,
             summary_anchor=anchor, summary_count=count)
@@ -10079,7 +10089,8 @@ def main(argv: list[str]) -> int:
             return 2
         return cmd_build_preview(jobs, queue="--queue" in argv, folder=folder,
                                  apply="--apply" in argv,
-                                 preview_folder="--preview-folder" in argv)
+                                 preview_folder="--preview-folder" in argv,
+                                 label=_flag("--label") or "")
     if cmd == "facts":
         # A personal line a letter needs (facts.py): queued asks are mailed to
         # him, and his replies are written to canon 9.14 as he wrote them,

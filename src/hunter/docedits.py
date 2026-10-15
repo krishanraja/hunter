@@ -212,3 +212,37 @@ def edit_examples(cfg: Config, bank_words: list[str], *, limit: int = 3) -> str:
         if pairs:
             blocks.append("\n".join(pairs[:8]))
     return "\n\n".join(blocks)
+
+
+_FIRST_PERSON = re.compile(r"\b(I|I'm|I've|I'd|my|me)\b|\bI[’']")
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+
+def his_own_sentences(cfg: Config, bank_words: list[str], *, limit: int = 40) -> str:
+    """The sentences he has written into letters, in the first person: facts
+    about himself in his own words ("I have acted as ..."), which the writer
+    may use and the evidence gate may trace. Only what he added, never what
+    hunter wrote, and never a personal line of his (canon 9.14), which goes
+    only where its own category fits."""
+    from .package import compose
+    try:
+        rows = db_get(cfg, TABLE, {"select": "before_paragraphs,after_paragraphs",
+                                   "doc_kind": "eq.letter", "text_changed": "eq.true",
+                                   "order": "noticed_at.desc", "limit": "50"})
+    except Exception:
+        return ""
+    out: list[str] = []
+    for r in rows:
+        before = " ".join(_norm(p.get("text")) for p in r.get("before_paragraphs") or [])
+        for p in r.get("after_paragraphs") or []:
+            for sent in _SENTENCE.split(_norm(p.get("text"))):
+                sent = sent.strip()
+                if (len(sent) < 20 or sent in before or not _FIRST_PERSON.search(sent)
+                        or sent in out):
+                    continue
+                if not compose.strip_his_lines(sent, bank_words).strip():
+                    continue
+                out.append(sent)
+                if len(out) >= limit:
+                    return "\n".join(out)
+    return "\n".join(out)

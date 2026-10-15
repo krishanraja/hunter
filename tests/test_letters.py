@@ -112,12 +112,16 @@ def answer(**over):
     a = {"hiring_lead": "Hiring Team",
          "hook": "Kestrel is turning voice agents into a partner business. " + LINE,
          "identity": "I'm a commercial leader with technical roots, and I build AI native "
-                     "sales engines.",
-         "bullets": [{"label": "Quorra:", "text": "grew a partner engine from $2M to $9M."},
+                     "sales engines for platform partnerships.",
+         "bullets": [{"label": "Quorra:", "text": "grew a partner engine from $2M to $9M, the "
+                                                   "platform partnerships work this seat leads."},
                      {"label": "Velmont:", "text": "licensed the stack to three businesses."},
-                     {"label": "Halcyon:", "text": "closed a $1.5M partnership."}],
-         "why_now": "I am looking for a platform business where partnerships are the growth line.",
-         "close": "I'd rather show you the partner engines I have built than describe them.",
+                     {"label": "Halcyon:", "text": "closed a $1.5M partnership, the kind of "
+                                                    "licensing deals Kestrel needs."}],
+         "why_now": "I am looking for a platform business like Kestrel, where partnerships are "
+                    "the growth line.",
+         "close": "I'd rather show you the partner engines I have built than describe them, "
+                  "starting with Kestrel's licensing deals.",
          "cv_summary": "",
          "asks": [{"ask": "partnerships", "quote": "lead platform partnerships and licensing deals",
                    "answered_by": "Velmont"}]}

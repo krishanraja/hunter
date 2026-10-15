@@ -187,3 +187,15 @@ def test_the_batch_record_says_how_much_he_edits_the_letters(monkeypatch):
     row = batchstats._row(b, "now")
     assert (row["letters_built"], row["letters_edited"], row["edit_chars_median"],
             row["formatting_edited"]) == (4, 2, 70, 1)
+
+
+def test_what_he_wrote_about_himself_becomes_his_own_words(monkeypatch):
+    line = "I have played in bands for twenty years and still record at home."
+    after = copy.deepcopy(BASE)
+    after[2] = para("Zentrox is busy and the gap is signed partners. I have run partner desks "
+                    "inside 8 organizations in the last 18 months. " + line +
+                    " Zentrox ships fast.")
+    rows = [{"before_paragraphs": BASE, "after_paragraphs": after}]
+    monkeypatch.setattr(docedits, "db_get", lambda cfg, t, p: rows)
+    got = docedits.his_own_sentences(None, [line]).split("\n")
+    assert got == ["I have run partner desks inside 8 organizations in the last 18 months."]

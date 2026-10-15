@@ -348,7 +348,8 @@ def evidence_problems(letter: Letter, *, evidence: str, banned: tuple[str, ...],
     return out
 
 
-def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None = None) -> list[str]:
+def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None = None,
+             context: str = "") -> list[str]:
     """Whether a letter answer may be used. Pure: the routine runs it too.
 
     meta carries what the answer is checked against: company, short_name,
@@ -373,6 +374,74 @@ def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None 
                              list(meta.get("entries") or []), list(meta.get("bank") or []))
     out += evidence_problems(letter, evidence=hay, banned=tuple(meta.get("banned") or ()),
                              names=names)
+    if context:
+        out += role_problems(letter, jd=meta.get("jd") or prompt, model=model_of(context),
+                             names=frozenset(n for n in (meta.get("company"), meta.get("short_name"))
+                                             if n),
+                             entries=list(meta.get("entries") or []))
+    return out
+
+
+# ---------- written for this role (A16) ----------
+
+COPY_RUN = 8        # words in a row copied from his model letter
+_GENERIC = frozenset("""
+about after again against along also always among another before being below between
+business businesses company companies could during every first great having their there
+these thing things those through under until where which while within without would years
+experience experienced ability strong role roles team teams work working including across
+looking candidate candidates position preferred required qualifications responsibilities
+should other others people please equal opportunity employer benefits including
+""".split())
+
+
+def model_of(context: str) -> str:
+    """His model letter, as the writer was given it."""
+    if "MODEL LETTER" not in (context or ""):
+        return ""
+    tail = context.split("MODEL LETTER", 1)[1]
+    return tail.split("\n\nEVIDENCE", 1)[0]
+
+
+def _run_words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9']+", (text or "").lower().replace("’", "'"))
+
+
+def posting_terms(jd: str, model: str) -> set[str]:
+    """Words this posting uses that his model letter does not: what a
+    paragraph written for this role is likely to say."""
+    mine = set(_run_words(model))
+    return {w for w in _run_words(jd) if len(w) >= 5 and w not in _GENERIC and w not in mine}
+
+
+def role_problems(letter: Letter, *, jd: str, model: str, names: frozenset[str],
+                  entries: list[str]) -> list[str]:
+    """Every paragraph written for this company and seat, none copied from his
+    model letter. His personal line is his and may sit anywhere it fits."""
+    out = []
+    model_runs = set()
+    words = _run_words(model)
+    for i in range(len(words) - COPY_RUN + 1):
+        model_runs.add(tuple(words[i:i + COPY_RUN]))
+    terms = posting_terms(jd, model)
+    lowered = [n.lower() for n in names if n]
+    for name in ("hook", "identity", "why_now", "close"):
+        text = getattr(letter, name)
+        for w in entries:
+            text = text.replace(w, " ")
+        ws = _run_words(text)
+        if any(tuple(ws[i:i + COPY_RUN]) in model_runs for i in range(len(ws) - COPY_RUN + 1)):
+            out.append(f"A16 the {name} copies his model letter; write it for this role")
+        low = " ".join(ws)
+        named = any(n in (text or "").lower() for n in lowered)
+        if name in ("hook", "why_now") and not named:
+            out.append(f"A16 the {name} does not name the company")
+        elif not named and not (set(ws) & terms):
+            out.append(f"A16 the {name} says nothing about this company or this seat")
+    tied = sum(1 for a, b in letter.bullets
+               if any(n in f"{a} {b}".lower() for n in lowered) or set(_run_words(b)) & terms)
+    if letter.bullets and tied < 2:
+        out.append("A16 fewer than two bullets say what they mean for this role")
     return out
 
 
@@ -388,26 +457,36 @@ def respelled(letter: Letter, base_key: str) -> Letter:
 
 RULES = """You write one cover letter for Krish Raja, for one posting, in his own register.
 
-His model is the letter he rewrote by hand (MODEL LETTER below): formal first person,
-warm, specific. Follow it:
+What he asks of every letter (his words, 2026-10-15: "not much of this is actually written
+personally for the role"): every paragraph is written for THIS company and THIS seat. A
+reader at the company should see, in each paragraph, why it is him for them. His own edits
+(HIS EDITS and HIS OWN WORDS below, when there are any) show how: he adds the line that ties
+what he is building himself to what the company sells, and the experience of his that is
+the same job as the title. So, for each posting, first find the connection: what in his own
+work is the same problem this company solves, or the same job this seat does. Lead with it,
+and carry it through.
+
+The MODEL LETTER below is his: it shows his register, layout and length. It is NOT a template.
+Never copy a sentence from it; write every paragraph fresh for this role.
 - Write in the first person throughout. Never drop the subject ("Would rather", "Built the
   team"): write "I'd rather", "I built". The identity paragraph opens with "I".
-- hook: what this business is doing and why it is worth his attention, from the posting
-  and the judge's read, then why he is the person for it. No flattery, no "I am excited".
-- identity: who he is, in the first person, as his model letter says it, adapted to what
-  this posting asks.
-- bullets: three or four of his proof points, the ones that answer what this posting asks,
-  each with a short bold label (an employer or a period, ending with a colon) and his own
-  wording from the evidence. One clause may mirror the posting. Every figure and every
-  name must be in the evidence as written.
-- why_now: why he is looking, in one or two sentences, as his model says it.
-- close: what he would bring to a first conversation, warm and specific.
+- hook: the connection between his work and what this company is doing, then why it makes
+  him the person for this seat. Name the company. No flattery, no "I am excited".
+- identity: who he is, written from this seat's angle: the parts of his record that matter to
+  this company, in his first person. Never his generic summary.
+- bullets: three or four of his proof points, the ones that answer what this posting asks.
+  Each has a short bold label (an employer or a period, ending with a colon), his figure in
+  his own wording, and one clause saying what it means for this company or this ask.
+  Every figure and every name must be in the evidence as written.
+- why_now: why this company and this seat, now, in one or two sentences specific to them.
+- close: the first thing he would do for this company, concrete, and an offer to show it.
 - asks: what the posting asks for, each with an exact quote from the posting and which
   proof answers it (or "gap" when none does).
 - cv_summary: two or three sentences for the top of his CV for this role, his facts only,
   or "" to keep his own.
 - When PERSONAL LINE is given, the letter must carry it, his words as written, in the hook
   or the close. When none is given, never write anything personal about his life.
+- His company is "Mindmake", one name, never "mind/make", "Mind Make" or "Mindmaker".
 - Never write his email, phone or address; the header carries them.
 - Spelling: as the BASE says (US or UK).
 - Lengths: hook up to 600 characters, identity up to 520, each bullet up to 260 with a
@@ -427,14 +506,16 @@ def strip_his_lines(text: str, bank_words: list[str]) -> str:
 
 
 def shared_context(*, model_letter: str, evidence_text: str, bank_words: list[str],
-                   examples: str = "") -> str:
+                   examples: str = "", his_words: str = "") -> str:
     parts = [
         RULES,
         "SCHEMA\n" + json.dumps(SCHEMA),
         "MODEL LETTER (his own, with his personal lines taken out)\n"
         + strip_his_lines(model_letter, bank_words),
         "EVIDENCE (his recorded facts; every figure and name must come from here or the posting)\n"
-        + evidence_text,
+        + evidence_text
+        + ("\n\nHIS OWN WORDS (sentences he wrote into letters; his facts)\n" + his_words
+           if his_words else ""),
     ]
     if examples:
         parts.append("HIS EDITS (newest first): what he changed in letters hunter wrote. Write "
