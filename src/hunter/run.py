@@ -7987,11 +7987,12 @@ def _counts_line(prefix: str, counts: dict) -> str:
     return f"{prefix}: " + (", ".join(parts) if parts else "none")
 
 
-def rebuild_lines(rep: dict, *, apply: bool, cap: int) -> list[str]:
+def rebuild_lines(rep: dict, *, apply: bool, cap: int, style: bool = False) -> list[str]:
     """Counts, never a role."""
+    why = "before his house style" if style else "without his reasons"
     lines = [f"rebuild: {rep.get('asked', 0)} row(s) he wants an application for that "
              f"carry his score or his reaction; {rep.get('targets', 0)} package(s) built "
-             f"without his reasons and not acted on, to rebuild"
+             f"{why} and not acted on, to rebuild"
              + (f" (at most {cap} this run)" if cap else ""),
              _counts_line("rebuild: left alone", rep.get("skips") or {})]
     if rep.get("with_amend"):
@@ -8027,6 +8028,7 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
     just before it pays, and his AMEND instructions go into the rebuild.
     Counts only on stdout."""
     from collections import Counter
+    from . import letters as letters_mod
     from . import spend
     from .ats import discover as disc
     cfg, canon = build_context()
@@ -8043,7 +8045,7 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
         print(f"rebuild: the targets could not be read ({e.__class__.__name__}); "
               f"nothing built")
         return 1
-    for line in rebuild_lines(rep, apply=apply, cap=max_builds):
+    for line in rebuild_lines(rep, apply=apply, cap=max_builds, style=(reason == "style")):
         print(line)
     if not apply or not targets:
         return 0
@@ -8120,6 +8122,13 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
             out["failed verification, the package before is not sent"] += 1
         elif any(x.startswith(f"DEAD {jid}") for x in said):
             out["posting gone"] += 1
+        # His house style decides what a build waits on before it fetches
+        # (letters.plan): its letter asked of the writing routine, or held for
+        # his pick of header or a line of his. Neither is a row that changed.
+        elif any(x.startswith(f"SKIPPED {jid}: {letters_mod.WAITING}") for x in said):
+            out["letter asked of the writer"] += 1
+        elif any(x.startswith(f"SKIPPED {jid}: held") for x in said):
+            out["held for him"] += 1
         elif any(x.startswith(f"SKIPPED {jid}") or x.startswith("SKIPPED:") for x in said):
             out["row changed before its turn"] += 1
         else:
