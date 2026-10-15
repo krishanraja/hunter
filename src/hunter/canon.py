@@ -21,7 +21,10 @@ from .sheet import HEADERS as CODE_HEADERS, col_letter
 
 CANON_SLUG = "krish-canon"
 
-REQUIRED_SECTIONS = ["2", "3", "4", "6", "9.1", "9.2", "9.3", "9.4", "9.9", "9.12", "9.13"]
+# 9.14, his personal lines, from v13 (2026-10-15): without it every letter to a
+# business of his kinds would hold and ask him again for a line he has given.
+REQUIRED_SECTIONS = ["2", "3", "4", "6", "9.1", "9.2", "9.3", "9.4", "9.9", "9.12", "9.13",
+                     "9.14"]
 
 # A heading is an optional ## or ### prefix, a section number, then an
 # uppercase title. The uppercase requirement keeps numbered list items
