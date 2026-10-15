@@ -31,7 +31,10 @@ from .package import style as style_mod
 # A new brief asks the writer again: 15 October b, every paragraph written
 # for the role (his words: "not much of this is actually written personally
 # for the role").
-PROMPT_VERSION = "letter-2026-10-15b"
+# 15 October c: the CV summary is written for the role too (his words: "are
+# you sure its ok that the CV's professional summary has close to zero
+# personalization?").
+PROMPT_VERSION = "letter-2026-10-15c"
 WAITING = "waiting on the writer"
 HELD_BASE = f"held: {contact.HEADER_ASK}"
 RECORD_FIELDS = "job_id,company,title,location,jd_text,judge_answers,header_base,package_status"

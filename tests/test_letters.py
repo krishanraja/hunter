@@ -122,7 +122,7 @@ def answer(**over):
                     "the growth line.",
          "close": "I'd rather show you the partner engines I have built than describe them, "
                   "starting with Kestrel's licensing deals.",
-         "cv_summary": "",
+         "cv_summary": 'I build platform partnerships and licensing deals: at Quorra I grew a partner engine from $2M to $9M, at Velmont I licensed the stack to three businesses, and at Halcyon I closed a $1.5M partnership. I want to lead the platform partnerships of a voice agents business, reporting to the COO, with a small team built around licensing deals.',
          "asks": [{"ask": "partnerships", "quote": "lead platform partnerships and licensing deals",
                    "answered_by": "Velmont"}]}
     a.update(over)

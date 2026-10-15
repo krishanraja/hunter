@@ -34,7 +34,7 @@ def answer(**over):
                      {"label": "Halcyon:", "text": "closed a $1.5M partnership."}],
          "why_now": "I am looking for a platform business where partnerships are the growth line.",
          "close": "I'd rather show you the partner engines I have built than describe them.",
-         "cv_summary": "",
+         "cv_summary": 'I build platform partnerships and licensing deals: at Quorra I grew a partner engine from $2M to $9M, at Velmont I licensed the stack to three businesses, and at Halcyon I closed a $1.5M partnership. I want to lead the platform partnerships of a home audio business, reporting to the COO, with a small team built around licensing deals.',
          "asks": [{"ask": "partnerships", "quote": "lead platform partnerships and licensing deals",
                    "answered_by": "Velmont"}]}
     a.update(over)
@@ -399,3 +399,62 @@ def test_without_the_context_the_role_check_is_not_run():
     assert not [f for f in compose.problems(answer(close="I'd rather show you the system than "
                                                          "describe it."),
                                             evidence=EVIDENCE, meta=META) if f.startswith("A16")]
+
+
+
+# ---------- the CV summary, written for the role ----------
+
+CV_CONTEXT = CONTEXT + "\nPROFESSIONAL SUMMARY\nWith 16 years commercializing data and tech inside " \
+    "content and media enterprises, I have scaled business to nine figures and ship AI into production " \
+    "myself.\nCAREER HIGHLIGHTS\nx"
+
+
+def summary_role(a):
+    return [f for f in compose.problems(a, evidence=EVIDENCE, meta=META, context=CV_CONTEXT)
+            if "CV summary" in f]
+
+
+def test_a_summary_written_for_the_role_passes():
+    assert summary_role(written_for_zentrox()) == []
+
+
+def test_an_empty_summary_is_refused():
+    got = compose.problems(answer(cv_summary=""), evidence=EVIDENCE, meta=META)
+    assert "shape: the CV summary is missing or too short to be written for the role" in got
+
+
+def test_his_own_cv_summary_repeated_is_refused():
+    a = written_for_zentrox(cv_summary=(
+        "With 16 years commercializing data and tech inside content and media enterprises, I have "
+        "scaled business to nine figures and ship AI into production myself. I want to lead platform "
+        "partnerships and licensing deals for a home audio business."))
+    assert "A16 the CV summary repeats his CV's own summary; write it for this role" in summary_role(a)
+
+
+def test_a_summary_about_nothing_in_particular_is_refused():
+    a = written_for_zentrox(cv_summary=(
+        "I am a commercial leader with technical roots who builds AI native sales engines, and I have "
+        "spent a long career growing revenue, building teams and taking businesses into new markets, "
+        "and I would bring all of it to the next thing I do, with energy and care for the people."))
+    assert "A16 the CV summary says nothing about this role" in summary_role(a)
+
+
+def test_the_summary_bolds_its_figures_and_his_own_bold_phrases():
+    got = compose.summary_bold("I grew it from $2M to $9M and ran a 14-agent autonomous AI operating "
+                               "system; 30% came from partners.",
+                               ["14-agent autonomous AI operating system", "a phrase it lost"])
+    assert got == ["$2M to $9M", "30%", "14-agent autonomous AI operating system"]
+
+
+def test_the_built_cv_carries_the_role_summary_with_its_figures_bold():
+    db, m = cv_master()
+    anchor, count = compose.cv_summary_span(house.snapshot(db.get(m)))
+    text = "I grew a partner engine from $2M to $9M and licensed the stack to three businesses."
+    got = compose.build_cv(db, master_id=m, title="c", folder_id="f", base=US_BASE, bases=BASES,
+                           page_count=page_count, heading_sizes=heading_sizes(db, m),
+                           summary=text, summary_anchor=anchor, summary_count=count)
+    assert got.problems == []
+    para = next(p for p in house.snapshot(db.get(got.doc_id)) if house.norm(p.text) == text)
+    bold = [r.text for r in para.runs if r.bold]
+    assert bold == ["$2M to $9M"]
+    assert all((r.font, r.size) == ("Arial", 9.0) for r in para.runs if r.text.strip())

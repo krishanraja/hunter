@@ -35,10 +35,12 @@ KIND = "letter"
 LIMITS = {"hook": 600, "identity": 520, "why_now": 340, "close": 380,
           "label": 48, "bullet": 260, "cv_summary": 900}
 BODY_BUDGET = 2400
+CV_SUMMARY_MIN = 250
 
 SCHEMA = {
     "type": "object",
-    "required": ["hiring_lead", "hook", "identity", "bullets", "why_now", "close", "asks"],
+    "required": ["hiring_lead", "hook", "identity", "bullets", "why_now", "close", "asks",
+                 "cv_summary"],
     "properties": {
         "hiring_lead": {"type": "string"},
         "hook": {"type": "string"},
@@ -298,7 +300,9 @@ def shape_problems(letter: Letter) -> list[str]:
             out.append(f"shape: bullet {i} has no label or no text")
         elif len(label) > LIMITS["label"] or len(text) > LIMITS["bullet"]:
             out.append(f"shape: bullet {i} is too long")
-    if letter.cv_summary and len(letter.cv_summary) > LIMITS["cv_summary"]:
+    if len(letter.cv_summary) < CV_SUMMARY_MIN:
+        out.append("shape: the CV summary is missing or too short to be written for the role")
+    elif len(letter.cv_summary) > LIMITS["cv_summary"]:
         out.append("shape: the CV summary is too long")
     if letter.body_chars() > BODY_BUDGET:
         out.append(f"shape: the letter is over {BODY_BUDGET} characters")
@@ -378,7 +382,7 @@ def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None 
         out += role_problems(letter, jd=meta.get("jd") or prompt, model=model_of(context),
                              names=frozenset(n for n in (meta.get("company"), meta.get("short_name"))
                                              if n),
-                             entries=list(meta.get("entries") or []))
+                             entries=list(meta.get("entries") or []), context_cv=context)
     return out
 
 
@@ -414,8 +418,20 @@ def posting_terms(jd: str, model: str) -> set[str]:
     return {w for w in _run_words(jd) if len(w) >= 5 and w not in _GENERIC and w not in mine}
 
 
+SUMMARY_COPY_RUN = 10
+
+
+def cv_summary_of(text: str) -> str:
+    """His CV's own professional summary, out of the evidence the writer was
+    given: everything between the heading and the next one."""
+    if "PROFESSIONAL SUMMARY" not in (text or ""):
+        return ""
+    tail = text.split("PROFESSIONAL SUMMARY", 1)[1]
+    return tail.split("CAREER HIGHLIGHTS", 1)[0]
+
+
 def role_problems(letter: Letter, *, jd: str, model: str, names: frozenset[str],
-                  entries: list[str]) -> list[str]:
+                  entries: list[str], context_cv: str = "") -> list[str]:
     """Every paragraph written for this company and seat, none copied from his
     model letter. His personal line is his and may sit anywhere it fits."""
     out = []
@@ -438,6 +454,15 @@ def role_problems(letter: Letter, *, jd: str, model: str, names: frozenset[str],
             out.append(f"A16 the {name} does not name the company")
         elif not named and not (set(ws) & terms):
             out.append(f"A16 the {name} says nothing about this company or this seat")
+    if letter.cv_summary:
+        ws = _run_words(letter.cv_summary)
+        own = _run_words(cv_summary_of(context_cv))
+        own_runs = {tuple(own[i:i + SUMMARY_COPY_RUN]) for i in range(len(own) - SUMMARY_COPY_RUN + 1)}
+        if any(tuple(ws[i:i + SUMMARY_COPY_RUN]) in own_runs
+               for i in range(len(ws) - SUMMARY_COPY_RUN + 1)):
+            out.append("A16 the CV summary repeats his CV's own summary; write it for this role")
+        if len(set(ws) & terms) < 2 and not any(n in letter.cv_summary.lower() for n in lowered):
+            out.append("A16 the CV summary says nothing about this role")
     tied = sum(1 for a, b in letter.bullets
                if any(n in f"{a} {b}".lower() for n in lowered) or set(_run_words(b)) & terms)
     if letter.bullets and tied < 2:
@@ -482,15 +507,20 @@ Never copy a sentence from it; write every paragraph fresh for this role.
 - close: the first thing he would do for this company, concrete, and an offer to show it.
 - asks: what the posting asks for, each with an exact quote from the posting and which
   proof answers it (or "gap" when none does).
-- cv_summary: two or three sentences for the top of his CV for this role, his facts only,
-  or "" to keep his own.
+- cv_summary: the professional summary at the top of his CV, rewritten for this role, never
+  left empty and never his CV's own summary repeated (his words, 2026-10-15: "are you sure
+  its ok that the CV's professional summary has close to zero personalization?"). Two or three
+  sentences in the first person, as his CV's summary is: lead with the part of his record this
+  seat needs, give the figures that prove it, and end on what he would be in this role. His
+  facts only.
 - When PERSONAL LINE is given, the letter must carry it, his words as written, in the hook
   or the close. When none is given, never write anything personal about his life.
 - His company is "Mindmake", one name, never "mind/make", "Mind Make" or "Mindmaker".
 - Never write his email, phone or address; the header carries them.
 - Spelling: as the BASE says (US or UK).
 - Lengths: hook up to 600 characters, identity up to 520, each bullet up to 260 with a
-  label up to 48, why_now up to 340, close up to 380; the whole letter fits one page.
+  label up to 48, why_now up to 340, close up to 380, cv_summary 250 to 900; the whole
+  letter fits one page and the CV two.
 Answer with one JSON object matching the schema, and nothing else."""
 
 
@@ -744,9 +774,30 @@ def cv_spelling_requests(doc: dict, base_key: str) -> list[dict]:
                                 "replaceText": wrong[w]}} for w in safe]
 
 
-def summary_requests(doc: dict, anchor: str, count: int, text: str) -> list[dict]:
+_MONEY = re.compile(r"\$\s?\d[\d,.]*\s*[KkMmBb]?(?:\s+(?:to|and)\s+\$?\s?\d[\d,.]*\s*[KkMmBb]?)?"
+                    r"(?:\s+ARR)?|\d[\d,.]*\s*%")
+
+
+def summary_bold(text: str, keep: list[str]) -> list[str]:
+    """What the new summary bolds, as his CV does: its money and percentage
+    phrases, and any phrase his own summary bolded that it still says."""
+    out = []
+    for m in _MONEY.finditer(text or ""):
+        frag = m.group(0).strip()
+        if frag and frag not in out:
+            out.append(frag)
+    for k in keep:
+        k = (k or "").strip()
+        if k and k in text and k not in out:
+            out.append(k)
+    return [f for f in out if not any(f != o and f in o for o in out)]
+
+
+def summary_requests(doc: dict, anchor: str, count: int, text: str,
+                     keep_bold: list[str] | None = None) -> list[dict]:
     """The CV summary's paragraphs replaced by one, in the first one's own
-    style set whole and not bold, so nothing is inherited by accident."""
+    style set whole and not bold, so nothing is inherited by accident; then
+    the figures bolded, as his CV bolds them."""
     paras = [p for p in house.snapshot(doc)]
     idx = next((i for i, p in enumerate(paras) if house.norm(p.text).startswith(anchor)), None)
     if idx is None:
@@ -757,10 +808,18 @@ def summary_requests(doc: dict, anchor: str, count: int, text: str) -> list[dict
     if "weightedFontFamily" in style:
         style["weightedFontFamily"] = dict(style["weightedFontFamily"], weight=400)
     s, e = span[0].start, span[-1].end - 1
-    return [{"deleteContentRange": {"range": {"startIndex": s, "endIndex": e}}},
+    reqs = [{"deleteContentRange": {"range": {"startIndex": s, "endIndex": e}}},
             {"insertText": {"location": {"index": s}, "text": text}},
             {"updateTextStyle": {"range": {"startIndex": s, "endIndex": s + len(text)},
                                  "textStyle": style, "fields": "*"}}]
+    for frag in summary_bold(text, keep_bold or []):
+        at = text.index(frag)
+        reqs.append({"updateTextStyle": {
+            "range": {"startIndex": s + at, "endIndex": s + at + len(frag)},
+            "textStyle": {"bold": True, "weightedFontFamily": {"fontFamily": house.FONT,
+                                                              "weight": 700}},
+            "fields": "bold,weightedFontFamily"}})
+    return reqs
 
 
 def cv_summary_span(paras: list[house.Para]) -> tuple[str, int]:
@@ -793,8 +852,13 @@ def build_cv(db, *, master_id: str, title: str, folder_id: str, base, bases: dic
     out.doc_id = db.copy_master(master_id, title, folder_id)
     db.batch(out.doc_id, cv_requests(db.get(out.doc_id), base=base))
     if summary and summary_anchor:
-        db.batch(out.doc_id, summary_requests(db.get(out.doc_id), summary_anchor,
-                                              summary_count, spell(summary, base.key)))
+        doc = db.get(out.doc_id)
+        paras = house.snapshot(doc)
+        idx = next((i for i, p in enumerate(paras) if house.norm(p.text).startswith(summary_anchor)), None)
+        span = [p for p in paras[idx:] if p.text.strip()][:summary_count] if idx is not None else []
+        keep = [r.text.strip() for p in span for r in p.runs if r.bold and r.text.strip()]
+        db.batch(out.doc_id, summary_requests(doc, summary_anchor, summary_count,
+                                              spell(summary, base.key), keep_bold=keep))
         out.notes.append("summary written for the role")
     db.batch(out.doc_id, cv_spelling_requests(db.get(out.doc_id), base.key))
     pdf = db.export_pdf(out.doc_id)
