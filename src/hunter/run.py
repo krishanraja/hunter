@@ -9312,8 +9312,47 @@ def cmd_letter_master(source: str, apply: bool = False) -> int:
     return 1 if out["problems"] else 0
 
 
+def cmd_cv_master(letter: str, apply: bool = False) -> int:
+    """The CV master in his house style (package/masters.py): a copy of the
+    CV master, every run in Arial with its weight kept, his letter's header,
+    link row and banner, a 9pt body, the headings at their own sizes, fitted
+    to two pages. Dry run unless --apply. letter is the letter whose link row
+    and banner are copied. Counts and the new id only."""
+    from .apply.merge import page_count
+    from .package import masters
+    cfg = load()
+    db = DocBuild(GoogleOAuth(cfg).access_token)
+    try:
+        out = masters.build_cv_master(db, config_mod.CV_MASTER_ID, letter,
+                                      folder_id=config_mod.CV_FOLDER_ID,
+                                      page_count=page_count, apply=apply)
+    except masters.MasterError as e:
+        print(f"cv-master: refused, {e}")
+        return 1
+    except Exception as e:
+        print(f"cv-master: failed ({e.__class__.__name__})")
+        return 1
+    print(f"cv-master: {out['runs']} runs to restyle, {out['headings']} headings"
+          + ("" if apply else " (dry run, pass --apply to make it)"))
+    if out["made"]:
+        step = out["margin_step"]
+        print(f"cv-master: made {out['made']}"
+              + (f", margins in by {step:g}pt" if step is not None else "")
+              + ("" if out["banner_kept"] else ", banner left off to fit two pages"))
+    for line in out["problems"]:
+        print(f"cv-master: PROBLEM {line}")
+    return 1 if out["problems"] else 0
+
+
 def main(argv: list[str]) -> int:
     cmd = argv[0] if argv else "recon"
+    if cmd == "cv-master":
+        i = argv.index("--letter") if "--letter" in argv else -1
+        src = argv[i + 1] if 0 <= i < len(argv) - 1 else ""
+        if not src:
+            print("usage: python -m hunter.run cv-master --letter <doc_id> [--apply]")
+            return 2
+        return cmd_cv_master(src, apply="--apply" in argv)
     if cmd == "letter-master":
         i = argv.index("--from") if "--from" in argv else -1
         src = argv[i + 1] if 0 <= i < len(argv) - 1 else ""

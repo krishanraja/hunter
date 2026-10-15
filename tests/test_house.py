@@ -87,7 +87,8 @@ def letter(base=US_BASE, *, bullets=4):
                 "fontSize": {"magnitude": 11, "unit": "PT"}}}]},
             "inlineObjects": {"kix.banner": {"inlineObjectProperties": {"embeddedObject": {
                 "size": {"width": {"magnitude": 150, "unit": "PT"},
-                         "height": {"magnitude": 23, "unit": "PT"}}}}}},
+                         "height": {"magnitude": 23, "unit": "PT"}},
+                "imageProperties": {"contentUri": "https://lh7.example.invalid/banner"}}}}},
             "body": {"content": content}}
 
 

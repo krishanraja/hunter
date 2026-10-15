@@ -191,3 +191,188 @@ def build_v5(db, specimen_id: str, *, folder_id: str, page_count, apply: bool) -
     out["problems"] = template_problems(house.snapshot(db.get(doc_id)))
     out["made"] = doc_id
     return out
+
+
+# ---------- the CV master: his letter's header on his CV ----------
+#
+# His answers, 2026-10-15: the CV takes the letter's font, header (place and
+# phone, no email), link row and banner, with a 9pt body; its headings keep
+# their own sizes, in Arial; two pages at most, the margins narrowing first,
+# then the banner going, and his CV content never cut. The link row and the
+# banner are copied from his letter at run time, so they are his bytes and
+# never a second description of them.
+
+CV_MARGIN_FLOOR = MARGIN_FLOOR
+
+
+def letter_header_parts(letter_doc: dict) -> dict:
+    """His link row (each run's text and link) and his banner (its image uri,
+    size and link), read from his letter."""
+    paras = house.snapshot(letter_doc)
+    lay = house.layout(paras)
+    if lay.link_row is None or lay.banner is None:
+        raise MasterError("his letter has no link row or no banner to copy")
+    row = [(r.text.replace("\n", ""), r.link) for r in paras[lay.link_row].runs]
+    row = [(t, u) for t, u in row if t]
+    img = paras[lay.banner].images[0]
+    if not img.uri:
+        raise MasterError("his banner has no readable image to copy")
+    return {"row": row, "banner": {"uri": img.uri, "width": img.width_pt or 150.0,
+                                   "height": img.height_pt or 23.0, "link": img.link}}
+
+
+def _cv_heading_sizes(paras: list[house.Para]) -> dict[str, float]:
+    from .assertions import CV_HEADINGS
+    out = {}
+    for p in paras:
+        t = house.norm(p.text)
+        if t in CV_HEADINGS and p.runs:
+            out[t] = p.runs[0].size or house.BODY_PT
+    return out
+
+
+def cv_restyle_requests(paras: list[house.Para]) -> list[dict]:
+    """Every run to Arial, bold kept: the name and title in his letter's
+    styles, the headings at their own sizes, everything else 9pt. No index
+    moves, so order does not matter."""
+    lay = house.layout(paras)
+    headings = _cv_heading_sizes(paras)
+    reqs = []
+    for i, p in enumerate(paras):
+        t = house.norm(p.text)
+        for r in p.runs:
+            if r.end <= r.start or r.text == "\n":
+                continue
+            bold = r.bold
+            size = house.BODY_PT
+            style: dict = {}
+            fields = "weightedFontFamily,fontSize,bold"
+            if i == lay.name:
+                size, bold = house.NAME_PT, True
+                style["foregroundColor"] = {"color": {"rgbColor": NAVY}}
+                fields += ",foregroundColor"
+            elif i == lay.title:
+                size, bold = house.TITLE_PT, False
+                style["foregroundColor"] = {"color": {"rgbColor": NAVY}}
+                fields += ",foregroundColor"
+            elif t in headings:
+                size = headings[t]
+            style.update({"weightedFontFamily": {"fontFamily": house.FONT,
+                                                 "weight": 700 if bold else 400},
+                          "fontSize": {"magnitude": size, "unit": "PT"}})
+            if bold:
+                style["bold"] = True
+            reqs.append({"updateTextStyle": {"range": {"startIndex": r.start, "endIndex": r.end},
+                                             "textStyle": style, "fields": fields}})
+    return reqs
+
+
+def cv_header_requests(paras: list[house.Para], parts: dict) -> list[dict]:
+    """The contact line becomes his place and phone slot, and his link row
+    and banner go in under it, as two paragraphs of their own."""
+    lay = house.layout(paras)
+    if lay.contact is None:
+        raise MasterError("the CV has no contact line under its title")
+    contact = paras[lay.contact]
+    s, mark = contact.start, contact.end - 1
+    reqs: list[dict] = []
+    if mark > s:
+        reqs.append({"deleteContentRange": {"range": {"startIndex": s, "endIndex": mark}}})
+    reqs.append({"insertText": {"location": {"index": s}, "text": CONTACT_LINE}})
+    grey = {"weightedFontFamily": {"fontFamily": house.FONT, "weight": 400},
+            "fontSize": {"magnitude": house.BODY_PT, "unit": "PT"},
+            "foregroundColor": {"color": {"rgbColor": GREY}}}
+    reqs.append({"updateTextStyle": {"range": {"startIndex": s, "endIndex": s + len(CONTACT_LINE)},
+                                     "textStyle": grey, "fields": "*"}})
+    row_text = "".join(t for t, _ in parts["row"])
+    at = s + len(CONTACT_LINE)
+    reqs.append({"insertText": {"location": {"index": at}, "text": "\n" + row_text + "\n"}})
+    row_start = at + 1
+    reqs.append({"updateTextStyle": {"range": {"startIndex": row_start,
+                                               "endIndex": row_start + len(row_text)},
+                                     "textStyle": grey, "fields": "*"}})
+    cursor = row_start
+    blue = {"red": 17 / 255, "green": 85 / 255, "blue": 204 / 255}
+    for text, url in parts["row"]:
+        if url:
+            reqs.append({"updateTextStyle": {
+                "range": {"startIndex": cursor, "endIndex": cursor + len(text)},
+                "textStyle": {"link": {"url": url}, "underline": True,
+                              "foregroundColor": {"color": {"rgbColor": blue}}},
+                "fields": "link,underline,foregroundColor"}})
+        cursor += len(text)
+    banner_at = row_start + len(row_text) + 1
+    b = parts["banner"]
+    reqs.append({"insertInlineImage": {"location": {"index": banner_at}, "uri": b["uri"],
+                                       "objectSize": {"width": {"magnitude": b["width"], "unit": "PT"},
+                                                      "height": {"magnitude": b["height"], "unit": "PT"}}}})
+    if b.get("link"):
+        reqs.append({"updateTextStyle": {"range": {"startIndex": banner_at, "endIndex": banner_at + 1},
+                                         "textStyle": {"link": {"url": b["link"]}},
+                                         "fields": "link"}})
+    return reqs
+
+
+def cv_template_problems(paras: list[house.Para], heading_sizes: dict[str, float], *,
+                         banner: bool = True) -> list[str]:
+    from .assertions import CV_HEADINGS
+    out = []
+    text = "\n".join(p.text for p in paras)
+    if text.count(CONTACT_LINE.replace("  ", "  ")) != 1:
+        out.append("the CV's place and phone slot is missing or twice")
+    lay = house.layout(paras)
+    for name in ("name", "title", "link_row") + (("banner",) if banner else ()):
+        if getattr(lay, name) is None:
+            out.append(f"the CV lost his {name.replace('_', ' ')}")
+    for h in CV_HEADINGS:
+        if h not in text:
+            out.append(f"the CV lost its heading {h}")
+    header_end = lay.rights if lay.rights is not None else 4
+    if house._EMAIL.search(" ".join(p.text for p in paras[:header_end + 1])):
+        out.append("an email address is still in the CV header")
+    for i, p in enumerate(paras):
+        t = house.norm(p.text)
+        want = (house.NAME_PT if i == lay.name else house.TITLE_PT if i == lay.title
+                else heading_sizes.get(t, house.BODY_PT))
+        for r in p.runs:
+            if r.text.strip() and (r.font != house.FONT or r.size != want):
+                out.append(f"CV paragraph {i + 1} is not {house.FONT} {want:g}pt")
+                break
+    return out
+
+
+def build_cv_master(db, cv_id: str, letter_id: str, *, folder_id: str, page_count,
+                    apply: bool) -> dict:
+    """Plan, and with apply make, the CV master in his house style: a copy of
+    the CV master, restyled, his letter's header put on it, then fitted to
+    two pages (margins first, then the banner goes)."""
+    source = house.snapshot(db.get(cv_id))
+    parts = letter_header_parts(db.get(letter_id))
+    headings = _cv_heading_sizes(source)
+    restyle = cv_restyle_requests(source)
+    out = {"runs": len(restyle), "headings": len(headings), "made": "",
+           "margin_step": None, "banner_kept": True, "problems": []}
+    if not apply:
+        return out
+    doc_id = db.copy_master(cv_id, "CV master, house style", parent_id=folder_id)
+    db.batch(doc_id, restyle)
+    db.batch(doc_id, cv_header_requests(house.snapshot(db.get(doc_id)), parts))
+    for step in MARGIN_STEPS:
+        db.batch(doc_id, [margin_request(step)])
+        if page_count(db.export_pdf(doc_id)) <= house.CV_PAGES:
+            out["margin_step"] = step
+            break
+    if out["margin_step"] is None:
+        lay = house.layout(house.snapshot(db.get(doc_id)))
+        banner = house.snapshot(db.get(doc_id))[lay.banner] if lay.banner is not None else None
+        if banner is not None:
+            db.batch(doc_id, [{"deleteContentRange": {"range": {"startIndex": banner.start,
+                                                                "endIndex": banner.end}}}])
+            out["banner_kept"] = False
+        if page_count(db.export_pdf(doc_id)) > house.CV_PAGES:
+            out["problems"].append("the CV runs over two pages even at the margin floor "
+                                   "without the banner")
+    out["problems"] += cv_template_problems(house.snapshot(db.get(doc_id)), headings,
+                                            banner=out["banner_kept"])
+    out["made"] = doc_id
+    return out

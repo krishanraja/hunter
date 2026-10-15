@@ -64,6 +64,8 @@ class Run:
     bold: bool
     color: str | None
     link: str = ""
+    start: int = 0
+    end: int = 0
 
 
 @dataclass
@@ -72,6 +74,8 @@ class Image:
     width_pt: float | None
     height_pt: float | None
     link: str = ""
+    index: int = 0
+    uri: str = ""
 
 
 @dataclass
@@ -80,6 +84,8 @@ class Para:
     runs: list[Run] = field(default_factory=list)
     images: list[Image] = field(default_factory=list)
     bullet: bool = False
+    start: int = 0
+    end: int = 0
 
 
 def _hex(color: dict | None) -> str | None:
@@ -130,7 +136,8 @@ def snapshot(doc: dict) -> list[Para]:
         if not p:
             continue
         pstyle = named.get((p.get("paragraphStyle") or {}).get("namedStyleType", "NORMAL_TEXT"), {})
-        para = Para(text="", bullet="bullet" in p)
+        para = Para(text="", bullet="bullet" in p, start=el.get("startIndex", 0),
+                    end=el.get("endIndex", 0))
         for e in p.get("elements", []):
             if "textRun" in e:
                 tr = e["textRun"]
@@ -139,7 +146,8 @@ def snapshot(doc: dict) -> list[Para]:
                     text=tr.get("content", ""), font=_font(eff),
                     size=_pt(eff.get("fontSize")), bold=bool(eff.get("bold")),
                     color=_hex(eff.get("foregroundColor")),
-                    link=((eff.get("link") or {}).get("url") or "")))
+                    link=((eff.get("link") or {}).get("url") or ""),
+                    start=e.get("startIndex", 0), end=e.get("endIndex", 0)))
                 para.text += tr.get("content", "")
             elif "inlineObjectElement" in e:
                 ioe = e["inlineObjectElement"]
@@ -150,7 +158,9 @@ def snapshot(doc: dict) -> list[Para]:
                 para.images.append(Image(
                     object_id=oid, width_pt=_pt(size.get("width")),
                     height_pt=_pt(size.get("height")),
-                    link=(((ioe.get("textStyle") or {}).get("link") or {}).get("url") or "")))
+                    link=(((ioe.get("textStyle") or {}).get("link") or {}).get("url") or ""),
+                    index=e.get("startIndex", 0),
+                    uri=((emb.get("imageProperties") or {}).get("contentUri") or "")))
         out.append(para)
     return out
 

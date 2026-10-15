@@ -201,6 +201,19 @@ class FakeDoc:
             self._update_style(req["updateTextStyle"])
         elif "updateParagraphStyle" in req:
             self._update_paragraph(req["updateParagraphStyle"])
+        elif "insertInlineImage" in req:
+            body = req["insertInlineImage"]
+            if not str(body.get("uri", "")).startswith("https://"):
+                raise ValueError("insertInlineImage needs an https uri")
+            pos = body["location"]["index"] - self.base
+            if not (0 <= pos <= len(self.chars)):
+                raise IndexError(f"insertInlineImage out of bounds: {body['location']}")
+            objects = self.extra.setdefault("inlineObjects", {})
+            oid = f"kix.inserted{len(objects) + 1}"
+            objects[oid] = {"objectId": oid, "inlineObjectProperties": {"embeddedObject": {
+                "size": copy.deepcopy(body.get("objectSize") or {}),
+                "imageProperties": {"contentUri": body["uri"]}}}}
+            self.chars[pos:pos] = [Char(OBJECT, obj=oid)]
         elif "updateDocumentStyle" in req:
             body = req["updateDocumentStyle"]
             names = _mask(body.get("fields"), DOCUMENT_FIELDS)
