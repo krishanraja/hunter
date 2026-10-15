@@ -269,3 +269,31 @@ def test_a_letter_over_one_page_is_blocked_and_left_for_review(world):
     assert "house style read-back failed" in world["db"].role()["rejection_reason"]
     assert any("A9 the letter renders 2 pages" in s for s in summary)
     assert world["db"].role().get(style.FIELD) is None
+
+
+def test_the_preview_folder_is_made_once_and_reused(monkeypatch):
+    import hunter.docbuild as docbuild_mod
+    made = []
+
+    class R:
+        def __init__(self, data):
+            self.data = data
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self.data
+    found = {"files": []}
+    monkeypatch.setattr(docbuild_mod.requests, "get", lambda *a, **kw: R(found))
+
+    def post(url, **kw):
+        made.append(kw["json"])
+        return R({"id": "F1"})
+    monkeypatch.setattr(docbuild_mod.requests, "post", post)
+    db = docbuild_mod.DocBuild("token")
+    assert db.folder(run_mod.PREVIEW_FOLDER) == "F1"
+    assert made == [{"name": "hunter preview", "mimeType": "application/vnd.google-apps.folder",
+                     "parents": ["root"]}]
+    found["files"] = [{"id": "F1", "name": "hunter preview"}]
+    assert db.folder(run_mod.PREVIEW_FOLDER) == "F1" and len(made) == 1

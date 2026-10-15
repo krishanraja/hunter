@@ -2875,8 +2875,12 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
     return True
 
 
+PREVIEW_FOLDER = "hunter preview"
+
+
 def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bool,
-                      db: DocBuild | None = None, page_count=None) -> int:
+                      preview_folder: bool = False, db: DocBuild | None = None,
+                      page_count=None) -> int:
     """The scratch preview (his review before anything live changes): for each
     role, the letter is asked of the writer (--queue), and once written, the
     letter and CV are built in his house style into `folder` (--apply) from
@@ -2893,6 +2897,11 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
     if page_count is None:
         from .apply.merge import page_count
     bases = contact.load_bases(cfg)
+    if apply and preview_folder and not folder:
+        # His Drive's own top level, made by hunter's own login so the copies
+        # can land in it; the same folder on every later run.
+        folder = db.folder(PREVIEW_FOLDER)
+        print(f"folder: https://drive.google.com/drive/folders/{folder}")
     asked: list[str] = []
     for job in job_ids:
         rec = db_get(cfg, "hunter_seen_roles", {"select": "*", "job_id": f"eq.{job}"})
@@ -10039,11 +10048,12 @@ def main(argv: list[str]) -> int:
         # writer, --apply --folder <id> to build. Links and codes only.
         jobs = [argv[i + 1] for i, a in enumerate(argv) if a == "--job-id" and i + 1 < len(argv)]
         folder = argv[argv.index("--folder") + 1] if "--folder" in argv else ""
-        if "--apply" in argv and not folder:
-            print("build-preview --apply needs --folder <drive folder id>")
+        if "--apply" in argv and not folder and "--preview-folder" not in argv:
+            print("build-preview --apply needs --folder <drive folder id> or --preview-folder")
             return 2
         return cmd_build_preview(jobs, queue="--queue" in argv, folder=folder,
-                                 apply="--apply" in argv)
+                                 apply="--apply" in argv,
+                                 preview_folder="--preview-folder" in argv)
     if cmd == "facts":
         # A personal line a letter needs (facts.py): queued asks are mailed to
         # him, and his replies are written to canon 9.14 as he wrote them,
