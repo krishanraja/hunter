@@ -23,6 +23,7 @@ path, and this file is the one place allowed to have one.
 from __future__ import annotations
 
 import base64
+import json
 import re
 from email.message import EmailMessage
 
@@ -49,12 +50,40 @@ GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 # as ("not on the allowlist") and failed, so the address is added here for the
 # same two reasons as above: it is where hunter's mail now leaves from, and where
 # Krish's replies to it are read.
+#
+# His personal address is not in this file. The repository is public, and an
+# address of his that is not already public was one of its exposures. It is
+# read at runtime from system_config PRIVATE_RECIPIENTS_KEY, a JSON list, and
+# added to these. Unreadable, missing or malformed means only these: an
+# address hunter cannot confirm is never mailed and never read as him.
 ALLOWED_RECIPIENTS = frozenset({
     "krish@mindmake.co",
     "krish@themindmaker.ai",
     "hello@krishraja.com",
-    "krishanraja@gmail.com",
 })
+PRIVATE_RECIPIENTS_KEY = "hunter_allowed_recipients"
+_EMAIL = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[a-z]{2,}$")
+
+
+def private_recipients(cfg: Config | None) -> frozenset:
+    """His addresses from system_config, lowercased, or none at all when the
+    key is missing, is not a JSON list, or holds anything that is not one
+    plain address: one bad entry refuses the lot rather than guessing."""
+    try:
+        raw = json.loads((cfg.raw if cfg is not None else {}).get(PRIVATE_RECIPIENTS_KEY) or "[]")
+    except (ValueError, TypeError, AttributeError):
+        return frozenset()
+    if not isinstance(raw, list):
+        return frozenset()
+    out = {str(a).strip().lower() for a in raw}
+    if not all(_EMAIL.match(a) for a in out):
+        return frozenset()
+    return frozenset(out)
+
+
+def allowed(cfg: Config | None = None) -> frozenset:
+    """Every address hunter may mail, and whose replies count as his."""
+    return ALLOWED_RECIPIENTS | private_recipients(cfg)
 
 GMAIL_PROFILE = "https://gmail.googleapis.com/gmail/v1/users/me/profile"
 
@@ -90,7 +119,7 @@ def mailbox(cfg: Config) -> str:
         raise NotifyError(f"could not read the mailbox identity "
                           f"({r.status_code}); run python grant_gmail.py")
     addr = (r.json().get("emailAddress") or "").strip().lower()
-    if addr not in ALLOWED_RECIPIENTS:
+    if addr not in allowed(cfg):
         raise NotifyError(
             f"the authenticated mailbox is {addr!r}, which is not on the "
             f"allowlist. Either the wrong Google account was used for the "
@@ -99,23 +128,25 @@ def mailbox(cfg: Config) -> str:
     return addr
 
 
-def _check_recipient(to: str) -> str:
+def _check_recipient(to: str, cfg: Config | None = None) -> str:
     addr = (to or "").strip().lower()
-    if addr not in ALLOWED_RECIPIENTS:
+    if addr not in allowed(cfg):
+        # Never the allowlist itself: it holds an address of his that is not
+        # public, and this message reaches the Actions log.
         raise NotifyError(
-            f"refusing to send to {to!r}. This module can only reach Krish; "
-            f"allowed: {sorted(ALLOWED_RECIPIENTS)}")
+            f"refusing to send to {to!r}. This module can only reach Krish")
     return addr
 
 
 def build_message(to: str, subject: str, html: str, *,
                   text: str | None = None,
-                  attachments: list[tuple[str, bytes]] | None = None) -> str:
+                  attachments: list[tuple[str, bytes]] | None = None,
+                  cfg: Config | None = None) -> str:
     """A base64url encoded MIME message, which is what the Gmail API takes.
 
     Standard base64 is not interchangeable here: the API rejects + and /.
     """
-    _check_recipient(to)
+    _check_recipient(to, cfg)
     # Written as an escape on purpose: a literal one here would trip
     # test_no_em_dash_anywhere, which scans this file too.
     em_dash = "\u2014"
@@ -163,8 +194,9 @@ def send_email(cfg: Config, subject: str, html: str, *,
     carries documents, drive and spreadsheets only, so this falls back and says
     so. That keeps every caller testable before the grant lands.
     """
-    to = _check_recipient(to or mailbox(cfg))
-    raw = build_message(to, subject, html, text=text, attachments=attachments)
+    to = _check_recipient(to or mailbox(cfg), cfg)
+    raw = build_message(to, subject, html, text=text, attachments=attachments,
+                        cfg=cfg)
     token = GoogleOAuth(cfg).access_token()
     r = requests.post(GMAIL_SEND, timeout=45,
                       headers={"Authorization": "Bearer " + token,

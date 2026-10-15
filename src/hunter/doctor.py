@@ -180,6 +180,27 @@ def check_his_view_column(cfg, *, get=None) -> Check:
                  f"his reasons they carry")
 
 
+def check_private_recipients(cfg) -> Check:
+    """His personal address, read from system_config because the repository
+    is public (notify.PRIVATE_RECIPIENTS_KEY). Missing or malformed, a reply
+    he sends from it is refused as not his, and the drain marks it handled.
+    Counts only: the addresses are the point of keeping it out of the log."""
+    from .notify import PRIVATE_RECIPIENTS_KEY, private_recipients
+    raw = (getattr(cfg, "raw", None) or {}).get(PRIVATE_RECIPIENTS_KEY)
+    fix = (f"write system_config {PRIVATE_RECIPIENTS_KEY} as a JSON list of his "
+           f"personal addresses")
+    if not raw:
+        return Check("his personal address", FAIL,
+                     f"system_config {PRIVATE_RECIPIENTS_KEY} is not set; a reply from "
+                     f"his personal address is refused", fix)
+    n = len(private_recipients(cfg))
+    if not n:
+        return Check("his personal address", FAIL,
+                     f"system_config {PRIVATE_RECIPIENTS_KEY} does not read as a list of "
+                     f"addresses, so none counts", fix)
+    return Check("his personal address", OK, f"{n} address(es) read from system_config")
+
+
 def check_live_payloads(cfg) -> Check:
     """Applications sitting in his inbox right now, against the current floor."""
     from .apply.payload import MIN_EXTENSION
@@ -331,6 +352,7 @@ def run(cfg, run_source: str, *, offline: bool = False) -> list[Check]:
             check_endpoint(SUBMITTED_URL, method="POST", expect=400,
                            name="submitted endpoint"),
             check_table_columns(cfg), check_his_view_column(cfg), check_live_payloads(cfg),
+            check_private_recipients(cfg),
             check_sheet_header(cfg), check_model_keys(cfg), check_browser(),
         ]
     return checks

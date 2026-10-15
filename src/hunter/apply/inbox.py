@@ -181,21 +181,22 @@ def fetch_replies(cfg: Config, *, query: str = QUERY,
     return out
 
 
-def is_from_krish(sender: str) -> bool:
+def is_from_krish(sender: str, cfg=None) -> bool:
     """A reply only counts if Krish sent it. An approval has to come from him,
-    not from anyone who learns a token."""
+    not from anyone who learns a token. His personal address counts only when
+    cfg carries it (notify.allowed)."""
     low = (sender or "").lower()
-    from ..notify import ALLOWED_RECIPIENTS
-    return any(addr in low for addr in ALLOWED_RECIPIENTS)
+    from ..notify import allowed
+    return any(addr in low for addr in allowed(cfg))
 
 
-def classify(reply: dict, row: dict) -> tuple[str, str]:
+def classify(reply: dict, row: dict, cfg=None) -> tuple[str, str]:
     """(action, detail). action in approve | amend | skip | reject."""
     if reply["message_id"] in (row.get("processed_message_ids") or []):
         return "skip", "already processed"
     if is_our_own_email(reply.get("body", "")):
         return "skip", "this is hunter's own outbound email, not a reply"
-    if not is_from_krish(reply.get("from", "")):
+    if not is_from_krish(reply.get("from", ""), cfg):
         return "reject", f"reply is not from Krish: {reply.get('from', '')!r}"
     if not row.get("token"):
         # No approval row means no application behind this token: an early wiring

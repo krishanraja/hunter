@@ -5919,9 +5919,9 @@ def cmd_run() -> int:
             if pcounts.get("still_broken"):
                 notes.append(f"{pcounts['still_broken']} sheet problem(s) hunter "
                              f"could not repair on its own; see the run log.")
-            if pcounts.get("amendments"):
-                notes.append(f"{pcounts['amendments']} edit(s) of yours were read "
-                             f"as corrections and fed back into the scorer.")
+            # His edits are recorded (amend.py), and nothing learns from them
+            # yet. This said they were "fed back into the scorer" until
+            # 2026-10-15, which was never true, so it says nothing now.
             # Said only while it is true: the move runs once canon carries it.
             if leave_mod.in_canon(canon):
                 notes.append("A role you score 1 to 5, or answer with only a reaction, "
@@ -6163,13 +6163,18 @@ def cmd_bank_seed(apply: bool = False) -> int:
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     rows = sheet.read_tab_formulas(f"'{INFO_TAB}'!A1:D200")
-    changes, problems = bankseed.plan_changes(rows)
+    private, note = bankseed.private_seeds(cfg)
+    changes, problems = bankseed.plan_changes(rows, bankseed.seeds() + private)
 
     print(f"{INFO_TAB}: {len(rows)} rows read, {len(changes)} cell(s) to write"
-          f"{'' if apply else ' (dry run, pass --apply to write)'}\n")
+          f"{'' if apply else ' (dry run, pass --apply to write)'}")
+    print(f"{note}\n")
     for c in sorted(changes, key=lambda x: (x.row, x.column)):
         tag = "NEW ROW" if c.is_new else "       "
         print(f"  {tag} {c.column}{c.row:<4} {c.field_name[:46]}")
+        if c.private:
+            print("          (his own answer, not printed)")
+            continue
         if c.before:
             print(f"          was:  {c.before[:88]}")
         print(f"          now:  {c.after[:88]}")
@@ -7872,7 +7877,7 @@ def cmd_approvals_drain(apply: bool = False) -> int:
         # read, and the drain exits 1.
         try:
             row = approval.get_row(cfg, r["token"]) or {}
-            action, detail = inbox.classify(r, row)
+            action, detail = inbox.classify(r, row, cfg)
             # The job, never the token (half of the open link to his filled form),
             # and his own words on an approve or an amend only as a length: this
             # log is public. A skip or a reject says why in hunter's words.

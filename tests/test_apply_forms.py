@@ -138,7 +138,7 @@ INFO_ROWS = [
     ["Field", "Value", "Status", "Notes"],
     ["Full legal name", "Krish Raja", "\U0001F7E2 LOCKED", ""],
     ["Preferred name", "Krish", "\U0001F7E2 LOCKED", ""],
-    ["Phone", "+1 (347) 665-8225", "\U0001F7E2 LOCKED", ""],
+    ["Phone", "+1 (212) 555-0142", "\U0001F7E2 LOCKED", ""],
     ["Email (job search)", "hello@krishraja.com", "\U0001F7E2 LOCKED", ""],
     ["ZIP", "11222", "\U0001F7E1 NEEDS INPUT", ""],
     ["LinkedIn URL", "https://www.linkedin.com/in/krish-raja/", "\U0001F7E2 LOCKED", ""],
@@ -652,13 +652,13 @@ def test_a_live_linkedin_posting_stays_unknown_not_live(monkeypatch):
 # ---------------- sensitive answers: stored, and always shown ----------------
 
 def sensitive_bank() -> AnswerBank:
-    """The Info Bank as it will read once Krish's 2026-09-14 answers are in."""
+    """An Info Bank with Section G answered. The answers are invented, not his."""
     rows = [r[:] for r in INFO_ROWS]
     filled = {
-        "Race / ethnicity": "Two or more races",
-        "Gender": "Male",
-        "Veteran status": "Not a veteran",
-        "Disability status": "No disability",
+        "Race / ethnicity": "Asian",
+        "Gender": "Female",
+        "Veteran status": "Decline to self-identify",
+        "Disability status": "Prefer not to say",
     }
     out = []
     for r in rows:
@@ -690,10 +690,10 @@ def test_a_sensitive_row_without_a_value_stays_unanswered():
 def test_demographics_resolve_from_the_bank_and_stay_flagged():
     r = Resolver(sensitive_bank())
     for label, expected in (
-            ("Race / ethnicity", "Two or more races"),
-            ("Gender", "Male"),
-            ("Veteran status", "Not a veteran"),
-            ("Disability status", "No disability")):
+            ("Race / ethnicity", "Asian"),
+            ("Gender", "Female"),
+            ("Veteran status", "Decline to self-identify"),
+            ("Disability status", "Prefer not to say")):
         got = r.resolve(field(label, kind="demographic"))
         assert isinstance(got, Answer), f"{label} came back {got!r}"
         assert got.value == expected and got.flagged
@@ -707,7 +707,7 @@ def test_a_demographic_select_is_matched_to_the_forms_own_option():
         Option("Decline To Self Identify", "3")))
     got = Resolver(sensitive_bank()).resolve(gh)
     assert isinstance(got, Answer)
-    assert got.value.startswith("Two or More Races")
+    assert got.value.startswith("Asian (Not Hispanic")
 
 
 def test_consent_resolves_from_the_bank_and_stays_flagged():
@@ -739,7 +739,7 @@ def test_an_em_dash_in_a_stored_answer_is_substituted_not_shipped():
 
 def test_clean_text_is_left_exactly_alone():
     from hunter.apply.infobank import strip_em_dash
-    for text in ("Krish Raja", "+1 (347) 665-8225", "$250K+ base", ""):
+    for text in ("Krish Raja", "+1 (212) 555-0142", "$250K+ base", ""):
         assert strip_em_dash(text) == text
 
 

@@ -179,7 +179,7 @@ def _drain_world(monkeypatch, *, edited=True):
         {"token": "tok-invented", "message_id": "m1"}])
     monkeypatch.setattr(approval, "get_row", lambda cfg, token: {"job_id": "ardent:vp"})
     monkeypatch.setattr(inbox, "classify",
-                        lambda r, row: ("amend", "Invented words: lead on the partners."))
+                        lambda r, row, cfg=None: ("amend", "Invented words: lead on the partners."))
     monkeypatch.setattr(run_mod, "report_stalled_approvals", lambda cfg, apply=False: [])
     order = []
     monkeypatch.setattr(approval, "supersede", lambda cfg, token: order.append("supersede"))

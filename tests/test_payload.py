@@ -99,20 +99,21 @@ class Bank:
 def test_his_recorded_demographics_travel_with_the_payload():
     """OpenAI's form asks gender, race, veteran and disability. Ashby's API
     reports none of them, so no field named them and every one went out blank
-    on a form where Krish's own answers were already on record."""
+    on a form where Krish's own answers were already on record. The answers
+    here are invented, not his: the repository is public."""
     d = P.demographics(Bank(**{
-        "Gender": Entry("Male"),
-        "Race / ethnicity": Entry("Two or more races"),
-        "Veteran status": Entry("Not a veteran"),
-        "Disability status": Entry("No disability"),
+        "Gender": Entry("Female"),
+        "Race / ethnicity": Entry("Asian"),
+        "Veteran status": Entry("Veteran"),
+        "Disability status": Entry("Disability"),
     }))
     by = {x["label"]: x for x in d}
     assert set(by) == {"Gender", "Race or ethnicity", "Veteran status",
                        "Disability status"}
-    assert "male" in by["Gender"]["phrases"]
+    assert "female" in by["Gender"]["phrases"]
     # The wording a real form uses, not the wording his bank uses.
-    assert any("not a protected veteran" in p for p in by["Veteran status"]["phrases"])
-    assert any("do not have a disability" in p
+    assert any("identify as one or more" in p for p in by["Veteran status"]["phrases"])
+    assert any("yes, i have a disability" in p
                for p in by["Disability status"]["phrases"])
 
 

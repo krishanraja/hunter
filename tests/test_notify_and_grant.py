@@ -27,11 +27,55 @@ class FakeCfg:
 
 # ---------------- the recipient lock ----------------
 
-@pytest.mark.parametrize("addr", ["hello@krishraja.com", "krishanraja@gmail.com",
-                                  "Hello@KrishRaja.com  "])
+@pytest.mark.parametrize("addr", ["hello@krishraja.com", "Hello@KrishRaja.com  "])
 def test_krishs_own_addresses_are_accepted(addr):
     raw = notify.build_message(addr, "s", "<p>hi</p>")
     assert base64.urlsafe_b64decode(raw + "==")
+
+
+# An invented personal address, standing in for his, which the public
+# repository no longer carries: it is read from system_config.
+PRIVATE = "someone.private@example.com"
+
+
+class _Cfg:
+    def __init__(self, **raw):
+        self.raw = raw
+
+
+def test_his_personal_address_counts_only_when_system_config_carries_it():
+    from hunter.apply import inbox
+    cfg = _Cfg(**{notify.PRIVATE_RECIPIENTS_KEY: f'["{PRIVATE.upper()}"]'})
+    assert notify.build_message(PRIVATE, "s", "<p>hi</p>", cfg=cfg)
+    assert inbox.is_from_krish(f"Someone <{PRIVATE}>", cfg)
+    with pytest.raises(NotifyError, match="can only reach Krish"):
+        notify.build_message(PRIVATE, "s", "<p>hi</p>")
+    assert not inbox.is_from_krish(f"Someone <{PRIVATE}>")
+
+
+@pytest.mark.parametrize("raw", [None, "", "not json", '"one@example.com"', "{}",
+                                 '["one@example.com", "not an address"]',
+                                 '["one@example.com, two@example.com"]'])
+def test_a_missing_or_malformed_private_list_allows_only_the_public_ones(raw):
+    cfg = _Cfg(**({} if raw is None else {notify.PRIVATE_RECIPIENTS_KEY: raw}))
+    assert notify.private_recipients(cfg) == frozenset()
+    assert notify.allowed(cfg) == notify.ALLOWED_RECIPIENTS
+
+
+def test_the_refusal_never_lists_who_is_allowed():
+    cfg = _Cfg(**{notify.PRIVATE_RECIPIENTS_KEY: f'["{PRIVATE}"]'})
+    with pytest.raises(NotifyError) as e:
+        notify._check_recipient("recruiter@example.org", cfg)
+    assert PRIVATE not in str(e.value) and "hello@krishraja.com" not in str(e.value)
+
+
+def test_no_personal_mailbox_is_written_into_the_source():
+    import pathlib
+    import re
+    src = pathlib.Path(notify.__file__).parent
+    for f in src.rglob("*.py"):
+        assert not re.search(r"@(gmail|googlemail|hotmail|outlook|yahoo|icloud)\.",
+                             f.read_text()), f
 
 
 @pytest.mark.parametrize("addr", [
@@ -411,3 +455,15 @@ def test_an_attachment_of_an_unknown_type_is_refused():
     with pytest.raises(NotifyError, match="neither a pdf nor a png"):
         build_message("krish@themindmaker.ai", "x", "<p>x</p>",
                       attachments=[("notes.txt", b"hello")])
+
+
+def test_doctor_says_when_his_personal_address_cannot_be_read():
+    from hunter import doctor
+    missing = doctor.check_private_recipients(_Cfg())
+    bad = doctor.check_private_recipients(_Cfg(**{notify.PRIVATE_RECIPIENTS_KEY: "[1]"}))
+    good = doctor.check_private_recipients(
+        _Cfg(**{notify.PRIVATE_RECIPIENTS_KEY: f'["{PRIVATE}"]'}))
+    assert missing.state == bad.state == doctor.FAIL and good.state == doctor.OK
+    assert good.detail == "1 address(es) read from system_config"
+    for c in (missing, bad, good):
+        assert PRIVATE not in c.detail + c.fix

@@ -19,7 +19,7 @@ LINES = [
               "Info Bank: Authorized to work in US?"),
     FieldLine("What are your salary expectations?", "250000", True,
               "the recorded comp floor", flagged=True),
-    FieldLine("Race / ethnicity", "Two or more races", False,
+    FieldLine("Race / ethnicity", "Asian", False,
               "Info Bank: Race / ethnicity", flagged=True),
     FieldLine("Do you live within 45 miles of a talent hub?", "", True,
               "no stored answer matches", unresolved=True),
@@ -58,7 +58,7 @@ def test_the_flagged_and_unresolved_items_lead_the_email():
     head = email.html[:email.html.index("Approve and submit")]
     assert "Read before approving" in head
     assert "250000" in head, "the salary number must be seen before approving"
-    assert "Two or more races" in head
+    assert "Asian" in head
     assert "45 miles" in head
 
 
