@@ -2729,6 +2729,12 @@ def house_evidence(cfg: Config, sheet: Sheet, db: DocBuild, jd_text: str) -> dic
             "banned": package_banned(bank.banned_phrases), "model": model}
 
 
+def examples_of(cfg: Config, bank_words: list[str]) -> str:
+    """His newest letter edits for the writer (docedits.edit_examples)."""
+    from . import docedits
+    return docedits.edit_examples(cfg, bank_words)
+
+
 def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
                 summary: list[str], *, plan, view, view_text: str, trigger, refused, attempt,
                 rebuild: bool, rflags: list[str], never, company_declines,
@@ -2753,7 +2759,8 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
                           location=getattr(role, "location", "") or row.get("location") or "",
                           jd_text=role.jd_text, judge_answers=plan.judge_answers,
                           view_text=view_text, model_letter=ev["model"],
-                          evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"])
+                          evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"],
+                          examples=examples_of(cfg, plan.bank))
         letters_mod.hold(cfg, job, letters_mod.WAITING, base_key=plan.base_key)
         summary.append(f"SKIPPED {job}: {letters_mod.WAITING}; the letter is asked of the "
                        f"routine, never the API")
@@ -2769,7 +2776,7 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
         summary.append(f"BLOCKED {job}: the writer's letter failed its check "
                        f"({len(problems)} problem(s)); it is asked again")
         return False
-    bases = bases if bases is not None else contact.load_bases(cfg)
+    bases = bases if bases is not None else contact.load_bases(cfg)[0]
     base = bases.get(plan.base_key)
     if base is None:
         letters_mod.hold(cfg, job, "the header for this role is not readable",
@@ -2896,7 +2903,7 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
     db = db or DocBuild(GoogleOAuth(cfg).access_token)
     if page_count is None:
         from .apply.merge import page_count
-    bases = contact.load_bases(cfg)
+    bases, _note = contact.load_bases(cfg)
     if apply and preview_folder and not folder:
         # His Drive's own top level, made by hunter's own login so the copies
         # can land in it; the same folder on every later run.
@@ -2924,7 +2931,8 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
                 cfg, plan, company=r.get("company") or "", title=r.get("title") or "",
                 location=r.get("location") or "", jd_text=r.get("jd_text") or "",
                 judge_answers=plan.judge_answers, view_text=text, model_letter=ev["model"],
-                evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"])
+                evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"],
+                examples=examples_of(cfg, plan.bank))
             print(f"{job}: letter {'asked of the writer' if made else 'already asked'}")
             continue
         letter, problems = letters_mod.checked(plan)
@@ -7330,7 +7338,7 @@ ACTED_ON = ("column A Applied", "application status", "applied on record",
 LIGHT_SELECT = ("job_id,company,title,url,job_url,score,comp,location,warm_path_person,"
                 "warm_path_tier,package_status,krish_verdict,rejection_reason,status,"
                 "presented_at,package_trigger,package_built_at,package_cv_url,"
-                "package_letter_url,application_state,why_it_fits")
+                "package_letter_url,application_state,why_it_fits,package_style")
 
 
 def _known_with_view(cfg: Config) -> tuple[list[dict], bool]:
@@ -7549,7 +7557,7 @@ def acted_on_now(cfg: Config, row: dict) -> str | None:
 
 def rebuild_targets(cfg: Config, sheet: Sheet, canon: Canon, *, job_id: str = "",
                     report: dict | None = None, detail: list | None = None,
-                    read_doc=None) -> list[dict]:
+                    read_doc=None, style: bool = False) -> list[dict]:
     """Packages to rebuild with his reasons in them, best first.
 
     A role is one when his row is one he wants an application for
@@ -7587,8 +7595,10 @@ def rebuild_targets(cfg: Config, sheet: Sheet, canon: Canon, *, job_id: str = ""
     rows = sheet.read_pipeline(canon.sheet_headers)
     asked = []
     for r in rows:
-        if his_view_mod.from_row(r).empty:
+        if his_view_mod.from_row(r).empty and not style:
             continue   # nothing of his to write it from
+        # style: every package he still wants that was built before his house
+        # style (--reason style), whether or not he has said anything about it.
         k = whole_score(r.cell(sheet_mod.KRISH_SCORE))
         kind = verdicts.parse(r.verdict or "")[0]
         if kind == "applied":
@@ -7634,7 +7644,11 @@ def rebuild_targets(cfg: Config, sheet: Sheet, canon: Canon, *, job_id: str = ""
             # on the same inputs.
             skip("not built yet", r, d)
             continue
-        carried = (d.get(his_view_mod.FIELD) or "") if view_column else ""
+        if style:
+            if style_mod.stamped(d):
+                skip("already in his house style", r, d)
+                continue
+        carried = (d.get(his_view_mod.FIELD) or "") if view_column and not style else ""
         if carried and not named:
             # Named with --job-id, it is rebuilt anyway: the way to bring a
             # reaction he has since rewritten into a package already built
@@ -7978,7 +7992,8 @@ def rebuild_lines(rep: dict, *, apply: bool, cap: int) -> list[str]:
     return lines
 
 
-def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str = "") -> int:
+def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str = "",
+                         reason: str = "") -> int:
     """Rebuild, from his reasons, the packages built before they reached the
     prompt, for the roles he wants and has not acted on (rebuild_targets).
 
@@ -8005,7 +8020,7 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
     read_doc = _safe_doc_reader(cfg)
     try:
         targets = rebuild_targets(cfg, sheet, canon, job_id=job_id, report=rep,
-                                  read_doc=read_doc)
+                                  read_doc=read_doc, style=(reason == "style"))
     except Exception as e:
         # The class only. A Supabase error's message carries the request URL,
         # and these requests name every target by job id: roles he scored 7
@@ -9759,7 +9774,7 @@ def main(argv: list[str]) -> int:
     if cmd == "rebuild-packages":
         mx = _flag("--max")
         return cmd_rebuild_packages(apply="--apply" in argv, max_builds=int(mx) if mx else 0,
-                                    job_id=_flag("--job-id"))
+                                    job_id=_flag("--job-id"), reason=_flag("--reason") or "")
     if cmd == "blind-set":
         return cmd_blind_set(refresh="--refresh" in argv)
     if cmd == "blind-eval":
@@ -10043,6 +10058,17 @@ def main(argv: list[str]) -> int:
                                          apply="--apply" in argv):
             print(line)
         return 0
+    if cmd == "doc-edits":
+        # Every edit he makes to a letter or CV hunter built, words and
+        # formatting (docedits.py). Hourly, before the approvals drain. Counts
+        # only. Dry run unless --apply.
+        from . import docedits
+        cfg = load()
+        db = DocBuild(GoogleOAuth(cfg).access_token)
+        for line in docedits.lines(docedits.run_pass(cfg, db=db, apply="--apply" in argv),
+                                   apply="--apply" in argv):
+            print(line)
+        return 0
     if cmd == "build-preview":
         # The scratch preview: --job-id (repeatable), --queue to ask the
         # writer, --apply --folder <id> to build. Links and codes only.
@@ -10166,7 +10192,7 @@ def main(argv: list[str]) -> int:
           f"build --job-id X, recon, learn [--apply], drain [--id X], verify, "
           f"bank-check, audit-forms [--apply] [--limit N], simulate [--send], bank-seed [--apply], "
           "settle [--apply], score-builds [--apply] [--max N], "
-          "rebuild-packages [--apply] [--max N] [--job-id X], "
+          "rebuild-packages [--apply] [--max N] [--job-id X] [--reason style], "
           "gtm-seed [--apply], approvals [--apply] [--job-id X], "
           "approvals --wanted [--apply] [--max N], "
           "approvals-drain [--apply], actions [--apply], drafts [--apply], "

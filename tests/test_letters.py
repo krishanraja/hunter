@@ -158,7 +158,7 @@ def world(monkeypatch):
     monkeypatch.setattr(config_mod, "LETTER_MASTER_ID", v5)
     monkeypatch.setattr(config_mod, "CV_MASTER_ID", cvm)
     monkeypatch.setattr(run_mod, "DocBuild", lambda token: docs)
-    monkeypatch.setattr(contact, "load_bases", lambda cfg: BASES)
+    monkeypatch.setattr(contact, "load_bases", lambda cfg: (BASES, "2 contact base(s) read"))
     monkeypatch.setattr(run_mod, "house_evidence", lambda cfg, sheet, db, jd: {
         "text": "Quorra, Velmont, Halcyon", "haystack": HAY, "banned": ("world-class",),
         "model": "Zentrox is busy. " + LINE + " I'm a commercial leader."})
@@ -297,3 +297,24 @@ def test_the_preview_folder_is_made_once_and_reused(monkeypatch):
                      "parents": ["root"]}]
     found["files"] = [{"id": "F1", "name": "hunter preview"}]
     assert db.folder(run_mod.PREVIEW_FOLDER) == "F1" and len(made) == 1
+
+
+def test_the_preview_builds_the_written_letter_and_touches_nothing_else(world, monkeypatch, capsys):
+    before = dict(world["db"].role())
+    monkeypatch.setattr(config_mod, "HOUSE_LETTER_MASTER_ID", config_mod.LETTER_MASTER_ID)
+    monkeypatch.setattr(config_mod, "HOUSE_CV_MASTER_ID", config_mod.CV_MASTER_ID)
+    monkeypatch.setattr(run_mod, "build_context", lambda: (Cfg({}), Canon914([LINE])))
+    monkeypatch.setattr(run_mod, "Sheet", lambda token: world["sheet"])
+    monkeypatch.setattr(run_mod, "GoogleServiceAccount", lambda cfg: type("S", (), {"access_token": "x"})())
+    assert run_mod.cmd_build_preview([JOB], queue=True, folder="", apply=False,
+                                     db=world["docs"], page_count=page_count) == 0
+    assert f"{JOB}: letter asked of the writer" in capsys.readouterr().out
+    routine_writes(world, answer())
+    assert run_mod.cmd_build_preview([JOB], queue=False, folder="f", apply=True,
+                                     db=world["docs"], page_count=page_count) == 0
+    out = capsys.readouterr().out
+    assert f"{JOB}: letter 1 page(s), CV 1 page(s), US header, asks 1 of 1, problems 0" in out
+    assert "  CL https://docs.google.com/document/d/" in out
+    assert LINE not in out
+    assert world["db"].role() == before, "a preview records nothing on the role"
+    assert world["db"].drafts()[-1]["status"] == "drafted", "nor marks the letter used"

@@ -125,7 +125,7 @@ def hold(cfg: Config, job_id: str, reason: str, *, base_key: str = "") -> None:
 
 def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_text: str,
           judge_answers, view_text: str, model_letter: str, evidence_text: str,
-          evidence: str, banned: tuple[str, ...]) -> bool:
+          evidence: str, banned: tuple[str, ...], examples: str = "") -> bool:
     """Ask the routine for this role's letter. A request for older inputs is
     expired first, so the routine never writes for a letter nobody will use."""
     d = latest_draft(cfg, p.job_id)
@@ -138,7 +138,7 @@ def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_t
                                  judge_answers=judge_answers, his_view=view_text,
                                  entries=p.entries, needs=p.needs)
     context = compose.shared_context(model_letter=model_letter, evidence_text=evidence_text,
-                                     bank_words=p.bank)
+                                     bank_words=p.bank, examples=examples)
     meta = {"company": company, "short_name": short_name(company), "role": title,
             "base": p.base_key, "needs": p.needs, "entries": p.entries, "bank": p.bank,
             "banned": list(banned), "fingerprint": p.fingerprint, "job_id": p.job_id,

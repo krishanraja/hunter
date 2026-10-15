@@ -448,6 +448,13 @@ class DocBuild:
         r.raise_for_status()
         return r.json().get("files", [])
 
+    def modified_time(self, doc_id: str) -> str:
+        """When Drive says the document last changed (RFC 3339)."""
+        r = requests.get(f"{DRIVE}/{doc_id}", headers=self.h, timeout=60,
+                         params={"fields": "modifiedTime", "supportsAllDrives": "true"})
+        r.raise_for_status()
+        return r.json()["modifiedTime"]
+
     def folder(self, name: str, parent_id: str = "root") -> str:
         """The folder of that name under parent, made only when there is none,
         so a second run uses the first one's."""

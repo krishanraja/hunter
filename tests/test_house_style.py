@@ -236,3 +236,21 @@ def test_a_package_whose_rebuild_did_not_land_can_be_chosen_again(monkeypatch):
     got = run_mod.rebuild_targets(Cfg(), s, FakeCanon(), report=rep)
     assert [d["job_id"] for d in got] == ["ardent:vp"]
     assert rep["skips"].get("not built yet") == 1
+
+
+def test_a_style_rebuild_takes_every_old_package_he_wants_and_no_new_one(monkeypatch):
+    """rebuild-packages --reason style: an unstamped package is rebuilt in his
+    house style whether or not he wrote anything about the role; a package
+    already in it is left alone."""
+    monkeypatch.setattr(style, "stamped", lambda row: (row or {}).get(style.FIELD) == style.HOUSE_STYLE)
+    s, _ = rebuild_world(monkeypatch, [L("ardent", verdict="Yes", k=""), L("brisk", k="8"),
+                                       L("cobalt", m=REACTION)], [
+        rec("ardent", package_trigger="column A Yes"), rec("brisk", **{style.FIELD: style.HOUSE_STYLE}),
+        rec("cobalt")])
+    rep = {}
+    got = run_mod.rebuild_targets(Cfg(), s, FakeCanon(), report=rep, style=True)
+    assert sorted(d["job_id"] for d in got) == ["ardent:vp", "cobalt:vp"]
+    assert rep["skips"].get("already in his house style") == 1
+    plain = run_mod.rebuild_targets(Cfg(), s, FakeCanon(), report={})
+    assert "ardent:vp" not in [d["job_id"] for d in plain], \
+        "without the reason, a Yes with nothing of his written is not rebuilt"

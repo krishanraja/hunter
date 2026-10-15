@@ -32,7 +32,7 @@ on:
                   close-submitted, confirmations, settle, score-builds, rebuild-packages, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
                   door-coverage, door-cards, drafts, actions, facts, letter-master, cv-master,
-                  build-preview]
+                  build-preview, doc-edits]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string
@@ -95,6 +95,17 @@ jobs:
       - name: Run hunter
         if: steps.cmd.outputs.skip == ''
         run: python -u -m hunter.run ${{ steps.cmd.outputs.args }}
+
+      # Every edit he makes to a letter or CV hunter built, words and
+      # formatting (src/hunter/docedits.py, his ruling 2026-10-15). Before the
+      # replies, so an edit made after the Apply email cancels the waiting
+      # application and Prepare sends his version. Counts only.
+      # A failure here never stops the replies below: they still need the
+      # main command to have succeeded, and only that.
+      - name: Read his edits to letters and CVs
+        if: steps.cmd.outputs.args == 'drain'
+        continue-on-error: true
+        run: python -u -m hunter.run doc-edits --apply
 
       # Krish's replies, read and acted on every hour. approvals-drain was written
       # and never scheduled, so an APPROVE waited in the inbox until someone ran it

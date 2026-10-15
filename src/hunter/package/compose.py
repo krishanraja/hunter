@@ -416,15 +416,20 @@ def strip_his_lines(text: str, bank_words: list[str]) -> str:
     return " ".join(keep)
 
 
-def shared_context(*, model_letter: str, evidence_text: str, bank_words: list[str]) -> str:
-    return "\n\n".join([
+def shared_context(*, model_letter: str, evidence_text: str, bank_words: list[str],
+                   examples: str = "") -> str:
+    parts = [
         RULES,
         "SCHEMA\n" + json.dumps(SCHEMA),
         "MODEL LETTER (his own, with his personal lines taken out)\n"
         + strip_his_lines(model_letter, bank_words),
         "EVIDENCE (his recorded facts; every figure and name must come from here or the posting)\n"
         + evidence_text,
-    ])
+    ]
+    if examples:
+        parts.append("HIS EDITS (newest first): what he changed in letters hunter wrote. Write "
+                     "the way he edits; these are examples, never evidence\n" + examples)
+    return "\n\n".join(parts)
 
 
 def role_prompt(*, company: str, title: str, location: str, base_key: str, jd_text: str,
