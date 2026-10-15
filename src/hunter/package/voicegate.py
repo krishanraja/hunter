@@ -118,7 +118,7 @@ def plain_prose(text: str) -> str:
 
 def package_banned(profile_banned=()) -> tuple[str, ...]:
     """Every phrase a package or an essay must not carry: his Profile's own
-    VOICE AND TONE list, the Mindmake naming law, and the arrogance list.
+    VOICE AND TONE list, the mind/make naming law, and the arrogance list.
     The one place they are put together, so the prompt that names them and
     the gate that refuses them cannot read two different lists."""
     from ..apply.gtmseed import NAME_VARIANTS_BANNED
@@ -204,6 +204,11 @@ def check(text: str, *, evidence: str, banned_phrases: tuple[str, ...] = (),
         failures.append(f"too short ({len(body)} chars, min {min_chars})")
     if max_chars and len(body) > max_chars:
         failures.append(f"too long ({len(body)} chars, max {max_chars})")
+
+    # His company has one name, written one way (gtmseed.COMPANY_NAME): a
+    # check that knows case, which the lowercased list below cannot.
+    from ..apply.gtmseed import name_problems
+    failures += name_problems(body)
 
     low = body.lower()
     for phrase in banned_phrases:

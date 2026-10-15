@@ -513,3 +513,16 @@ def test_an_order_for_other_highlights_leaves_his_order_and_says_so():
     assert "highlights kept in his order (the CV's highlights changed)" in got.notes
     assert [t for t, _ in highlight_texts(db, got.doc_id)] == [
         "Built an invented region from $0 to $5M", "Grew an invented line $2M to $8M"]
+
+
+# ---------- his company, written his way ----------
+
+def test_a_letter_naming_his_company_any_other_way_is_refused():
+    """His ruling 2026-10-15: "mind/make", as his CV writes it."""
+    close = "I'd rather show you the partner engines I built at {} than describe them."
+    assert probs(answer(close=close.format("mind/make"))) == []
+    got = probs(answer(close=close.format("Mindmake")))
+    assert "A13 the close names his company 'Mindmake'; write 'mind/make'" in got
+    summary = answer()["cv_summary"].replace("I build", "At Mind/Make I build", 1)
+    assert "A13 the cv_summary names his company 'Mind/Make'; write 'mind/make'" in \
+        probs(answer(cv_summary=summary))

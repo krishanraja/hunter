@@ -37,12 +37,14 @@ Never copy any of it into a repo file, a test, a fixture or a log line.
   - His CV highlights come in the role's order (canon 9.12): the writer is shown them numbered and must order every one once; `build_cv` reorders them with `reorder_paragraphs`, which reads his bold back and keeps his order if anything moved.
   - Sentences he writes into a letter in the first person become HIS OWN WORDS for the writer and count as evidence; his 9.14 lines never do.
   - The brief is `letter-2026-10-15d`, so every earlier letter is asked again.
-- **Go-live, in order, each on his yes:**
-  1. his verdict on the preview;
-  2. switch `config.LETTER_MASTER_ID` and `CV_MASTER_ID` to the house masters and canon 9.9 together (just after :13);
-  3. set `COMPOSER_LIVE = True` (the test `test_production_builds_wait_until_a_composer_writes_his_style` flips with it);
-  4. `rebuild-packages --reason style --apply` (each rebuild asks the writer; nothing is built until it answers);
-  5. score-build cap back to 3.
+- **Go-live, on his yes of 15 October** ("mind/make, merge to main - I am now happy with the engine, make it durable"):
+  1. his company is written "mind/make" everywhere hunter writes (`gtmseed.name_problems` in `voicegate.check`; the live `hunter_ai_gtm_evidence` rewritten to match);
+  2. `config.LETTER_MASTER_ID` and `CV_MASTER_ID` are the house masters, with canon 9.9 changed in the same minute, just after a drain finished;
+  3. `COMPOSER_LIVE = True`; the pause tests set the pause themselves;
+  4. `rebuild-packages --reason style --apply` runs in every hourly drain until every package he still wants is in his style;
+  5. the score-build cap is back to 3;
+  6. the watchdog mails him if the letter writer stops (36 hours, none written) or one role's letters fail 3 times;
+  7. the contract is CLAUDE.md section 3g.
 
 ## Where it stood after L0 to L3
 

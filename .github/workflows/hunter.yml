@@ -164,6 +164,17 @@ jobs:
         if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run score-builds --apply
 
+      # His house style for every package he still wants that was built before
+      # it (his yes, 2026-10-15). Each role's letter is asked of the writing
+      # routine and built here in a later hour, once it is written and passes
+      # its check; a package already in his style is never chosen, so once all
+      # are done this reads the sheet and builds nothing. No model is called:
+      # the letters are the routine's, on his subscription. Counts only.
+      - name: Bring every package he still wants into his house style
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
+        continue-on-error: true
+        run: python -u -m hunter.run rebuild-packages --reason style --apply
+
       # A personal line a letter needs (src/hunter/facts.py, his ruling
       # 2026-10-15): asks are mailed to him, one per kind of business, and his
       # reply is written to canon 9.14 exactly as he wrote it, confirmed back

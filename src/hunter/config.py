@@ -24,8 +24,12 @@ import requests
 
 # Verified constants, cross-checked against canon 9.9 at every run start
 # (canon.load_canon hard-fails on mismatch; hunter never picks a winner).
-CV_MASTER_ID = "1ALITQk-d0Mms3InJpk6FMsebxaLnf__QPmUyPAa_NEE"
-LETTER_MASTER_ID = "1OD6FIxud8AOicqvC74Yoi7nbDI-aGAl6SCI0OIswyQ4"
+# Since 2026-10-15, on his yes, the masters in his house style: the letter v5
+# made from his own edited letter, and the CV v15 with that letter's header.
+# Superseded, with canon 9.9: CV v14 1ALITQk-d0Mms3InJpk6FMsebxaLnf__QPmUyPAa_NEE
+# and letter v4 1OD6FIxud8AOicqvC74Yoi7nbDI-aGAl6SCI0OIswyQ4.
+CV_MASTER_ID = "1TC_X8eWe5jS423LHPpG5-iyhZAmgzdva2lY2Df6CLb8"
+LETTER_MASTER_ID = "1PPtRc1YN9z9kIQQIcMSvUWrDnw5OjO5VSuy4mdU1H6E"
 WORKBOOK_ID = "1AQ8OyprIyJmJ9K7ezjIxkW0uzjGT0TqzRjKtG-NXNOk"
 PIPELINE_SHEET_ID = 708873267
 # Krish's ruling 2026-09-02: decided rows leave Pipeline for the existing
@@ -34,12 +38,9 @@ ARCHIVE_TAB = "Applied"
 ARCHIVE_SHEET_ID = 1707095501
 CV_FOLDER_ID = "1IMMUrAV7wCb-a_eei6c_fmX2BCDgYA8X"
 LETTER_FOLDER_ID = "1YotvbjjE8amkVnrLSAjSASd5-U28D1lJ"
-# The masters in his house style (2026-10-15): the letter v5 made from his
-# own edited letter, and the CV with that letter's header. CV_MASTER_ID and
-# LETTER_MASTER_ID become these, with canon 9.9, on his yes; until then they
-# are what the scratch preview builds from.
-HOUSE_LETTER_MASTER_ID = "1PPtRc1YN9z9kIQQIcMSvUWrDnw5OjO5VSuy4mdU1H6E"
-HOUSE_CV_MASTER_ID = "1TC_X8eWe5jS423LHPpG5-iyhZAmgzdva2lY2Df6CLb8"
+# What the scratch preview builds from (build-preview): the masters above.
+HOUSE_LETTER_MASTER_ID = LETTER_MASTER_ID
+HOUSE_CV_MASTER_ID = CV_MASTER_ID
 # The letter he rewrote by hand on 2026-10-15: the model every letter is
 # written from (package/compose.py), read live so his later edits count.
 LETTER_MODEL_ID = "1ALQ9O9vO7Hcs96NUh6ql311eJ5RAlWpy3MKCxTJorus"

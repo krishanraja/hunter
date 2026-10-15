@@ -1,3 +1,4 @@
+import pytest
 """The AI-native GTM evidence key, and the truncation that would have defeated it.
 
 Krish's feedback on the first real package: it said nothing about the AI-native
@@ -94,29 +95,32 @@ def test_the_real_evidence_is_well_inside_the_ceiling():
 
 # ---------- the naming law ----------
 
-def test_the_banned_variants_do_not_ban_the_correct_name():
-    """voicegate lowercases both the phrase and the body, so "MindMake" in this list
-    would ban "Mindmake" too. The first package using this evidence wrote
-    "Build your AI GTM at Mind/Make", which is what the list is for."""
+def test_the_correct_name_and_the_site_pass():
+    """His ruling 2026-10-15: "mind/make", as his CV writes it. voicegate
+    lowercases the banned list, so "Mind/Make" there once banned this exact
+    form; the case is checked by name_problems instead."""
     from hunter.apply.gtmseed import NAME_VARIANTS_BANNED
-    good = "I run Build your AI GTM at Mindmake, and the site is mindmake.co."
+    good = "I run Build your AI GTM at mind/make, and the site is mindmake.co."
     hay = voicegate.build_evidence(EVIDENCE)
     verdict = voicegate.check(good, evidence=hay,
                               banned_phrases=NAME_VARIANTS_BANNED)
     assert verdict.ok, verdict.failures
 
 
-def test_each_variant_is_caught():
+@pytest.mark.parametrize("bad", [
+    "Build your AI GTM at Mind/Make.", "Build your AI GTM at Mindmake.",
+    "I founded MindMake.", "I founded Mindmaker.", "The Mindmaker programs.",
+    "Delivered through Mindmake AI.", "At Mind Make I built it."])
+def test_each_variant_is_caught(bad):
     from hunter.apply.gtmseed import NAME_VARIANTS_BANNED
     hay = voicegate.build_evidence(EVIDENCE)
-    for bad in ("Build your AI GTM at Mind/Make.", "I founded Mindmaker.",
-                "The Mindmaker programs.", "Delivered through Mindmake AI."):
-        verdict = voicegate.check(bad, evidence=hay,
-                                  banned_phrases=NAME_VARIANTS_BANNED)
-        assert not verdict.ok, bad
-        assert any("banned phrase" in f for f in verdict.failures)
+    verdict = voicegate.check(bad, evidence=hay, banned_phrases=NAME_VARIANTS_BANNED)
+    assert not verdict.ok, bad
+    assert any(f.startswith("company name") for f in verdict.failures), verdict.failures
 
 
 def test_the_law_is_in_the_evidence_so_the_model_reads_it():
-    assert "naming law" in EVIDENCE
-    assert "Never Mind/Make" in EVIDENCE
+    assert "naming law" in EVIDENCE and "written mind/make" in EVIDENCE
+    assert "Never Mindmake" in EVIDENCE
+    assert voicegate.check(EVIDENCE.split("## Reach")[1], evidence=EVIDENCE.lower()).ok, \
+        "the evidence itself writes the name his way"

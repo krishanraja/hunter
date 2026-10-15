@@ -194,10 +194,10 @@ def test_the_essay_evidence_is_cached_and_not_resent_on_a_retry(monkeypatch):
     from hunter.package import voicegate
     evidence = voicegate.build_evidence(
         "Krish Raja took Nine Entertainment's data and automation line from $9m "
-        "to $61m over three years. He ran a 14-agent fleet at Mindmake. "
+        "to $61m over three years. He ran a 14-agent fleet at mind/make. "
         "He worked at Microsoft.")
     good = ("I took Nine's data and automation line from $9m to $61m over three "
-            "years, and ran a 14-agent fleet at Mindmake after that. ")
+            "years, and ran a 14-agent fleet at mind/make after that. ")
     answers = iter([good + "x" * essays.MAX_CHARS, good * 2])
     seen = []
 

@@ -33,8 +33,11 @@ HOUSE_STYLE = "house-2026-10-15"
 FIELD = "package_style"
 
 # True once the composer that writes HOUSE_STYLE is the one build_one calls
-# (docs/HANDOVER_LETTERS.md, L3 and L5). Until then every build waits.
-COMPOSER_LIVE = False
+# (docs/HANDOVER_LETTERS.md, L3 and L5). Live since 2026-10-15, on his yes
+# ("I am now happy with the engine, make it durable"). False again would make
+# every build wait, which is the pause to use if his house style ever needs a
+# composer that does not exist yet.
+COMPOSER_LIVE = True
 
 # Which builder a live build runs: "house" (letters.py and package/compose.py,
 # the only one that writes HOUSE_STYLE) in production. "tailor" is the

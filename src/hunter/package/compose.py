@@ -217,6 +217,20 @@ _SENT = re.compile(r"(?<=[.!?])\s+")
 SUBJECT = re.compile(r"\b(I|I'm|I've|I'd|I'll|we|we're|we've)\b|\bI[’']", re.I)
 
 
+def name_problems(letter: Letter) -> list[str]:
+    """His company, written his way in every field (gtmseed.COMPANY_NAME)."""
+    from ..apply.gtmseed import COMPANY_NAME, name_problems as found_in
+    spans = [("hook", letter.hook), ("identity", letter.identity), ("why_now", letter.why_now),
+             ("close", letter.close), ("cv_summary", letter.cv_summary)] + \
+        [(f"bullet {i}", f"{a} {b}") for i, (a, b) in enumerate(letter.bullets, 1)]
+    out = []
+    for name, text in spans:
+        for f in found_in(text):
+            out.append(f"A13 the {name} names his company {f.split(chr(39))[1]!r}; "
+                       f"write {COMPANY_NAME!r}")
+    return out
+
+
 def register_problems(letter: Letter) -> list[str]:
     """A sentence opening on a verb or a feeling with no subject anywhere in
     it ("Would rather show you", "Happy to share"), outside the bullets,
@@ -361,7 +375,9 @@ def evidence_problems(letter: Letter, *, evidence: str, banned: tuple[str, ...],
         v = voicegate.check(voicegate.plain_prose(text), evidence=evidence,
                             banned_phrases=banned, allow_names=names)
         # Kinds of failure only: a failure line can carry a figure or a name.
-        kinds = sorted({f.split(" ", 1)[0] for f in v.failures})
+        # A company-name failure is reported whole by name_problems (A13).
+        kinds = sorted({f.split(" ", 1)[0] for f in v.failures
+                        if not f.startswith("company name")})
         if kinds:
             out.append(f"A15 the {name} fails the evidence gate ({', '.join(kinds)})")
     return out
@@ -390,6 +406,7 @@ def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None 
     out += lead_problems(letter, meta.get("jd") or prompt)
     out += asks_problems(letter, meta.get("jd") or prompt)
     out += register_problems(letter)
+    out += name_problems(letter)
     out += personal_problems(letter, list(meta.get("needs") or []),
                              list(meta.get("entries") or []), list(meta.get("bank") or []))
     out += evidence_problems(letter, evidence=hay, banned=tuple(meta.get("banned") or ()),
@@ -535,7 +552,8 @@ Never copy a sentence from it; write every paragraph fresh for this role.
   his words are never changed, only their order (canon 9.12).
 - When PERSONAL LINE is given, the letter must carry it, his words as written, in the hook
   or the close. When none is given, never write anything personal about his life.
-- His company is "Mindmake", one name, never "mind/make", "Mind Make" or "Mindmaker".
+- His company is "mind/make", lowercase with the slash, as his CV writes it; never
+  "Mindmake", "Mind/Make", "Mind Make" or "Mindmaker".
 - Never write his email, phone or address; the header carries them.
 - Spelling: as the BASE says (US or UK).
 - Lengths: hook up to 600 characters, identity up to 520, each bullet up to 260 with a
