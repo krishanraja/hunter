@@ -1390,9 +1390,13 @@ def test_the_commands_are_wired_and_offered_by_hand():
     assert "rebuild-packages" in options and "approvals" in options
     src = pathlib.Path(run_mod.__file__).read_text()
     assert 'cmd == "rebuild-packages"' in src and '"--wanted" in argv' in src
-    steps = " ".join(str(st.get("run", "")) for st in wf["jobs"]["hunter"]["steps"])
-    assert "rebuild-packages" not in steps and "--wanted" not in steps, \
-        "both are run by hand, never on the schedule"
+    runs = [str(st.get("run", "")) for st in wf["jobs"]["hunter"]["steps"]]
+    rebuilds = [r for r in runs if "rebuild-packages" in r]
+    # A rebuild from his reasons was a paid tailor call, so it is run by hand.
+    # The style rebuild (his yes, 2026-10-15) calls no model: its letters are
+    # the routine's, on his subscription. It alone is on the schedule.
+    assert rebuilds == ["python -u -m hunter.run rebuild-packages --reason style --apply"]
+    assert not any("--wanted" in r for r in runs), "run by hand, never on the schedule"
 
 
 def test_doctor_says_when_the_record_of_his_view_is_missing():

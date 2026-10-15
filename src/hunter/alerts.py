@@ -39,7 +39,7 @@ import json
 
 from . import config as config_mod
 from . import notify, verdicts
-from .config import Config, db_delete, db_get, db_insert
+from .config import ALL_ROWS, Config, db_delete, db_get, db_insert
 from .sheet import AI_SCORE, AI_WHY
 
 TABLE = "hunter_alerts"
@@ -53,6 +53,15 @@ STALL_DAYS = 8
 # An approval he has not answered. Two days is generous for a role that is live
 # now and gone in a fortnight.
 APPROVAL_DAYS = 2
+# The letter writer (drafts.py, kind "letter"): his ruling 2026-10-15 was no
+# API spend on letters, so an unanswered letter waits, and every package he
+# scored waits with it. The routine runs daily at 12:47 London on his
+# subscription; a day and a half with letters waiting and none written means
+# it has stopped, and nothing else in hunter would say so.
+WRITER_HOURS = 36
+# One role's letter refused this many times: the routine keeps writing what
+# the check will not take, and asks again for ever without a word.
+LETTER_FAILS = 3
 
 
 def _now() -> datetime.datetime:
@@ -371,6 +380,40 @@ def canon_problem(cfg: Config) -> dict | None:
             "record_run": True}
 
 
+def writer_problems(cfg: Config, now: datetime.datetime | None = None) -> list[dict]:
+    """The letter writer stopped, or stuck on one role. Counts only."""
+    from collections import Counter
+    now = now or _now()
+    since = (now - datetime.timedelta(days=10)).isoformat()
+    rows = db_get(cfg, "hunter_drafts", {"select": "ref,status,requested_at,drafted_at",
+                                         "kind": "eq.letter", "requested_at": f"gte.{since}",
+                                         "limit": ALL_ROWS})
+    hours = lambda stamp: (_age_days(stamp) or 0) * 24
+    out = []
+    waiting = [r for r in rows if r.get("status") == "queued"
+               and hours(r.get("requested_at")) > WRITER_HOURS]
+    written = [r for r in rows if r.get("drafted_at")
+               and hours(r.get("drafted_at")) <= WRITER_HOURS]
+    if waiting and not written:
+        oldest = min(str(r.get("requested_at")) for r in waiting)
+        out.append({"kind": "letters waiting on the writer",
+                    "fingerprint": f"writer:{oldest[:10]}",
+                    "detail": f"{len(waiting)} letter(s) have waited more than "
+                              f"{WRITER_HOURS} hours and the writing routine has written "
+                              f"none in that time. It runs daily at 12:47 London on your "
+                              f"Claude subscription; check its scheduled task is still on. "
+                              f"Nothing is built or sent for these until it answers."})
+    fails = Counter(r.get("ref") for r in rows if r.get("status") == "failed")
+    stuck = sorted(str(ref) for ref, n in fails.items() if n >= LETTER_FAILS)
+    if stuck:
+        out.append({"kind": "letters the writer cannot get right",
+                    "fingerprint": "letter-fails:" + ",".join(stuck)[:180],
+                    "detail": f"{len(stuck)} role(s) have had {LETTER_FAILS} or more letters "
+                              f"refused by the check. The routine is asked again each "
+                              f"time; nothing is built for them until one passes."})
+    return out
+
+
 def trouble_checks(cfg: Config, sheet=None, *, observed: dict | None = None,
                    sheet_error: Exception | None = None,
                    check_canon: bool = False) -> list[dict]:
@@ -466,6 +509,11 @@ def trouble_checks(cfg: Config, sheet=None, *, observed: dict | None = None,
                     "fingerprint": f"awaiting:{len(old)}:{str(old[0].get('created_at'))[:10]}",
                     "detail": f"{len(old)} filled application(s) have been waiting "
                               f"more than {APPROVAL_DAYS} days: {names}"})
+
+    try:
+        out.extend(writer_problems(cfg))
+    except Exception as e:
+        print(f"watchdog: the letter writer not read ({e.__class__.__name__})")
 
     # A batch the schedule could not get through. schedule.decide stops after
     # two attempts at one slot rather than paying again for a failure nobody

@@ -32,7 +32,7 @@ on:
                   close-submitted, confirmations, settle, score-builds, rebuild-packages, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
                   door-coverage, door-cards, drafts, actions, facts, letter-master, cv-master,
-                  build-preview]
+                  build-preview, doc-edits]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string
@@ -96,6 +96,17 @@ jobs:
         if: steps.cmd.outputs.skip == ''
         run: python -u -m hunter.run ${{ steps.cmd.outputs.args }}
 
+      # Every edit he makes to a letter or CV hunter built, words and
+      # formatting (src/hunter/docedits.py, his ruling 2026-10-15). Before the
+      # replies, so an edit made after the Apply email cancels the waiting
+      # application and Prepare sends his version. Counts only.
+      # A failure here never stops the replies below: they still need the
+      # main command to have succeeded, and only that.
+      - name: Read his edits to letters and CVs
+        if: steps.cmd.outputs.args == 'drain'
+        continue-on-error: true
+        run: python -u -m hunter.run doc-edits --apply
+
       # Krish's replies, read and acted on every hour. approvals-drain was written
       # and never scheduled, so an APPROVE waited in the inbox until someone ran it
       # by hand. --send is what makes one approval enough: he approved a picture of
@@ -146,12 +157,24 @@ jobs:
       # run, which builds column A Yes only. After settle on purpose: settle is
       # where a score he lowered below 7 cancels what was waiting on him for
       # it, so this never builds on a score he has just taken back. Each build
-      # is a paid tailor call; one that was refused is not tried again until
+      # asks the writing routine for its letter, never a model, and builds
+      # once it is written; one that was refused is not tried again until
       # his score, its link or the masters change. This log carries counts
       # only, because a role built here is a role he scored 7 or more.
       - name: Build what he scored 7 or more
         if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run score-builds --apply
+
+      # His house style for every package he still wants that was built before
+      # it (his yes, 2026-10-15). Each role's letter is asked of the writing
+      # routine and built here in a later hour, once it is written and passes
+      # its check; a package already in his style is never chosen, so once all
+      # are done this reads the sheet and builds nothing. No model is called:
+      # the letters are the routine's, on his subscription. Counts only.
+      - name: Bring every package he still wants into his house style
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
+        continue-on-error: true
+        run: python -u -m hunter.run rebuild-packages --reason style --apply
 
       # A personal line a letter needs (src/hunter/facts.py, his ruling
       # 2026-10-15): asks are mailed to him, one per kind of business, and his

@@ -70,6 +70,23 @@ class Batch:
     # the stored columns alone, and the summary says the scores were not read.
     ratings_read: bool = True
     shown_read: bool = True
+    # What his edits say about the letters (docedits.py): of the packages
+    # built in his house style for this batch, how many he edited, the
+    # median size of an edit in characters, and how many touched formatting.
+    # edits_read False is not zero edits: save leaves those columns alone.
+    letters_built: int = 0
+    letters_edited: int = 0
+    edit_chars: list = field(default_factory=list)
+    formatting_edited: int = 0
+    edits_read: bool = True
+
+    @property
+    def edit_chars_median(self) -> int | None:
+        if not self.edit_chars:
+            return None
+        xs = sorted(self.edit_chars)
+        n = len(xs)
+        return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) // 2
 
     @property
     def scored(self) -> int:
@@ -161,7 +178,7 @@ def _is_ruled(verdict: str) -> bool:
 
 def _roles(cfg: Config) -> tuple[list[dict], bool]:
     """(the roles, whether ai_score_shown was read with them)."""
-    base = "job_id,company,sweep_date,presented_at,status,krish_verdict,source"
+    base = "job_id,company,sweep_date,presented_at,status,krish_verdict,source,package_style"
     try:
         return db_get(cfg, "hunter_seen_roles",
                       {"select": base + ",ai_score_shown", "limit": ALL_ROWS}), True
@@ -215,6 +232,25 @@ def measure(cfg: Config, tiers: dict[str, int] | None = None,
         if notes is not None:
             notes.append(f"Krish Score by batch not measured: hunter_krish_ratings "
                          f"not read ({e.__class__.__name__})")
+    # His edits to the letters, one summary per role: the largest edit of any
+    # of its documents, and whether any touched formatting. Previews are his
+    # review of the composer, not of a batch, so they are left out.
+    edits_read = True
+    edited: dict[str, dict] = {}
+    try:
+        for e in db_get(cfg, "hunter_doc_edits", {"select": "job_id,edit_chars,style_changed,scratch",
+                                                  "limit": ALL_ROWS}):
+            if e.get("scratch"):
+                continue
+            d = edited.setdefault(e.get("job_id") or "", {"chars": 0, "style": False})
+            d["chars"] = max(d["chars"], int(e.get("edit_chars") or 0))
+            d["style"] = d["style"] or bool(e.get("style_changed"))
+    except Exception as e:
+        edits_read = False
+        if notes is not None:
+            notes.append(f"letter edits by batch not measured: hunter_doc_edits not read "
+                         f"({e.__class__.__name__})")
+    from .package import style as style_mod
     tiers = tiers or {}
     batches: dict[str, Batch] = {}
     for r in roles:
@@ -229,8 +265,15 @@ def measure(cfg: Config, tiers: dict[str, int] | None = None,
             continue
         key = presented
         b = batches.setdefault(key, Batch(key=key, ratings_read=ratings_read,
-                                          shown_read=shown_read))
+                                          shown_read=shown_read, edits_read=edits_read))
         b.staged += 1
+        if style_mod.stamped(r):
+            b.letters_built += 1
+            ed = edited.get(r.get("job_id") or "")
+            if ed:
+                b.letters_edited += 1
+                b.edit_chars.append(ed["chars"])
+                b.formatting_edited += ed["style"]
         source = (r.get("source") or "unknown").strip() or "unknown"
         tier = tiers.get(company_key(r.get("company") or ""))
         tier_key = f"tier {tier}" if tier else "unscored"
@@ -259,6 +302,10 @@ def measure(cfg: Config, tiers: dict[str, int] | None = None,
 
 RATING_COLUMNS = ("scored", "mean_score", "share_7_plus", "spearman_ai", "spearman_n",
                   "prospective_n")
+# What his edits say about the letters, from the control-center migration of
+# 2026-10-15; a server that does not have them yet is treated as the Krish
+# Score columns are.
+EDIT_COLUMNS = ("letters_built", "letters_edited", "edit_chars_median", "formatting_edited")
 
 
 class NotSaved(RuntimeError):
@@ -284,6 +331,10 @@ def _row(b: Batch, now: str) -> dict:
                     "spearman_ai": _round(b.spearman_ai), "spearman_n": b.spearman_n})
         if b.shown_read:
             row["prospective_n"] = b.prospective
+    if b.edits_read:
+        row.update({"letters_built": b.letters_built, "letters_edited": b.letters_edited,
+                    "edit_chars_median": b.edit_chars_median,
+                    "formatting_edited": b.formatting_edited})
     return row
 
 
@@ -293,7 +344,7 @@ def _names_rating_column(e: Exception) -> bool:
     "scored" ... does not exist'. Nothing else is evidence that the migration
     is missing."""
     body = getattr(getattr(e, "response", None), "text", "") or str(e)
-    return any(f"'{c}'" in body or f'"{c}"' in body for c in RATING_COLUMNS)
+    return any(f"'{c}'" in body or f'"{c}"' in body for c in RATING_COLUMNS + EDIT_COLUMNS)
 
 
 def save(cfg: Config, batches: list[Batch]) -> str:
@@ -318,7 +369,8 @@ def save(cfg: Config, batches: list[Batch]) -> str:
         if not _names_rating_column(e):
             raise NotSaved(f"{TABLE} NOT written ({first})") from None
     try:
-        db_insert(cfg, TABLE, [{k: v for k, v in r.items() if k not in RATING_COLUMNS}
+        db_insert(cfg, TABLE, [{k: v for k, v in r.items()
+                                if k not in RATING_COLUMNS + EDIT_COLUMNS}
                                for r in rows], on_conflict="batch_key", merge=True)
     except Exception as e:
         raise NotSaved(f"{TABLE} NOT written ({first}; and without the Krish Score "

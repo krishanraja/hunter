@@ -83,7 +83,8 @@ def problems_for(kind: str, output, *, prompt: str, context: str = "",
         return out + [f"voice gate: {f}" for f in gate.failures]
     if kind == "letter":
         from .package import compose
-        return compose.problems(output, prompt=prompt, evidence=evidence, meta=meta)
+        return compose.problems(output, prompt=prompt, evidence=evidence, meta=meta,
+                                context=context)
     if kind == "door_observation":
         from . import doorin
         text = output.get("text") if isinstance(output, dict) else output

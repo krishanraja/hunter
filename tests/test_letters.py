@@ -112,15 +112,20 @@ def answer(**over):
     a = {"hiring_lead": "Hiring Team",
          "hook": "Kestrel is turning voice agents into a partner business. " + LINE,
          "identity": "I'm a commercial leader with technical roots, and I build AI native "
-                     "sales engines.",
-         "bullets": [{"label": "Quorra:", "text": "grew a partner engine from $2M to $9M."},
+                     "sales engines for platform partnerships.",
+         "bullets": [{"label": "Quorra:", "text": "grew a partner engine from $2M to $9M, the "
+                                                   "platform partnerships work this seat leads."},
                      {"label": "Velmont:", "text": "licensed the stack to three businesses."},
-                     {"label": "Halcyon:", "text": "closed a $1.5M partnership."}],
-         "why_now": "I am looking for a platform business where partnerships are the growth line.",
-         "close": "I'd rather show you the partner engines I have built than describe them.",
-         "cv_summary": "",
+                     {"label": "Halcyon:", "text": "closed a $1.5M partnership, the kind of "
+                                                    "licensing deals Kestrel needs."}],
+         "why_now": "I am looking for a platform business like Kestrel, where partnerships are "
+                    "the growth line.",
+         "close": "I'd rather show you the partner engines I have built than describe them, "
+                  "starting with Kestrel's licensing deals.",
+         "cv_summary": 'I build platform partnerships and licensing deals: at Quorra I grew a partner engine from $2M to $9M, at Velmont I licensed the stack to three businesses, and at Halcyon I closed a $1.5M partnership. I want to lead the platform partnerships of a voice agents business, reporting to the COO, with a small team built around licensing deals.',
          "asks": [{"ask": "partnerships", "quote": "lead platform partnerships and licensing deals",
-                   "answered_by": "Velmont"}]}
+                   "answered_by": "Velmont"}],
+         "cv_highlight_order": [1, 0]}
     a.update(over)
     return a
 
@@ -158,10 +163,12 @@ def world(monkeypatch):
     monkeypatch.setattr(config_mod, "LETTER_MASTER_ID", v5)
     monkeypatch.setattr(config_mod, "CV_MASTER_ID", cvm)
     monkeypatch.setattr(run_mod, "DocBuild", lambda token: docs)
-    monkeypatch.setattr(contact, "load_bases", lambda cfg: BASES)
+    monkeypatch.setattr(contact, "load_bases", lambda cfg: (BASES, "2 contact base(s) read"))
     monkeypatch.setattr(run_mod, "house_evidence", lambda cfg, sheet, db, jd: {
         "text": "Quorra, Velmont, Halcyon", "haystack": HAY, "banned": ("world-class",),
-        "model": "Zentrox is busy. " + LINE + " I'm a commercial leader."})
+        "model": "Zentrox is busy. " + LINE + " I'm a commercial leader.",
+        "highlights": ["Built an invented region from $0 to $5M",
+                       "Grew an invented line $2M to $8M"]})
     sheet = FakeSheet(grid_of(line("New", "Kestrel", "VP Partnerships", URL, k="8")))
     return {"db": db, "docs": docs, "rec": rec, "sheet": sheet}
 
@@ -208,6 +215,7 @@ def test_the_letter_is_asked_of_the_routine_then_waits_without_a_fetch(world):
     (d,) = world["db"].drafts()
     assert (d["kind"], d["status"], d["ref"]) == ("letter", "queued", JOB)
     assert d["meta"]["base"] == "us" and d["meta"]["entries"] == [LINE]
+    assert d["meta"]["highlights"] == 2, "the check knows how many highlights to order"
     assert "PERSONAL LINE" in d["prompt"] and "POSTING\n" + JD in d["prompt"]
     assert world["db"].role()["rejection_reason"] == letters.WAITING
     ok, summary = build(world, Canon914([LINE]))
@@ -231,6 +239,9 @@ def test_the_routines_letter_is_built_read_back_and_stamped(world, capsys):
     doc = world["docs"].get(state["letter_doc_id"])
     assert house.check(house.snapshot(doc), kind="letter", base=BASES["us"], bases=BASES) == []
     assert LINE in " ".join(p.text for p in house.snapshot(doc))
+    cv = [house.norm(p.text) for p in house.snapshot(world["docs"].get(state["cv_doc_id"]))]
+    assert cv.index("Grew an invented line $2M to $8M") < \
+        cv.index("Built an invented region from $0 to $5M"), "the role's order, canon 9.12"
     built = [s for s in summary if s.startswith("BUILT")]
     assert built and "personal line" in built[0]
     out = capsys.readouterr().out + "\n".join(summary)
@@ -297,3 +308,28 @@ def test_the_preview_folder_is_made_once_and_reused(monkeypatch):
                      "parents": ["root"]}]
     found["files"] = [{"id": "F1", "name": "hunter preview"}]
     assert db.folder(run_mod.PREVIEW_FOLDER) == "F1" and len(made) == 1
+
+
+def test_the_preview_builds_the_written_letter_and_touches_nothing_else(world, monkeypatch, capsys):
+    before = dict(world["db"].role())
+    monkeypatch.setattr(config_mod, "HOUSE_LETTER_MASTER_ID", config_mod.LETTER_MASTER_ID)
+    monkeypatch.setattr(config_mod, "HOUSE_CV_MASTER_ID", config_mod.CV_MASTER_ID)
+    monkeypatch.setattr(run_mod, "build_context", lambda: (Cfg({}), Canon914([LINE])))
+    monkeypatch.setattr(run_mod, "Sheet", lambda token: world["sheet"])
+    monkeypatch.setattr(run_mod, "GoogleServiceAccount", lambda cfg: type("S", (), {"access_token": "x"})())
+    assert run_mod.cmd_build_preview([JOB], queue=True, folder="", apply=False,
+                                     db=world["docs"], page_count=page_count) == 0
+    assert f"{JOB}: letter asked of the writer" in capsys.readouterr().out
+    routine_writes(world, answer())
+    assert run_mod.cmd_build_preview([JOB], queue=False, folder="f", apply=True,
+                                     db=world["docs"], page_count=page_count) == 0
+    out = capsys.readouterr().out
+    assert f"{JOB}: letter 1 page(s), CV 1 page(s), US header, asks 1 of 1, problems 0" in out
+    assert "  CL https://docs.google.com/document/d/" in out
+    assert LINE not in out
+    cv_id = out.split("  CV https://docs.google.com/document/d/")[1].split("/")[0]
+    cv = [house.norm(p.text) for p in house.snapshot(world["docs"].get(cv_id))]
+    assert cv.index("Grew an invented line $2M to $8M") < \
+        cv.index("Built an invented region from $0 to $5M"), "the preview in the role's order too"
+    assert world["db"].role() == before, "a preview records nothing on the role"
+    assert world["db"].drafts()[-1]["status"] == "drafted", "nor marks the letter used"

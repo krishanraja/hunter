@@ -381,6 +381,70 @@ about 0: what reached him was ordered no better than chance.
   saw every score he typed from 11 to 13 October on the 14th, the hour it was
   created, so the wait ran from the wrong moment.
 
+## 3g. His letters and CVs: his house style, written by the routine, read back
+
+His words, 2026-10-15, on the packages before this: "not much of this is
+actually written personally for the role?" and "are you sure its ok that the
+CV's professional summary has close to zero personalization?". Then, on the
+rebuilt previews: "I am now happy with the engine, make it durable".
+docs/HANDOVER_LETTERS.md is the full record.
+
+- **His rulings, all binding.** Arial; name 23pt, title 11pt, everything else
+  9pt. The header is place and phone (no email), the link row "Bio | LinkedIn |
+  Media channel", the banner, the rights line; no footer contact line. The
+  letter is one page, the CV two at most; the margins narrow first, then the
+  4th bullet, then why-now, never below 9pt, and the banner leaves the CV before
+  anything of his. US roles take Brooklyn and the US number, UK, Europe or
+  EMEA take London and the UK number and UK spelling; anywhere else holds for
+  his pick (`package/contact.py`).
+- **The stamp is the pause.** A package carries `package_style =
+  style.HOUSE_STYLE`, and every send path refuses one without it. A change to
+  his house style is a new HOUSE_STYLE value: every older package is then
+  refused, and the hourly `rebuild-packages --reason style --apply` rebuilds
+  the ones he still wants. `style.COMPOSER_LIVE = False` makes every build
+  wait, for the day his style needs a composer that does not exist yet.
+- **No API spend on letters.** The writing routine on his subscription writes
+  them (`drafts.py` kind `letter`, `NO_API`, docs/ROUTINE_WRITER.md), daily at
+  12:47 London plus the Sunday and Thursday runs. An unanswered letter waits.
+  The watchdog mails him when letters have waited 36 hours with none written,
+  or one role's letters fail their check 3 times (`alerts.writer_problems`).
+- **Holds cost nothing.** `letters.plan` reads the record before any fetch: a
+  role with no header base, a business of his kind with no line of his, or a
+  letter not yet written is SKIPPED, which no cap counts.
+- **His personal lines are canon 9.14.** A voice, audio, speech, mindset,
+  future of work, personal development, emerging media, content or IP, live
+  entertainment or health business gets one of his lines (`package/personal.py`,
+  read from what the business sells, never the posting). With none, `facts.py`
+  emails him once per kind of business and `canonwrite.py` appends his reply
+  verbatim, version locked and read back, and takes it back on UNDO: the one
+  exception to canon never being edited from code. His lines never reach the
+  repo, a log, the writer's examples or the evidence.
+- **Written for the role, checked** (`package/compose.py`, A13 to A16): no
+  8-word run copied from his model letter; the hook and why-now name the
+  company; the identity and close carry the company or the posting's own terms;
+  at least 2 bullets tie to the role. The CV summary is required, written for
+  the role, copies no 10-word run of his own summary, and names the company or
+  2 posting terms; its figures and his own bold phrases are bold, a money range
+  whole. His CV highlights come in the role's order (canon 9.12), his words and
+  his bold unchanged. Every figure and name traces to evidence (voicegate).
+- **His company is "mind/make"**, lowercase with the slash, as his CV writes it
+  (his answer, 2026-10-15). `gtmseed.name_problems` refuses every other
+  spelling, case and all, inside `voicegate.check`, so every letter, summary,
+  essay and form answer obeys it. The site, mindmake.co, is an address.
+- **Every edit he makes is learned from** (`docedits.py`, hourly, before the
+  replies): words and formatting, stored with both versions. His newest letter
+  edits go to the writer as examples; sentences he writes in the first person
+  become HIS OWN WORDS and count as evidence. An edit after the Apply email
+  cancels it, so Prepare sends his version. batchstats records letters built,
+  edited and the median edit size: a falling edit size is the measure that the
+  letters are getting closer to his.
+- **The masters change with canon 9.9, together**, or every run aborts. Drains
+  start at :13 and finish by :15; switch just after.
+- **Previews before changes he will read.** `build-preview --queue`, then the
+  writer answers, then `build-preview --apply --preview-folder --label vN`
+  builds into "hunter preview" in his Drive and touches no role. Read the built
+  documents back from Drive before telling him they are right.
+
 ## 4. The Target Companies tab is his, and it is policy
 
 53 companies, five categories, a tier each, and a TIER LEGEND in his own
@@ -590,9 +654,19 @@ src/hunter/
   invariants.py     what must always be true of the sheet, and the repairs
   amend.py          learning from what he changed, not only what he rejected
   alerts.py         the two emails he gets, deduplicated on the condition
+  letters.py        a package in his house style, from hold to build
+  docedits.py       every edit he makes to a letter or CV, learned from
+  facts.py          asks him for a personal line, writes his reply to canon 9.14
+  canonwrite.py     the one code path that edits canon: his words into 9.14
   package/
-    build.py        CV and letter, from the masters
-    tailor.py       block selection, the hook
+    compose.py      his letter and CV for one role: the brief, the checks, the build
+    contact.py      which city, phone and spelling a role takes
+    personal.py     which of his personal lines a business needs
+    house.py        his house style, read back from the built document
+    masters.py      the letter and CV masters made from his own letter
+    style.py        the house style stamp, and the pause
+    build.py        CV and letter, from the masters (before his house style)
+    tailor.py       block selection, the hook (before his house style)
     voicegate.py    every generated string passes this
 extension/            loaded unpacked in his Chrome. main is what he downloads
 docs/DOOR_IN.md       leaders first, roles second: the thesis and plan

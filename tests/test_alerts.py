@@ -307,3 +307,38 @@ def test_with_control_center_the_button_opens_the_sheet_and_prepare_stays_a_link
 def test_the_email_never_promises_a_pack_nothing_sends():
     _, html, _ = alerts.review_email([row(3)], staged=1)
     assert "emails you the pack" not in html and "Prepare" in html
+
+
+# ---------- the letter writer ----------
+
+def _letter(status, requested, drafted=None, ref="r1"):
+    return {"ref": ref, "status": status, "requested_at": requested, "drafted_at": drafted}
+
+
+def _writer_db(monkeypatch, drafts):
+    fake = FakeDb(tables={"workflow_runs": [_runs()], "hunter_application_approvals": [],
+                          "hunter_drafts": drafts})
+    monkeypatch.setattr(alerts, "db_get", fake.get)
+    return [p for p in alerts.trouble_checks(None) if "letter" in p["kind"]]
+
+
+def test_a_writer_that_has_stopped_is_reported(monkeypatch):
+    got = _writer_db(monkeypatch, [_letter("queued", ago(2)), _letter("queued", ago(3), ref="r2"),
+                                   _letter("used", ago(6), drafted=ago(5), ref="r3")])
+    assert [p["kind"] for p in got] == ["letters waiting on the writer"]
+    assert got[0]["detail"].startswith("2 letter(s) have waited more than 36 hours")
+
+
+def test_a_writer_working_through_a_backlog_is_left_alone(monkeypatch):
+    assert _writer_db(monkeypatch, [_letter("queued", ago(2)),
+                                    _letter("drafted", ago(2), drafted=ago(0.2), ref="r2")]) == []
+    assert _writer_db(monkeypatch, [_letter("queued", ago(0.5))]) == [], "asked today"
+
+
+def test_a_role_whose_letters_keep_failing_is_reported_once_per_set(monkeypatch):
+    rows = [_letter("failed", ago(1), drafted=ago(1)) for _ in range(3)] + \
+        [_letter("failed", ago(1), drafted=ago(1), ref="r2")]
+    got = _writer_db(monkeypatch, rows)
+    assert [(p["kind"], p["fingerprint"]) for p in got] == \
+        [("letters the writer cannot get right", "letter-fails:r1")]
+    assert "r1" not in got[0]["detail"], "counts only"

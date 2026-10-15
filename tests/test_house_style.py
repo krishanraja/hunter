@@ -16,6 +16,14 @@ from test_score_builds import Cfg, FakeCanon, _stub_build
 pytestmark = pytest.mark.house_style_paused
 
 
+@pytest.fixture
+def paused(monkeypatch):
+    """The pause as a switch: production builds in his house style, and
+    COMPOSER_LIVE False is how every build waits again if his style ever
+    needs a composer that does not exist yet."""
+    monkeypatch.setattr(style, "COMPOSER_LIVE", False)
+
+
 def test_only_the_current_style_is_stamped():
     assert not style.stamped(None)
     assert not style.stamped({})
@@ -25,15 +33,16 @@ def test_only_the_current_style_is_stamped():
     assert style.stamped({style.FIELD: style.HOUSE_STYLE})
 
 
-def test_production_builds_wait_until_a_composer_writes_his_style():
-    """The composer that writes his style does not exist yet: this goes red
-    the day it lands, which is when the tests here change with it."""
-    assert style.COMPOSER_LIVE is False
-    assert style.builds_paused()
+def test_production_builds_in_his_house_style():
+    """Live since 2026-10-15, on his yes: every build runs the house builder,
+    which is the only one that writes the stamp the send paths ask for."""
+    assert style.COMPOSER_LIVE is True and style.BUILDER == "house"
+    assert style.house_builds() and not style.builds_paused()
 
 
 # ---------- builds ----------
 
+@pytest.mark.usefixtures("paused")
 def test_build_one_waits_before_anything_is_fetched_paid_or_written(monkeypatch):
     rec_ = _stub_build(monkeypatch)
     summary = []
@@ -51,6 +60,7 @@ def test_build_one_waits_before_anything_is_fetched_paid_or_written(monkeypatch)
                        f"fetched or built"]
 
 
+@pytest.mark.usefixtures("paused")
 def test_a_rebuild_waits_too(monkeypatch):
     rec_ = _stub_build(monkeypatch)
     summary = []
@@ -59,6 +69,7 @@ def test_a_rebuild_waits_too(monkeypatch):
     assert rec_["tailored"] == 0 and rec_["patches"] == []
 
 
+@pytest.mark.usefixtures("paused")
 def test_score_builds_wait_without_reading_the_sheet(monkeypatch, capsys):
     monkeypatch.setattr(run_mod, "build_context", lambda: (Cfg({"hunter_max_score_builds_per_run": "3"}),
                                                            FakeCanon()))
@@ -67,6 +78,7 @@ def test_score_builds_wait_without_reading_the_sheet(monkeypatch, capsys):
     assert f"score builds: waiting, {style.PAUSED}" in capsys.readouterr().out
 
 
+@pytest.mark.usefixtures("paused")
 def test_rebuild_packages_counts_its_targets_and_builds_none(monkeypatch, capsys):
     s, _ = rebuild_world(monkeypatch, [L("ardent", m=REACTION)], [rec("ardent")])
     from test_his_view import _commands
@@ -193,6 +205,7 @@ def _drain_world(monkeypatch, *, edited=True):
     return order, recorded
 
 
+@pytest.mark.usefixtures("paused")
 def test_an_amend_keeps_his_edits_first_and_rebuilds_nothing(monkeypatch, capsys):
     order, recorded = _drain_world(monkeypatch)
     assert run_mod.cmd_approvals_drain(apply=True) == 0
@@ -207,6 +220,7 @@ def test_an_amend_keeps_his_edits_first_and_rebuilds_nothing(monkeypatch, capsys
         assert leak not in out, leak
 
 
+@pytest.mark.usefixtures("paused")
 def test_an_amend_over_unedited_documents_records_no_pair(monkeypatch):
     order, recorded = _drain_world(monkeypatch, edited=False)
     assert run_mod.cmd_approvals_drain(apply=True) == 0
@@ -236,3 +250,21 @@ def test_a_package_whose_rebuild_did_not_land_can_be_chosen_again(monkeypatch):
     got = run_mod.rebuild_targets(Cfg(), s, FakeCanon(), report=rep)
     assert [d["job_id"] for d in got] == ["ardent:vp"]
     assert rep["skips"].get("not built yet") == 1
+
+
+def test_a_style_rebuild_takes_every_old_package_he_wants_and_no_new_one(monkeypatch):
+    """rebuild-packages --reason style: an unstamped package is rebuilt in his
+    house style whether or not he wrote anything about the role; a package
+    already in it is left alone."""
+    monkeypatch.setattr(style, "stamped", lambda row: (row or {}).get(style.FIELD) == style.HOUSE_STYLE)
+    s, _ = rebuild_world(monkeypatch, [L("ardent", verdict="Yes", k=""), L("brisk", k="8"),
+                                       L("cobalt", m=REACTION)], [
+        rec("ardent", package_trigger="column A Yes"), rec("brisk", **{style.FIELD: style.HOUSE_STYLE}),
+        rec("cobalt")])
+    rep = {}
+    got = run_mod.rebuild_targets(Cfg(), s, FakeCanon(), report=rep, style=True)
+    assert sorted(d["job_id"] for d in got) == ["ardent:vp", "cobalt:vp"]
+    assert rep["skips"].get("already in his house style") == 1
+    plain = run_mod.rebuild_targets(Cfg(), s, FakeCanon(), report={})
+    assert "ardent:vp" not in [d["job_id"] for d in plain], \
+        "without the reason, a Yes with nothing of his written is not rebuilt"

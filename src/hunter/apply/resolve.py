@@ -467,11 +467,12 @@ class Resolver:
             if entry and entry.usable:
                 return Answer(entry.value, f"Info Bank: {entry.field_name}")
         if _any(label, "current or most recent employer", "current employer"):
-            # "Mindmake", one word. 00_NORTH_STAR.md's naming law is absolute and
-            # names "Mindmaker" as the variant to never use: a business with two
-            # names has none. This said Mindmaker until 2026-09-15, and it was the
-            # value going into the employer field of real application forms.
-            return Answer("Mindmake", "Profile: current venture")
+            # One name, written his way (gtmseed.COMPANY_NAME, his ruling
+            # 2026-10-15: "mind/make"). This said Mindmaker until 2026-09-15 and
+            # Mindmake until 2026-10-15, and it is the value going into the
+            # employer field of real application forms.
+            from .gtmseed import COMPANY_NAME
+            return Answer(COMPANY_NAME, "Profile: current venture")
         if _any(label, "university", "school attended", "degree"):
             entry = self.bank.get("Highest degree completed")
             if entry and entry.usable:

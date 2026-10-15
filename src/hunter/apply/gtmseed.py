@@ -36,6 +36,8 @@ quotable by construction.
 """
 from __future__ import annotations
 
+import re
+
 from .. import config
 
 CONFIG_KEY = "hunter_ai_gtm_evidence"
@@ -79,27 +81,39 @@ CV_BLOCK = {
     "approved_at": "2026-09-15",
 }
 
-# 00_NORTH_STAR.md calls this one absolute: "a business with two names has none."
-# The first package to use this evidence wrote "Build your AI GTM at Mind/Make",
-# which traced fine because the gate splits on the slash and is still wrong on a
-# document going to an employer. Fed to the gate as banned phrases so a variant
-# cannot reach a document, rather than left to the prompt to remember.
-# NOT "MindMake": voicegate lowercases both sides, so that entry would ban the
-# correct name along with the variant. Only variants that stay distinct in
-# lowercase belong here, which is why a test pins exactly that.
+# His ruling, 2026-10-15, asked which name his documents use: "mind/make",
+# lowercase with the slash, as his CV master writes it. Until then this law was
+# 00_NORTH_STAR.md's "Mindmake", one word ("a business with two names has
+# none"), and this list banned "Mind/Make"; voicegate lowercases both sides, so
+# that entry banned the very form he chose. The one name is still the rule, and
+# the name is now his: name_problems checks the exact form, case and all, in
+# every gate (voicegate.check), and this list keeps only the variants that stay
+# distinct in lowercase.
+COMPANY_NAME = "mind/make"
 NAME_VARIANTS_BANNED = (
-    "Mind/Make", "Mind Make", "Mindmaker", "The Mindmaker", "Mindmake AI",
-    "themindmaker",
+    "Mind Make", "Mindmaker", "The Mindmaker", "Mindmake AI", "themindmaker",
 )
+# Any spelling of the name: Mindmake, MindMake, Mind/Make, Mind Make, Mindmaker.
+# The site, mindmake.co, is an address and stays as it is.
+_ANY_NAME = re.compile(r"\bmind\s*[/ ]?\s*make(?:rs?)?\b(?!\.co)", re.I)
+
+
+def name_problems(text: str) -> list[str]:
+    """Each spelling of his company that is not exactly COMPANY_NAME."""
+    found = dict.fromkeys(m.group(0) for m in _ANY_NAME.finditer(text or "")
+                          if m.group(0) != COMPANY_NAME)
+    return [f"company name {f!r}: his company is written {COMPANY_NAME!r}" for f in found]
+
 
 EVIDENCE = """\
-## AI-native GTM, the Mindmake practice
+## AI-native GTM, the mind/make practice
 
-The business is Mindmake, one word, and the site is mindmake.co. Never Mind/Make,
-never MindMake, never Mindmaker, never Mindmake AI. This is a naming law, not a
-preference: a business with two names has none.
+The business is written mind/make, lowercase with the slash, and the site is
+mindmake.co. Never Mindmake, never Mind/Make, never MindMake, never Mindmaker,
+never Mindmake AI. This is a naming law, not a preference: a business with two
+names has none.
 
-Mindmake is Krish's principal-led AI and commercial strategy practice. It helps a
+mind/make is Krish's principal-led AI and commercial strategy practice. It helps a
 leader use AI to extend their judgement, taste and expertise, then turn that
 stronger capability into a better business result. The work may improve the
 leader, the product, the price, the positioning, the people, the route to market,
@@ -216,7 +230,7 @@ for a human Go or No-Go.
 
 ## Reach
 
-Mindmake has helped leaders across media, software and advisory with what is next
+mind/make has helped leaders across media, software and advisory with what is next
 in AI. Sessions have been attended by people from organisations including the BBC,
 Hearst, Conde Nast, Walmart, PepsiCo, Goldman Sachs, Deloitte and PwC. Those are
 attendance proof and are never described as clients.

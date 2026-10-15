@@ -35,10 +35,12 @@ KIND = "letter"
 LIMITS = {"hook": 600, "identity": 520, "why_now": 340, "close": 380,
           "label": 48, "bullet": 260, "cv_summary": 900}
 BODY_BUDGET = 2400
+CV_SUMMARY_MIN = 250
 
 SCHEMA = {
     "type": "object",
-    "required": ["hiring_lead", "hook", "identity", "bullets", "why_now", "close", "asks"],
+    "required": ["hiring_lead", "hook", "identity", "bullets", "why_now", "close", "asks",
+                 "cv_summary"],
     "properties": {
         "hiring_lead": {"type": "string"},
         "hook": {"type": "string"},
@@ -49,6 +51,7 @@ SCHEMA = {
         "why_now": {"type": "string"},
         "close": {"type": "string"},
         "cv_summary": {"type": "string"},
+        "cv_highlight_order": {"type": "array", "items": {"type": "integer"}},
         "asks": {"type": "array", "items": {
             "type": "object", "required": ["ask", "quote", "answered_by"],
             "properties": {"ask": {"type": "string"}, "quote": {"type": "string"},
@@ -71,6 +74,7 @@ class Letter:
     close: str
     cv_summary: str = ""
     asks: list[dict] = field(default_factory=list)
+    cv_highlight_order: list = field(default_factory=list)
 
     def prose(self) -> list[str]:
         return [self.hook, self.identity, self.why_now, self.close]
@@ -100,7 +104,8 @@ def parse(output) -> Letter:
                   hook=_one_line(data.get("hook")), identity=_one_line(data.get("identity")),
                   bullets=bullets, why_now=_one_line(data.get("why_now")),
                   close=_one_line(data.get("close")),
-                  cv_summary=_one_line(data.get("cv_summary")), asks=asks)
+                  cv_summary=_one_line(data.get("cv_summary")), asks=asks,
+                  cv_highlight_order=list(data.get("cv_highlight_order") or []))
 
 
 # ---------- spelling, by base ----------
@@ -170,6 +175,16 @@ def _spell(text: str, table: dict[str, str]) -> str:
     return "".join(out)
 
 
+def date_for(base_key: str, day=None) -> str:
+    """The letter's date as the role's country writes it: "15 October 2026"
+    for the UK and Europe, "October 15, 2026" for the US."""
+    import datetime
+    day = day or datetime.date.today()
+    if base_key == "uk":
+        return f"{day.day} {day.strftime('%B %Y')}"
+    return f"{day.strftime('%B')} {day.day}, {day.year}"
+
+
 def spell(text: str, base_key: str) -> str:
     return _spell(text, US_TO_UK if base_key == "uk" else UK_TO_US)
 
@@ -200,6 +215,20 @@ _SENT = re.compile(r"(?<=[.!?])\s+")
 
 
 SUBJECT = re.compile(r"\b(I|I'm|I've|I'd|I'll|we|we're|we've)\b|\bI[’']", re.I)
+
+
+def name_problems(letter: Letter) -> list[str]:
+    """His company, written his way in every field (gtmseed.COMPANY_NAME)."""
+    from ..apply.gtmseed import COMPANY_NAME, name_problems as found_in
+    spans = [("hook", letter.hook), ("identity", letter.identity), ("why_now", letter.why_now),
+             ("close", letter.close), ("cv_summary", letter.cv_summary)] + \
+        [(f"bullet {i}", f"{a} {b}") for i, (a, b) in enumerate(letter.bullets, 1)]
+    out = []
+    for name, text in spans:
+        for f in found_in(text):
+            out.append(f"A13 the {name} names his company {f.split(chr(39))[1]!r}; "
+                       f"write {COMPANY_NAME!r}")
+    return out
 
 
 def register_problems(letter: Letter) -> list[str]:
@@ -288,13 +317,27 @@ def shape_problems(letter: Letter) -> list[str]:
             out.append(f"shape: bullet {i} has no label or no text")
         elif len(label) > LIMITS["label"] or len(text) > LIMITS["bullet"]:
             out.append(f"shape: bullet {i} is too long")
-    if letter.cv_summary and len(letter.cv_summary) > LIMITS["cv_summary"]:
+    if len(letter.cv_summary) < CV_SUMMARY_MIN:
+        out.append("shape: the CV summary is missing or too short to be written for the role")
+    elif len(letter.cv_summary) > LIMITS["cv_summary"]:
         out.append("shape: the CV summary is too long")
     if letter.body_chars() > BODY_BUDGET:
         out.append(f"shape: the letter is over {BODY_BUDGET} characters")
     if "{{" in " ".join(letter.spans()) or "\n" in letter.hiring_lead:
         out.append("shape: a slot is left in the text")
     return out
+
+
+def highlight_problems(letter: Letter, count: int) -> list[str]:
+    """The order of his CV's highlights for this role: every one, once."""
+    if not count:
+        return []
+    order = letter.cv_highlight_order
+    if not order:
+        return ["shape: no order for his CV highlights; put them in this role's order"]
+    if not all(isinstance(i, int) for i in order) or sorted(order) != list(range(count)):
+        return [f"shape: the CV highlight order must use each of 0 to {count - 1} once"]
+    return []
 
 
 def lead_problems(letter: Letter, jd_text: str) -> list[str]:
@@ -332,13 +375,16 @@ def evidence_problems(letter: Letter, *, evidence: str, banned: tuple[str, ...],
         v = voicegate.check(voicegate.plain_prose(text), evidence=evidence,
                             banned_phrases=banned, allow_names=names)
         # Kinds of failure only: a failure line can carry a figure or a name.
-        kinds = sorted({f.split(" ", 1)[0] for f in v.failures})
+        # A company-name failure is reported whole by name_problems (A13).
+        kinds = sorted({f.split(" ", 1)[0] for f in v.failures
+                        if not f.startswith("company name")})
         if kinds:
             out.append(f"A15 the {name} fails the evidence gate ({', '.join(kinds)})")
     return out
 
 
-def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None = None) -> list[str]:
+def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None = None,
+             context: str = "") -> list[str]:
     """Whether a letter answer may be used. Pure: the routine runs it too.
 
     meta carries what the answer is checked against: company, short_name,
@@ -356,13 +402,104 @@ def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None 
     # His own words from 9.14 are evidence: they are his.
     hay = "\n".join([evidence or "", *(meta.get("entries") or [])]).lower()
     out = shape_problems(letter)
+    out += highlight_problems(letter, int(meta.get("highlights") or 0))
     out += lead_problems(letter, meta.get("jd") or prompt)
     out += asks_problems(letter, meta.get("jd") or prompt)
     out += register_problems(letter)
+    out += name_problems(letter)
     out += personal_problems(letter, list(meta.get("needs") or []),
                              list(meta.get("entries") or []), list(meta.get("bank") or []))
     out += evidence_problems(letter, evidence=hay, banned=tuple(meta.get("banned") or ()),
                              names=names)
+    if context:
+        out += role_problems(letter, jd=meta.get("jd") or prompt, model=model_of(context),
+                             names=frozenset(n for n in (meta.get("company"), meta.get("short_name"))
+                                             if n),
+                             entries=list(meta.get("entries") or []), context_cv=context)
+    return out
+
+
+# ---------- written for this role (A16) ----------
+
+COPY_RUN = 8        # words in a row copied from his model letter
+_GENERIC = frozenset("""
+about after again against along also always among another before being below between
+business businesses company companies could during every first great having their there
+these thing things those through under until where which while within without would years
+experience experienced ability strong role roles team teams work working including across
+looking candidate candidates position preferred required qualifications responsibilities
+should other others people please equal opportunity employer benefits including
+""".split())
+
+
+def model_of(context: str) -> str:
+    """His model letter, as the writer was given it."""
+    if "MODEL LETTER" not in (context or ""):
+        return ""
+    tail = context.split("MODEL LETTER", 1)[1]
+    return tail.split("\n\nEVIDENCE", 1)[0]
+
+
+def _run_words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9']+", (text or "").lower().replace("’", "'"))
+
+
+def posting_terms(jd: str, model: str) -> set[str]:
+    """Words this posting uses that his model letter does not: what a
+    paragraph written for this role is likely to say."""
+    mine = set(_run_words(model))
+    return {w for w in _run_words(jd) if len(w) >= 5 and w not in _GENERIC and w not in mine}
+
+
+SUMMARY_COPY_RUN = 10
+
+
+def cv_summary_of(text: str) -> str:
+    """His CV's own professional summary, out of the evidence the writer was
+    given: everything between the heading and the next one."""
+    if "PROFESSIONAL SUMMARY" not in (text or ""):
+        return ""
+    tail = text.split("PROFESSIONAL SUMMARY", 1)[1]
+    return tail.split("CAREER HIGHLIGHTS", 1)[0]
+
+
+def role_problems(letter: Letter, *, jd: str, model: str, names: frozenset[str],
+                  entries: list[str], context_cv: str = "") -> list[str]:
+    """Every paragraph written for this company and seat, none copied from his
+    model letter. His personal line is his and may sit anywhere it fits."""
+    out = []
+    model_runs = set()
+    words = _run_words(model)
+    for i in range(len(words) - COPY_RUN + 1):
+        model_runs.add(tuple(words[i:i + COPY_RUN]))
+    terms = posting_terms(jd, model)
+    lowered = [n.lower() for n in names if n]
+    for name in ("hook", "identity", "why_now", "close"):
+        text = getattr(letter, name)
+        for w in entries:
+            text = text.replace(w, " ")
+        ws = _run_words(text)
+        if any(tuple(ws[i:i + COPY_RUN]) in model_runs for i in range(len(ws) - COPY_RUN + 1)):
+            out.append(f"A16 the {name} copies his model letter; write it for this role")
+        low = " ".join(ws)
+        named = any(n in (text or "").lower() for n in lowered)
+        if name in ("hook", "why_now") and not named:
+            out.append(f"A16 the {name} does not name the company")
+        elif not named and not (set(ws) & terms):
+            out.append(f"A16 the {name} says nothing about this company or this seat")
+    if letter.cv_summary:
+        ws = _run_words(letter.cv_summary)
+        own = _run_words(cv_summary_of(context_cv))
+        own_runs = {tuple(own[i:i + SUMMARY_COPY_RUN]) for i in range(len(own) - SUMMARY_COPY_RUN + 1)}
+        if any(tuple(ws[i:i + SUMMARY_COPY_RUN]) in own_runs
+               for i in range(len(ws) - SUMMARY_COPY_RUN + 1)):
+            out.append("A16 the CV summary repeats his CV's own summary; write it for this role")
+        if len(set(ws) & terms) < 2 and not any(n in letter.cv_summary.lower() for n in lowered):
+            out.append("A16 the CV summary says nothing about this role")
+    tied = sum(1 for a, b in letter.bullets
+               if any(n in f"{a} {b}".lower() for n in lowered) or set(_run_words(b)) & terms)
+    if letter.bullets and tied < 2:
+        out.append("A16 fewer than two bullets say what they mean for this role")
     return out
 
 
@@ -371,37 +508,57 @@ def respelled(letter: Letter, base_key: str) -> Letter:
                   identity=spell(letter.identity, base_key),
                   bullets=[(spell(a, base_key), spell(b, base_key)) for a, b in letter.bullets],
                   why_now=spell(letter.why_now, base_key), close=spell(letter.close, base_key),
-                  cv_summary=spell(letter.cv_summary, base_key), asks=letter.asks)
+                  cv_summary=spell(letter.cv_summary, base_key), asks=letter.asks,
+                  cv_highlight_order=letter.cv_highlight_order)
 
 
 # ---------- the request the routine answers ----------
 
 RULES = """You write one cover letter for Krish Raja, for one posting, in his own register.
 
-His model is the letter he rewrote by hand (MODEL LETTER below): formal first person,
-warm, specific. Follow it:
+What he asks of every letter (his words, 2026-10-15: "not much of this is actually written
+personally for the role"): every paragraph is written for THIS company and THIS seat. A
+reader at the company should see, in each paragraph, why it is him for them. His own edits
+(HIS EDITS and HIS OWN WORDS below, when there are any) show how: he adds the line that ties
+what he is building himself to what the company sells, and the experience of his that is
+the same job as the title. So, for each posting, first find the connection: what in his own
+work is the same problem this company solves, or the same job this seat does. Lead with it,
+and carry it through.
+
+The MODEL LETTER below is his: it shows his register, layout and length. It is NOT a template.
+Never copy a sentence from it; write every paragraph fresh for this role.
 - Write in the first person throughout. Never drop the subject ("Would rather", "Built the
   team"): write "I'd rather", "I built". The identity paragraph opens with "I".
-- hook: what this business is doing and why it is worth his attention, from the posting
-  and the judge's read, then why he is the person for it. No flattery, no "I am excited".
-- identity: who he is, in the first person, as his model letter says it, adapted to what
-  this posting asks.
-- bullets: three or four of his proof points, the ones that answer what this posting asks,
-  each with a short bold label (an employer or a period, ending with a colon) and his own
-  wording from the evidence. One clause may mirror the posting. Every figure and every
-  name must be in the evidence as written.
-- why_now: why he is looking, in one or two sentences, as his model says it.
-- close: what he would bring to a first conversation, warm and specific.
+- hook: the connection between his work and what this company is doing, then why it makes
+  him the person for this seat. Name the company. No flattery, no "I am excited".
+- identity: who he is, written from this seat's angle: the parts of his record that matter to
+  this company, in his first person. Never his generic summary.
+- bullets: three or four of his proof points, the ones that answer what this posting asks.
+  Each has a short bold label (an employer or a period, ending with a colon), his figure in
+  his own wording, and one clause saying what it means for this company or this ask.
+  Every figure and every name must be in the evidence as written.
+- why_now: why this company and this seat, now, in one or two sentences specific to them.
+- close: the first thing he would do for this company, concrete, and an offer to show it.
 - asks: what the posting asks for, each with an exact quote from the posting and which
   proof answers it (or "gap" when none does).
-- cv_summary: two or three sentences for the top of his CV for this role, his facts only,
-  or "" to keep his own.
+- cv_summary: the professional summary at the top of his CV, rewritten for this role, never
+  left empty and never his CV's own summary repeated (his words, 2026-10-15: "are you sure
+  its ok that the CV's professional summary has close to zero personalization?"). Two or three
+  sentences in the first person, as his CV's summary is: lead with the part of his record this
+  seat needs, give the figures that prove it, and end on what he would be in this role. His
+  facts only.
+- cv_highlight_order: his CV's career highlights (CV HIGHLIGHTS below, numbered from 0) in
+  the order this role should read them, strongest for this seat first. Every number once;
+  his words are never changed, only their order (canon 9.12).
 - When PERSONAL LINE is given, the letter must carry it, his words as written, in the hook
   or the close. When none is given, never write anything personal about his life.
+- His company is "mind/make", lowercase with the slash, as his CV writes it; never
+  "Mindmake", "Mind/Make", "Mind Make" or "Mindmaker".
 - Never write his email, phone or address; the header carries them.
 - Spelling: as the BASE says (US or UK).
 - Lengths: hook up to 600 characters, identity up to 520, each bullet up to 260 with a
-  label up to 48, why_now up to 340, close up to 380; the whole letter fits one page.
+  label up to 48, why_now up to 340, close up to 380, cv_summary 250 to 900; the whole
+  letter fits one page and the CV two.
 Answer with one JSON object matching the schema, and nothing else."""
 
 
@@ -416,15 +573,26 @@ def strip_his_lines(text: str, bank_words: list[str]) -> str:
     return " ".join(keep)
 
 
-def shared_context(*, model_letter: str, evidence_text: str, bank_words: list[str]) -> str:
-    return "\n\n".join([
+def shared_context(*, model_letter: str, evidence_text: str, bank_words: list[str],
+                   examples: str = "", his_words: str = "",
+                   highlights: list[str] | None = None) -> str:
+    parts = [
         RULES,
         "SCHEMA\n" + json.dumps(SCHEMA),
         "MODEL LETTER (his own, with his personal lines taken out)\n"
         + strip_his_lines(model_letter, bank_words),
         "EVIDENCE (his recorded facts; every figure and name must come from here or the posting)\n"
-        + evidence_text,
-    ])
+        + evidence_text
+        + ("\n\nHIS OWN WORDS (sentences he wrote into letters; his facts)\n" + his_words
+           if his_words else ""),
+    ]
+    if highlights:
+        parts.append("CV HIGHLIGHTS (his order, numbered from 0)\n"
+                     + "\n".join(f"{i}. {h}" for i, h in enumerate(highlights)))
+    if examples:
+        parts.append("HIS EDITS (newest first): what he changed in letters hunter wrote. Write "
+                     "the way he edits; these are examples, never evidence\n" + examples)
+    return "\n\n".join(parts)
 
 
 def role_prompt(*, company: str, title: str, location: str, base_key: str, jd_text: str,
@@ -648,9 +816,34 @@ def cv_spelling_requests(doc: dict, base_key: str) -> list[dict]:
                                 "replaceText": wrong[w]}} for w in safe]
 
 
-def summary_requests(doc: dict, anchor: str, count: int, text: str) -> list[dict]:
+# The unit is optional as a whole, space and letter together: "\s*[KkMmBb]?"
+# took the space after "$0" and left "to $12M" unjoined, so a range was bolded
+# in two pieces on the first live summary.
+_MONEY = re.compile(r"\$\s?\d[\d,.]*(?:\s*[KkMmBb]\b)?"
+                    r"(?:\s+(?:to|and)\s+\$?\s?\d[\d,.]*(?:\s*[KkMmBb]\b)?)?"
+                    r"(?:\s+ARR)?|\d[\d,.]*\s*%")
+
+
+def summary_bold(text: str, keep: list[str]) -> list[str]:
+    """What the new summary bolds, as his CV does: its money and percentage
+    phrases, and any phrase his own summary bolded that it still says."""
+    out = []
+    for m in _MONEY.finditer(text or ""):
+        frag = m.group(0).strip()
+        if frag and frag not in out:
+            out.append(frag)
+    for k in keep:
+        k = (k or "").strip()
+        if k and k in text and k not in out:
+            out.append(k)
+    return [f for f in out if not any(f != o and f in o for o in out)]
+
+
+def summary_requests(doc: dict, anchor: str, count: int, text: str,
+                     keep_bold: list[str] | None = None) -> list[dict]:
     """The CV summary's paragraphs replaced by one, in the first one's own
-    style set whole and not bold, so nothing is inherited by accident."""
+    style set whole and not bold, so nothing is inherited by accident; then
+    the figures bolded, as his CV bolds them."""
     paras = [p for p in house.snapshot(doc)]
     idx = next((i for i, p in enumerate(paras) if house.norm(p.text).startswith(anchor)), None)
     if idx is None:
@@ -661,10 +854,34 @@ def summary_requests(doc: dict, anchor: str, count: int, text: str) -> list[dict
     if "weightedFontFamily" in style:
         style["weightedFontFamily"] = dict(style["weightedFontFamily"], weight=400)
     s, e = span[0].start, span[-1].end - 1
-    return [{"deleteContentRange": {"range": {"startIndex": s, "endIndex": e}}},
+    reqs = [{"deleteContentRange": {"range": {"startIndex": s, "endIndex": e}}},
             {"insertText": {"location": {"index": s}, "text": text}},
             {"updateTextStyle": {"range": {"startIndex": s, "endIndex": s + len(text)},
                                  "textStyle": style, "fields": "*"}}]
+    for frag in summary_bold(text, keep_bold or []):
+        at = text.index(frag)
+        reqs.append({"updateTextStyle": {
+            "range": {"startIndex": s + at, "endIndex": s + at + len(frag)},
+            "textStyle": {"bold": True, "weightedFontFamily": {"fontFamily": house.FONT,
+                                                              "weight": 700}},
+            "fields": "bold,weightedFontFamily"}})
+    return reqs
+
+
+def cv_highlights(paras: list[house.Para]) -> list[str]:
+    """His CV's career highlights, in his order."""
+    from .assertions import CV_HEADINGS
+    idx = next((i for i, p in enumerate(paras) if house.norm(p.text) == "CAREER HIGHLIGHTS"), None)
+    if idx is None:
+        return []
+    out = []
+    for p in paras[idx + 1:]:
+        t = house.norm(p.text)
+        if t in CV_HEADINGS:
+            break
+        if t:
+            out.append(t)
+    return out
 
 
 def cv_summary_span(paras: list[house.Para]) -> tuple[str, int]:
@@ -689,7 +906,8 @@ def cv_summary_span(paras: list[house.Para]) -> tuple[str, int]:
 
 def build_cv(db, *, master_id: str, title: str, folder_id: str, base, bases: dict,
              page_count, heading_sizes: dict, summary: str = "",
-             summary_anchor: str = "", summary_count: int = 1) -> Built:
+             summary_anchor: str = "", summary_count: int = 1,
+             highlight_order: list | None = None) -> Built:
     """Copy the house CV master, fill its header, respell for the base, keep
     it to two pages (the banner goes before anything of his is cut), read it
     back."""
@@ -697,9 +915,27 @@ def build_cv(db, *, master_id: str, title: str, folder_id: str, base, bases: dic
     out.doc_id = db.copy_master(master_id, title, folder_id)
     db.batch(out.doc_id, cv_requests(db.get(out.doc_id), base=base))
     if summary and summary_anchor:
-        db.batch(out.doc_id, summary_requests(db.get(out.doc_id), summary_anchor,
-                                              summary_count, spell(summary, base.key)))
+        doc = db.get(out.doc_id)
+        paras = house.snapshot(doc)
+        idx = next((i for i, p in enumerate(paras) if house.norm(p.text).startswith(summary_anchor)), None)
+        span = [p for p in paras[idx:] if p.text.strip()][:summary_count] if idx is not None else []
+        keep = [r.text.strip() for p in span for r in p.runs if r.bold and r.text.strip()]
+        db.batch(out.doc_id, summary_requests(doc, summary_anchor, summary_count,
+                                              spell(summary, base.key), keep_bold=keep))
         out.notes.append("summary written for the role")
+    order = list(highlight_order or [])
+    if order and order != list(range(len(order))):
+        anchors = [h[:60] for h in cv_highlights(house.snapshot(db.get(out.doc_id)))]
+        if len(anchors) == len(order) and sorted(order) == list(range(len(order))):
+            try:
+                db.reorder_paragraphs(out.doc_id, anchors, order)
+                out.notes.append("highlights in this role's order")
+            except Exception as e:
+                # reorder_paragraphs reads its own work back and raises when his
+                # bold did not land where it was: his order then stands.
+                out.notes.append(f"highlights kept in his order ({e.__class__.__name__})")
+        else:
+            out.notes.append("highlights kept in his order (the CV's highlights changed)")
     db.batch(out.doc_id, cv_spelling_requests(db.get(out.doc_id), base.key))
     pdf = db.export_pdf(out.doc_id)
     pages = page_count(pdf)
