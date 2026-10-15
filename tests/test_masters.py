@@ -231,3 +231,15 @@ def test_the_cv_command_prints_counts_and_the_new_id_only(monkeypatch, capsys):
     assert "5 headings" in out and "made copy_1_" in out
     for leak in ("Invented", "555", "example.com"):
         assert leak not in out, leak
+
+
+def test_check_reads_a_made_master_back_and_makes_nothing(monkeypatch, capsys):
+    import hunter.run as run_mod
+    db, out = made()
+    before = set(db.docs)
+    monkeypatch.setattr(run_mod, "load", lambda: type("C", (), {"raw": {}})())
+    monkeypatch.setattr(run_mod, "GoogleOAuth", lambda cfg: type("O", (), {"access_token": "t"})())
+    monkeypatch.setattr(run_mod, "DocBuild", lambda tok: db)
+    assert run_mod.main(["letter-master", "--check", out["made"]]) == 0
+    assert "checked, 0 problem(s)" in capsys.readouterr().out
+    assert set(db.docs) == before

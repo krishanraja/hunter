@@ -124,7 +124,8 @@ def _break(mutate, **kw):
 @pytest.mark.parametrize("name,mutate,code", [
     ("another font", lambda d: runs_of(d, 12)[0]["textRun"]["textStyle"].update(
         weightedFontFamily={"fontFamily": "Calibri"}), "A11 a run is not Arial"),
-    ("no font anywhere", lambda d: d.update(namedStyles={"styles": []}), "A11 a run is not Arial (unknown)"),
+    ("another font set on a run", lambda d: runs_of(d, 13)[0]["textRun"]["textStyle"].update(
+        weightedFontFamily={"fontFamily": "Times New Roman"}), "A11 a run is not Arial"),
     ("body at 10pt", lambda d: runs_of(d, 13)[0]["textRun"]["textStyle"].update(
         fontSize={"magnitude": 10, "unit": "PT"}), "A11 paragraph 14 is not 9pt"),
     ("name at 25pt", lambda d: runs_of(d, 0)[0]["textRun"]["textStyle"].update(
@@ -184,3 +185,12 @@ def test_a_cv_keeps_its_heading_sizes_and_may_run_two_pages():
     assert "A9 the cv renders 3 pages; the limit is 2" in house.check(
         snap, kind="cv", base=US_BASE, bases=BASES, page_count=3,
         heading_sizes={"PROFESSIONAL SUMMARY": 10.5})
+
+
+def test_a_run_with_no_font_anywhere_renders_in_docs_default_arial():
+    """As his letter does: no family on any run, none on normal text."""
+    doc = letter()
+    doc["namedStyles"] = {"styles": []}
+    assert fails_of(doc) == []
+    r = house.snapshot(doc)[2].runs[0]
+    assert (r.font, r.size) == ("Arial", 9.0)

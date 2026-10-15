@@ -112,11 +112,20 @@ def _named(doc: dict) -> dict[str, dict]:
     return {s.get("namedStyleType"): (s.get("textStyle") or {}) for s in styles}
 
 
+# What Docs renders when neither the run nor any named style sets a value:
+# its built-in normal text, Arial 11pt. His letter relies on it ("no family
+# on any run, so the document default, Arial"), and the first live read-back
+# of the v5 master, 2026-10-15, refused every paragraph until this layer was
+# here, while the rendered document was Arial throughout.
+DOCS_DEFAULT = {"weightedFontFamily": {"fontFamily": "Arial", "weight": 400},
+                "fontSize": {"magnitude": 11, "unit": "PT"}}
+
+
 def _effective(ts: dict, para_named: dict, normal: dict) -> dict:
-    """The run's own style over its paragraph's named style over normal text,
-    field by field, as Docs renders it."""
+    """The run's own style over its paragraph's named style over normal text
+    over Docs' built-in default, field by field, as Docs renders it."""
     out = {}
-    for layer in (normal, para_named, ts):
+    for layer in (DOCS_DEFAULT, normal, para_named, ts):
         for k, v in (layer or {}).items():
             out[k] = v
     return out
