@@ -324,3 +324,10 @@ def test_bold_anywhere_in_the_body_is_refused_on_read_back(monkeypatch):
     monkeypatch.setattr(compose, "fill_requests", bold_close)
     db, got = build()
     assert got.problems == ["A11 a body paragraph carries bold"]
+
+
+def test_the_date_is_written_the_way_the_roles_country_writes_it():
+    import datetime
+    day = datetime.date(2026, 10, 5)
+    assert compose.date_for("uk", day) == "5 October 2026"
+    assert compose.date_for("us", day) == "October 5, 2026"

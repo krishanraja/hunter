@@ -2783,7 +2783,7 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
                          base_key=plan.base_key)
         summary.append(f"BLOCKED {job}: the {plan.base_key.upper()} header is not readable")
         return False
-    date_text = datetime.date.today().strftime("%B %d, %Y").replace(" 0", " ")
+    date_text = compose.date_for(plan.base_key)
     letter_master = config_mod.LETTER_MASTER_ID
     cv_master = config_mod.CV_MASTER_ID
     lt = compose.build_letter(
@@ -2947,7 +2947,7 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
         lt = compose.build_letter(
             db, letter, master_id=config_mod.HOUSE_LETTER_MASTER_ID,
             title=f"PREVIEW CoverLetter {role.company}", folder_id=folder, base=base,
-            bases=bases, date_text=datetime.date.today().strftime("%B %d, %Y").replace(" 0", " "),
+            bases=bases, date_text=compose.date_for(plan.base_key),
             company=role.company, role=role.title, page_count=page_count, needs=plan.needs,
             entries=plan.entries, bank_words=plan.bank)
         paras = house.snapshot(db.get(config_mod.HOUSE_CV_MASTER_ID))

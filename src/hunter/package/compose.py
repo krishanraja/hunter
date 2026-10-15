@@ -170,6 +170,16 @@ def _spell(text: str, table: dict[str, str]) -> str:
     return "".join(out)
 
 
+def date_for(base_key: str, day=None) -> str:
+    """The letter's date as the role's country writes it: "15 October 2026"
+    for the UK and Europe, "October 15, 2026" for the US."""
+    import datetime
+    day = day or datetime.date.today()
+    if base_key == "uk":
+        return f"{day.day} {day.strftime('%B %Y')}"
+    return f"{day.strftime('%B')} {day.day}, {day.year}"
+
+
 def spell(text: str, base_key: str) -> str:
     return _spell(text, US_TO_UK if base_key == "uk" else UK_TO_US)
 
