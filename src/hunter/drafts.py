@@ -34,7 +34,11 @@ from .config import ALL_ROWS, Config, db_get, db_insert, db_patch, db_patch_wher
 
 TABLE = "hunter_drafts"
 CONTEXTS = "hunter_draft_contexts"
-KINDS = ("case", "door_observation")
+KINDS = ("case", "door_observation", "letter")
+# Letters are never written by the API (his ruling, 2026-10-15: no API spend
+# on letters). An unanswered letter waits for the routine; the build reads a
+# drafted letter itself (package/compose.py), so settle leaves them alone.
+NO_API = ("letter",)
 WAIT_HOURS = 48
 MODES = ("api", "routine")
 
@@ -77,6 +81,9 @@ def problems_for(kind: str, output, *, prompt: str, context: str = "",
                                banned_phrases=tuple(b for b in rationale.BANNED if len(b) > 1),
                                allow_names=frozenset({meta.get("company") or ""}))
         return out + [f"voice gate: {f}" for f in gate.failures]
+    if kind == "letter":
+        from .package import compose
+        return compose.problems(output, prompt=prompt, evidence=evidence, meta=meta)
     if kind == "door_observation":
         from . import doorin
         text = output.get("text") if isinstance(output, dict) else output
@@ -144,6 +151,8 @@ def settle(cfg: Config, *, apply: bool = False, sheet=None, canon_headers=None,
     lines: list[str] = []
     counts = {"used": 0, "failed": 0, "api": 0, "waiting": 0}
     for r in rows:
+        if r["kind"] in NO_API:
+            continue        # the build reads it; never the API
         ctx = _context(cfg, r.get("context_key"), cache)
         output, by = r.get("output"), r.get("drafted_by") or "routine"
         if r["status"] == "queued":

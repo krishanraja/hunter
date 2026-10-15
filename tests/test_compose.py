@@ -1,0 +1,326 @@
+"""The letter written for the posting, in his house style (package/compose.py).
+
+Built on the emulator from a v5 master made out of a letter shaped like his
+edited Sonos letter. Every word, figure and name here is invented."""
+import copy
+import json
+
+import pytest
+
+from contact_bases import BASES, UK_BASE, US_BASE
+from fake_docs import FakeDocBuild
+from hunter import drafts
+from hunter.apply.merge import page_count
+from hunter.package import compose, house, masters
+from test_house import letter as specimen
+from test_masters import cv_doc
+
+COMPANY = "Zentrox, Inc."
+JD = ("Zentrox builds wireless speakers and a home audio platform. You will lead platform "
+      "partnerships and licensing deals, report to the COO, and build a small team.")
+EVIDENCE = ("Quorra: grew a partner engine from $2M to $9M. Velmont: licensed the stack to "
+            "three businesses. Halcyon: closed a $1.5M partnership. I build AI native sales "
+            "engines. " + JD).lower()
+
+
+def answer(**over):
+    a = {"hiring_lead": "Hiring Team",
+         "hook": "Zentrox is turning a home audio platform into a partner business, and the "
+                 "deals that unlock it are the ones I have spent a decade closing.",
+         "identity": "I'm a commercial leader with technical roots, and I build AI native "
+                     "sales engines.",
+         "bullets": [{"label": "Quorra:", "text": "grew a partner engine from $2M to $9M."},
+                     {"label": "Velmont:", "text": "licensed the stack to three businesses."},
+                     {"label": "Halcyon:", "text": "closed a $1.5M partnership."}],
+         "why_now": "I am looking for a platform business where partnerships are the growth line.",
+         "close": "I'd rather show you the partner engines I have built than describe them.",
+         "cv_summary": "",
+         "asks": [{"ask": "partnerships", "quote": "lead platform partnerships and licensing deals",
+                   "answered_by": "Velmont"}]}
+    a.update(over)
+    return a
+
+
+META = {"company": COMPANY, "short_name": "Zentrox", "base": "us", "needs": [], "entries": [],
+        "bank": [], "banned": ["world-class"], "jd": JD}
+
+
+def probs(a, **meta):
+    return compose.problems(a, evidence=EVIDENCE, meta=dict(META, **meta))
+
+
+# ---------- whether an answer may be used ----------
+
+def test_a_letter_in_his_register_from_his_evidence_passes():
+    assert probs(answer()) == []
+
+
+@pytest.mark.parametrize("over,code", [
+    ({"close": "Would rather show you the engines than describe them."}, "A13 the close"),
+    ({"hook": "Happy to share how the deals get done. Zentrox is a home audio platform."},
+     "A13 the hook"),
+    ({"identity": "A commercial leader with technical roots who builds AI native sales engines."},
+     "A13 the identity paragraph"),
+    ({"bullets": [{"label": "Quorra:", "text": "grew a partner engine from $2M to $11M."},
+                  {"label": "Velmont:", "text": "licensed the stack."},
+                  {"label": "Halcyon:", "text": "closed a partnership."}]}, "A15 the bullet 1"),
+    ({"bullets": [{"label": "Brightwater:", "text": "licensed the stack."},
+                  {"label": "Velmont:", "text": "licensed the stack."},
+                  {"label": "Halcyon:", "text": "closed a partnership."}]}, "A15 the bullet 1"),
+    ({"close": "I'm a world-class closer."}, "A15 the close"),
+    ({"asks": [{"ask": "x", "quote": "manage a sales team of fifty", "answered_by": "gap"}]},
+     "asks: 1 quote(s)"),
+    ({"asks": []}, "asks: none"),
+    ({"hiring_lead": "Dana Whitfield"}, "shape: the letter is addressed"),
+    ({"bullets": [{"label": "Quorra:", "text": "grew a partner engine."}]}, "shape: 1 bullets"),
+    ({"hook": "Zentrox is a home audio platform. " * 30}, "shape: the hook is over"),
+])
+def test_each_rule_refuses_its_own_break(over, code):
+    got = probs(answer(**over))
+    assert any(f.startswith(code) for f in got), got
+
+
+def test_a_failure_never_quotes_a_figure_or_a_name():
+    got = probs(answer(bullets=[{"label": "Brightwater:", "text": "made $77M."}] * 3))
+    assert got and not any("77" in f or "Brightwater" in f for f in got)
+
+
+def test_his_line_must_be_carried_where_the_business_is_his_kind():
+    line = "I have played in bands for twenty years and still record at home."
+    meta = {"needs": ["voice_audio_speech"], "entries": [line], "bank": [line]}
+    assert "A14 his personal line for this business is missing" in probs(answer(), **meta)
+    a = answer(hook=answer()["hook"] + " " + line)
+    assert probs(a, **meta) == []
+
+
+def test_his_line_never_reaches_a_business_it_is_not_for():
+    line = "I have played in bands for twenty years and still record at home."
+    a = answer(close="I'd rather show you. " + line)
+    assert "A14 a personal line of his is in a letter to a business it is not for" in \
+        probs(a, bank=[line], entries=[line])
+
+
+def test_the_routine_runs_the_same_check_through_drafts():
+    assert drafts.problems_for("letter", answer(), prompt=JD, evidence=EVIDENCE, meta=META) == []
+    assert drafts.problems_for("letter", "not json", prompt=JD, evidence=EVIDENCE, meta=META) == [
+        "the answer is not the letter schema: JSONDecodeError"]
+
+
+def test_settle_never_sends_a_letter_to_the_api(monkeypatch):
+    rows = [{"id": 1, "kind": "letter", "ref": "z:vp", "status": "queued",
+             "requested_at": "2026-01-01T00:00:00+00:00", "prompt": "p"}]
+    monkeypatch.setattr(drafts, "db_get", lambda cfg, t, p: rows)
+
+    def api(*a):
+        raise AssertionError("a letter was sent to the API")
+    lines = drafts.settle(None, apply=True, api_case=api, api_observation=api)
+    assert lines[0].startswith("drafts: 0 used, 0 failed, 0 from the API fallback, 0 waiting")
+
+
+# ---------- spelling ----------
+
+def test_uk_roles_get_uk_spelling_and_names_keep_theirs():
+    got = compose.spell("Optimized pricing. We will optimize the World Health Organization's "
+                        "commercialization plan.", "uk")
+    assert got == ("Optimised pricing. We will optimise the World Health Organization's "
+                   "commercialisation plan.")
+    assert compose.spell("We optimise the programme.", "us") == "We optimize the programme."
+    assert compose.spelling_problems("we optimize it", "uk") == [
+        "A13 1 word(s) spelled the US way for a UK role"]
+    assert compose.spelling_problems("we optimise it", "us") == [
+        "A13 1 word(s) spelled the UK way for a US role"]
+    assert compose.spelling_problems("World Health Organization", "uk") == []
+
+
+# ---------- the build ----------
+
+def master_db(pages=(1,)):
+    db = FakeDocBuild({"spec": specimen()})
+    db.export_pages = [1]
+    out = masters.build_v5(db, "spec", folder_id="f", page_count=page_count, apply=True)
+    assert out["problems"] == []
+    db.export_pages = list(pages)
+    return db, out["made"]
+
+
+def build(a=None, *, base=US_BASE, pages=(1,), needs=(), entries=()):
+    db, master = master_db(pages)
+    lt = compose.parse(a or answer())
+    got = compose.build_letter(db, lt, master_id=master, title="t", folder_id="f", base=base,
+                               bases=BASES, date_text="October 16, 2026", company=COMPANY,
+                               role="Vice President, Partnerships", page_count=page_count,
+                               needs=list(needs), entries=list(entries),
+                               bank_words=list(entries))
+    return db, got
+
+
+def texts(db, doc_id):
+    return [house.norm(p.text) for p in house.snapshot(db.get(doc_id))]
+
+
+def test_the_letter_is_his_layout_with_the_role_written_in():
+    db, got = build()
+    assert got.problems == [] and got.pages == 1 and got.notes == []
+    t = texts(db, got.doc_id)
+    assert t[2] == house.norm(US_BASE.header_line())
+    assert "Re: Vice President, Partnerships" in t and "Dear Hiring Team," in t
+    assert t[-1] == house.SIGNATURE and house.SIGN_OFF in t
+    paras = house.snapshot(db.get(got.doc_id))
+    bullets = [p for p in paras if p.bullet]
+    assert len(bullets) == 3
+    first = [r for r in bullets[0].runs if r.text.strip()]
+    assert first[0].text == "Quorra:" and first[0].bold and not first[1].bold
+    assert all((r.font, r.size) == ("Arial", 9.0) for p in paras[7:] for r in p.runs if r.text.strip())
+
+
+def test_a_uk_role_takes_london_and_uk_spelling():
+    a = answer(identity="I'm a commercial leader with technical roots, and I build AI native "
+                        "sales engines that optimize pipeline.")
+    db, got = build(a, base=UK_BASE)
+    assert got.problems == []
+    t = " ".join(texts(db, got.doc_id))
+    assert house.norm(UK_BASE.header_line()) in t and "optimise pipeline" in t and "optimize" not in t
+
+
+def test_the_ladder_brings_the_margins_in_then_cuts_the_fourth_bullet():
+    four = answer(bullets=answer()["bullets"] + [{"label": "Orrin:", "text": "built a team."}])
+    db, got = build(four, pages=(2, 2, 1))
+    assert got.notes == ["margins at the floor", "the fourth bullet cut to fit one page"]
+    assert got.problems == [] and got.pages == 1
+    assert sum(1 for p in house.snapshot(db.get(got.doc_id)) if p.bullet) == 3
+    assert db.get(got.doc_id)["documentStyle"]["marginLeft"]["magnitude"] == masters.MARGIN_FLOOR
+
+
+def test_a_letter_that_never_fits_one_page_holds():
+    db, got = build(pages=(2,))
+    assert "A9 the letter renders 2 pages; the limit is 1" in got.problems
+    assert got.notes == ["margins at the floor", "why-now cut to fit one page"]
+
+
+def test_his_line_is_read_back_from_the_built_letter():
+    line = "I have played in bands for twenty years and still record at home."
+    a = answer(hook=answer()["hook"] + " " + line)
+    db, got = build(a, needs=["voice_audio_speech"], entries=[line])
+    assert got.problems == []
+    db, got = build(answer(), needs=["voice_audio_speech"], entries=[line])
+    assert "A14 his personal line is not in the letter as built" in got.problems
+
+
+def test_a_bold_body_is_refused_on_read_back(monkeypatch):
+    real = compose.fill_requests
+
+    def bolder(doc, lt, vals):
+        reqs = real(doc, lt, vals)
+        for r in reqs:
+            st = r.get("updateTextStyle")
+            if st and st["fields"] == "*" and st["textStyle"].get("bold") is None:
+                st["textStyle"] = dict(st["textStyle"], bold=True)
+        return reqs
+    monkeypatch.setattr(compose, "fill_requests", bolder)
+    db, got = build()
+    assert "A11 the opening paragraph is bold" in got.problems
+
+
+# ---------- the CV ----------
+
+def cv_master():
+    db = FakeDocBuild({"cv": cv_doc(), "spec": specimen()})
+    db.export_pages = [2]
+    out = masters.build_cv_master(db, "cv", "spec", folder_id="f", page_count=page_count,
+                                  apply=True)
+    assert out["problems"] == []
+    return db, out["made"]
+
+
+def heading_sizes(db, doc_id):
+    return masters._cv_heading_sizes(house.snapshot(db.get(doc_id)))
+
+
+def test_the_cv_takes_the_roles_header_and_spelling():
+    db, m = cv_master()
+    sizes = heading_sizes(db, m)
+    db.docs[m].apply({"replaceAllText": {"containsText": {"text": "Built an invented region",
+                                                          "matchCase": True},
+                                         "replaceText": "Optimized an invented region"}})
+    db.docs[m].apply({"replaceAllText": {"containsText": {"text": "Grew an invented line",
+                                                          "matchCase": True},
+                                         "replaceText": "Grew and optimized an invented line"}})
+    db.export_pages = [2]
+    got = compose.build_cv(db, master_id=m, title="c", folder_id="f", base=UK_BASE, bases=BASES,
+                           page_count=page_count, heading_sizes=sizes)
+    assert got.problems == [], got.problems
+    t = " ".join(texts(db, got.doc_id))
+    assert house.norm(UK_BASE.header_line()) in t and "optimised an invented line" in t
+    # A capitalised word is left as it is: it may be a name.
+    assert "Optimized an invented region" in t
+
+
+def test_the_banner_goes_before_the_cv_runs_over_two_pages():
+    db, m = cv_master()
+    db.export_pages = [3, 2]
+    got = compose.build_cv(db, master_id=m, title="c", folder_id="f", base=US_BASE, bases=BASES,
+                           page_count=page_count, heading_sizes=heading_sizes(db, m))
+    assert got.problems == [] and got.notes == ["banner taken off to keep the CV to two pages"]
+    db, m = cv_master()
+    db.export_pages = [3]
+    got = compose.build_cv(db, master_id=m, title="c", folder_id="f", base=US_BASE, bases=BASES,
+                           page_count=page_count, heading_sizes=heading_sizes(db, m))
+    assert "A9 the cv renders 3 pages; the limit is 2" in got.problems
+
+
+def test_the_cv_summary_is_written_for_the_role_when_given():
+    db, m = cv_master()
+    anchor, count = compose.cv_summary_span(house.snapshot(db.get(m)))
+    assert count == 1
+    got = compose.build_cv(db, master_id=m, title="c", folder_id="f", base=US_BASE, bases=BASES,
+                           page_count=page_count, heading_sizes=heading_sizes(db, m),
+                           summary="I build partner engines.", summary_anchor=anchor,
+                           summary_count=count)
+    assert got.problems == [] and "I build partner engines." in texts(db, got.doc_id)
+
+
+# ---------- the request the routine reads ----------
+
+def test_the_model_letter_reaches_the_routine_without_his_personal_lines():
+    line = "I have played in bands for twenty years and still record at home."
+    model = "Zentrox is busy. " + line + " I'm a commercial leader."
+    ctx = compose.shared_context(model_letter=model, evidence_text="facts", bank_words=[line])
+    assert "played in bands" not in ctx and "I'm a commercial leader." in ctx
+    assert json.loads(ctx.split("SCHEMA\n", 1)[1].split("\n\n", 1)[0]) == compose.SCHEMA
+
+
+def test_the_role_prompt_carries_the_line_and_the_base():
+    p = compose.role_prompt(company=COMPANY, title="VP", location="London", base_key="uk",
+                            jd_text=JD, judge_answers={"business": {"quote": "home audio"}},
+                            his_view="", entries=["A line of his."], needs=["voice_audio_speech"])
+    assert "BASE: UK (UK spelling)" in p and "- A line of his." in p and "POSTING\n" + JD in p
+
+
+def test_a_word_the_fill_missed_is_caught_on_read_back(monkeypatch):
+    monkeypatch.setattr(compose, "respelled", lambda lt, base_key: lt)
+    a = answer(identity="I'm a commercial leader with technical roots, and I build AI native "
+                        "sales engines that optimize pipeline.")
+    db, got = build(a, base=UK_BASE)
+    assert "A13 1 word(s) spelled the US way for a UK role" in got.problems
+
+
+def test_bold_anywhere_in_the_body_is_refused_on_read_back(monkeypatch):
+    real = compose.fill_requests
+    close = answer()["close"]
+
+    def bold_close(doc, lt, vals):
+        reqs = real(doc, lt, vals)
+        for i, r in enumerate(reqs):
+            ins = r.get("insertText")
+            if ins and ins["text"] == close:
+                at = ins["location"]["index"]
+                # Right after the close is written: the requests run from the
+                # end of the letter backwards, so its index holds here.
+                reqs.insert(i + 2, {"updateTextStyle": {
+                    "range": {"startIndex": at, "endIndex": at + 4},
+                    "textStyle": {"bold": True}, "fields": "bold"}})
+                break
+        return reqs
+    monkeypatch.setattr(compose, "fill_requests", bold_close)
+    db, got = build()
+    assert got.problems == ["A11 a body paragraph carries bold"]

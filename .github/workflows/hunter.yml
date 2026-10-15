@@ -31,7 +31,8 @@ on:
         options: [process, run, source, packages, drain, approvals, approvals-drain,
                   close-submitted, confirmations, settle, score-builds, rebuild-packages, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
-                  door-coverage, door-cards, drafts, actions, facts, letter-master, cv-master]
+                  door-coverage, door-cards, drafts, actions, facts, letter-master, cv-master,
+                  build-preview]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string

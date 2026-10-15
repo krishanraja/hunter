@@ -36,6 +36,12 @@ FIELD = "package_style"
 # (docs/HANDOVER_LETTERS.md, L3 and L5). Until then every build waits.
 COMPOSER_LIVE = False
 
+# Which builder a live build runs: "house" (letters.py and package/compose.py,
+# the only one that writes HOUSE_STYLE) in production. "tailor" is the
+# builder before 2026-10-15, kept only until his preview approval so the
+# tests written for it still describe it; nothing in production sets it.
+BUILDER = "house"
+
 # The outcome a send path counts and the reason it gives, in plain words for
 # the note he reads on a Control Center card. Its own outcome: never marked
 # against his answer bank, never a missing answer, never a failure.
@@ -47,6 +53,11 @@ def stamped(row: dict | None) -> bool:
     """Whether this record's package was built in his current house style.
     Absent, empty or an older style is no."""
     return bool(row) and (row.get(FIELD) or "") == HOUSE_STYLE
+
+
+def house_builds() -> bool:
+    """Whether build_one runs the house builder."""
+    return COMPOSER_LIVE and BUILDER == "house"
 
 
 def builds_paused() -> bool:

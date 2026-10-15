@@ -34,6 +34,15 @@ ARCHIVE_TAB = "Applied"
 ARCHIVE_SHEET_ID = 1707095501
 CV_FOLDER_ID = "1IMMUrAV7wCb-a_eei6c_fmX2BCDgYA8X"
 LETTER_FOLDER_ID = "1YotvbjjE8amkVnrLSAjSASd5-U28D1lJ"
+# The masters in his house style (2026-10-15): the letter v5 made from his
+# own edited letter, and the CV with that letter's header. CV_MASTER_ID and
+# LETTER_MASTER_ID become these, with canon 9.9, on his yes; until then they
+# are what the scratch preview builds from.
+HOUSE_LETTER_MASTER_ID = "1PPtRc1YN9z9kIQQIcMSvUWrDnw5OjO5VSuy4mdU1H6E"
+HOUSE_CV_MASTER_ID = "1TC_X8eWe5jS423LHPpG5-iyhZAmgzdva2lY2Df6CLb8"
+# The letter he rewrote by hand on 2026-10-15: the model every letter is
+# written from (package/compose.py), read live so his later edits count.
+LETTER_MODEL_ID = "1ALQ9O9vO7Hcs96NUh6ql311eJ5RAlWpy3MKCxTJorus"
 
 OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
