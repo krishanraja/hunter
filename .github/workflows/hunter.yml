@@ -157,7 +157,8 @@ jobs:
       # run, which builds column A Yes only. After settle on purpose: settle is
       # where a score he lowered below 7 cancels what was waiting on him for
       # it, so this never builds on a score he has just taken back. Each build
-      # is a paid tailor call; one that was refused is not tried again until
+      # asks the writing routine for its letter, never a model, and builds
+      # once it is written; one that was refused is not tried again until
       # his score, its link or the masters change. This log carries counts
       # only, because a role built here is a role he scored 7 or more.
       - name: Build what he scored 7 or more
