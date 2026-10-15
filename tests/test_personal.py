@@ -46,6 +46,10 @@ def test_the_categories_place_few_of_his_companies_and_say_how_many(capsys):
     ("Tutora runs online courses for adults changing careers.", "personal_development"),
     ("Framelight is a generative video platform.", "emerging_media"),
     ("Northlight is an entertainment company with film and television franchises.", "content_ip"),
+    ("Tixwell runs ticketing for live entertainment promoters.", "live_entertainment"),
+    ("Pulsebar makes connected fitness equipment and workout content.", "health_fitness"),
+    ("Mindloop applies psychology to coaching.", "mindset"),
+    ("Sayso builds speech technology for call centres.", "voice_audio_speech"),
 ])
 def test_a_business_that_says_what_it_is_is_placed(sentence, cat):
     assert cat in personal.categories_of([sentence])
@@ -59,6 +63,9 @@ def test_a_business_that_says_what_it_is_is_placed(sentence, cat):
     "We use machine learning and deep learning to route freight.",
     "Brightfield sells content marketing software to B2B teams.",
     "Quarry is a payroll platform for mid-market companies.",
+    "Medline runs healthcare software for health systems and their patients.",
+    "Optix values employee stock: the exercise price, vesting and tax.",
+    "Lodgely is AI for housing: leasing, touring and maintenance.",
 ])
 def test_a_phrase_inside_something_else_places_nothing(sentence):
     assert personal.categories_of([sentence]) == {}

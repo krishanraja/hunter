@@ -14,8 +14,11 @@ company's own description of itself. Never the posting. Measured on 2026-10-15
 over 495 roles: a whole posting placed 252 of them (141 as "mindset", mostly
 wellbeing benefits and "an entrepreneurial mindset"), and even its opening
 paragraph placed 68, many on "remote work", "consulting magazine" or "an
-intellectual property strategy". The judge's lines placed 24 of 424, every one
-a business that says so. Compound phrases go first, so "machine learning"
+intellectual property strategy". The judge's lines placed 26 of 424, every one
+a business that says so, with the kinds he added the same day (live
+entertainment, health and fitness, psychology): "I have similar passions in
+live entertainment, content IP, psychology, self development, voice and
+speech technologies, health and fitness, and more". Compound phrases go first, so "machine learning"
 never reads as learning and "content marketing" never as a content business;
 then only strong phrases count. Measured on his 138 labelled companies before
 it gates anything (tests/test_personal.py).
@@ -38,10 +41,14 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
         "music", "musicians", "podcast", "podcasts", "podcasting", "sound system",
         "sound systems", "sound experience", "home sound", "home audio", "audio products",
         "audio equipment", "listening experience", "wireless speakers", "speakers",
-        "headphones", "hearing", "dubbing", "audiobook", "audiobooks"),
+        "headphones", "hearing", "dubbing", "audiobook", "audiobooks",
+        "speech ai", "speech technology", "speech technologies", "voice technology",
+        "voice technologies", "conversational voice"),
     "mindset": (
         "mindset", "mental fitness", "mental health", "meditation", "mindfulness",
-        "wellbeing", "well-being", "emotional health", "resilience training", "therapy"),
+        "wellbeing", "well-being", "emotional health", "resilience training", "therapy",
+        "psychology", "psychological", "behavioral science", "behavioural science",
+        "emotional intelligence"),
     "future_of_work": (
         "future of work", "remote work", "hybrid work", "distributed teams",
         "employee experience", "upskilling", "reskilling", "talent marketplace",
@@ -52,7 +59,8 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
         "personal development", "personal growth", "self-improvement", "self improvement",
         "coaching platform", "life coaching", "executive coaching", "leadership coaching",
         "learn new skills", "online courses", "online learning", "language learning",
-        "habit", "habits"),
+        "habit", "habits", "self development", "self-development",
+        "personal transformation"),
     "emerging_media": (
         "generative video", "ai video", "video generation", "video generator",
         "virtual reality", "augmented reality", "mixed reality", "spatial computing",
@@ -66,7 +74,19 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
         "intellectual property", "ip licensing", "licensing ip", "franchise",
         "entertainment company", "film", "films", "television", "tv shows",
         "streaming service", "storytelling", "stories", "fans", "fandom",
-        "news organization", "newsroom", "magazine"),
+        "news organization", "newsroom", "magazine", "content ip", "original content",
+        "entertainment ip"),
+    "live_entertainment": (
+        "live entertainment", "live events", "live event", "live music", "concert",
+        "concerts", "music festival", "music festivals", "ticketing", "live experiences",
+        "live experience", "theatre", "theater", "comedy", "concert tours",
+        "music venues", "venues"),
+    # Fitness and the body, never healthcare: he has declined health systems,
+    # so a hospital, a clinic or an insurer places nothing here.
+    "health_fitness": (
+        "fitness", "workout", "workouts", "exercise", "personal training", "gym", "gyms",
+        "connected fitness", "strength training", "nutrition", "sleep tracking",
+        "wearable", "wearables", "athletes", "sports performance", "wellness app"),
 }
 
 LABEL = {
@@ -76,6 +96,8 @@ LABEL = {
     "personal_development": "personal development",
     "emerging_media": "emerging media",
     "content_ip": "content or IP",
+    "live_entertainment": "live entertainment",
+    "health_fitness": "health and fitness",
 }
 
 # Removed before any phrase is matched: each contains a strong phrase and
@@ -92,6 +114,9 @@ COMPOUNDS = (
     "customer stories", "success stories", "case studies", "fans of",
     "therapy area", "therapy areas", "therapies", "gene therapy", "cell therapy",
     "creators of", "music to our ears",
+    "fitness for purpose", "fitness for duty", "exercise price", "exercise prices",
+    "exercise options", "stock options exercise", "health insurance", "healthcare",
+    "health system", "health systems", "theater of operations", "comedy of errors",
 )
 
 _WORD = re.compile(r"[a-z0-9']+(?:[-'][a-z0-9]+)*")
