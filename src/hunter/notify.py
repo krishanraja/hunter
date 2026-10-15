@@ -204,7 +204,7 @@ def send_email(cfg: Config, subject: str, html: str, *,
                       json={"raw": raw})
     if r.status_code == 200:
         return {"sent": True, "channel": "gmail", "to": to,
-                "id": r.json().get("id", "")}
+                "id": r.json().get("id", ""), "thread_id": r.json().get("threadId", "")}
     if r.status_code == 403 and scope_missing(r.text):
         # Not the message: this prints in an Actions log, which is public, and
         # an Apply email carries the open link to his filled form, his

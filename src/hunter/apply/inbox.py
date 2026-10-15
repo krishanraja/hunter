@@ -146,8 +146,13 @@ def read_instruction(body: str) -> tuple[str, str]:
 
 
 def fetch_replies(cfg: Config, *, query: str = QUERY,
-                  limit: int = 50) -> list[dict]:
-    """[{message_id, thread_id, subject, token, body, from_me}]."""
+                  limit: int = 50, token_of=None) -> list[dict]:
+    """[{message_id, thread_id, subject, token, body, from_me}].
+
+    token_of reads the token out of a subject and defaults to the approval
+    token. A message whose subject carries no token is not returned, so each
+    reader sees only the mail that names its own mark."""
+    token_of = token_of or approval.token_from_subject
     token = GoogleOAuth(cfg).access_token()
     h = {"Authorization": "Bearer " + token}
     r = requests.get(f"{GMAIL}/messages", headers=h, timeout=45,
@@ -166,7 +171,7 @@ def fetch_replies(cfg: Config, *, query: str = QUERY,
         headers = {x["name"].lower(): x["value"]
                    for x in (msg.get("payload", {}).get("headers") or [])}
         subject = headers.get("subject", "")
-        tok = approval.token_from_subject(subject)
+        tok = token_of(subject)
         if not tok:
             continue
         out.append({
@@ -177,6 +182,7 @@ def fetch_replies(cfg: Config, *, query: str = QUERY,
             "from": headers.get("from", ""),
             "body": extract_plain(msg.get("payload") or {}),
             "labels": msg.get("labelIds") or [],
+            "internal_date": int(msg.get("internalDate") or 0),
         })
     return out
 

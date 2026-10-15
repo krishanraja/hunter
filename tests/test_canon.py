@@ -75,6 +75,7 @@ def synthetic_body(cv_id=config.CV_MASTER_ID, letter_id=config.LETTER_MASTER_ID,
             + HIS_PARAGRAPH + "\n\n"
             "LINK COLUMNS ARE HYPERLINK FORMULAS, NOT URLS.\n"
         ),
+        "9.14": "## 9.14 PERSONAL CONNECTIONS\nHis own lines, none yet.\n",
     }
     if drop_section:
         parts.pop(drop_section)
@@ -172,4 +173,12 @@ def test_g11_in_canon_loads_and_g10_missing_still_fails(cfg, monkeypatch):
     assert "G12" in load_canon(cfg).gates
     patch_body(monkeypatch, body.replace("G10 POSITIONING.", "G13 POSITIONING."))
     with pytest.raises(CanonError):
+        load_canon(cfg)
+
+
+def test_a_canon_without_his_personal_lines_is_refused(cfg, monkeypatch):
+    """Canon v13 carries 9.14. A body that lost it would hold every letter to
+    a business of his kinds and ask him again for lines he has given."""
+    patch_body(monkeypatch, synthetic_body(drop_section="9.14"))
+    with pytest.raises(CanonError, match="9.14"):
         load_canon(cfg)

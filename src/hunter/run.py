@@ -2442,6 +2442,23 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
                        "application; nothing fetched or built")
         return False
     attempt = row.get("attempt") if trigger and trigger != router.YES_TRIGGER else None
+    # His house style (letters.py): what the build waits on is read off the
+    # record before the posting is fetched, so a role held for his pick of
+    # header, for a line of his, or for the writer costs nothing an hour and
+    # takes no place under any cap (SKIPPED is never counted against one).
+    house_plan = house_view = None
+    house_text = ""
+    if style_mod.house_builds():
+        from . import letters as letters_mod
+        from .package import his_view as his_view_mod
+        house_view = his_view_mod.his_view(cfg, row["job_id"], srow, record=row)
+        house_text = his_view_mod.section(house_view, company=row.get("company") or "")
+        house_plan = letters_mod.plan(cfg, canon, row["job_id"], house_text)
+        if house_plan.reason:
+            letters_mod.hold(cfg, row["job_id"], house_plan.reason, base_key=house_plan.base_key)
+            summary.append(f"SKIPPED {row['job_id']}: {house_plan.reason}; nothing fetched "
+                           f"or built")
+            return False
 
     def refused(patch: dict, *, final: bool = True) -> dict:
         # A score build that fails is recorded with what it saw, so the hourly
@@ -2510,6 +2527,11 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
             summary.append(f"BLOCKED {row['job_id']}: {reasons}")
             return False
 
+    if house_plan is not None:
+        return house_build(cfg, canon, sheet, row, role, srow, summary, plan=house_plan,
+                           view=house_view, view_text=house_text, trigger=trigger,
+                           refused=refused, attempt=attempt, rebuild=rebuild, rflags=rflags,
+                           never=never, company_declines=company_declines)
     letter_blocks, cv_blocks = load_blocks(cfg)
     oauth = GoogleOAuth(cfg)
     db = DocBuild(oauth.access_token)
@@ -2685,6 +2707,273 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     summary.append(f"  CV {result.cv_url}")
     summary.append(f"  CL {result.letter_url}")
     return True
+
+
+def house_evidence(cfg: Config, sheet: Sheet, db: DocBuild, jd_text: str) -> dict:
+    """What the writer is given and held to: his CV (the house master), his
+    Profile, Interview Answers and Info Bank, his AI GTM record and the
+    posting; the model letter he rewrote; the phrases he has banned. The
+    evidence is shown to the writer in its own case and lowercased only for
+    the gate."""
+    from .apply.infobank import load_bank
+    from .package.voicegate import build_evidence, package_banned
+    cv_text = _doc_text(db, config_mod.CV_MASTER_ID if style_mod.COMPOSER_LIVE
+                        else config_mod.HOUSE_CV_MASTER_ID)
+    model = _doc_text(db, config_mod.LETTER_MODEL_ID)
+    bank = load_bank(lambda tab: sheet.read_tab_formulas(f"{tab}!A1:Z400"))
+    parts = [cv_text, "\n".join(bank.profile.values()), "\n".join(bank.interview.values()),
+             "\n".join(e.value for e in bank.entries.values()),
+             cfg.optional("hunter_ai_gtm_evidence") or ""]
+    text = "\n\n".join(x for x in parts if x)
+    return {"text": text, "haystack": build_evidence(text, jd_text, model),
+            "banned": package_banned(bank.banned_phrases), "model": model}
+
+
+def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
+                summary: list[str], *, plan, view, view_text: str, trigger, refused, attempt,
+                rebuild: bool, rflags: list[str], never, company_declines,
+                db: DocBuild | None = None, page_count=None, bases=None,
+                evidence: dict | None = None) -> bool:
+    """A role's package in his house style (letters.py), once its posting
+    is fetched and gated: the letter is asked of the writer, or built from
+    the writer's checked answer, read back, and recorded. Codes and counts in
+    every summary line."""
+    import types
+    from . import letters as letters_mod
+    from .package import compose, contact, house, masters as masters_mod
+    from .package import his_view as his_view_mod
+    from .package.build import _unique_title, doc_url, pdf_url, slugify
+    job = row["job_id"]
+    db = db or DocBuild(GoogleOAuth(cfg).access_token)
+    if page_count is None:
+        from .apply.merge import page_count
+    if plan.draft is None:
+        ev = evidence or house_evidence(cfg, sheet, db, role.jd_text)
+        letters_mod.queue(cfg, plan, company=role.company, title=role.title,
+                          location=getattr(role, "location", "") or row.get("location") or "",
+                          jd_text=role.jd_text, judge_answers=plan.judge_answers,
+                          view_text=view_text, model_letter=ev["model"],
+                          evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"])
+        letters_mod.hold(cfg, job, letters_mod.WAITING, base_key=plan.base_key)
+        summary.append(f"SKIPPED {job}: {letters_mod.WAITING}; the letter is asked of the "
+                       f"routine, never the API")
+        return False
+    letter, problems = letters_mod.checked(plan)
+    if letter is not None and his_view_mod.quotes_note(" ".join(letter.spans()), view,
+                                                       plan.draft.get("evidence") or ""):
+        problems = ["the letter quotes his note"]
+    if problems:
+        letters_mod.mark(cfg, plan.draft["id"], "failed", problems)
+        letters_mod.hold(cfg, job, "the writer's letter did not pass its check; asked again",
+                         base_key=plan.base_key)
+        summary.append(f"BLOCKED {job}: the writer's letter failed its check "
+                       f"({len(problems)} problem(s)); it is asked again")
+        return False
+    bases = bases if bases is not None else contact.load_bases(cfg)
+    base = bases.get(plan.base_key)
+    if base is None:
+        letters_mod.hold(cfg, job, "the header for this role is not readable",
+                         base_key=plan.base_key)
+        summary.append(f"BLOCKED {job}: the {plan.base_key.upper()} header is not readable")
+        return False
+    date_text = datetime.date.today().strftime("%B %d, %Y").replace(" 0", " ")
+    letter_master = config_mod.LETTER_MASTER_ID
+    cv_master = config_mod.CV_MASTER_ID
+    lt = compose.build_letter(
+        db, letter, master_id=letter_master,
+        title=_unique_title(db, f"KrishRaja_CoverLetter_{role.company}",
+                            config_mod.LETTER_FOLDER_ID, slugify(role.title)),
+        folder_id=config_mod.LETTER_FOLDER_ID, base=base, bases=bases, date_text=date_text,
+        company=role.company, role=role.title, page_count=page_count, needs=plan.needs,
+        entries=plan.entries, bank_words=plan.bank)
+    cv_paras = house.snapshot(db.get(cv_master))
+    anchor, count = compose.cv_summary_span(cv_paras)
+    cv = compose.build_cv(
+        db, master_id=cv_master,
+        title=_unique_title(db, f"KrishRaja_CV_{role.company}", config_mod.CV_FOLDER_ID,
+                            slugify(role.title)),
+        folder_id=config_mod.CV_FOLDER_ID, base=base, bases=bases, page_count=page_count,
+        heading_sizes=masters_mod._cv_heading_sizes(cv_paras), summary=letter.cv_summary,
+        summary_anchor=anchor, summary_count=count)
+    fails = lt.problems + cv.problems
+    if not fails:
+        pkg = run_gates(role, never_apply=never, package_texts=(
+            _doc_text(db, lt.doc_id), _doc_text(db, cv.doc_id)), company_declines=company_declines)
+        fails = [f"{g.gate}: {g.reason}" for g in pkg.failures() if g.gate not in BUILD_SOFT_GATES]
+    if fails:
+        final = bool(attempt) and router.retry_of(row.get("package_trigger")) == attempt
+        letters_mod.mark(cfg, plan.draft["id"], "failed", fails)
+        if rebuild:
+            summary.append(f"REBUILD FAILED {job} at read-back: " + "; ".join(fails)
+                           + "; the package built before is not sent")
+            summary.extend(rebuild_did_not_land(cfg, row, f"house style read-back failed: {fails}"))
+        else:
+            db_patch(cfg, "hunter_seen_roles", {"job_id": job},
+                     refused({"package_status": "blocked", "header_base": plan.base_key,
+                              "rejection_reason": f"house style read-back failed: {fails}"},
+                             final=final))
+            summary.append(f"BLOCKED {job} at read-back: " + "; ".join(fails))
+        for note in lt.notes + cv.notes:
+            summary.append(f"  note: {note}")
+        summary.append(f"  CL {doc_url(lt.doc_id)} (left for review)")
+        summary.append(f"  CV {doc_url(cv.doc_id)} (left for review)")
+        return False
+    letter_pdf = db.upload_pdf(f"KrishRaja_CoverLetter_{role.company}.pdf",
+                               config_mod.LETTER_FOLDER_ID, lt.pdf or db.export_pdf(lt.doc_id))
+    cv_pdf = db.upload_pdf(f"KrishRaja_CV_{role.company}.pdf", config_mod.CV_FOLDER_ID,
+                           cv.pdf or db.export_pdf(cv.doc_id))
+    built = {
+        "package_status": "built", "package_built_at": NOW(),
+        "package_cv_url": doc_url(cv.doc_id), "package_letter_url": doc_url(lt.doc_id),
+        "status": "staging" if row.get("status") in ("dead", "blocked") else row.get("status"),
+        "rejection_reason": None, "header_base": plan.base_key,
+        style_mod.FIELD: style_mod.HOUSE_STYLE,
+        "package_personal": plan.personal_key or None,
+        "package_asks": letters_mod.asks_summary(letter),
+    }
+    if trigger:
+        built["package_trigger"] = trigger
+    db_patch(cfg, "hunter_seen_roles", {"job_id": job}, built)
+    back = db_get(cfg, "hunter_seen_roles", {"select": f"package_status,{style_mod.FIELD}",
+                                             "job_id": f"eq.{job}"})
+    if not back or back[0].get(style_mod.FIELD) != style_mod.HOUSE_STYLE:
+        summary.append(f"  note {job}: the house style stamp did not read back, so no send "
+                       f"path will offer this package")
+    letters_mod.mark(cfg, plan.draft["id"], "used")
+    if trigger:
+        summary.extend(record_trigger(cfg, job, trigger))
+    status = package_status_for(role, row)
+    if srow:
+        sheet.update_package_cells(
+            srow.row_number, cv_url=doc_url(cv.doc_id), letter_url=doc_url(lt.doc_id),
+            cv_pdf_url=pdf_url(cv_pdf), letter_pdf_url=pdf_url(letter_pdf),
+            package_status=status, built_date=TODAY())
+    try:
+        amend.save_docs(cfg, job, letter_text=_doc_text(db, lt.doc_id),
+                        cv_text=_doc_text(db, cv.doc_id))
+        db_patch(cfg, "hunter_row_state", {"job_id": job}, {
+            "letter_doc_id": lt.doc_id, "cv_doc_id": cv.doc_id,
+            "letter_style": letters_mod.style_record(db.get(lt.doc_id)),
+            "cv_style": letters_mod.style_record(db.get(cv.doc_id))})
+    except Exception as e:
+        summary.append(f"  note: could not record the documents as built "
+                       f"({e.__class__.__name__}), so edits to them will not be read")
+    try:
+        db_insert(cfg, "hunter_jd_briefs", [letters_mod.brief_row(plan, letter, role.jd_text)],
+                  on_conflict="jd_hash,hints_hash", merge=True)
+    except Exception:
+        pass
+    carried = types.SimpleNamespace(summary="", hook=letter.hook if not view.empty else "")
+    summary.extend(record_his_view(cfg, job, view, carried))
+    notes = "; ".join(lt.notes + cv.notes + rflags) or "clean"
+    asks = letters_mod.asks_summary(letter)
+    summary.append(f"BUILT {job} house style, {plan.base_key.upper()} header, "
+                   f"{len(letter.bullets)} bullets, asks {asks['answered']} of {asks['asks']}"
+                   f"{', personal line' if plan.needs else ''}; notes={notes}")
+    summary.append(f"  CV {doc_url(cv.doc_id)}")
+    summary.append(f"  CL {doc_url(lt.doc_id)}")
+    return True
+
+
+PREVIEW_FOLDER = "hunter preview"
+
+
+def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bool,
+                      preview_folder: bool = False, db: DocBuild | None = None,
+                      page_count=None) -> int:
+    """The scratch preview (his review before anything live changes): for each
+    role, the letter is asked of the writer (--queue), and once written, the
+    letter and CV are built in his house style into `folder` (--apply) from
+    the house masters. Nothing else: no sheet, no email, no status, no fact
+    asked of him, nothing recorded on the role. Links and codes only."""
+    import types
+    from . import letters as letters_mod
+    from .package import compose, contact, house, masters as masters_mod
+    from .package import his_view as his_view_mod
+    from .package.build import doc_url
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    db = db or DocBuild(GoogleOAuth(cfg).access_token)
+    if page_count is None:
+        from .apply.merge import page_count
+    bases = contact.load_bases(cfg)
+    if apply and preview_folder and not folder:
+        # His Drive's own top level, made by hunter's own login so the copies
+        # can land in it; the same folder on every later run.
+        folder = db.folder(PREVIEW_FOLDER)
+        print(f"folder: https://drive.google.com/drive/folders/{folder}")
+    asked: list[str] = []
+    for job in job_ids:
+        rec = db_get(cfg, "hunter_seen_roles", {"select": "*", "job_id": f"eq.{job}"})
+        if not rec:
+            print(f"{job}: no such role")
+            continue
+        r = rec[0]
+        view = his_view_mod.his_view(cfg, job, None, record=r)
+        text = his_view_mod.section(view, company=r.get("company") or "")
+        plan = letters_mod.plan(cfg, canon, job, text, request_fact=lambda c: asked.append(c))
+        if plan.reason and plan.reason != letters_mod.WAITING:
+            print(f"{job}: held, {plan.reason}")
+            continue
+        if plan.draft is None:
+            if not queue:
+                print(f"{job}: {letters_mod.WAITING if plan.reason else 'not asked yet'}")
+                continue
+            ev = house_evidence(cfg, sheet, db, r.get("jd_text") or "")
+            made = letters_mod.queue(
+                cfg, plan, company=r.get("company") or "", title=r.get("title") or "",
+                location=r.get("location") or "", jd_text=r.get("jd_text") or "",
+                judge_answers=plan.judge_answers, view_text=text, model_letter=ev["model"],
+                evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"])
+            print(f"{job}: letter {'asked of the writer' if made else 'already asked'}")
+            continue
+        letter, problems = letters_mod.checked(plan)
+        if problems:
+            print(f"{job}: the written letter fails its check: " + "; ".join(problems))
+            continue
+        if not apply:
+            print(f"{job}: written and checked; --apply builds it into the folder")
+            continue
+        base = bases[plan.base_key]
+        role = types.SimpleNamespace(company=r.get("company") or "", title=r.get("title") or "")
+        lt = compose.build_letter(
+            db, letter, master_id=config_mod.HOUSE_LETTER_MASTER_ID,
+            title=f"PREVIEW CoverLetter {role.company}", folder_id=folder, base=base,
+            bases=bases, date_text=datetime.date.today().strftime("%B %d, %Y").replace(" 0", " "),
+            company=role.company, role=role.title, page_count=page_count, needs=plan.needs,
+            entries=plan.entries, bank_words=plan.bank)
+        paras = house.snapshot(db.get(config_mod.HOUSE_CV_MASTER_ID))
+        anchor, count = compose.cv_summary_span(paras)
+        cv = compose.build_cv(
+            db, master_id=config_mod.HOUSE_CV_MASTER_ID, title=f"PREVIEW CV {role.company}",
+            folder_id=folder, base=base, bases=bases, page_count=page_count,
+            heading_sizes=masters_mod._cv_heading_sizes(paras), summary=letter.cv_summary,
+            summary_anchor=anchor, summary_count=count)
+        # A baseline under its own key, so his edits to a preview become
+        # pairs for the writer without touching the role's own record.
+        try:
+            amend.save_docs(cfg, f"preview:{job}", letter_text=_doc_text(db, lt.doc_id),
+                            cv_text=_doc_text(db, cv.doc_id))
+            db_patch(cfg, "hunter_row_state", {"job_id": f"preview:{job}"}, {
+                "letter_doc_id": lt.doc_id, "cv_doc_id": cv.doc_id,
+                "letter_style": letters_mod.style_record(db.get(lt.doc_id)),
+                "cv_style": letters_mod.style_record(db.get(cv.doc_id))})
+        except Exception as e:
+            print(f"{job}: baseline not recorded ({e.__class__.__name__})")
+        asks = letters_mod.asks_summary(letter)
+        print(f"{job}: letter {lt.pages} page(s), CV {cv.pages} page(s), "
+              f"{plan.base_key.upper()} header, asks {asks['answered']} of {asks['asks']}, "
+              f"problems {len(lt.problems) + len(cv.problems)}")
+        for f in lt.problems + cv.problems:
+            print(f"  {f}")
+        for n in lt.notes + cv.notes:
+            print(f"  note: {n}")
+        print(f"  CL {doc_url(lt.doc_id)}")
+        print(f"  CV {doc_url(cv.doc_id)}")
+    if asked:
+        print(f"{len(set(asked))} kind(s) of business would ask him for a line; none asked "
+              f"from a preview")
+    return 0
 
 
 def cmd_build(target_job_id: str) -> int:
@@ -9753,6 +10042,42 @@ def main(argv: list[str]) -> int:
         for line in actions.apply_queued(cfg, sheet, canon.sheet_headers,
                                          apply="--apply" in argv):
             print(line)
+        return 0
+    if cmd == "build-preview":
+        # The scratch preview: --job-id (repeatable), --queue to ask the
+        # writer, --apply --folder <id> to build. Links and codes only.
+        jobs = [argv[i + 1] for i, a in enumerate(argv) if a == "--job-id" and i + 1 < len(argv)]
+        folder = argv[argv.index("--folder") + 1] if "--folder" in argv else ""
+        if "--apply" in argv and not folder and "--preview-folder" not in argv:
+            print("build-preview --apply needs --folder <drive folder id> or --preview-folder")
+            return 2
+        return cmd_build_preview(jobs, queue="--queue" in argv, folder=folder,
+                                 apply="--apply" in argv,
+                                 preview_folder="--preview-folder" in argv)
+    if cmd == "facts":
+        # A personal line a letter needs (facts.py): queued asks are mailed to
+        # him, and his replies are written to canon 9.14 as he wrote them,
+        # confirmed back to him, and taken back on UNDO. Counts only here:
+        # his words never reach this log. Dry run unless --apply.
+        from . import canonwrite, facts, notify
+        from .apply import inbox
+        cfg, _canon = build_context()
+        if "--apply" not in argv:
+            open_rows = db_get(cfg, facts.TABLE, {"select": "status"})
+            by: dict[str, int] = {}
+            for r in open_rows:
+                by[r["status"]] = by.get(r["status"], 0) + 1
+            print(f"facts (dry run): {dict(sorted(by.items()))}; 9.14 in canon: "
+                  f"{bool(canonwrite.section_body(cfg))}")
+            return 0
+        sent = facts.ask(cfg, notify.send_email)
+        try:
+            got = facts.read(cfg, fetch=facts.fetch_replies, send=notify.send_email).counts
+        except inbox.InboxError as exc:
+            print(f"facts: replies not read ({type(exc).__name__})")
+            got = {}
+        print(f"facts: asked {sent['asked']}, not sent {sent['not_sent']}; "
+              f"replies {dict((k, v) for k, v in got.items() if v)}")
         return 0
     if cmd == "drafts":
         # Use the subscription routine's checked answers; fall back to the API

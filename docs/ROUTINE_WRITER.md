@@ -39,12 +39,20 @@ job, after its own checks.
 >    - `kind = door_observation`: one sentence, the observation he would make
 >      anyway, never an offer, under 280 characters, using only facts in
 >      `evidence`.
+>    - `kind = letter`: one cover letter, a JSON object matching `schema`
+>      (hiring_lead, hook, identity, bullets, why_now, close, cv_summary,
+>      asks). `context` holds the rules, his own model letter and his
+>      evidence; `prompt` holds the role, its base (US or UK spelling), the
+>      judge's read, his view of the role and the posting. When `prompt` has a
+>      PERSONAL LINE, the letter carries it as he wrote it. `meta` is what the
+>      answer is checked against; never change it.
 > 4. Put your answers in a file as a JSON list of
 >    `{ref, kind, prompt, context, evidence, meta, output}` and run
 >    `PYTHONPATH=src python -m hunter.drafts check FILE` from the checkout.
 >    Rewrite every answer it rejects
 >    and check again. Drop an answer you cannot make pass; hunter will ask
->    the API for it.
+>    the API for a case or an observation. A letter is never asked of the
+>    API: one you drop waits for the next run.
 > 5. Write each passing answer back, one statement per row:
 >    `update hunter_drafts set output = <json>, status = 'drafted',
 >    drafted_by = 'routine', drafted_at = now() where id = <id> and status = 'queued'`.
@@ -69,10 +77,14 @@ to `api`. Nothing else changes.
 
 ## What stays on the API, and why
 
+Letters moved to the routine on 2026-10-15 (his ruling: no API spend on
+letters). Hunter queues one per role his Yes or his score asks for, holds the
+build until it is written, checks it with `package/compose.py` and builds it
+in his house style. Nothing falls back to the API.
+
 | Job | Why it stays |
 |---|---|
 | judge | a hundred roles a run, unattended, the reason the API exists here |
-| tailor (CV and letter) | he presses Yes and expects the package that day; a weekly routine would make him wait |
 | essay | drafted when an application is prepared, minutes before he presses it |
 | cold_targets | runs inside each batch with web search; moves next if its spend grows |
 | newsletter | one short call per post, hourly; too small to be worth the delay |

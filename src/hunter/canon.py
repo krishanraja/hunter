@@ -2,6 +2,8 @@
 scoring, gates, the sourcing universe, and the sheet contract. hunter fails hard
 and runs nothing paid if canon is absent, incomplete, or disagrees with the
 verified artifact IDs. hunter never edits canon; changes go to workflow_proposals.
+The one exception is his own words: canonwrite.py appends his answer to a
+fact request to 9.14 as he wrote it (his ruling 2026-10-15), and nothing else.
 
 Parser notes, verified against the live body 2026-08-31:
   - Headings mix two styles: bare "9.1 SOURCING UNIVERSE. ..." and markdown
@@ -19,7 +21,10 @@ from .sheet import HEADERS as CODE_HEADERS, col_letter
 
 CANON_SLUG = "krish-canon"
 
-REQUIRED_SECTIONS = ["2", "3", "4", "6", "9.1", "9.2", "9.3", "9.4", "9.9", "9.12", "9.13"]
+# 9.14, his personal lines, from v13 (2026-10-15): without it every letter to a
+# business of his kinds would hold and ask him again for a line he has given.
+REQUIRED_SECTIONS = ["2", "3", "4", "6", "9.1", "9.2", "9.3", "9.4", "9.9", "9.12", "9.13",
+                     "9.14"]
 
 # A heading is an optional ## or ### prefix, a section number, then an
 # uppercase title. The uppercase requirement keeps numbered list items

@@ -448,6 +448,18 @@ class DocBuild:
         r.raise_for_status()
         return r.json().get("files", [])
 
+    def folder(self, name: str, parent_id: str = "root") -> str:
+        """The folder of that name under parent, made only when there is none,
+        so a second run uses the first one's."""
+        got = self.find_by_name(name, parent_id)
+        if got:
+            return got[0]["id"]
+        r = requests.post(DRIVE, headers=self.h, params={"supportsAllDrives": "true"},
+                          json={"name": name, "mimeType": "application/vnd.google-apps.folder",
+                                "parents": [parent_id]}, timeout=60)
+        r.raise_for_status()
+        return r.json()["id"]
+
     def export_pdf(self, doc_id: str) -> bytes:
         r = requests.get(f"{DRIVE}/{doc_id}/export", headers=self.h,
                          params={"mimeType": "application/pdf"}, timeout=120)

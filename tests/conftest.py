@@ -15,6 +15,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "house_style_paused: run against the real house-style pause "
                    "(package/style.py) instead of the composer being live")
+    config.addinivalue_line(
+        "markers", "house_builder: build_one runs the house builder (letters.py), "
+                   "not the tailor builder the older tests describe")
 
 
 @pytest.fixture(autouse=True)
@@ -31,6 +34,10 @@ def _house_style_live(request, monkeypatch):
     from hunter.package import style
     monkeypatch.setattr(style, "COMPOSER_LIVE", True)
     monkeypatch.setattr(style, "stamped", lambda row: True)
+    # The builder those tests describe; the house builder's own tests set
+    # "house" (tests/test_letters.py).
+    if not request.node.get_closest_marker("house_builder"):
+        monkeypatch.setattr(style, "BUILDER", "tailor")
 
 
 @pytest.fixture(scope="session")
