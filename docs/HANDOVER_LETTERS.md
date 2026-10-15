@@ -20,7 +20,25 @@ EOF
 The review findings are under the key `hunter_handover_letters_review` (plain text).
 Never copy any of it into a repo file, a test, a fixture or a log line.
 
-## Where it stands (updated 2026-10-15, after L0 to L3)
+## Where it stands (updated 2026-10-15, after L4 to L6)
+
+- **L4 and L5 are on main** ([krishanraja/hunter#30](https://github.com/krishanraja/hunter/pull/30), merge cc6dadd), on his yes. Builds still wait (`COMPOSER_LIVE = False`).
+  - `package/personal.py`: his categories, read only from the judge's line on what the business sells and the company's own description (never the posting; measured). His words on 15 October added live entertainment, health and fitness and psychology.
+  - **Canon 9.14 is written** on his yes: version 11 to 13, his Sonos line as entry 1 (terms sonos, music, audio), read back exact. `REQUIRED_SECTIONS` includes 9.14.
+  - `canonwrite.py` is the only code that edits canon (version lock, parse check, read back, restore). `facts.py` asks by email, `[hunter fact #id]`, hourly in the drain (`facts --apply`); nothing has been asked yet.
+  - `package/compose.py` (the letter schema, the per-role prompt, the check A13 to A15, spelling by base, the slot fill, the one-page ladder, the read-back) and `letters.py` (holds and waits decided from the record before any fetch, reported as SKIPPED so no cap counts them; the letter asked of the routine, never the API).
+  - `drafts.py` gains the `letter` kind with no API fallback. The writer's three scheduled tasks know about letters (Sunday, Thursday, and a daily run at 12:47 London added on his yes; the daily one sends no email and stops at once when nothing is queued).
+  - `config.HOUSE_LETTER_MASTER_ID` and `HOUSE_CV_MASTER_ID` hold the new masters; `config.LETTER_MODEL_ID` is his edited letter, the writer's model.
+- **The scratch preview** (his yes): Sonos (US, his line), River AI (US) and Reddit (London). Letters written in the session, checked with the writer's own check, written to `hunter_drafts` (ids 43 to 45, drafted_by session), built by `build-preview --apply --preview-folder` into "hunter preview" in his Drive. The first live run found a real bug (`load_bases` returns a pair); fixed with a test that would have caught it.
+- **L6 is on the branch:** `docedits.py` (hourly `doc-edits --apply` before the replies; words and formatting; an edit after the Apply email cancels it so Prepare sends his version), his newest edits reach the writer as examples, the batch record's edit numbers, and `rebuild-packages --reason style`.
+- **Go-live, in order, each on his yes:**
+  1. his verdict on the preview;
+  2. switch `config.LETTER_MASTER_ID` and `CV_MASTER_ID` to the house masters and canon 9.9 together (just after :13);
+  3. set `COMPOSER_LIVE = True` (the test `test_production_builds_wait_until_a_composer_writes_his_style` flips with it);
+  4. `rebuild-packages --reason style --apply` (each rebuild asks the writer; nothing is built until it answers);
+  5. score-build cap back to 3.
+
+## Where it stood after L0 to L3
 
 - **The plan is approved by him.** Read `/tmp/plan.md` from the snippet above before anything else.
 - **L1 is live on main** ([krishanraja/hunter#25](https://github.com/krishanraja/hunter/pull/25), merge e82f8f5), on his yes.
@@ -194,10 +212,11 @@ Done on 15 October, each on his yes:
 - write `hunter_contact_bases`;
 - merge L2.
 
+Also done on 15 October, each on his yes: merge L3, make the v5 letter master and the house CV master, write canon 9.14 with his Sonos line, merge L4 and L5, teach the writer's runs about letters and add the daily run, build the scratch preview.
+
 Still owed:
-- Merge L3, and each later piece.
-- Create the v5 letter master and update the CV master in Drive, and update canon 9.9 and add 9.14.
-- Rebuild live packages and send.
+- His verdict on the preview, and every go-live step above.
+- Merge L6.
 
 ## How to talk to him
 
