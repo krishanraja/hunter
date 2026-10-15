@@ -20,14 +20,28 @@ EOF
 The review findings are under the key `hunter_handover_letters_review` (plain text).
 Never copy any of it into a repo file, a test, a fixture or a log line.
 
-## Where it stands
+## Where it stands (updated 2026-10-15, after L0 and L1)
 
 - **The plan is approved by him.** Read `/tmp/plan.md` from the snippet above before anything else.
-- **Builds are paused, as he chose.** `hunter_max_score_builds_per_run` went from 3 to 0 at 08:48 UTC on 15 October, read back.
-  - The twice-weekly batch still builds column A Yes packages, and the send paths still work. Nothing yet refuses an old-style package.
-  - The next batch is Sunday 13:00 London. L1 below must land before then, or the batch builds old-style packages again.
-- **No code is written yet.** Both repos are clean on branch `claude/happy-bohr-xhlis9`, which was restarted from main: hunter c098ca7, control-center cf53e69.
-- **15 Apply emails sent on 15 October are old-style.** Superseding them needs his yes.
+- **L1 is live on main** ([krishanraja/hunter#25](https://github.com/krishanraja/hunter/pull/25), merge e82f8f5), on his yes.
+  - `package/style.py` holds `HOUSE_STYLE` and `COMPOSER_LIVE = False`. Every build waits: build_one, process, score-builds, rebuild-packages and the AMEND rebuild.
+  - Every send path goes through `cmd_approvals`, and it refuses any record without the current `package_style`. On 15 October, 68 built packages were on record and none was stamped.
+  - The Sunday batch stages roles and builds no package.
+  - A rebuild that does not land now blocks the old package (`REBUILD_REFUSED`). `rebuild_targets` may still choose it.
+  - AMEND keeps his doc edits in `hunter_amendments` before it supersedes.
+  - Tests: `tests/conftest.py` runs every older test as if the composer were live and every record stamped. `tests/test_house_style.py` (marked `house_style_paused`) tests the real pause. `test_production_builds_wait_until_a_composer_writes_his_style` goes red the day `COMPOSER_LIVE` flips; that is deliberate.
+- **Privacy:**
+  - His phone, his personal email and his Section G answers are out of the source.
+  - `hunter_allowed_recipients` is written (one address) and read back; doctor checks it.
+  - `hunter_private_bank_seeds` is NOT written. bank-seed leaves those rows alone without it, and the workbook still holds them.
+  - Git history still holds the old values. Rewriting it is his call; ask once.
+- **L0 is applied live** on his yes and read back: 14 columns, 3 tables, the widened checks.
+  - The file is on control-center branch `claude/elegant-keller-bk4lra`, in [krishanraja/control-center#458](https://github.com/krishanraja/control-center/pull/458). That PR only records it, and merging it needs his yes.
+- **Old links:** the 14 open Apply links from 15 October were superseded on his yes (state cancelled, read back). The live payload endpoint answers 410 for them. The one he had submitted is untouched.
+- **Score builds:** the cap is still 0. Restore it to 3 only after he approves the scratch preview.
+- **For L5 and L6:**
+  - The new composer must write `package_style = style.HOUSE_STYLE` in build_one's `built` patch, and set `COMPOSER_LIVE = True`.
+  - The style rebuild (`rebuild-packages --reason style`) must choose every unstamped built package he still wants. Today `rebuild_targets` requires his score or reaction, and skips packages that "carry his view".
 
 ## His rulings (all binding)
 
@@ -139,11 +153,11 @@ do not have to rediscover it.
 
 ## Approvals still owed to him (ask at the moment of each)
 
-- Apply the L0 migration.
-- Write `hunter_allowed_recipients` before L1 merges.
-- Merge L1, and each later piece.
-- Supersede the old-style open Apply links (counts only).
+Done on 15 October, each on his yes: write `hunter_allowed_recipients`, merge L1, supersede the old links, apply the L0 migration.
+
+- Merge control-center#458 (records L0, already live).
 - Write `hunter_contact_bases`.
+- Merge L2, and each later piece.
 - Create the v5 letter master and update the CV master in Drive, and update canon 9.9 and add 9.14.
 - Rebuild live packages and send.
 
