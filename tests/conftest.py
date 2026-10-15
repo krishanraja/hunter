@@ -11,6 +11,28 @@ from hunter.package.tailor import BLOCK_KEYS
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "house_style_paused: run against the real house-style pause "
+                   "(package/style.py) instead of the composer being live")
+
+
+@pytest.fixture(autouse=True)
+def _house_style_live(request, monkeypatch):
+    """Every test written before 2026-10-15 exercises building and sending as
+    they work once a composer writes his house style: builds run, and the
+    package it built carries the stamp. So they run with the composer live
+    and every record stamped. The pause itself, which is what production
+    runs until the composer lands, is tested by the tests marked
+    house_style_paused (tests/test_house_style.py), which get the real
+    package/style.py."""
+    if request.node.get_closest_marker("house_style_paused"):
+        return
+    from hunter.package import style
+    monkeypatch.setattr(style, "COMPOSER_LIVE", True)
+    monkeypatch.setattr(style, "stamped", lambda row: True)
+
+
 @pytest.fixture(scope="session")
 def letter_fixture():
     path = FIXTURES / "letter_master.json"

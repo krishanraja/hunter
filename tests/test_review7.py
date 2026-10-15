@@ -359,7 +359,7 @@ def test_the_prepare_press_keeps_stdout_out_of_the_drain_log(monkeypatch, capsys
 
 def test_the_mail_fallback_prints_no_part_of_the_email(monkeypatch, capsys):
     import hunter.notify as notify_mod
-    monkeypatch.setattr(notify_mod, "_check_recipient", lambda to: to)
+    monkeypatch.setattr(notify_mod, "_check_recipient", lambda to, cfg=None: to)
     monkeypatch.setattr(notify_mod, "GoogleOAuth",
                         lambda cfg: type("O", (), {"access_token": lambda self=None: "t"})())
 
@@ -639,7 +639,7 @@ def test_the_reply_drain_prints_neither_the_token_nor_his_words(monkeypatch, cap
         {"token": TOKEN, "message_id": "m1", "from": RECIPIENT}])
     monkeypatch.setattr(approval, "get_row", lambda cfg, token: {"job_id": "zentrox:a"})
     monkeypatch.setattr(inbox, "classify",
-                        lambda r, row: ("amend", "Invented Zorbic words: lead on partners."))
+                        lambda r, row, cfg=None: ("amend", "Invented Zorbic words: lead on partners."))
     monkeypatch.setattr(run_mod, "report_stalled_approvals", lambda cfg, apply=False: [])
     assert run_mod.cmd_approvals_drain(apply=False) == 0
     out = capsys.readouterr().out

@@ -151,7 +151,11 @@ def prepare_note(code: int, tally: dict, failures: list[str]) -> tuple[bool, str
     Names the outcome, never a token, a key, an address, an essay or a
     field value. A run that counted nothing claims nothing."""
     from . import run
-    said = [(lambda: tally.get(run.SENT_UNRECORDED), False,
+    from .package import style
+    said = [(lambda: tally.get(style.OLD_STYLE), False,
+             "built before your house style, so nothing was sent; it is rebuilt in "
+             "your style before any application goes"),
+            (lambda: tally.get(run.SENT_UNRECORDED), False,
              "the Apply email went, but its approval was not recorded, so its open link "
              "will not work; press Prepare again"),
             (lambda: tally.get(run.NOT_SENT), False,

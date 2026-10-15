@@ -441,7 +441,7 @@ def test_the_drain_handles_a_failing_reply_by_class_and_reads_the_next(monkeypat
                                      f"hunter_application_approvals?token=eq.{TOKEN}")
         return {"job_id": "zentrox:b"}
     monkeypatch.setattr(approval, "get_row", get_row)
-    monkeypatch.setattr(inbox, "classify", lambda r, row: ("skip", "already processed"))
+    monkeypatch.setattr(inbox, "classify", lambda r, row, cfg=None: ("skip", "already processed"))
     monkeypatch.setattr(R, "report_stalled_approvals", lambda cfg, apply=False: [])
     assert R.cmd_approvals_drain(apply=False) == 1
     printed = capsys.readouterr()

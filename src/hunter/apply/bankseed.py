@@ -34,20 +34,41 @@ class Seed:
     notes: str = ""
     ruling: str = ""         # why this value, for the operator reading the diff
     create_if_missing: bool = False
+    private: bool = False    # his own answer: never printed (private_seeds)
+
+
+# His Section G answers (race, gender, veteran and disability status) are not
+# in this file: the repository is public. They are in the workbook, which is
+# the authority, and a re-seed reads them from system_config PRIVATE_KEY, a
+# JSON list of {"field_name", "value", "status", "ruling"}. Without it, those
+# rows are left exactly as they are.
+PRIVATE_KEY = "hunter_private_bank_seeds"
+
+
+def private_seeds(cfg) -> tuple[list[Seed], str]:
+    """(his private seeds, a note in counts only). Missing or malformed reads
+    as none, and says which, never a value."""
+    import json
+    raw = (getattr(cfg, "raw", None) or {}).get(PRIVATE_KEY)
+    if not raw:
+        return [], f"system_config {PRIVATE_KEY} is not set; those rows are left as they are"
+    try:
+        items = json.loads(raw)
+        out = [Seed(str(i["field_name"]), str(i["value"]),
+                    str(i.get("status") or SENSITIVE_MARK), ruling=str(i.get("ruling") or ""),
+                    private=True)
+               for i in items]
+    except (ValueError, TypeError, KeyError):
+        return [], f"system_config {PRIVATE_KEY} could not be read; those rows are left as they are"
+    return out, f"{len(out)} private seed(s) read from system_config"
 
 
 def seeds() -> list[Seed]:
     """Every value, with the ruling that produced it."""
     return [
-        # Section G. The status stays SENSITIVE, which since 2026-09-14 means
-        # "usable but shown in every approval email", not "never filled".
-        Seed("Race / ethnicity", "Two or more races", SENSITIVE_MARK,
-             ruling="Krish 2026-09-14, chosen over Asian when a form offers both"),
-        Seed("Gender", "Male", SENSITIVE_MARK, ruling="Krish 2026-09-14"),
-        Seed("Veteran status", "Not a veteran", SENSITIVE_MARK,
-             ruling="Krish 2026-09-14"),
-        Seed("Disability status", "No disability", SENSITIVE_MARK,
-             ruling="Krish 2026-09-14"),
+        # Section G's answers are his and private (private_seeds). The status
+        # stays SENSITIVE, which since 2026-09-14 means "usable but shown in
+        # every approval email", not "never filled".
         Seed('Default: select "prefer not to answer"?',
              "No, answer as recorded above", LOCKED_MARK,
              ruling="Krish 2026-09-14: answers are recorded, so no default needed"),
@@ -82,6 +103,7 @@ class Change:
     before: str
     after: str
     ruling: str
+    private: bool = False
 
     @property
     def is_new(self) -> bool:
@@ -117,20 +139,20 @@ def plan_changes(rows: list[list], seed_list: list[Seed] | None = None
             row_num = next_new
             next_new += 1
             changes.append(Change(row_num, s.field_name, "A", "", s.field_name,
-                                  s.ruling))
+                                  s.ruling, s.private))
             before_val, before_status = "", ""
         else:
             raw = (rows[row_num - 1] + ["", "", "", ""])[:4]
             before_val, before_status = raw[1].strip(), raw[2].strip()
         if before_val.strip() != s.value.strip():
             changes.append(Change(row_num, s.field_name, "B", before_val,
-                                  s.value, s.ruling))
+                                  s.value, s.ruling, s.private))
         if s.status and before_status != s.status:
             changes.append(Change(row_num, s.field_name, "C", before_status,
-                                  s.status, s.ruling))
+                                  s.status, s.ruling, s.private))
         if s.notes:
             changes.append(Change(row_num, s.field_name, "D", "", s.notes,
-                                  s.ruling))
+                                  s.ruling, s.private))
     return changes, problems
 
 
@@ -146,6 +168,7 @@ def apply_changes(sheet, changes: list[Change]) -> int:
         have = (got[0][0] if got and got[0] else "")
         if str(have).strip() != str(c.after).strip():
             raise SheetError(
-                f"read-back of {rng} gave {have!r}, expected {c.after!r}; "
-                f"stopping so the rest is not written blind")
+                f"read-back of {rng} did not match"
+                + ("" if c.private else f": gave {have!r}, expected {c.after!r}")
+                + "; stopping so the rest is not written blind")
     return len(changes)

@@ -43,6 +43,7 @@ from .report import report_run
 from . import verdicts
 from . import router
 from . import leave as leave_mod
+from .package import style as style_mod
 from .router import classify_verdict, is_warm_path, route_status, select_for_build
 from .score import BAR, score_role
 from . import sheet as sheet_mod
@@ -2295,6 +2296,32 @@ def record_his_view(cfg: Config, job_id: str, view, tr) -> list[str]:
     return []
 
 
+# The reason a package carries when a rebuild of it did not land. Until
+# 2026-10-15 the package built before stayed "built" and every send path
+# would still send it; a rebuild is asked for because that package is no
+# longer what he wants sent, so it is blocked with this reason instead
+# (package/style.py), and rebuild-packages may still choose it again.
+REBUILD_REFUSED = "rebuild did not land: "
+
+
+def rebuild_did_not_land(cfg: Config, row: dict, why: str) -> list[str]:
+    """Take a package whose rebuild did not land out of every send path:
+    blocked, with REBUILD_REFUSED and why, read back. Lines only when the
+    write did not read back, by class: the summary is public."""
+    patch = {"package_status": "blocked", "rejection_reason": REBUILD_REFUSED + why}
+    try:
+        db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]}, patch)
+        back = db_get(cfg, "hunter_seen_roles", {"select": "package_status",
+                                                 "job_id": f"eq.{row['job_id']}", "limit": "1"})
+    except Exception as e:
+        return [f"  note {row['job_id']}: not recorded as blocked "
+                f"({e.__class__.__name__}); the send paths still refuse it for its style"]
+    if not back or back[0].get("package_status") != "blocked":
+        return [f"  note {row['job_id']}: written as blocked, and the read-back did not "
+                f"find it; the send paths still refuse it for its style"]
+    return []
+
+
 def record_held(cfg: Config, row: dict, view) -> list[str]:
     """A rebuild the gate held or verification failed, recorded against what
     it was tried on (his_view.held_mark) and read back, so the next run does
@@ -2355,10 +2382,20 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     one written from those reasons. The package already built is worth more
     than a worse one, so a rebuild whose prose did not come through (no
     model, the gate refused it) builds nothing, and one that fails
-    verification leaves the earlier package recorded as built."""
+    verification takes the earlier package out of every send path
+    (rebuild_did_not_land): he asked for a different one."""
     from .package.build import build_package, doc_url, read_master_facts
     from .package.tailor import load_blocks, tailor
 
+    if style_mod.builds_paused():
+        # Before anything is read, fetched or paid for: no composer here can
+        # write his house style, so whatever this built could never be sent
+        # (package/style.py). Nothing is written to the record, so the role
+        # is chosen again once a build can carry the style. Counted by every
+        # caller as skipped, never as a refusal.
+        summary.append(f"SKIPPED {row['job_id']}: {style_mod.PAUSED}; nothing "
+                       f"fetched or built")
+        return False
     if cache is None:
         from .ats import discover as disc
         cache = disc.load_cache(cfg)
@@ -2520,7 +2557,9 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     if rebuild and view.empty:
         summary.append(f"HELD {row['job_id']}: the row no longer carries a score or "
                        f"a reaction, so there is nothing to rebuild it from; the "
-                       f"package built before stays")
+                       f"package built before is not sent")
+        summary.extend(rebuild_did_not_land(cfg, row, "no score or reaction on the row "
+                                                      "to write it from"))
         return False
     tr = tailor(cfg, canon, company=role.company, title=role.title,
                 jd_text=role.jd_text, master_competencies=facts.cv_competencies,
@@ -2535,7 +2574,9 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         # reasons either. The tailor call is paid; no document is made.
         summary.append(f"HELD {row['job_id']}: the prose written from his reasons did "
                        f"not come through ({'; '.join(tr.flags)[:240] or 'no reason given'}), "
-                       f"so no document was made and the package built before stays")
+                       f"so no document was made and the package built before is not sent")
+        summary.extend(rebuild_did_not_land(cfg, row, "the prose written from his "
+                                                      "reasons did not come through"))
         from .package.tailor import GATE_FELL_BACK
         if GATE_FELL_BACK in (getattr(tr, "flags", None) or []):
             summary.extend(record_held(cfg, row, view))
@@ -2564,11 +2605,13 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         # but every try is paid for.
         final = bool(attempt) and router.retry_of(row.get("package_trigger")) == attempt
         if rebuild:
-            # The package built before is still on the row and still sound:
-            # recording this attempt as blocked would take it out of every
-            # path that sends an application, for a letter nobody will see.
+            # The package built before is still on the row, and it is the one
+            # he asked to have replaced: blocked, so no path sends it, and
+            # recorded as tried, so the next run does not pay to fail again.
             summary.append(f"REBUILD FAILED {row['job_id']} at verification: "
-                           + "; ".join(fails) + "; the package built before stays")
+                           + "; ".join(fails) + "; the package built before is not sent")
+            summary.extend(rebuild_did_not_land(
+                cfg, row, f"package verification failed: {fails}"))
             summary.extend(record_held(cfg, row, view))
         else:
             db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
@@ -2908,6 +2951,11 @@ def cmd_score_builds(apply: bool = False, max_builds: int | None = None) -> int:
         # reason to set 0 is a Docs or OAuth incident, and reading the masters
         # anyway would turn the hourly run red for the whole of it.
         print("score builds: switched off, the cap is 0")
+        return 0
+    if style_mod.builds_paused():
+        # No sheet read, no masters read: nothing built now could be sent
+        # (package/style.py).
+        print(f"score builds: waiting, {style_mod.PAUSED}")
         return 0
     if not scores_build_in_canon(canon):
         # Canon supersedes code (assert_canon_alignment). Until canon 9.13 says
@@ -5621,6 +5669,13 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
         todo = []
         summary.append(f"package selection failed: {e.__class__.__name__}: {e}")
     summary.append(f"packages to build: {len(todo)}")
+    if todo and style_mod.builds_paused():
+        # His ruling 2026-10-15: no new package until it can be built in his
+        # house style (package/style.py). Nothing is fetched, paid for or
+        # written, so each is chosen again on the first run that can build it.
+        counts["waiting_style"] = len(todo)
+        summary.append(f"  none built: {style_mod.PAUSED}")
+        todo = []
     for row in todo:
         try:
             before = len(summary)
@@ -5753,8 +5808,10 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
 def _process_line(counts: dict) -> str:
     failed = (f"{counts['failed']} failed and tried again next pass, "
               if counts.get("failed") else "")
+    waiting = (f"{counts['waiting_style']} waiting for his house style, "
+               if counts.get("waiting_style") else "")
     return (f"{counts.get('built', 0)} built ({counts.get('unverified', 0)} unverified), "
-            f"{counts.get('dead', 0)} dead, {counts.get('blocked', 0)} blocked, {failed}"
+            f"{counts.get('dead', 0)} dead, {counts.get('blocked', 0)} blocked, {waiting}{failed}"
             f"{counts.get('warm_paths', 0)} warm paths, "
             f"{counts.get('archived', 0)} archived")
 
@@ -5862,9 +5919,9 @@ def cmd_run() -> int:
             if pcounts.get("still_broken"):
                 notes.append(f"{pcounts['still_broken']} sheet problem(s) hunter "
                              f"could not repair on its own; see the run log.")
-            if pcounts.get("amendments"):
-                notes.append(f"{pcounts['amendments']} edit(s) of yours were read "
-                             f"as corrections and fed back into the scorer.")
+            # His edits are recorded (amend.py), and nothing learns from them
+            # yet. This said they were "fed back into the scorer" until
+            # 2026-10-15, which was never true, so it says nothing now.
             # Said only while it is true: the move runs once canon carries it.
             if leave_mod.in_canon(canon):
                 notes.append("A role you score 1 to 5, or answer with only a reaction, "
@@ -6106,13 +6163,18 @@ def cmd_bank_seed(apply: bool = False) -> int:
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     rows = sheet.read_tab_formulas(f"'{INFO_TAB}'!A1:D200")
-    changes, problems = bankseed.plan_changes(rows)
+    private, note = bankseed.private_seeds(cfg)
+    changes, problems = bankseed.plan_changes(rows, bankseed.seeds() + private)
 
     print(f"{INFO_TAB}: {len(rows)} rows read, {len(changes)} cell(s) to write"
-          f"{'' if apply else ' (dry run, pass --apply to write)'}\n")
+          f"{'' if apply else ' (dry run, pass --apply to write)'}")
+    print(f"{note}\n")
     for c in sorted(changes, key=lambda x: (x.row, x.column)):
         tag = "NEW ROW" if c.is_new else "       "
         print(f"  {tag} {c.column}{c.row:<4} {c.field_name[:46]}")
+        if c.private:
+            print("          (his own answer, not printed)")
+            continue
         if c.before:
             print(f"          was:  {c.before[:88]}")
         print(f"          now:  {c.after[:88]}")
@@ -6590,6 +6652,22 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
             if not rows:
                 print("nothing else to send")
                 return 0
+
+    # His house style (package/style.py), on every path that sends: the bulk
+    # run, approvals --wanted, Prepare, the amend in approvals-drain and the
+    # by-hand email, which all come through here. A package built before it
+    # is never sent, and never prepared either, since a fill plan drafts
+    # essays and those are paid for. Its own outcome, counted without the
+    # role: not a missing answer, so never marked against his answer bank.
+    old = [r for r in rows if not style_mod.stamped(r)]
+    if old:
+        for _ in old:
+            count(style_mod.OLD_STYLE)
+        print(f"skip {len(old)} package(s) {style_mod.OLD_STYLE}: none is sent "
+              f"until it is rebuilt in it")
+        rows = [r for r in rows if style_mod.stamped(r)]
+        if not rows:
+            return 1 if job_id else 0
 
     try:
         to = notify.mailbox(cfg)
@@ -7092,6 +7170,38 @@ def docs_edited(read_doc, docs: dict[str, str], baseline: dict | None) -> str | 
     return None
 
 
+def keep_his_edits(cfg: Config, sheet: Sheet, canon: Canon, job_id: str) -> tuple[int, str]:
+    """(documents of this package he has edited, a note when they could not
+    be checked), each edit recorded in hunter_amendments (amend.record) with
+    what hunter wrote and what the document says now. Called before an AMEND
+    supersedes the package, so his hand edits outlive it. The documents are
+    the links on his row, and the record's where the row has none. The note
+    names a class only: the log is public."""
+    if not job_id:
+        return 0, ""
+    try:
+        recs = db_get(cfg, "hunter_seen_roles", {
+            "select": "job_id,company,title,url,job_url,package_cv_url,package_letter_url",
+            "job_id": f"eq.{job_id}", "limit": "1"})
+        if not recs:
+            return 0, ""
+        d = recs[0]
+        try:
+            srow = _sheet_row_for(sheet, canon, d)
+        except Exception:
+            srow = None
+        docs = his_docs(srow, d)
+        pairs = amend.edit_pairs(_safe_doc_reader(cfg), docs,
+                                 doc_baselines(cfg, [job_id]).get(job_id),
+                                 job_id=job_id, company=d.get("company") or "",
+                                 title=d.get("title") or "")
+        amend.record(cfg, pairs)
+    except Exception as e:
+        return 0, (f"his edits to the documents could not be checked "
+                   f"({e.__class__.__name__})")
+    return len(pairs), ""
+
+
 def acted_on_now(cfg: Config, row: dict) -> str | None:
     """acted_on for one chosen role, read again from the database: its own
     record and every approval, mapped to postings through the records of the
@@ -7191,7 +7301,12 @@ def rebuild_targets(cfg: Config, sheet: Sheet, canon: Canon, *, job_id: str = ""
                 or d.get("status") == "dead" or d.get("package_status") == "dead"):
             skip("posting dead", r, d)
             continue
-        if (d.get("package_status") or "") != "built":
+        status = d.get("package_status") or ""
+        if status != "built" and not (status == "blocked" and (
+                d.get("rejection_reason") or "").startswith(REBUILD_REFUSED)):
+            # A package whose last rebuild did not land is blocked and may be
+            # tried again; held_mark below keeps it from being paid for twice
+            # on the same inputs.
             skip("not built yet", r, d)
             continue
         carried = (d.get(his_view_mod.FIELD) or "") if view_column else ""
@@ -7498,6 +7613,11 @@ def wanted_for_approval(cfg: Config, sheet: Sheet, canon: Canon, *,
         if x is None:
             skip("record unreadable", None, d)
             continue
+        if not style_mod.stamped(x):
+            # Read off the whole record, which carries the stamp once the
+            # column exists and reads unstamped before it (package/style.py).
+            skip(style_mod.OLD_STYLE, None, d)
+            continue
         out.append(dict(x, build_trigger=d["build_trigger"], krish_score=d["krish_score"],
                         sheet_row=d["sheet_row"], sheet_link=d["sheet_link"]))
     rep.update({"asked": len(asked), "chosen": len(out), "skips": dict(skips)})
@@ -7541,8 +7661,10 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
     them), writes the new links over the old on his row and reads them back,
     and records that the package carries his view. A rebuild whose prose did
     not come through, or whose letter failed verification, leaves the earlier
-    package where it is, and one the gate held or verification failed is
+    package's documents where they are and takes it out of every send path
+    (rebuild_did_not_land), and one the gate held or verification failed is
     recorded as tried, so the next run does not pay for it again unchanged.
+    Nothing is built while builds wait for his house style (package/style.py).
     A package whose documents he has edited is never rebuilt, read again
     just before it pays, and his AMEND instructions go into the rebuild.
     Counts only on stdout."""
@@ -7566,6 +7688,9 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
     for line in rebuild_lines(rep, apply=apply, cap=max_builds):
         print(line)
     if not apply or not targets:
+        return 0
+    if style_mod.builds_paused():
+        print(f"rebuild: waiting, {style_mod.PAUSED}; nothing built")
         return 0
     if not rep.get("view_column", True):
         # A rebuild that cannot be recorded as carrying his reasons would be
@@ -7632,9 +7757,9 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
             if any("reasons this package carries" in x for x in said):
                 out["rebuilt, his view not recorded"] += 1
         elif any(x.startswith(f"HELD {jid}") for x in said):
-            out["held, the package before stays"] += 1
+            out["held, the package before is not sent"] += 1
         elif any(x.startswith(f"REBUILD FAILED {jid}") for x in said):
-            out["failed verification, the package before stays"] += 1
+            out["failed verification, the package before is not sent"] += 1
         elif any(x.startswith(f"DEAD {jid}") for x in said):
             out["posting gone"] += 1
         elif any(x.startswith(f"SKIPPED {jid}") or x.startswith("SKIPPED:") for x in said):
@@ -7752,7 +7877,7 @@ def cmd_approvals_drain(apply: bool = False) -> int:
         # read, and the drain exits 1.
         try:
             row = approval.get_row(cfg, r["token"]) or {}
-            action, detail = inbox.classify(r, row)
+            action, detail = inbox.classify(r, row, cfg)
             # The job, never the token (half of the open link to his filled form),
             # and his own words on an approve or an amend only as a length: this
             # log is public. A skip or a reject says why in hunter's words.
@@ -7785,7 +7910,16 @@ def cmd_approvals_drain(apply: bool = False) -> int:
                 print("         approved; open it from Control Center or the email")
                 continue
 
-            # amend. The old token dies first: if the rebuild fails, the worst case is
+            # amend. His own edits to the documents first: the rebuild links
+            # new documents on his row, and the ones he edited would never be
+            # read again. Counts only: the pair is his letter.
+            kept, note = keep_his_edits(cfg, sheet, canon, row.get("job_id") or "")
+            if kept:
+                print(f"         his edits to {kept} document(s) kept before anything "
+                      f"replaces them")
+            if note:
+                print("         " + note)
+            # The old token dies first: if the rebuild fails, the worst case is
             # no live token, never a live token for the wrong package.
             approval.supersede(cfg, r["token"])
             approval.mark_processed(cfg, r["token"], r["message_id"],
@@ -7796,6 +7930,14 @@ def cmd_approvals_drain(apply: bool = False) -> int:
                           {"select": "*", "job_id": f"eq.{job_id}", "limit": "1"})
             if not rows:
                 print(f"         SUPERSEDED but cannot rebuild: no role row for {job_id}")
+                continue
+            if style_mod.builds_paused():
+                # Not built in the layout he rewrote, and not sent: his words
+                # stay on the token he answered (amend_feedback), and the
+                # rebuild in his house style carries them (package/style.py).
+                acted += 1
+                print(f"         SUPERSEDED; his words are kept and the package is "
+                      f"rebuilt from them once it can be ({style_mod.PAUSED})")
                 continue
             summary: Summary = Summary()
             ok = build_one(cfg, canon, sheet, rows[0], summary, feedback=detail)

@@ -134,8 +134,9 @@ def run(bank: AnswerBank, *, to: str, role_location: str = "New York, NY") -> Re
     r.add("how did you hear matched an option the form offers",
           heard in ("LinkedIn", "Referral", "Other"), heard)
     race = answered("Race / ethnicity")
-    r.add("race matched the form's own wording",
-          race.startswith("Two or More Races"), race)
+    race_options = {o.label for f in DUMMY_SPEC.fields if f.key == "race"
+                    for o in f.options}
+    r.add("race matched the form's own wording", race in race_options, race)
     r.add("consent answered from the bank, not assumed",
           answered("Applicant Arbitration Agreement Acknowledgement") != ""
           or by_label["Applicant Arbitration Agreement Acknowledgement"].unresolved,
@@ -159,7 +160,7 @@ def run(bank: AnswerBank, *, to: str, role_location: str = "New York, NY") -> Re
     ).as_dict())
     r.add("plan hash is stable across two identical builds", h1 == h2, h1)
     mutated = dict(plan.as_dict())
-    mutated["fields"] = dict(mutated["fields"], phone="+1 000 000 0000")
+    mutated["fields"] = dict(mutated["fields"], phone="+1 (212) 555-0199")
     r.add("plan hash changes when an answer changes",
           approval.plan_hash(mutated) != h1)
 
