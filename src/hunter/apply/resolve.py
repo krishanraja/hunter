@@ -24,6 +24,10 @@ NEEDS_KRISH = "needs Krish"
 NEEDS_ROLE = "needs the role location"
 NEEDS_ESSAY = "needs a drafted essay"
 NO_MATCH = "no stored answer matches"
+# His phone and postal details follow the role's header base (package/contact):
+# without one, nothing is guessed. Its own reason, so a send path can tell it
+# from a missing answer of his and never mark it against his answer bank.
+NEEDS_BASE = "needs which header, US or UK"
 
 
 @dataclass(frozen=True)
@@ -218,10 +222,49 @@ class Resolver:
     default rather than a guess about where Krish is sitting.
     """
 
-    def __init__(self, bank: AnswerBank, role_location: str = ""):
+    def __init__(self, bank: AnswerBank, role_location: str = "", contact=None):
         self.bank = bank
         self.role_location = role_location or ""
         self.base = role_base(self.role_location)
+        # The role's header base (package.contact.Base): his phone, city,
+        # postal code, state and country for this role. role_base above stays
+        # a city classifier for residence questions and options, so a Paris
+        # office select never claims he lives in Paris.
+        self.contact = contact
+
+    # ---------- his phone, one path ----------
+
+    def _phone(self, field: FormField) -> Resolution | None:
+        """The base's number for any phone field, ahead of every other rule.
+        There were two paths (the kind, and the label) and _location ran
+        before both, so a phone box asking for a country code could be given
+        a country, and every form got his US number."""
+        from ..package.contact import is_phone_field
+        if not is_phone_field(field.kind, field.label):
+            return None
+        if self.contact is None:
+            return Unanswered(NEEDS_BASE, "his phone depends on the role's header base")
+        return Answer(self.contact.phone_international,
+                      f"contact base: {self.contact.key.upper()}")
+
+    # The Info Bank's single address rows are his US details, so the US base
+    # falls back to them for anything system_config does not hold. The UK
+    # base never does: a London form is never given a Brooklyn address.
+    _US_BANK_ROWS = {"street": "Street address", "postal": "ZIP", "state": "State",
+                     "country": "Country", "city": "City"}
+
+    def _from_base(self, what: str, attr: str) -> Resolution:
+        if self.contact is None:
+            return Unanswered(NEEDS_BASE, f"his {what} depends on the role's header base")
+        value = getattr(self.contact, attr, "")
+        if value:
+            return Answer(value, f"contact base: {self.contact.key.upper()}")
+        if self.contact.key == "us":
+            entry = self.bank.get(self._US_BANK_ROWS[attr])
+            if entry and entry.value.strip():
+                return Answer(entry.value, f"Info Bank: {entry.field_name} (US base)")
+        return Unanswered(NEEDS_KRISH, f"no {what} recorded for the "
+                                       f"{self.contact.key.upper()} base")
 
     # ---------- authorisation, the single biggest cluster ----------
 
@@ -308,10 +351,7 @@ class Resolver:
                 "anticipated work location", "intended working location"):
             return None
         if _any(label, "zip code", "postcode", "post code"):
-            entry = self.bank.get("ZIP")
-            if entry and entry.value.strip():
-                return Answer(entry.value, f"Info Bank: {entry.field_name}")
-            return Unanswered(NEEDS_KRISH, "no stored ZIP")
+            return self._from_base("postal code", "postal")
         residence = _any(label, "currently living", "where are you currently",
                          "current location", "anticipated work location",
                          "intended working location", "primary locations",
@@ -364,10 +404,10 @@ class Resolver:
 
     # ---------- the simple one to one fields ----------
 
+    # Phone is not here: _phone answers it from the role's base.
     _DIRECT = (
         ("name", ("Full legal name",)),
         ("email", ("Email (job search)",)),
-        ("phone", ("Phone",)),
         ("date", ("Earliest start date",)),
     )
 
@@ -395,10 +435,6 @@ class Resolver:
                     return Answer(legal.split()[-1],
                                   "Info Bank: Full legal name (surname)")
             entry = self.bank.get("Preferred name")
-            if entry and entry.usable:
-                return Answer(entry.value, f"Info Bank: {entry.field_name}")
-        if _any(label, " phone", "phone number", "mobile number"):
-            entry = self.bank.get("Phone")
             if entry and entry.usable:
                 return Answer(entry.value, f"Info Bank: {entry.field_name}")
         if _any(label, "legal name"):
@@ -483,13 +519,15 @@ class Resolver:
     # fields, and the application was refused for having no answer to any of
     # them while every one sat in his Info Bank. Each rule here names the
     # bank row it reads, so a wrong answer can be traced to a wrong row.
+    # Each from the role's base (package.contact.Base), never the Info Bank's
+    # single US rows: a London form was given a Brooklyn address.
     _POSTAL = (
         (("address line 1", "address line1", "street address", "address 1"),
-         "Street address"),
-        (("zip", "postal code", "postcode", "post code"), "ZIP"),
+         "street address", "street"),
+        (("zip", "postal code", "postcode", "post code"), "postal code", "postal"),
         (("state/province", "state / province", "state or province",
-          " state ", "province"), "State"),
-        (("country",), "Country"),
+          " state ", "province"), "state", "state"),
+        (("country",), "country", "country"),
     )
 
     def _postal(self, field: FormField) -> Resolution | None:
@@ -497,19 +535,14 @@ class Resolver:
         # "Email address" and "LinkedIn address" are not postal addresses.
         if _any(label, "email", "linkedin", "url", "website", "ip address"):
             return None
-        for needles, row in self._POSTAL:
+        for needles, what, attr in self._POSTAL:
             if _any(label, *needles):
-                entry = self.bank.get(row)
-                if entry and entry.value.strip():
-                    return Answer(entry.value, f"Info Bank: {entry.field_name}")
-                return Unanswered(NEEDS_KRISH, f"no stored {row}")
+                return self._from_base(what, attr)
         # City on its own. "City, State" and "City & State/Province" are
         # location questions and _location has already had its turn.
         if _any(label, " city ", "city:") and not _any(label, "state", "province",
                                                        "country", "which city"):
-            entry = self.bank.get("City")
-            if entry and entry.value.strip():
-                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+            return self._from_base("city", "city")
         return None
 
     def _name_parts(self, field: FormField) -> Resolution | None:
@@ -652,6 +685,9 @@ class Resolver:
                 field.kind == "short_text" and looks_like_essay(field.label)):
             return Unanswered(NEEDS_ESSAY, "drafted per posting, then approved")
 
+        phone = self._phone(field)
+        if phone is not None:
+            return self._fit_to_options(field, phone)
         label = _padded(field.label)
         result: Resolution | None = None
         for attempt in (self._verbatim_question(field),

@@ -201,6 +201,19 @@ def check_private_recipients(cfg) -> Check:
     return Check("his personal address", OK, f"{n} address(es) read from system_config")
 
 
+def check_contact_bases(cfg) -> Check:
+    """His two headers (package/contact.py), read from system_config because
+    the repository is public. Without both, a form asking for his phone or
+    address is refused for its role, and the letter cannot carry a header.
+    Counts only."""
+    from .package.contact import BASES_KEY, load_bases
+    got, note = load_bases(cfg)
+    if len(got) == 2:
+        return Check("his two headers", OK, note)
+    return Check("his two headers", FAIL, note + "; forms needing his phone or address "
+                 "are refused", f"write system_config {BASES_KEY} for us and uk")
+
+
 def check_live_payloads(cfg) -> Check:
     """Applications sitting in his inbox right now, against the current floor."""
     from .apply.payload import MIN_EXTENSION
@@ -352,7 +365,7 @@ def run(cfg, run_source: str, *, offline: bool = False) -> list[Check]:
             check_endpoint(SUBMITTED_URL, method="POST", expect=400,
                            name="submitted endpoint"),
             check_table_columns(cfg), check_his_view_column(cfg), check_live_payloads(cfg),
-            check_private_recipients(cfg),
+            check_private_recipients(cfg), check_contact_bases(cfg),
             check_sheet_header(cfg), check_model_keys(cfg), check_browser(),
         ]
     return checks

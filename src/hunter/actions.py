@@ -13,6 +13,10 @@ that result back onto the card.
             (approvals --apply for that job). It prepares; he presses Submit.
   outcome   payload {outcome: interview | offer | rejected | withdrew}
             What happened after he applied, on the role row.
+  header    payload {base: us | uk}
+            Which header a role takes, for one hunter could not place
+            (package/contact.py): Brooklyn and his US number, or London and
+            his UK number, on the letter, the CV and the form.
 
 Nothing here sends a message to anyone but him, and nothing presses Submit.
 """
@@ -97,6 +101,20 @@ def apply_queued(cfg: Config, sheet, canon_headers, *, apply: bool = False,
                 ok, note = True, "would prepare the application"
             else:
                 ok, note = (prepare or (lambda j: _prepare(j)))(jid)
+        elif a["kind"] == "header":
+            from .package.contact import BASES
+            base = ((a.get("payload") or {}).get("base") or "").strip().lower()
+            if base not in BASES:
+                ok, note = False, "not a header hunter knows; press US or UK"
+            elif not apply:
+                ok, note = True, f"would record the {base.upper()} header"
+            else:
+                db_patch(cfg, "hunter_seen_roles", {"job_id": jid}, {"header_base": base})
+                back = db_get(cfg, "hunter_seen_roles", {"select": "header_base",
+                                                         "job_id": f"eq.{jid}"})
+                ok = bool(back) and back[0].get("header_base") == base
+                note = (f"recorded the {base.upper()} header" if ok
+                        else "written, but the read-back did not find it")
         elif a["kind"] == "outcome":
             out = OUTCOMES.get(((a.get("payload") or {}).get("outcome") or "").lower())
             if not out:
@@ -155,6 +173,9 @@ def prepare_note(code: int, tally: dict, failures: list[str]) -> tuple[bool, str
     said = [(lambda: tally.get(style.OLD_STYLE), False,
              "built before your house style, so nothing was sent; it is rebuilt in "
              "your style before any application goes"),
+            (lambda: tally.get(run.NO_BASE), False,
+             "which header, US or UK? The form asks for your phone or address, and "
+             "this role has no header yet; nothing sent"),
             (lambda: tally.get(run.SENT_UNRECORDED), False,
              "the Apply email went, but its approval was not recorded, so its open link "
              "will not work; press Prepare again"),

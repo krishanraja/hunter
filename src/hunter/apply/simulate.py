@@ -90,13 +90,16 @@ class Result:
         return [c for c in self.checks if not c[1]]
 
 
-def run(bank: AnswerBank, *, to: str, role_location: str = "New York, NY") -> Result:
-    """Rehearse the whole chain against the live answer bank. No network."""
+def run(bank: AnswerBank, *, to: str, role_location: str = "New York, NY",
+        contact=None) -> Result:
+    """Rehearse the whole chain against the live answer bank. No network.
+    contact is the header base the role takes (package.contact.Base); his
+    phone and address come from it, and without one they stay unanswered."""
     r = Result()
 
     plan = fill.build_payload(
         DUMMY_SPEC, bank, company=DUMMY_COMPANY, role=DUMMY_ROLE,
-        jd_url=DUMMY_URL, role_location=role_location,
+        jd_url=DUMMY_URL, role_location=role_location, contact=contact,
         attachment_style="CV+CL",
         essays={"Why do you want to work at Testco?":
                 "(simulation placeholder, a real role gets a drafted answer)"})
@@ -114,8 +117,11 @@ def run(bank: AnswerBank, *, to: str, role_location: str = "New York, NY") -> Re
     r.add("legal name resolved", answered("Legal First and Last Name") != "",
           answered("Legal First and Last Name"))
     r.add("email resolved", "@" in answered("Email"), answered("Email"))
-    r.add("phone resolved", answered("Phone Number") != "",
-          answered("Phone Number"))
+    # Never the number itself: this detail is printed.
+    phone = answered("Phone Number")
+    r.add("phone resolved from the role's base",
+          bool(phone) and contact is not None and phone == contact.phone_international,
+          "the base's number" if phone else by_label["Phone Number"].reason)
     r.add("US work authorisation is Yes",
           answered("Are you legally authorized to work in the United States?")
           == "Yes")
@@ -153,7 +159,7 @@ def run(bank: AnswerBank, *, to: str, role_location: str = "New York, NY") -> Re
     h1 = approval.plan_hash(plan.as_dict())
     h2 = approval.plan_hash(fill.build_payload(
         DUMMY_SPEC, bank, company=DUMMY_COMPANY, role=DUMMY_ROLE,
-        jd_url=DUMMY_URL, role_location=role_location,
+        jd_url=DUMMY_URL, role_location=role_location, contact=contact,
         attachment_style="CV+CL",
         essays={"Why do you want to work at Testco?":
                 "(simulation placeholder, a real role gets a drafted answer)"}
