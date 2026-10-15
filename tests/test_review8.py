@@ -191,6 +191,33 @@ def test_rebuild_packages_counts_a_skipped_line_as_skipped(monkeypatch, capsys):
     assert "1 row changed before its turn" in out and "refused at a gate" not in out
 
 
+@pytest.mark.parametrize("line,label", [
+    ("waiting on the writer; the letter is asked of the routine, never the API",
+     "1 letter asked of the writer"),
+    ("held: needs one line from you about voice, audio or speech companies; "
+     "nothing fetched or built", "1 held for him"),
+])
+def test_a_house_style_wait_is_named_for_what_it_is(monkeypatch, capsys, line, label):
+    """Live on 15 October: 29 letters asked of the writer were counted as rows
+    that changed before their turn."""
+    s, _ = rebuild_world(monkeypatch, [L("ardent")], [rec("ardent")])
+    _commands(monkeypatch, s)
+    monkeypatch.setattr(R, "build_one", lambda cfg, canon, sheet, row, detail, **kw:
+                        detail.append(f"SKIPPED {row['job_id']}: {line}") or False)
+    # The counts are the same code for either reason; the test world stamps
+    # every package with his style, so the plain rebuild is the one with a target.
+    assert R.cmd_rebuild_packages(apply=True) == 0
+    out = capsys.readouterr().out
+    assert label in out and "row changed" not in out
+
+
+def test_the_style_rebuild_says_why_it_rebuilds():
+    rep = {"asked": 4, "targets": 3, "skips": {}}
+    assert "3 package(s) built before his house style" in R.rebuild_lines(
+        rep, apply=False, cap=0, style=True)[0]
+    assert "3 package(s) built without his reasons" in R.rebuild_lines(rep, apply=False, cap=0)[0]
+
+
 # ---------- B1: jd_mirror names as whole words; his note is never copied ----------
 
 KING_JD = ("Quillfield needs commercial strategy across regions, as the board asked, "
