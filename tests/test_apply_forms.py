@@ -1090,3 +1090,68 @@ def test_a_row_named_like_the_question_still_fits_a_select_of_ranges():
     r = _resolver_with(**{"Years of professional experience": "16"})
     got = r.resolve(_select("Years of professional experience", "0-5", "6-10", "10+"))
     assert got.value == "10+"
+
+
+# ---------- a role outside New York and London (his ruling 2026-10-17) ----------
+
+def _bay(rows=None, base="us"):
+    from hunter.package.contact import Base
+    from hunter.apply.infobank import AnswerBank, BankEntry, norm_label
+    rows = {"Willing to relocate?": "Open to relocation for the right role (SF preferred)"} \
+        if rows is None else rows
+    entries = {norm_label(k): BankEntry(section="C", field_name=k, value=v, status="locked",
+                                        notes="", raw_value=v) for k, v in rows.items()}
+    contact = {"us": Base("us", "Brooklyn", "+1", "+1", "United States"),
+               "uk": Base("uk", "London", "+44", "+44", "United Kingdom")}.get(base)
+    return Resolver(AnswerBank(entries=entries), role_location="San Mateo", contact=contact)
+
+
+def test_a_bay_area_role_has_him_at_his_base_and_open_to_relocating():
+    from hunter.apply.resolve import BASE_NYC
+    r = _bay()
+    got = r.resolve(_field("location", "Where are you currently located?"))
+    assert got.value == BASE_NYC and got.flagged and "open to relocating" in got.source
+    got = r.resolve(_field("boolean", "Are you open to a hybrid schedule with in-office "
+                                      "days on Monday, Wednesday, and Friday?"))
+    assert got.value == "Yes" and "Willing to relocate?" in got.source and got.flagged
+    office = r.resolve(_select("Which office location(s) are you interested in?",
+                               "London, UK", "New York, NY", "Remote, US", "San Mateo, CA"))
+    assert office.value == "San Mateo, CA", "the role's own office"
+    assert r.resolve(_field("short_text", "Location (City, State)")).value == BASE_NYC
+
+
+def test_without_his_base_or_his_relocation_answer_it_stays_his():
+    assert isinstance(_bay(base=None).resolve(
+        _field("location", "Where are you currently located?")), Unanswered)
+    got = _bay(rows={}).resolve(_field("boolean", "If not currently in the Bay Area, are you "
+                                                  "willing to relocate near our office?"))
+    assert isinstance(got, Unanswered) and "relocating" in got.note
+
+
+def test_a_country_list_in_the_options_is_answered_with_his_country():
+    r = Resolver(build_bank(), role_location="Hybrid - London")
+    got = r.resolve(_select("Are you currently based in any of these countries? Please note "
+                            "these are the only countries where we are accepting applications",
+                            "United States", "Germany", "United Kingdom", "Argentina"))
+    assert got.value == "United Kingdom" and got.flagged
+
+
+@pytest.mark.parametrize("said,want", [("Nationality", 0), ("A permit, no sponsor", 1)])
+def test_his_own_uk_basis_picks_the_option(said, want):
+    from hunter.package.contact import Base
+    r = _resolver_with(**{"UK right to work basis": said})
+    r.contact = Base("uk", "London", "+44", "+44", "United Kingdom")
+    got = r.resolve(_select("Your authorization to work in the country where you live.",
+                            *VERCEL_BASIS))
+    assert got.value == VERCEL_BASIS[want] and got.flagged
+
+
+def test_a_private_seed_can_create_its_row_and_is_never_printed():
+    from hunter.apply import bankseed
+    cfg = type("C", (), {"raw": {bankseed.PRIVATE_KEY: json.dumps([
+        {"field_name": "UK right to work basis", "value": "Nationality",
+         "status": "LOCKED", "create_if_missing": True}])}})()
+    seeds, note = bankseed.private_seeds(cfg)
+    assert seeds[0].create_if_missing and seeds[0].private and "Nationality" not in note
+    changes, problems = bankseed.plan_changes([["Field", "Value"]], seeds)
+    assert problems == [] and any(c.after == "Nationality" for c in changes)
