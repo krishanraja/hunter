@@ -130,6 +130,9 @@ def plan_changes(rows: list[list], seed_list: list[Seed] | None = None
     not make this write the wrong cell.
     """
     seed_list = seed_list or seeds()
+    # The sheet hands a number back as a number: the 16 written for his years
+    # read back as the int 16 and stopped the next run (2026-10-17).
+    rows = [[("" if c is None else str(c)) for c in (r or [])] for r in rows]
     index: dict[str, int] = {}
     for i, raw in enumerate(rows, 1):
         name = (raw[0] if raw else "").strip()
@@ -152,19 +155,20 @@ def plan_changes(rows: list[list], seed_list: list[Seed] | None = None
             next_new += 1
             changes.append(Change(row_num, s.field_name, "A", "", s.field_name,
                                   s.ruling, s.private))
-            before_val, before_status = "", ""
+            before_val, before_status, before_notes = "", "", ""
         else:
             raw = (rows[row_num - 1] + ["", "", "", ""])[:4]
             before_val, before_status = raw[1].strip(), raw[2].strip()
+            before_notes = raw[3].strip()
         if before_val.strip() != s.value.strip():
             changes.append(Change(row_num, s.field_name, "B", before_val,
                                   s.value, s.ruling, s.private))
         if s.status and before_status != s.status:
             changes.append(Change(row_num, s.field_name, "C", before_status,
                                   s.status, s.ruling, s.private))
-        if s.notes:
-            changes.append(Change(row_num, s.field_name, "D", "", s.notes,
-                                  s.ruling, s.private))
+        if s.notes and before_notes != s.notes.strip():
+            changes.append(Change(row_num, s.field_name, "D", before_notes,
+                                  s.notes, s.ruling, s.private))
     return changes, problems
 
 
