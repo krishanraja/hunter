@@ -733,9 +733,9 @@ def test_the_approval_path_drafts_its_essays_from_his_view(monkeypatch):
     got = {}
     monkeypatch.setattr(run_mod, "GoogleOAuth", lambda cfg: type(
         "O", (), {"access_token": lambda self=None: "t"})())
-    monkeypatch.setattr(docbuild, "DocBuild", lambda tok: object())
-    monkeypatch.setattr(build_mod, "read_master_facts",
-                        lambda db: type("F", (), {"cv_master_text": "krish opened 3 markets"})())
+    monkeypatch.setattr(docbuild, "DocBuild", lambda tok: type(
+        "D", (), {"get": lambda self, i: i, "paragraphs": lambda self, d: [
+            {"text": "krish opened 3 markets"}]})())
     bank = type("B", (), {"profile": {}, "interview": {}, "entries": {},
                           "banned_phrases": ("synergy",)})()
     monkeypatch.setattr(infobank, "load_bank", lambda read: bank)
@@ -749,6 +749,36 @@ def test_the_approval_path_drafts_its_essays_from_his_view(monkeypatch):
     run_mod._draft_essays(Cfg(), None, role, ["Why us?"], [], view=v)
     assert got["his_view"] is v
     assert set(voicegate.ARROGANCE_BANNED) <= set(got["banned_phrases"])
+
+
+def test_essays_read_his_house_cv_whose_summary_carries_his_bold(monkeypatch):
+    """17 October: the essays read the old builder's master facts, which refuse
+    a CV whose summary is bold, and 8 forms waited on essays never asked for."""
+    from fake_docs import FakeDocBuild
+    from hunter import config as config_mod
+    from hunter.apply import essays, infobank
+    from hunter.apply.merge import page_count
+    from hunter.package import masters
+    import hunter.docbuild as docbuild
+    from test_house import letter as specimen
+    from test_masters import cv_doc
+    docs = FakeDocBuild({"cv": cv_doc(), "spec": specimen()})
+    docs.export_pages = [2]
+    cvm = masters.build_cv_master(docs, "cv", "spec", folder_id="f", page_count=page_count,
+                                  apply=True)["made"]
+    monkeypatch.setattr(config_mod, "CV_MASTER_ID", cvm)
+    monkeypatch.setattr(run_mod, "GoogleOAuth", lambda cfg: type(
+        "O", (), {"access_token": lambda self=None: "t"})())
+    monkeypatch.setattr(docbuild, "DocBuild", lambda tok: docs)
+    monkeypatch.setattr(infobank, "load_bank", lambda read: type(
+        "B", (), {"profile": {}, "interview": {}, "entries": {}, "banned_phrases": ()})())
+    got = {}
+    monkeypatch.setattr(essays, "draft_all",
+                        lambda cfg, questions, **kw: got.update(kw) or {"Why us?": "x"})
+    notes = []
+    role = type("R", (), {"company": "Quillfield", "title": "VP", "jd_text": "jd"})()
+    assert run_mod._draft_essays(Cfg(), None, role, ["Why us?"], notes) == {"Why us?": "x"}
+    assert notes == [] and "invented region" in got["evidence"]
 
 
 # ---------- 6. rebuild-packages: which packages ----------

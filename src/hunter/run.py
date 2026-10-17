@@ -6632,14 +6632,17 @@ def _draft_essays(cfg: Config, sheet: Sheet, role, questions: list[str],
     from .apply import essays as essays_mod
     from .apply.infobank import load_bank
     from .docbuild import DocBuild
-    from .package.build import read_master_facts
     from .package.voicegate import build_evidence, package_banned
     try:
         db = DocBuild(GoogleOAuth(cfg).access_token())
-        facts = read_master_facts(db)
+        # His CV's words are the evidence, so its text is all this reads. It
+        # read the old builder's master facts until 2026-10-17, which refuse
+        # his house CV (its summary carries his bold): that morning 8 forms
+        # waited on essays no model was ever asked for.
+        cv_text = _doc_text(db, config_mod.CV_MASTER_ID)
         bank = load_bank(lambda tab: sheet.read_tab_formulas(f"{tab}!A1:Z400"))
         evidence = build_evidence(
-            facts.cv_master_text,
+            cv_text,
             "\n".join(bank.profile.values()),
             "\n".join(bank.interview.values()),
             "\n".join(e.value for e in bank.entries.values()),
