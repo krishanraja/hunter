@@ -1155,3 +1155,13 @@ def test_a_private_seed_can_create_its_row_and_is_never_printed():
     assert seeds[0].create_if_missing and seeds[0].private and "Nationality" not in note
     changes, problems = bankseed.plan_changes([["Field", "Value"]], seeds)
     assert problems == [] and any(c.after == "Nationality" for c in changes)
+
+
+def test_a_number_the_sheet_hands_back_is_read_as_the_text_it_was():
+    from hunter.apply import bankseed
+    rows = [["Field", "Value", "Status"],
+            ["Years of professional experience", 16, "\U0001F7E2 LOCKED", "his whole career, "
+             "as his CV and Profile say: 16 years"]]
+    seed = [s for s in bankseed.seeds() if s.field_name == "Years of professional experience"]
+    changes, problems = bankseed.plan_changes(rows, seed)
+    assert problems == [] and changes == [], "already there, nothing to write"
