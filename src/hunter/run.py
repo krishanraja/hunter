@@ -6481,21 +6481,8 @@ def cmd_bank_seed(apply: bool = False) -> int:
     print(f"{INFO_TAB}: {len(rows)} rows read, {len(changes)} cell(s) to write"
           f"{'' if apply else ' (dry run, pass --apply to write)'}")
     print(f"{note}\n")
-    for c in sorted(changes, key=lambda x: (x.row, x.column)):
-        tag = "NEW ROW" if c.is_new else "       "
-        print(f"  {tag} {c.column}{c.row:<4} {c.field_name[:46]}")
-        if c.private:
-            print("          (his own answer, not printed)")
-            continue
-        if c.before:
-            print(f"          was:  {c.before[:88]}")
-        print(f"          now:  {c.after[:88]}")
-        if c.ruling:
-            print(f"          why:  {c.ruling}")
-    if problems:
-        print("\nnot written:")
-        for p in problems:
-            print("  " + p)
+    for line in bankseed.report_lines(changes, problems):
+        print(line)
     if apply:
         n = bankseed.apply_changes(sheet, changes)
         print(f"\nwrote and verified {n} cell(s)")
