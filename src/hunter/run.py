@@ -7810,7 +7810,11 @@ def missing_email(missing: list[dict]) -> tuple[str, str, str]:
     for m in missing:
         for q in m["questions"]:
             asks.setdefault(tuple(q), []).append(f"{m['role']} at {m['company']}")
-    roles = len({(m["company"], m["role"]) for m in missing})
+    # One title in two countries is two applications and one line.
+    for q, who in asks.items():
+        asks[q] = [w + (f" ({who.count(w)} postings)" if who.count(w) > 1 else "")
+                   for w in dict.fromkeys(who)]
+    roles = len(missing)
     sheet_url = f"https://docs.google.com/spreadsheets/d/{config_mod.WORKBOOK_ID}/edit"
     subject = (f"hunter: {len(asks)} question(s) your Info Bank can't answer yet, "
                f"holding {roles} application(s)")

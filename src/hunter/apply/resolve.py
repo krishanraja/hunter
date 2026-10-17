@@ -214,6 +214,38 @@ def comp_floor(bank: AnswerBank) -> str:
     return ""
 
 
+# His whole career, asked plainly: "years of professional experience",
+# "years of relevant experience". A question about one field ("years of
+# experience do you have in the Human Data industry", "years of B2B sales
+# experience") is a different question, and his to answer.
+_YEARS = re.compile(r"\byears of (?:relevant |total |overall )?(?:professional |work |working )?"
+                    r"experience\b")
+_QUALIFIED = re.compile(r"\bexperience(?: do you have)? (?:in|with|as|at|managing|leading|"
+                        r"selling|working)\b")
+
+
+def years_band(years: int, options) -> str | None:
+    """The one option whose range holds `years`: "13-15", "15+", "8+",
+    "< 1", "1-2 years", "More than 10". None unless exactly one does."""
+    hits = []
+    for o in options:
+        t = o.label.lower()
+        nums = [int(x) for x in re.findall(r"\d+", t)]
+        if not nums:
+            continue
+        if "+" in t or "more than" in t or "over " in t:
+            ok = years >= nums[0] + (0 if "+" in t else 1)
+        elif "<" in t or "less than" in t or "under " in t:
+            ok = years < nums[0]
+        elif len(nums) >= 2:
+            ok = nums[0] <= years <= nums[1]
+        else:
+            ok = years == nums[0]
+        if ok:
+            hits.append(o.label)
+    return hits[0] if len(hits) == 1 else None
+
+
 class Resolver:
     """Resolves against an AnswerBank.
 
@@ -332,6 +364,31 @@ class Resolver:
                                   "(residence is NYC or London)")
                 return Answer(YES, "Info Bank: US, UK and AU authorisation")
         return None
+
+    def _work_basis(self, field: FormField) -> Resolution | None:
+        """Authorised by nationality, or on a permit that needs no sponsor:
+        forms that ask which, in the country he lives in for this role.
+
+        In the US his Info Bank records a visa and no sponsorship, so it is
+        the permit that needs no sponsor. Elsewhere the basis is not
+        recorded, and it is his to say."""
+        labels = [o.label for o in field.options]
+        low = [x.lower() for x in labels]
+        if not (any("nationality" in x for x in low) and any("permit" in x for x in low)):
+            return None
+        juris = _jurisdiction(_padded(field.label)) or \
+            {"us": "US", "uk": "UK"}.get(getattr(self.contact, "key", ""), "")
+        visa = self.bank.get("US visa status (specific)")
+        sponsor = self.bank.get("Will you require sponsorship in US?")
+        if juris == "US" and visa and visa.value.strip() and sponsor and \
+                sponsor.value.strip().lower() == "no":
+            fit = [x for x, l in zip(labels, low) if "permit" in l and re.search(r"\bnot\b", l)]
+            if len(fit) == 1:
+                return Answer(fit[0], "Info Bank: US visa status and Will you require "
+                                      "sponsorship in US? (No)", flagged=True)
+        return Unanswered(NEEDS_KRISH, f"whether your right to work in "
+                                       f"{juris or 'that country'} is by nationality or "
+                                       f"a permit is not recorded")
 
     # ---------- residence, office and relocation ----------
 
@@ -577,7 +634,9 @@ class Resolver:
     def _how_did_you_hear(self, field: FormField) -> Resolution | None:
         if not _any(_padded(field.label), "how did you hear", "how did you find",
                     "where did you hear", "how were you referred",
-                    "how did you learn about"):
+                    "how did you learn about", "where did you first hear",
+                    "how did you first hear", "hear about this role",
+                    "hear about this job", "hear about this position"):
             return None
         entry = self.bank.get("How did you hear about us (default)")
         if entry and entry.value.strip():
@@ -620,11 +679,34 @@ class Resolver:
         if _any(label, "current company", "current employer", "employer name",
                 "where do you currently work", "who do you currently work",
                 "present employer", "company you work for",
-                "company do you work for", "company are you at"):
+                "company do you work for", "company are you at",
+                "most recent company"):
             entry = self.bank.get("Current company")
             if entry and entry.value.strip():
+                # His company has one name, written his way (his ruling
+                # 2026-10-15), whatever spelling an older cell holds: the
+                # Info Bank said "Mindmake" when he chose "mind/make".
+                from .gtmseed import COMPANY_NAME, name_problems
+                if name_problems(entry.value):
+                    return Answer(COMPANY_NAME, f"Info Bank: {entry.field_name}, "
+                                                f"written his way")
                 return Answer(entry.value, f"Info Bank: {entry.field_name}")
             return Unanswered(NEEDS_KRISH, "no stored current company")
+        # His job title now, as his CV gives it. Never "current role" alone:
+        # "how long have you been in your current role" is not this question.
+        if _any(label, "current title", "current job title", "current role title",
+                "most recent title", "most recent job title", "most recent role title"):
+            entry = self.bank.get("Current title")
+            if entry and entry.value.strip():
+                return Answer(entry.value, f"Info Bank: {entry.field_name}")
+            return Unanswered(NEEDS_KRISH, "no stored current title")
+        if _YEARS.search(label) and not _QUALIFIED.search(label):
+            entry = self.bank.get("Years of professional experience")
+            years = int(entry.value) if entry and entry.value.strip().isdigit() else None
+            if years is None:
+                return Unanswered(NEEDS_KRISH, "no stored years of professional experience")
+            # A select of ranges ("13-15", "15+") is fitted in _fit_to_options.
+            return Answer(str(years), f"Info Bank: {entry.field_name}")
         if _any(label, "startup experience", "worked at a startup",
                 "experience at a startup", "early stage experience",
                 "worked in a startup"):
@@ -691,7 +773,7 @@ class Resolver:
             return self._fit_to_options(field, phone)
         label = _padded(field.label)
         result: Resolution | None = None
-        for attempt in (self._verbatim_question(field),
+        for attempt in (self._verbatim_question(field), self._work_basis(field),
                         self._authorisation(label), self._location(field),
                         self._name_parts(field), self._postal(field),
                         self._how_did_you_hear(field), self._about_him_now(field),
@@ -723,6 +805,12 @@ class Resolver:
             only = field.options[0].label
             return Answer(only, result.source + " (the form's only option)",
                           flagged=True, note=result.note)
+        if picked is None and result.value.strip().isdigit():
+            # A number against a select of ranges: the one range that holds it.
+            band = years_band(int(result.value), field.options)
+            if band is not None:
+                return Answer(band, f"{result.source} ({result.value})",
+                              flagged=result.flagged, note=result.note)
         if picked is None:
             return Unanswered(
                 NO_MATCH,

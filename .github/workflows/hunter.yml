@@ -32,7 +32,7 @@ on:
                   close-submitted, confirmations, settle, score-builds, rebuild-packages, judge-eval, blind-set, blind-eval, applied, stats, prune-sheet, bridges,
                   reconcile, recon, verify, retire, unretire,
                   door-coverage, door-cards, drafts, actions, facts, letter-master, cv-master,
-                  build-preview, doc-edits]
+                  build-preview, doc-edits, bank-seed]
       extra:
         description: "extra arguments, for example --max 2 or --apply"
         type: string

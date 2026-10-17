@@ -932,13 +932,18 @@ def _resolver_with(**rows):
 @pytest.mark.parametrize("label", [
     "Current company", "Current employer", "Where do you currently work?",
     "Present employer", "What company do you work for?",
+    "Please provide the name of your current (or most recent) company",
+    "Current Company (or most recent)",
 ])
 def test_current_company_is_answered_however_it_is_worded(label):
     """Revin asked for it and the application was held. A verbatim Info Bank
-    row would only ever have matched Revin's exact wording."""
-    r = _resolver_with(**{"Current company": "Mindmake"})
-    res = r.resolve(_field("short_text", label))
-    assert getattr(res, "value", "") == "Mindmake"
+    row would only ever have matched Revin's exact wording. Reddit's wording
+    held two more on 2026-10-17. His company is written his way (2026-10-15),
+    whatever spelling the cell still holds."""
+    for cell in ("Mindmake", "mind/make"):
+        r = _resolver_with(**{"Current company": cell})
+        res = r.resolve(_field("short_text", label))
+        assert getattr(res, "value", "") == "mind/make", (label, cell)
 
 
 @pytest.mark.parametrize("label", [
@@ -997,3 +1002,91 @@ def test_a_short_bank_row_never_hijacks_a_smarter_rule():
     bank_q = r.resolve(_field(
         "boolean", "Do you have experience at an investment bank in a leadership role?"))
     assert getattr(bank_q, "value", "") == "No"
+
+
+# ---------- what forms ask about him now (his choice 2026-10-17) ----------
+
+def _select(label, *options):
+    from hunter.apply.model import Option
+    return FormField(key="q", label=label, kind="single_select", required=True,
+                     options=tuple(Option(o, o) for o in options))
+
+
+@pytest.mark.parametrize("label", [
+    "What  is your current or most recent role title?",
+    "Current Title or Role (or most recent)", "Current job title"])
+def test_his_title_is_the_one_his_cv_gives(label):
+    r = _resolver_with(**{"Current title": "Founder and CEO"})
+    assert r.resolve(_field("short_text", label)).value == "Founder and CEO"
+
+
+def test_a_question_about_his_current_role_is_not_his_title():
+    r = _resolver_with(**{"Current title": "Founder and CEO"})
+    got = r.resolve(_field("short_text", "How long have you been in your current role?"))
+    assert getattr(got, "value", "") != "Founder and CEO"
+
+
+@pytest.mark.parametrize("options,want", [
+    (("< 1", "1-3", "4-7", "8-12", "13-15", "15+"), "15+"),
+    (("1-2 years", "3-5 years", "6-8 years", "8+"), "8+"),
+    (("0-5", "6-10", "More than 10"), "More than 10"),
+    (("10-15", "15-20", "20+"), "15-20"),
+])
+def test_his_years_pick_the_one_band_that_holds_them(options, want):
+    r = _resolver_with(**{"Years of professional experience": "16"})
+    got = r.resolve(_select("How many years of professional experience (non-internship "
+                            "and non-academic) do you have?", *options))
+    assert got.value == want
+
+
+def test_his_years_on_a_free_field_and_never_for_one_industry():
+    r = _resolver_with(**{"Years of professional experience": "16"})
+    assert r.resolve(_field("number", "How many years of relevant professional experience "
+                                      "do you have?")).value == "16"
+    for label in ("How many years of experience do you have in the Human Data industry?",
+                  "How many years of B2B sales experience do you have?",
+                  "Years of experience managing a team"):
+        assert getattr(r.resolve(_field("number", label)), "value", "") != "16", label
+    two = r.resolve(_select("How many years of professional experience do you have?",
+                            "10-16", "16+"))
+    assert isinstance(two, Unanswered), "16 sits in two bands: not guessed"
+
+
+VERCEL_BASIS = ("I am authorized to work in the country due to my nationality",
+                "I am authorized to work in the country based on a valid work permit and "
+                "do not need a company to sponsor my visa",
+                "I am authorized to work in the country based on a valid work permit which "
+                "needs to be sponsored by the company I work for",
+                "I am not authorized to work in the country and need visa support", "Other")
+
+
+def test_his_us_work_rights_are_the_permit_that_needs_no_sponsor():
+    from hunter.package.contact import Base
+    rows = {"US visa status (specific)": "X-1", "Will you require sponsorship in US?": "No"}
+    us = Base("us", "Brooklyn", "+1", "+1", "United States")
+    uk = Base("uk", "London", "+44", "+44", "United Kingdom")
+    label = "Your authorization to work in the country where you live."
+    r = _resolver_with(**rows)
+    r.contact = us
+    got = r.resolve(_select(label, *VERCEL_BASIS))
+    assert got.value == VERCEL_BASIS[1] and got.flagged
+    r.contact = uk
+    got = r.resolve(_select(label, *VERCEL_BASIS))
+    assert isinstance(got, Unanswered) and "nationality or a permit" in got.note
+    r = _resolver_with(**{"Will you require sponsorship in US?": "No"})
+    r.contact = us
+    assert isinstance(r.resolve(_select(label, *VERCEL_BASIS)), Unanswered), "no visa recorded"
+
+
+@pytest.mark.parametrize("label", ["Where did you first hear about this role?",
+                                   "How did you first hear about us?"])
+def test_where_he_first_heard_is_his_recorded_default(label):
+    r = _resolver_with(**{"How did you hear about us (default)": "LinkedIn"})
+    got = r.resolve(_select(label, "Events", "Built In", "LinkedIn", "Google Search"))
+    assert got.value == "LinkedIn"
+
+
+def test_a_row_named_like_the_question_still_fits_a_select_of_ranges():
+    r = _resolver_with(**{"Years of professional experience": "16"})
+    got = r.resolve(_select("Years of professional experience", "0-5", "6-10", "10+"))
+    assert got.value == "10+"
