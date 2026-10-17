@@ -346,7 +346,8 @@ OUTCOMES = {
     "sent": dict(plan=Plan(), want=(True, "sent: the Apply email is on its way")),
     "taken": dict(plan=Plan(), live=True, want=(True, "already has an application waiting")),
     "refused": dict(plan=Blocked("no answer in the bank"),
-                    want=(False, "refused: a required question has no answer")),
+                    want=(False, "refused: the form asks a question your Info Bank has no "
+                                 "answer for; the question is in your email")),
     "essay": dict(plan=Blocked(_essay()), want=(False, "an essay did not draft")),
     "by hand": dict(plan=Plan(readable=False), want=(True, "sent as by hand")),
     "off sheet": dict(plan=Plan(), lines=[L("brisk", k="9")],
@@ -680,7 +681,7 @@ def test_adding_the_missing_answer_reopens_the_posting(monkeypatch):
                                      Blocked("no answer in the bank"))
     tally = {}
     R.cmd_approvals(apply=True, prefill=False, chosen=[rec("ardent")], tally=tally)
-    assert tally == {R.REFUSED_BLOCKING: 1}
+    assert tally == {R.REFUSED_BLOCKING: 1, R.MISSING_EMAILED: 1}
     assert db.tables["hunter_alerts"][0]["fingerprint"] == R.prepared_fingerprint(
         rec("ardent"), R.REFUSED_BLOCKING, bank=R.bank_hash({}))
     s = R.Sheet("x")
@@ -716,3 +717,57 @@ def test_a_failed_essay_beside_a_missing_answer_writes_no_permanent_mark(monkeyp
         R.ESSAY_NOT_DRAFTED]
 
 
+
+
+# ---------- his missing answers, named to him (his choice 2026-10-17) ----------
+
+def test_the_questions_he_must_answer_are_named_and_nothing_else():
+    from hunter.apply.resolve import NEEDS_BASE, NEEDS_ESSAY, NEEDS_KRISH, NO_MATCH
+    plan = Plan(blocking=("Are you open to relocating?", "Phone", "Why us?",
+                          "Desired salary", "Are you open to relocating?"))
+    for f, why in zip(plan.blocking, (NEEDS_KRISH, NEEDS_BASE, _essay(),
+                                      f"{NO_MATCH}: Info Bank Salary expectations is empty",
+                                      NEEDS_KRISH)):
+        f.reason = why
+    assert R.missing_questions(plan) == [("Are you open to relocating?", ""),
+                                         ("Desired salary", "Salary expectations")]
+
+
+def test_one_email_names_each_question_once_with_every_role_that_asks_it():
+    missing = [{"company": "Ardent", "role": "VP", "questions": [("Visa status?", "")]},
+               {"company": "Brisk", "role": "Head of Partnerships",
+                "questions": [("Visa status?", ""), ("Desired salary", "Salary expectations")]}]
+    subject, html, text = R.missing_email(missing)
+    assert subject.startswith("hunter: 2 question(s) your Info Bank can't answer yet, "
+                              "holding 2 application(s)")
+    assert html.count("Visa status?") == 1 and "VP at Ardent; Head of Partnerships at Brisk" in html
+    assert 'fill the row "Salary expectations"' in html and "Application Info Bank" in html
+    assert "press <b>Prepare</b>" in html and text.startswith("[hunter-outbound]")
+    assert "\u2014" not in html + text
+
+
+def test_a_batch_mails_its_missing_questions_once_and_logs_only_counts(monkeypatch, capsys):
+    lines = [L("ardent", k="10"), L("brisk", k="8")]
+    db, mailed, reached = approvals_world(monkeypatch, lines, [rec("ardent"), rec("brisk")],
+                                          Blocked("no answer in the bank"))
+    _commands(monkeypatch, R.Sheet("x"))
+    sent = []
+    monkeypatch.setattr(R, "send_missing_answers",
+                        lambda cfg, missing: sent.append(list(missing)) or True)
+    R.cmd_approvals_wanted(apply=True)
+    assert len(sent) == 1 and [m["company"] for m in sent[0]] == ["Ardent", "Brisk"]
+    out = capsys.readouterr().out
+    assert "2 missing questions emailed" in out
+    assert "Question 0" not in out and "Ardent" not in out and "Brisk" not in out
+
+
+def test_a_form_missing_only_his_header_pick_mails_no_question(monkeypatch):
+    from hunter.apply.resolve import NEEDS_BASE
+    db, mailed, reached = approvals_world(monkeypatch, [L("ardent", k="9")], [rec("ardent")],
+                                          Blocked(NEEDS_BASE + ": no base"))
+    sent = []
+    monkeypatch.setattr(R, "send_missing_answers",
+                        lambda cfg, missing: sent.append(missing) or True)
+    tally = {}
+    R.cmd_approvals(apply=True, prefill=False, chosen=[rec("ardent")], tally=tally)
+    assert sent == [] and R.MISSING_EMAILED not in tally

@@ -1062,7 +1062,7 @@ def test_prepare_all_sends_each_posting_once_and_prints_counts_only(monkeypatch,
     _commands(monkeypatch, s)
     calls = []
 
-    def approvals(apply=False, job_id="", prefill=True, *, chosen=None, tally=None):
+    def approvals(apply=False, job_id="", prefill=True, *, chosen=None, tally=None, missing=None):
         assert apply and len(chosen) == 1
         calls.append(chosen[0]["job_id"])
         # what the real one prints: the application itself
@@ -1091,7 +1091,7 @@ def test_prepare_all_one_failure_does_not_stop_the_rest(monkeypatch, capsys):
     _commands(monkeypatch, s)
     calls = []
 
-    def approvals(apply=False, job_id="", prefill=True, *, chosen=None, tally=None):
+    def approvals(apply=False, job_id="", prefill=True, *, chosen=None, tally=None, missing=None):
         calls.append(chosen[0]["job_id"])
         if len(calls) == 1:
             raise RuntimeError(f"export failed for {chosen[0]['company']}")
@@ -1205,7 +1205,7 @@ def test_batches_get_past_roles_that_mint_no_token(monkeypatch, capsys):
     _commands(monkeypatch, s)
     calls = []
 
-    def approvals(apply=False, job_id="", prefill=True, *, chosen=None, tally=None):
+    def approvals(apply=False, job_id="", prefill=True, *, chosen=None, tally=None, missing=None):
         row_ = chosen[0]
         calls.append(row_["job_id"])
         if row_["job_id"] in ("ardent:vp", "brisk:vp"):
@@ -1290,7 +1290,10 @@ def test_cmd_approvals_marks_what_it_dealt_with_and_minted_no_token_for(
     db, mailed, _ = approvals_world(monkeypatch, [L("ardent", k="9")], [rec("ardent")], plan)
     tally = {}
     run_mod.cmd_approvals(apply=True, prefill=False, chosen=[rec("ardent")], tally=tally)
-    assert tally == {outcome: 1}
+    # A refusal names its question to him (his choice 2026-10-17); by hand mails the pack.
+    asked = {run_mod.MISSING_EMAILED: 1} if outcome == "refused_blocking" else {}
+    assert tally == {outcome: 1, **asked}
+    assert mailed["approval"] == ([1] if asked else [])
     marks = [m for m in db.tables.get("hunter_alerts", [])]
     assert [m["detail"]["outcome"] for m in marks] == [outcome]
     assert marks[0]["fingerprint"] == run_mod.prepared_fingerprint(

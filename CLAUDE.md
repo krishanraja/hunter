@@ -438,6 +438,12 @@ docs/HANDOVER_LETTERS.md is the full record.
   cancels it, so Prepare sends his version. batchstats records letters built,
   edited and the median edit size: a falling edit size is the measure that the
   letters are getting closer to his.
+- **A form that stops on an answer only he can give names the question to
+  him** (his choice 2026-10-17, "Always tell me missing questions"):
+  `missing_email`, one email per run, each question once with the roles that
+  ask it and the Info Bank row it goes in. Never his US or UK pick and never an
+  essay. Until then the refusal was a count in a log, and 13 of his 31 rebuilt
+  packages sat refused for answers he was never asked for. The log stays counts.
 - **The masters change with canon 9.9, together**, or every run aborts. Drains
   start at :13 and finish by :15; switch just after.
 - **Previews before changes he will read.** `build-preview --queue`, then the

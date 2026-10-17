@@ -6802,7 +6802,8 @@ def posting_is_gone(row: dict) -> bool | None:
 
 def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *,
                   chosen: list[dict] | None = None, tally: dict | None = None,
-                  failures: list[str] | None = None) -> int:
+                  failures: list[str] | None = None,
+                  missing: list[dict] | None = None) -> int:
     """Build and, with --apply, send one approval email per built package.
 
     Dry run by default: it builds the whole application as the email would show
@@ -6828,6 +6829,9 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
     did not draft is marked for a day, so the next batch moves on. tally, when given, counts each outcome, for
     a caller that prints counts and nothing else; failures, when given, gets
     the class of each error that stopped one (actions._prepare's note).
+    A form refused for a missing answer names its questions to him
+    (send_missing_answers): in one email at the end of this run, or, when
+    `missing` is given, appended to it for the caller's one email.
     """
     def count(outcome: str) -> None:
         if tally is not None:
@@ -7033,6 +7037,8 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
     # a LinkedIn Easy Apply role will be unfillable on every run for ever. One
     # permanently red workflow teaches him to stop reading the colour.
     by_hand: list[str] = []
+    # Forms refused for an answer only he can give, with their questions.
+    found: list[dict] = []
     for row in rows:
         key = posting_key(row)
         if key and key in taken:
@@ -7251,6 +7257,10 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
                     print(note)
                 continue
             count(REFUSED_BLOCKING)
+            asked = missing_questions(plan)
+            if asked:
+                found.append({"company": role.company, "role": role.title,
+                              "questions": asked})
             note = mark_prepared(cfg, row, REFUSED_BLOCKING, bank=bank)
             if note:
                 print(note)
@@ -7316,6 +7326,17 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
               f"were emailed so he can apply himself:")
         for line in by_hand:
             print(f"  {line}")
+    if missing is not None:
+        missing.extend(found)
+    elif apply and found:
+        try:
+            if send_missing_answers(cfg, found):
+                count(MISSING_EMAILED)
+                print(f"\nthe missing questions for {len(found)} posting(s) were emailed")
+            else:
+                print("\nthe missing questions could not be emailed (no mail channel)")
+        except Exception as e:
+            print(f"\nthe missing questions could not be emailed ({e.__class__.__name__})")
     # A failure that stopped an application reaching him is a failing run, but
     # only after every one that could be sent has been. A role he was sent the
     # documents for is NOT a failure: it reached him, which is the whole job,
@@ -7750,6 +7771,75 @@ PREPARED_SKIPS = {BY_HAND: "sent to apply by hand before, package unchanged",
                   REFUSED_BLOCKING: "refused before for a missing answer, package and "
                                     "answer bank unchanged",
                   ESSAY_NOT_DRAFTED: "an essay did not draft within the last day"}
+
+# His choice, 2026-10-17, asked whether every package was ready to apply in one
+# click: "Always tell me missing questions". A form that stops on a question his
+# answer bank cannot answer names it to him, in one email per run. Until then
+# the refusal was a count in a log, and that day 13 of his 31 rebuilt packages
+# had been refused for answers he was never asked for.
+MISSING_EMAILED = "missing questions emailed"
+_EMPTY_ROW = re.compile(r"Info Bank (.+?) is empty")
+
+
+def missing_questions(plan) -> list[tuple[str, str]]:
+    """(question, the Info Bank row to fill, or "") for each required field
+    his answer bank has to give. Never his US or UK pick (a header base) or an
+    essay, which hunter drafts itself."""
+    from .apply.resolve import NEEDS_BASE, NEEDS_ESSAY
+    out: list[tuple[str, str]] = []
+    for f in plan.blocking:
+        why = getattr(f, "reason", "") or ""
+        if why.startswith(NEEDS_BASE) or why.startswith(NEEDS_ESSAY):
+            continue
+        question = " ".join((getattr(f, "label", "") or getattr(f, "key", "") or "").split())
+        m = _EMPTY_ROW.search(why)
+        item = (question, m.group(1).strip() if m else "")
+        if question and item not in out:
+            out.append(item)
+    return out
+
+
+def missing_email(missing: list[dict]) -> tuple[str, str, str]:
+    """(subject, html, text) for one email: each question once, the roles that
+    ask it, and where his answer goes. Never a token, an answer or a value."""
+    from . import config as config_mod
+    asks: dict[tuple[str, str], list[str]] = {}
+    for m in missing:
+        for q in m["questions"]:
+            asks.setdefault(tuple(q), []).append(f"{m['role']} at {m['company']}")
+    roles = len({(m["company"], m["role"]) for m in missing})
+    sheet_url = f"https://docs.google.com/spreadsheets/d/{config_mod.WORKBOOK_ID}/edit"
+    subject = (f"hunter: {len(asks)} question(s) your Info Bank can't answer yet, "
+               f"holding {roles} application(s)")
+    bits = [f"<p><b>{len(asks)} question(s) stopped {roles} application(s).</b> Hunter "
+            f"has no answer for them, so these forms were not filled and nothing was "
+            f"sent.</p>",
+            f'<p>Answer each once in the <a href="{sheet_url}">Application Info Bank</a> '
+            f"tab. Where a row is named, type your answer in its Value cell. Otherwise "
+            f"add a row with the question exactly as written below in Field, your "
+            f"answer in Value and LOCKED in Status. Every form that asks it uses your "
+            f"answer from then on.</p>",
+            "<p>Then press <b>Prepare</b> on each role in Control Center, and its filled "
+            "form comes to you.</p><ul>"]
+    lines = ["[hunter-outbound]", subject, ""]
+    for (q, row), who in sorted(asks.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        where = f' (fill the row "{html_mod.escape(row)}")' if row else ""
+        bits.append(f"<li><b>{html_mod.escape(q)}</b>{where}<br>Asked by: "
+                    f"{html_mod.escape('; '.join(who))}</li>")
+        lines.append(f"- {q}" + (f' (fill the row "{row}")' if row else "")
+                     + f": {'; '.join(who)}")
+    bits.append("</ul>")
+    return subject, "".join(bits), "\n".join(lines)
+
+
+def send_missing_answers(cfg: Config, missing: list[dict]) -> bool:
+    """Mail him the questions. True only when a channel took the email."""
+    from . import notify
+    if not missing:
+        return False
+    subject, html, text = missing_email(missing)
+    got = notify.send_email(cfg, subject, html, to=notify.mailbox(cfg), text=text)
+    return bool((got or {}).get("sent"))
 
 
 def bank_hash(bank) -> str:
@@ -8187,13 +8277,23 @@ def cmd_approvals_wanted(apply: bool = False, max_n: int = 0) -> int:
         return 0
     tally: Counter = Counter()
     errors: Counter = Counter()
+    missing: list[dict] = []
     for row in todo:
         try:
             with contextlib.redirect_stdout(io.StringIO()):
-                cmd_approvals(apply=True, chosen=[row], tally=tally)
+                cmd_approvals(apply=True, chosen=[row], tally=tally, missing=missing)
         except Exception as e:
             tally["failed"] += 1
             errors[e.__class__.__name__] += 1
+    if missing:
+        # One email for the batch, each question once (missing_email).
+        try:
+            if send_missing_answers(cfg, missing):
+                tally[MISSING_EMAILED] += len(missing)
+            else:
+                errors["missing questions not emailed"] += 1
+        except Exception as e:
+            errors[f"missing questions: {e.__class__.__name__}"] += 1
     print(_counts_line("prepare: outcome", dict(tally)))
     if errors:
         print(_counts_line("prepare: errors", dict(errors)))
