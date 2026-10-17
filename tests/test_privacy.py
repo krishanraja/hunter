@@ -53,3 +53,17 @@ def test_a_private_change_never_quotes_its_value_on_a_failed_read_back():
         bankseed.apply_changes(S(), changes)
     assert "Invented answer" not in str(e.value)
     assert "something else" not in str(e.value)
+
+
+def test_a_private_row_prints_neither_its_name_nor_its_answer():
+    # A form's question names the employer that asked it.
+    seeds = [bankseed.Seed("Have you ever interviewed at Examplecorp before?", "Invented",
+                           private=True, create_if_missing=True),
+             bankseed.Seed("Is this a private question too?", "Also invented",
+                           private=True)]
+    changes, problems = bankseed.plan_changes([["Field", "Value"]], seeds)
+    out = "\n".join(bankseed.report_lines(changes, problems))
+    assert changes and problems
+    for secret in ("Examplecorp", "Invented", "private question", "Also invented"):
+        assert secret not in out
+    assert "a private row" in out

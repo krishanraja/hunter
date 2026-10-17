@@ -148,8 +148,8 @@ def plan_changes(rows: list[list], seed_list: list[Seed] | None = None
         row_num = index.get(key)
         if row_num is None:
             if not s.create_if_missing:
-                problems.append(f"{s.field_name!r} is not on the tab and this "
-                                f"seed does not create rows")
+                problems.append(f"{'a private row' if s.private else repr(s.field_name)} "
+                                f"is not on the tab and this seed does not create rows")
                 continue
             row_num = next_new
             next_new += 1
@@ -170,6 +170,29 @@ def plan_changes(rows: list[list], seed_list: list[Seed] | None = None
             changes.append(Change(row_num, s.field_name, "D", before_notes,
                                   s.notes, s.ruling, s.private))
     return changes, problems
+
+
+def report_lines(changes: list[Change], problems: list[str]) -> list[str]:
+    """What a run prints. A private row is a count: its name is a form's own
+    question, and a form's question names the employer that asked it, so the
+    name is as much his as the answer (2026-10-17)."""
+    lines: list[str] = []
+    for c in sorted(changes, key=lambda x: (x.row, x.column)):
+        tag = "NEW ROW" if c.is_new else "       "
+        if c.private:
+            lines.append(f"  {tag} {c.column}{c.row:<4} a private row, its name and "
+                         f"answer not printed")
+            continue
+        lines.append(f"  {tag} {c.column}{c.row:<4} {c.field_name[:46]}")
+        if c.before:
+            lines.append(f"          was:  {c.before[:88]}")
+        lines.append(f"          now:  {c.after[:88]}")
+        if c.ruling:
+            lines.append(f"          why:  {c.ruling}")
+    if problems:
+        lines.append("\nnot written:")
+        lines.extend("  " + p for p in problems)
+    return lines
 
 
 def apply_changes(sheet, changes: list[Change]) -> int:
