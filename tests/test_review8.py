@@ -771,3 +771,11 @@ def test_a_form_missing_only_his_header_pick_mails_no_question(monkeypatch):
     tally = {}
     R.cmd_approvals(apply=True, prefill=False, chosen=[rec("ardent")], tally=tally)
     assert sent == [] and R.MISSING_EMAILED not in tally
+
+
+def test_one_title_in_two_countries_is_one_line_and_two_applications():
+    missing = [{"company": "Ardent", "role": "VP", "questions": [("Visa status?", "")]},
+               {"company": "Ardent", "role": "VP", "questions": [("Visa status?", "")]}]
+    subject, html, _ = R.missing_email(missing)
+    assert "holding 2 application(s)" in subject
+    assert "VP at Ardent (2 postings)" in html and html.count("VP at Ardent") == 1

@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from .. import config
 from ..sheet import SheetError
 from .infobank import INFO_TAB, SENSITIVE, norm_label
+from .gtmseed import COMPANY_NAME
 
 LOCKED_MARK = "\U0001F7E2 LOCKED"
 SENSITIVE_MARK = "\U0001F534 SENSITIVE"
@@ -87,11 +88,22 @@ def seeds() -> list[Seed]:
              ruling="Krish 2026-09-14", create_if_missing=True),
         # Canon 9.9: superseded IDs must not linger as current.
         Seed("Cover letter template ID", config.LETTER_MASTER_ID, LOCKED_MARK,
-             notes="v4, canon 9.9 current",
-             ruling="canon 9.9: v1 18m4bOX... is superseded"),
+             notes="v5 in his house style, canon 9.9 current",
+             ruling="canon 9.9 v14: v4 1OD6FIx... is superseded"),
         Seed("CV (v11) doc ID", config.CV_MASTER_ID, LOCKED_MARK,
-             notes="v14, canon 9.9 current",
-             ruling="canon 9.9: v11 1ZqI8LP... is superseded"),
+             notes="v15 in his house style, canon 9.9 current",
+             ruling="canon 9.9 v14: v14 1ALITQk... is superseded"),
+        # His choice 2026-10-17, "teach hunter those": what forms ask about him
+        # now, from his own CV, so it is never asked of him again.
+        Seed("Current company", COMPANY_NAME, LOCKED_MARK,
+             ruling="Krish 2026-10-15: his company is written mind/make everywhere"),
+        Seed("Current title", "Founder and CEO", LOCKED_MARK,
+             notes="as his CV writes it: mind/make, Founder and CEO, 2024 to Present",
+             ruling="his CV master, 2026-10-17", create_if_missing=True),
+        Seed("Years of professional experience", "16", LOCKED_MARK,
+             notes="his whole career, as his CV and Profile say: 16 years",
+             ruling="his CV master and Profile one-liner, 2026-10-17",
+             create_if_missing=True),
     ]
 
 
