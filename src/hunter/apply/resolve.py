@@ -378,6 +378,16 @@ class Resolver:
             return None
         juris = _jurisdiction(_padded(field.label)) or \
             {"us": "US", "uk": "UK"}.get(getattr(self.contact, "key", ""), "")
+        # His answer where he has given one (a private row: his own words,
+        # never printed): nationality, or a permit that needs no sponsor.
+        basis = self.bank.get(f"{juris} right to work basis") if juris else None
+        said = (basis.value.strip().lower() if basis and basis.usable else "")
+        if "national" in said or "permit" in said:
+            want = "nationality" if "national" in said else "permit"
+            fit = [x for x, l in zip(labels, low) if want in l
+                   and (want == "nationality" or re.search(r"\bnot\b", l))]
+            if len(fit) == 1:
+                return Answer(fit[0], f"Info Bank: {basis.field_name}", flagged=True)
         visa = self.bank.get("US visa status (specific)")
         sponsor = self.bank.get("Will you require sponsorship in US?")
         if juris == "US" and visa and visa.value.strip() and sponsor and \
@@ -417,12 +427,22 @@ class Resolver:
                            "days per week", "days a week", "willing",
                            "comfortable", "based", "reside", "time zone",
                            "commuting distance", "remote")
-        if not self.base:
-            why = (f"the posting location {self.role_location!r} does not resolve "
-                   f"to NYC or London" if self.role_location
-                   else "the posting location was not supplied")
-            return Unanswered(NEEDS_ROLE, why)
+        base = self.base
         why = f"residence rule: the role is in {self.role_location}"
+        relocating = False
+        if not base:
+            # His ruling 2026-10-17, for a role outside New York and London (the
+            # Bay Area first): he is based where his header base is, Brooklyn or
+            # London, and open to relocating, as his Info Bank says ("Open to
+            # relocation for the right role (SF preferred, London possible)").
+            base = {"us": BASE_NYC, "uk": BASE_LONDON}.get(getattr(self.contact, "key", ""), "")
+            if not base:
+                why = (f"the posting location {self.role_location!r} does not resolve "
+                       f"to NYC or London" if self.role_location
+                       else "the posting location was not supplied")
+                return Unanswered(NEEDS_ROLE, why)
+            relocating = True
+            why = f"based at his {self.contact.key.upper()} base, open to relocating"
 
         # The country, where that is what was asked. Checked before the
         # enumeration and option paths so a country select is answered with a
@@ -430,30 +450,50 @@ class Resolver:
         if _any(label, *COUNTRY_HINTS) and not _any(label, *ENUMERATION_HINTS) \
                 and not _any(label, "authoriz", "authoris", "sponsor", "visa",
                              "citizen", "work in the country"):
-            return Answer(BASE_COUNTRY[self.base], why, flagged=True)
+            return Answer(BASE_COUNTRY[base], why, flagged=True)
         # A membership question enumerates places and asks whether he is in one
-        # of them. Answer it by testing the list, never by assuming yes.
+        # of them. Answer it by testing the list, never by assuming yes. The
+        # list is the options when it has them: Vercel's "Are you currently
+        # based in any of these countries?" names none in the question.
         if _any(label, *ENUMERATION_HINTS):
+            if field.options:
+                named = [o.label for o in field.options
+                         if o.label.strip().lower() == BASE_COUNTRY[base].lower()]
+                if named:
+                    return Answer(named[0], f"membership test: {base} is one of the "
+                                            f"options", flagged=True)
             listed = _padded(field.label)
-            tokens = BASE_TOKENS[self.base]
+            tokens = BASE_TOKENS[base]
             inside = any(f" {t} " in listed for t in tokens)
             return Answer(
                 YES if inside else NO,
-                f"membership test: {self.base} "
+                f"membership test: {base} "
                 f"{'appears' if inside else 'does not appear'} in the list this "
                 f"question enumerates", flagged=True)
         # A select is answerable only with one of its own options. Never emit
         # free text into a select, and never invent an option it does not offer.
         if field.options:
+            # The role's own office first: he is applying to work there.
+            city = (self.role_location or "").split(",")[0].strip().lower()
             for opt in field.options:
-                if role_base(opt.label) == self.base:
+                if city and len(city) > 2 and city in opt.label.lower():
+                    return Answer(opt.label, why, flagged=True)
+            for opt in field.options:
+                if role_base(opt.label) == base:
                     return Answer(opt.label, why, flagged=True)
             # No option names a place, so this is a yes/no style select written
             # as sentences. Answer Yes and let _fit_to_options pick the label.
             return Answer(YES, why, flagged=True)
-        if residence or field.kind == "location":
-            return Answer(self.base, why, flagged=True)
+        # "Location", "Location (City, State)": where he is, asked plainly.
+        plain = norm_label(field.label).startswith("location")
+        if residence or field.kind == "location" or plain:
+            return Answer(base, why, flagged=True)
         if willingness:
+            if relocating:
+                entry = self.bank.get("Willing to relocate?")
+                if not (entry and entry.usable and entry.value.strip()):
+                    return Unanswered(NEEDS_KRISH, "no stored answer on relocating")
+                return Answer(YES, f"Info Bank: {entry.field_name} ({why})", flagged=True)
             return Answer(YES,
                           f"residence rule: Krish is resident where the role is "
                           f"({self.role_location})", flagged=True)

@@ -57,7 +57,7 @@ def private_seeds(cfg) -> tuple[list[Seed], str]:
         items = json.loads(raw)
         out = [Seed(str(i["field_name"]), str(i["value"]),
                     str(i.get("status") or SENSITIVE_MARK), ruling=str(i.get("ruling") or ""),
-                    private=True)
+                    private=True, create_if_missing=bool(i.get("create_if_missing")))
                for i in items]
     except (ValueError, TypeError, KeyError):
         return [], f"system_config {PRIVATE_KEY} could not be read; those rows are left as they are"
