@@ -24,5 +24,17 @@
       "Bash(curl -sS https://api.github.com/:*)",
       "Bash(curl -sS https://api.vercel.com/:*)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
   }
 }
