@@ -25,6 +25,7 @@ import requests
 DOCS = "https://docs.googleapis.com/v1/documents"
 DRIVE = "https://www.googleapis.com/drive/v3/files"
 DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
+FOLDER_MIME = "application/vnd.google-apps.folder"
 
 
 # Paragraph properties a reorder puts back (docbuild.reorder_paragraphs).
@@ -44,9 +45,20 @@ def _coalesce(ranges):
     return out
 
 
+class NoHome(RuntimeError):
+    """A Drive create with no registered folder to land in (drivemap.py)."""
+
+
 class DocBuild:
     def __init__(self, access_token: str | Callable[[], str]):
         self._token = access_token
+        # The folders this instance may create into: None until drivemap.allow
+        # has proved them inside his Drive's registered roots, so a create
+        # with no registry fails closed instead of landing at the top of his
+        # Drive, which is what the old "root" default did (his ruling
+        # 2026-10-18: "they must go in specific folders, subfolders, always").
+        self.allowed: set[str] | None = None
+        self.drive_map = None
 
     @property
     def h(self) -> dict[str, str]:
@@ -68,14 +80,55 @@ class DocBuild:
         r.raise_for_status()
         return r.json()
 
-    def copy_master(self, master_id, title, parent_id=None):
-        body = {"name": title}
-        if parent_id:
-            body["parents"] = [parent_id]
+    def copy_master(self, master_id, title, parent_id):
+        self._home(parent_id)
+        new_id = self._copy(master_id, title, parent_id)
+        self._landed(new_id, parent_id)
+        return new_id
+
+    def _copy(self, master_id, title, parent_id):
         r = requests.post(f"{DRIVE}/{master_id}/copy", headers=self.h,
-                          params={"supportsAllDrives": "true"}, json=body, timeout=60)
+                          params={"supportsAllDrives": "true"},
+                          json={"name": title, "parents": [parent_id]}, timeout=60)
         r.raise_for_status()
         return r.json()["id"]
+
+    # ---------- where a file may land ----------
+
+    def _home(self, parent_id):
+        if not parent_id or self.allowed is None or parent_id not in self.allowed:
+            raise NoHome("hunter creates a Drive file only inside a folder the registry "
+                         "approved (drivemap.allow); this one has none")
+
+    def parents_of(self, file_id: str) -> list[str]:
+        r = requests.get(f"{DRIVE}/{file_id}", headers=self.h, timeout=60,
+                         params={"fields": "parents", "supportsAllDrives": "true"})
+        r.raise_for_status()
+        return r.json().get("parents") or []
+
+    def _landed(self, file_id, parent_id):
+        """Read back where the new file is (CLAUDE.md 1): the parent asked for
+        is not proof of the parent given."""
+        if parent_id not in self.parents_of(file_id):
+            raise NoHome("a new Drive file did not land in the folder it was made for")
+
+    def move(self, file_id: str, to_parent: str) -> None:
+        """File an existing item into an approved folder, from wherever it is,
+        and read it back. Same account, so its id and every link stay."""
+        self._home(to_parent)
+        now = self.parents_of(file_id)
+        if now != [to_parent]:
+            self._reparent(file_id, to_parent, [p for p in now if p != to_parent])
+        if self.parents_of(file_id) != [to_parent]:
+            raise NoHome("a moved Drive file is not in the folder it was moved to")
+
+    def _reparent(self, file_id, to_parent, old):
+        params = {"addParents": to_parent, "supportsAllDrives": "true", "fields": "parents"}
+        if old:
+            params["removeParents"] = ",".join(old)
+        r = requests.patch(f"{DRIVE}/{file_id}", headers=self.h, timeout=60, params=params,
+                           json={})
+        r.raise_for_status()
 
     # ---------- structure ----------
 
@@ -439,14 +492,35 @@ class DocBuild:
 
     # ---------- Drive helpers (P1 additions, still lossless) ----------
 
-    def find_by_name(self, name: str, parent_id: str) -> list[dict]:
+    def find_by_name(self, name: str, parent_id: str, mime: str = "") -> list[dict]:
         escaped = name.replace("\\", "\\\\").replace("'", "\\'")
         q = f"name = '{escaped}' and '{parent_id}' in parents and trashed = false"
+        if mime:
+            q += f" and mimeType = '{mime}'"
         r = requests.get(DRIVE, headers=self.h, timeout=60, params={
             "q": q, "supportsAllDrives": "true",
             "includeItemsFromAllDrives": "true", "fields": "files(id,name)"})
         r.raise_for_status()
         return r.json().get("files", [])
+
+    def children(self, folder_id: str) -> list[dict]:
+        """Every item directly in a folder ("root" is the top of his Drive),
+        all pages: id, name, mimeType, createdTime."""
+        out, tok = [], None
+        while True:
+            params = {"q": f"'{folder_id}' in parents and trashed = false",
+                      "fields": "nextPageToken,files(id,name,mimeType,createdTime)",
+                      "pageSize": 1000, "supportsAllDrives": "true",
+                      "includeItemsFromAllDrives": "true"}
+            if tok:
+                params["pageToken"] = tok
+            r = requests.get(DRIVE, headers=self.h, timeout=60, params=params)
+            r.raise_for_status()
+            j = r.json()
+            out += j.get("files", [])
+            tok = j.get("nextPageToken")
+            if not tok:
+                return out
 
     def modified_time(self, doc_id: str) -> str:
         """When Drive says the document last changed (RFC 3339)."""
@@ -455,14 +529,21 @@ class DocBuild:
         r.raise_for_status()
         return r.json()["modifiedTime"]
 
-    def folder(self, name: str, parent_id: str = "root") -> str:
-        """The folder of that name under parent, made only when there is none,
-        so a second run uses the first one's."""
-        got = self.find_by_name(name, parent_id)
-        if got:
-            return got[0]["id"]
+    def folder(self, name: str, parent_id: str) -> str:
+        """The folder of that name under an approved parent, made only when there
+        is none, so a second run uses the first one's. It becomes a place this
+        instance may create into. There is no default parent: the old one was
+        the top of his Drive."""
+        self._home(parent_id)
+        got = self.find_by_name(name, parent_id, mime=FOLDER_MIME)
+        fid = got[0]["id"] if got else self._make_folder(name, parent_id)
+        self._landed(fid, parent_id)
+        self.allowed.add(fid)
+        return fid
+
+    def _make_folder(self, name, parent_id):
         r = requests.post(DRIVE, headers=self.h, params={"supportsAllDrives": "true"},
-                          json={"name": name, "mimeType": "application/vnd.google-apps.folder",
+                          json={"name": name, "mimeType": FOLDER_MIME,
                                 "parents": [parent_id]}, timeout=60)
         r.raise_for_status()
         return r.json()["id"]
@@ -474,6 +555,12 @@ class DocBuild:
         return r.content
 
     def upload_pdf(self, name: str, parent_id: str, data: bytes) -> str:
+        self._home(parent_id)
+        fid = self._upload(name, parent_id, data)
+        self._landed(fid, parent_id)
+        return fid
+
+    def _upload(self, name: str, parent_id: str, data: bytes) -> str:
         meta = json.dumps({"name": name, "parents": [parent_id],
                            "mimeType": "application/pdf"})
         boundary = "hunter_pdf_boundary_7f3a"

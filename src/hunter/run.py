@@ -23,6 +23,7 @@ from __future__ import annotations
 import datetime
 import html as html_mod
 import json
+import pathlib
 import re
 from functools import lru_cache
 import requests
@@ -2603,9 +2604,16 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         if GATE_FELL_BACK in (getattr(tr, "flags", None) or []):
             summary.extend(record_held(cfg, row, view))
         return False
+    from . import drivemap
+
+    def home():
+        # His ruling 2026-10-18: the role's own folder under Agents/Hunter/
+        # Applications, and nothing anywhere else in his Drive (drivemap.py).
+        drivemap.allow(db, cfg)
+        return drivemap.application_folder(db, role.company, role.title)
     result = build_package(db, tr, company=role.company, title=role.title,
                            letter_blocks=letter_blocks, cv_blocks=cv_blocks,
-                           facts=facts)
+                           facts=facts, home=home)
     ok = (result.letter_report and result.letter_report.ok
           and result.cv_report and result.cv_report.ok)
     if ok:
@@ -2798,20 +2806,26 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
     date_text = compose.date_for(plan.base_key)
     letter_master = config_mod.LETTER_MASTER_ID
     cv_master = config_mod.CV_MASTER_ID
+    # His ruling 2026-10-18: one folder per application, under
+    # CURRENT/02_MINDMAKE-OS/Agents/Hunter/Applications, and nothing anywhere
+    # else in his Drive (drivemap.py).
+    from . import drivemap
+    drivemap.allow(db, cfg)
+    home = drivemap.application_folder(db, role.company, role.title)
     lt = compose.build_letter(
         db, letter, master_id=letter_master,
         title=_unique_title(db, f"KrishRaja_CoverLetter_{role.company}",
-                            config_mod.LETTER_FOLDER_ID, slugify(role.title)),
-        folder_id=config_mod.LETTER_FOLDER_ID, base=base, bases=bases, date_text=date_text,
+                            home, slugify(role.title)),
+        folder_id=home, base=base, bases=bases, date_text=date_text,
         company=role.company, role=role.title, page_count=page_count, needs=plan.needs,
         entries=plan.entries, bank_words=plan.bank)
     cv_paras = house.snapshot(db.get(cv_master))
     anchor, count = compose.cv_summary_span(cv_paras)
     cv = compose.build_cv(
         db, master_id=cv_master,
-        title=_unique_title(db, f"KrishRaja_CV_{role.company}", config_mod.CV_FOLDER_ID,
+        title=_unique_title(db, f"KrishRaja_CV_{role.company}", home,
                             slugify(role.title)),
-        folder_id=config_mod.CV_FOLDER_ID, base=base, bases=bases, page_count=page_count,
+        folder_id=home, base=base, bases=bases, page_count=page_count,
         heading_sizes=masters_mod._cv_heading_sizes(cv_paras), summary=letter.cv_summary,
         summary_anchor=anchor, summary_count=count, highlight_order=letter.cv_highlight_order)
     fails = lt.problems + cv.problems
@@ -2838,8 +2852,8 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
         summary.append(f"  CV {doc_url(cv.doc_id)} (left for review)")
         return False
     letter_pdf = db.upload_pdf(f"KrishRaja_CoverLetter_{role.company}.pdf",
-                               config_mod.LETTER_FOLDER_ID, lt.pdf or db.export_pdf(lt.doc_id))
-    cv_pdf = db.upload_pdf(f"KrishRaja_CV_{role.company}.pdf", config_mod.CV_FOLDER_ID,
+                               home, lt.pdf or db.export_pdf(lt.doc_id))
+    cv_pdf = db.upload_pdf(f"KrishRaja_CV_{role.company}.pdf", home,
                            cv.pdf or db.export_pdf(cv.doc_id))
     built = {
         "package_status": "built", "package_built_at": NOW(),
@@ -2894,7 +2908,7 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
     return True
 
 
-PREVIEW_FOLDER = "hunter preview"
+PREVIEW_FOLDER = "preview"
 
 
 def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bool,
@@ -2916,10 +2930,19 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
     if page_count is None:
         from .apply.merge import page_count
     bases, _note = contact.load_bases(cfg)
-    if apply and preview_folder and not folder:
-        # His Drive's own top level, made by hunter's own login so the copies
-        # can land in it; the same folder on every later run.
-        folder = db.folder(PREVIEW_FOLDER)
+    if apply:
+        # Previews/ under his Hunter folder, one subfolder per label, and
+        # nowhere else: until 2026-10-18 this made "hunter preview" at the top
+        # of his Drive (drivemap.py, his ruling that day).
+        from . import drivemap
+        drivemap.allow(db, cfg)
+        if folder and folder not in db.allowed:
+            print("build-preview: refused, --folder is not a registered folder; "
+                  "use --preview-folder")
+            return 2
+        if not folder:
+            folder = db.folder(label or PREVIEW_FOLDER,
+                               drivemap.destination(db, "hunter.previews"))
         print(f"folder: https://drive.google.com/drive/folders/{folder}")
     asked: list[str] = []
     for job in job_ids:
@@ -9722,7 +9745,13 @@ def cmd_letter_master(source: str, apply: bool = False, check: bool = False) -> 
             print(f"letter-master: PROBLEM {line}")
         return 1 if problems else 0
     try:
-        out = masters.build_v5(db, source, folder_id=config_mod.LETTER_FOLDER_ID,
+        folder = ""
+        if apply:
+            # Masters/ under his Hunter folder, nowhere else (drivemap.py).
+            from . import drivemap
+            drivemap.allow(db, cfg)
+            folder = drivemap.destination(db, "hunter.masters")
+        out = masters.build_v5(db, source, folder_id=folder,
                                page_count=page_count, apply=apply)
     except masters.MasterError as e:
         print(f"letter-master: refused, {e}")
@@ -9752,8 +9781,13 @@ def cmd_cv_master(letter: str, apply: bool = False) -> int:
     cfg = load()
     db = DocBuild(GoogleOAuth(cfg).access_token)
     try:
+        folder = ""
+        if apply:
+            from . import drivemap
+            drivemap.allow(db, cfg)
+            folder = drivemap.destination(db, "hunter.masters")
         out = masters.build_cv_master(db, config_mod.CV_MASTER_ID, letter,
-                                      folder_id=config_mod.CV_FOLDER_ID,
+                                      folder_id=folder,
                                       page_count=page_count, apply=apply)
     except masters.MasterError as e:
         print(f"cv-master: refused, {e}")
@@ -9771,6 +9805,85 @@ def cmd_cv_master(letter: str, apply: bool = False) -> int:
     for line in out["problems"]:
         print(f"cv-master: PROBLEM {line}")
     return 1 if out["problems"] else 0
+
+
+def cmd_drive(cmd: str, argv: list[str]) -> int:
+    """Where his Drive files go (drivemap.py, his ruling 2026-10-18).
+
+    drive-map [--apply]: read the registry off his Drive and, with --apply,
+      make Hunter's three folders and write system_config drive_destinations,
+      read back. Run from a session.
+    drive-file --from <folder id> ... [--apply] [--out file]: file what hunter
+      made before the registry into one folder per application, each move
+      read back. Run from a session; the folder ids never enter the repo.
+    drive-sweep [--apply]: file anything new at the top of his Drive into
+      CURRENT/00_INBOX and tell him in one line. Hourly. Counts only here:
+      the names go to him, never to this public log."""
+    from . import drivemap
+    cfg = load()
+    db = DocBuild(GoogleOAuth(cfg).access_token)
+    apply = "--apply" in argv
+    try:
+        if cmd == "drive-map":
+            m = drivemap.build_map(db, apply=apply)
+            if apply:
+                m = drivemap.write_map(cfg, m)
+            print(f"drive-map: {len(m.top_level)} top-level items, {len(m.roots)} roots, "
+                  f"{len(m.protected)} protected, destinations "
+                  + ", ".join(f"{k}={'set' if v else 'missing'}"
+                              for k, v in sorted(m.destinations.items()))
+                  + ("" if apply else " (dry run, pass --apply to make and write)"))
+            return 0
+        m = drivemap.load(cfg)
+        if cmd == "drive-sweep":
+            out = drivemap.sweep(db, m, apply=apply)
+            told = drivemap.tell(cfg, out["moved"]) if apply else False
+            print(f"drive-sweep: {out['top']} at the top, {out['strays']} stray, "
+                  f"{len(out['moved'])} filed into the inbox"
+                  + (", told him" if told else "") + ("" if apply else " (dry run)"))
+            return 0
+        sources = [argv[i + 1] for i, a in enumerate(argv) if a == "--from" and i + 1 < len(argv)]
+        if not sources:
+            print("drive-file needs --from <folder id> (one or more)")
+            return 2
+        files = [f for src in sources for f in db.children(src)
+                 if f.get("mimeType") != drivemap.FOLDER_MIME]
+        roles, off = [], 0
+        while True:
+            page = db_get(cfg, "hunter_seen_roles", {
+                "select": "job_id,company,title,package_cv_url,package_letter_url,package_built_at",
+                "or": "(package_cv_url.not.is.null,package_letter_url.not.is.null)",
+                "order": "job_id.asc", "limit": "1000", "offset": str(off)})
+            roles += page
+            off += 1000
+            if len(page) < 1000:
+                break
+        masters = {config_mod.LETTER_MASTER_ID, config_mod.CV_MASTER_ID,
+                   config_mod.HOUSE_LETTER_MASTER_ID, config_mod.HOUSE_CV_MASTER_ID}
+        plan = drivemap.plan_moves(files, roles, masters)
+        by = {k: sum(1 for p in plan if p["to"] == k)
+              for k in ("application", "masters", "unmatched", "leave")}
+        print(f"drive-file: {len(files)} file(s) in {len(sources)} folder(s): "
+              f"{by['application']} to their application folder, {by['masters']} to Masters, "
+              f"{by['unmatched']} to Applications/_unmatched, {by['leave']} of his own left "
+              f"where they are")
+        if "--out" in argv:
+            pathlib.Path(argv[argv.index("--out") + 1]).write_text(json.dumps(plan, indent=1))
+        if not apply:
+            print("drive-file: dry run, pass --apply to move them")
+            return 0
+        done = drivemap.apply_moves(db, m, plan)
+        moving = {p["id"] for p in plan if p["to"] != "leave"}
+        left = [f for src in sources for f in db.children(src) if f["id"] in moving]
+        print(f"drive-file: moved and read back {sum(done.values())}; "
+              f"{len(left)} of hunter's file(s) still in the old folders")
+        return 0 if not left else 1
+    except drivemap.DriveMapError as e:
+        print(f"{cmd}: refused, {e}")
+        return 1
+    except Exception as e:
+        print(f"{cmd}: failed ({e.__class__.__name__})")
+        return 1
 
 
 def main(argv: list[str]) -> int:
@@ -10187,6 +10300,8 @@ def main(argv: list[str]) -> int:
                                    apply="--apply" in argv):
             print(line)
         return 0
+    if cmd in ("drive-map", "drive-file", "drive-sweep"):
+        return cmd_drive(cmd, argv)
     if cmd == "build-preview":
         # The scratch preview: --job-id (repeatable), --queue to ask the
         # writer, --apply --folder <id> to build. Links and codes only.

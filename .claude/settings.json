@@ -35,6 +35,17 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*[Dd]rive.*__(create_file|copy_file|update_file)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/drive_guard.py\""
+          }
+        ]
+      }
     ]
   }
 }

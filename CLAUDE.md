@@ -459,8 +459,40 @@ docs/HANDOVER_LETTERS.md is the full record.
   start at :13 and finish by :15; switch just after.
 - **Previews before changes he will read.** `build-preview --queue`, then the
   writer answers, then `build-preview --apply --preview-folder --label vN`
-  builds into "hunter preview" in his Drive and touches no role. Read the built
+  builds into Previews/vN under his Hunter folder and touches no role. Read the built
   documents back from Drive before telling him they are right.
+
+## 3h. Every Drive file has a registered home
+
+His words, 2026-10-18: "ensure it is impossible to save files randomly in
+sprawl in my Drive - they must go in specific folders, subfolders, always".
+Until then `DocBuild.folder` defaulted to the top of his Drive, `copy_master`
+filed a copy wherever Drive put it, and live applications went to a folder his
+estate clean-up had filed under ARCHIVE.
+
+- **The registry is `system_config drive_destinations`** (`drivemap.py`), never
+  this public repo: his top-level items, the roots, the protected folders
+  (ContentLibrary, KeePass), CURRENT/00_INBOX, and Hunter's three folders under
+  CURRENT/02_MINDMAKE-OS/Agents/Hunter. Folder names follow his estate policy
+  (krishanraja/filearchives, `policy/estate-policy-v1.json`).
+  `drive-map --apply` writes it from his Drive and reads it back.
+- **DocBuild creates nothing without it.** `copy_master`, `upload_pdf` and
+  `folder` take a parent with no default, refuse one `drivemap.allow` did not
+  prove inside a registered root, and read back where the new file landed.
+  Drive writes live only in DocBuild's four private helpers; a test reads the
+  source to keep it so.
+- **One folder per application** (his choice), `Applications/<YYYY-MM> <Company>
+  - <Role>`, holding the CV, the letter and both PDFs; templates in `Masters/`,
+  previews in `Previews/<label>`.
+- **The hourly `drive-sweep`** files anything new at the top of his Drive, from
+  any app or session, into CURRENT/00_INBOX, reads it back and tells him in one
+  line. It never deletes and never touches his own top-level items or
+  ContentLibrary. Its log carries counts only.
+- **Claude sessions** in this repo and control-center run
+  `.claude/hooks/drive_guard.py` before any Google Drive create, copy or move: no
+  parent, the top of his Drive, a top-level area itself or a protected folder is
+  refused, and an unreadable registry refuses too. Surfaces with no hooks
+  (claude.ai chat, Cowork) are covered by the sweep.
 
 ## 4. The Target Companies tab is his, and it is policy
 
@@ -673,6 +705,7 @@ src/hunter/
   alerts.py         the two emails he gets, deduplicated on the condition
   letters.py        a package in his house style, from hold to build
   docedits.py       every edit he makes to a letter or CV, learned from
+  drivemap.py       where every file in his Drive goes, the guard and the hourly sweep
   facts.py          asks him for a personal line, writes his reply to canon 9.14
   canonwrite.py     the one code path that edits canon: his words into 9.14
   package/

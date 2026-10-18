@@ -36,8 +36,9 @@ PIPELINE_SHEET_ID = 708873267
 # (empty) Applied tab, so Pipeline holds only what still needs a decision.
 ARCHIVE_TAB = "Applied"
 ARCHIVE_SHEET_ID = 1707095501
-CV_FOLDER_ID = "1IMMUrAV7wCb-a_eei6c_fmX2BCDgYA8X"
-LETTER_FOLDER_ID = "1YotvbjjE8amkVnrLSAjSASd5-U28D1lJ"
+# Where a package is filed is not a constant here any more: one folder per
+# application under CURRENT/02_MINDMAKE-OS/Agents/Hunter, from the registry in
+# system_config drive_destinations (drivemap.py, his ruling 2026-10-18).
 # What the scratch preview builds from (build-preview): the masters above.
 HOUSE_LETTER_MASTER_ID = LETTER_MASTER_ID
 HOUSE_CV_MASTER_ID = CV_MASTER_ID
