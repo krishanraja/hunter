@@ -40,7 +40,7 @@ def _tr(hook=""):
 
 
 def _build(db, facts, tr, notes):
-    return build_letter(db, facts, tr, company="Harvey",
+    return build_letter(db, facts, tr, folder_id="f", company="Harvey",
                         title="Head of GTM Strategy and Operations",
                         letter_blocks=TEST_LETTER_BLOCKS, notes=notes)
 
@@ -160,7 +160,7 @@ def test_measure_pages_off_reports_zero_and_never_renders(letter_fixture):
     facts = read_master_facts(db)
     _doc_id, report, pdf = build_letter(
         db, facts, _tr(LONG_HOOK), company="Harvey", title="Head of GTM",
-        letter_blocks=TEST_LETTER_BLOCKS, measure_pages=False)
+        letter_blocks=TEST_LETTER_BLOCKS, measure_pages=False, folder_id="f")
     assert pdf is None
     assert report.page_count == 0
     assert db.exports == []

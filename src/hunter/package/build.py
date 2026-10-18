@@ -280,7 +280,8 @@ def build_letter(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
                  company: str, title: str, letter_blocks: dict,
                  today: datetime.date | None = None,
                  measure_pages: bool = True,
-                 notes: list[str] | None = None
+                 notes: list[str] | None = None,
+                 folder_id: str = ""
                  ) -> tuple[str, VerifyReport, bytes | None]:
     """Returns (doc_id, report, letter PDF bytes or None).
 
@@ -299,8 +300,8 @@ def build_letter(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
     rungs = hook_ladder(tr, letter_blocks, company)
     hook = rungs[0][0]
     doc_title = _unique_title(db, f"KrishRaja_CoverLetter_{company}",
-                              config.LETTER_FOLDER_ID, slugify(title))
-    doc_id = db.copy_master(config.LETTER_MASTER_ID, doc_title, config.LETTER_FOLDER_ID)
+                              folder_id, slugify(title))
+    doc_id = db.copy_master(config.LETTER_MASTER_ID, doc_title, folder_id)
     db.replace_placeholders(doc_id, {
         "{{DATE}}": date_text,
         "{{HIRING_LEAD}}": tr.hiring_lead,
@@ -363,7 +364,8 @@ def _summary_bold_targets(text: str) -> list[str]:
 
 def build_cv(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
              company: str, title: str, cv_blocks: dict,
-             notes: list[str] | None = None) -> tuple[str, VerifyReport]:
+             notes: list[str] | None = None,
+             folder_id: str = "") -> tuple[str, VerifyReport]:
     """The generated summary replaces the WHOLE summary span. The approved block
     is the fallback, used only when the voice gate rejected the generated prose,
     and in that case it replaces just paragraph 1 as it always did."""
@@ -379,8 +381,8 @@ def build_cv(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
         notes.append(f"master bolded {frag!r} in the summary; the generated summary "
                      f"does not use that wording, so the bold is gone with it")
     doc_title = _unique_title(db, f"KrishRaja_CV_{company}",
-                              config.CV_FOLDER_ID, slugify(title))
-    doc_id = db.copy_master(config.CV_MASTER_ID, doc_title, config.CV_FOLDER_ID)
+                              folder_id, slugify(title))
+    doc_id = db.copy_master(config.CV_MASTER_ID, doc_title, folder_id)
     if generated and facts.cv_summary_count > 1:
         # Canon 9.12: numbers are bold inside the prose, keep the bolding when
         # tailoring. The master bolds a phrase in summary paragraph 2, so the
@@ -424,7 +426,12 @@ def build_cv(db: DocBuild, facts: MasterFacts, tr: TailorResult, *,
 def build_package(db: DocBuild, tr: TailorResult, *, company: str, title: str,
                   letter_blocks: dict, cv_blocks: dict,
                   facts: MasterFacts | None = None,
-                  export_pdfs: bool = True) -> PackageResult:
+                  export_pdfs: bool = True,
+                  folder_id: str = "", home=None) -> PackageResult:
+    """folder_id is the role's own application folder, or home() finds it
+    (drivemap.application_folder). With neither, DocBuild refuses the first
+    copy: nothing lands outside a registered folder in his Drive."""
+    folder_id = folder_id or (home() if home else "")
     facts = facts or read_master_facts(db)
     result = PackageResult()
     result.notes.extend(tr.flags)
@@ -432,12 +439,12 @@ def build_package(db: DocBuild, tr: TailorResult, *, company: str, title: str,
     letter_id, letter_report, letter_pdf = build_letter(
         db, facts, tr, company=company, title=title,
         letter_blocks=letter_blocks, measure_pages=export_pdfs,
-        notes=result.notes)
+        notes=result.notes, folder_id=folder_id)
     result.letter_doc_id, result.letter_report = letter_id, letter_report
     result.letter_url = doc_url(letter_id)
 
     cv_id, cv_report = build_cv(db, facts, tr, company=company, title=title,
-                                cv_blocks=cv_blocks, notes=result.notes)
+                                cv_blocks=cv_blocks, notes=result.notes, folder_id=folder_id)
     result.cv_doc_id, result.cv_report = cv_id, cv_report
     result.cv_url = doc_url(cv_id)
 
@@ -451,11 +458,11 @@ def build_package(db: DocBuild, tr: TailorResult, *, company: str, title: str,
         cv_name = f"KrishRaja_CV_{company}.pdf"
         letter_name = f"KrishRaja_CoverLetter_{company}.pdf"
         cv_pdf = db.export_pdf(cv_id)
-        result.cv_pdf_id = db.upload_pdf(cv_name, config.CV_FOLDER_ID, cv_pdf)
+        result.cv_pdf_id = db.upload_pdf(cv_name, folder_id, cv_pdf)
         # build_letter already rendered the letter to measure its pages; exporting
         # it again would be a second render of a document nothing has touched.
         result.letter_pdf_id = db.upload_pdf(
-            letter_name, config.LETTER_FOLDER_ID,
+            letter_name, folder_id,
             letter_pdf if letter_pdf is not None else db.export_pdf(letter_id))
         result.cv_pdf_url = pdf_url(result.cv_pdf_id)
         result.letter_pdf_url = pdf_url(result.letter_pdf_id)

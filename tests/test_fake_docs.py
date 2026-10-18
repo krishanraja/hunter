@@ -27,7 +27,7 @@ def test_a_round_trip_keeps_every_style_and_the_banner():
 
 def test_a_copy_carries_the_named_styles_and_images():
     db = fdb()
-    new = db.copy_master("m", "copy")
+    new = db.copy_master("m", "copy", "f")
     assert house.check(house.snapshot(db.get(new)), kind="letter", base=US_BASE,
                        bases=BASES) == []
 

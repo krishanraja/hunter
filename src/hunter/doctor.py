@@ -214,6 +214,27 @@ def check_contact_bases(cfg) -> Check:
                  "are refused", f"write system_config {BASES_KEY} for us and uk")
 
 
+def check_drive_map(cfg) -> Check:
+    """Where his Drive files go (drivemap.py): the registry reads, and each of
+    Hunter's destinations sits inside CURRENT. Without it nothing is built,
+    because nothing may be created in his Drive. Key names only."""
+    from . import drivemap
+    from .config import GoogleOAuth
+    from .docbuild import DocBuild
+    try:
+        m = drivemap.load(cfg)
+        db = DocBuild(GoogleOAuth(cfg).access_token)
+        bad = [k for k in drivemap.HUNTER_FOLDERS
+               if drivemap.ancestry(db.parents_of, m.destinations.get(k, ""), m) != "CURRENT"]
+    except Exception as e:
+        return Check("Drive folders", FAIL, f"registry unreadable ({e.__class__.__name__})",
+                     "python -m hunter.run drive-map --apply")
+    if bad:
+        return Check("Drive folders", FAIL, "not inside CURRENT: " + ", ".join(bad),
+                     "python -m hunter.run drive-map --apply")
+    return Check("Drive folders", OK, f"{len(drivemap.HUNTER_FOLDERS)} destinations inside CURRENT")
+
+
 def check_live_payloads(cfg) -> Check:
     """Applications sitting in his inbox right now, against the current floor."""
     from .apply.payload import MIN_EXTENSION
@@ -365,7 +386,7 @@ def run(cfg, run_source: str, *, offline: bool = False) -> list[Check]:
             check_endpoint(SUBMITTED_URL, method="POST", expect=400,
                            name="submitted endpoint"),
             check_table_columns(cfg), check_his_view_column(cfg), check_live_payloads(cfg),
-            check_private_recipients(cfg), check_contact_bases(cfg),
+            check_private_recipients(cfg), check_contact_bases(cfg), check_drive_map(cfg),
             check_sheet_header(cfg), check_model_keys(cfg), check_browser(),
         ]
     return checks

@@ -337,12 +337,20 @@ class FakeDoc:
 class FakeDocBuild(DocBuild):
     """DocBuild with the HTTP layer swapped for the emulator."""
 
-    def __init__(self, fixtures: dict[str, dict]):
+    def __init__(self, fixtures: dict[str, dict], allowed=("f",)):
         super().__init__(access_token="offline")
         self.docs: dict[str, FakeDoc] = {
             doc_id: FakeDoc.from_fixture(j) for doc_id, j in fixtures.items()}
         self._copies = 0
         self.uploaded_pdfs: list[str] = []
+        # A fake registered folder "f" under a fake root, so a test that builds
+        # into "f" passes the Drive guard and one that names no folder does not.
+        self.allowed = set(allowed) if allowed is not None else None
+        self.parent_of: dict[str, list[str]] = {
+            "f": ["home"], "apps": ["home"], "masters": ["home"], "prev": ["home"],
+            "home": ["cur"], "inbox": ["cur"], "cur": ["root"]}
+        self.folders: dict[tuple[str, str], str] = {}
+        self.moves: list[tuple[str, str]] = []
         # What export_pdf claims the rendered page count is. See export_pdf.
         self.export_pages: int | list[int] = 1
         self.exports: list[str] = []
@@ -357,15 +365,35 @@ class FakeDocBuild(DocBuild):
             self.docs[doc_id].apply(req)
         return {"replies": [{} for _ in requests_list]}
 
-    def copy_master(self, master_id, title, parent_id=None):
+    def _copy(self, master_id, title, parent_id):
         self._copies += 1
         new_id = f"copy_{self._copies}_{title[:24]}"
         src = self.docs[master_id]
         self.docs[new_id] = FakeDoc(copy.deepcopy(src.chars), src.base, src.extra)
+        self.parent_of[new_id] = [parent_id]
         return new_id
 
-    def find_by_name(self, name, parent_id):
-        return []
+    def find_by_name(self, name, parent_id, mime=""):
+        fid = self.folders.get((parent_id, name))
+        return [{"id": fid, "name": name}] if fid else []
+
+    def _make_folder(self, name, parent_id):
+        fid = f"F{len(self.folders) + 1}"
+        self.folders[(parent_id, name)] = fid
+        self.parent_of[fid] = [parent_id]
+        return fid
+
+    def parents_of(self, file_id):
+        return list(self.parent_of.get(file_id, []))
+
+    def children(self, folder_id):
+        meta = getattr(self, "meta", {})
+        return [{"id": fid, **meta.get(fid, {"name": fid})}
+                for fid, ps in self.parent_of.items() if folder_id in ps]
+
+    def _reparent(self, file_id, to_parent, old):
+        self.moves.append((file_id, to_parent))
+        self.parent_of[file_id] = [to_parent]
 
     def export_pdf(self, doc_id):
         """A real, parseable PDF, because build_letter now measures its pages to
@@ -390,6 +418,8 @@ class FakeDocBuild(DocBuild):
         self.exports.append(doc_id)
         return out.getvalue()
 
-    def upload_pdf(self, name, parent_id, data):
+    def _upload(self, name, parent_id, data):
         self.uploaded_pdfs.append(name)
-        return f"pdf_{len(self.uploaded_pdfs)}"
+        fid = f"pdf_{len(self.uploaded_pdfs)}"
+        self.parent_of[fid] = [parent_id]
+        return fid

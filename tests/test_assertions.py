@@ -22,7 +22,7 @@ def build_ok_letter(letter_fixture):
         jd_mirror="",
         hiring_lead="Hiring Team",
     )
-    doc_id, report, _pdf = build_letter(db, facts, tr, company="Sierra",
+    doc_id, report, _pdf = build_letter(db, facts, tr, folder_id="f", company="Sierra",
                                         title="Head of GTM",
                                         letter_blocks=TEST_LETTER_BLOCKS)
     assert report.ok, report.failures
@@ -55,7 +55,7 @@ def test_a2_delete_block_left(letter_fixture):
         config.LETTER_MASTER_ID: letter_fixture,
     })
     facts = read_master_facts(db)
-    copy_id = db.copy_master(config.LETTER_MASTER_ID, "a2")
+    copy_id = db.copy_master(config.LETTER_MASTER_ID, "a2", "f")
     db.replace_placeholders(copy_id, {
         "{{DATE}}": "x", "{{HIRING_LEAD}}": "x", "{{COMPANY}}": "x",
         "{{ROLE}}": "x", "{{COMPANY_SPECIFIC_HOOK}}": "x"})

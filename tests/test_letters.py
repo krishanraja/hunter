@@ -246,6 +246,14 @@ def test_the_routines_letter_is_built_read_back_and_stamped(world, capsys):
     assert built and "personal line" in built[0]
     out = capsys.readouterr().out + "\n".join(summary)
     assert LINE not in out and "Quorra" not in out, "never a word of the letter in the log"
+    # His ruling 2026-10-18: the letter, the CV and both PDFs in one folder of
+    # their own under Applications, and nowhere else (drivemap.py).
+    docs = world["docs"]
+    home = docs.parents_of(state["letter_doc_id"])
+    assert home == docs.parents_of(state["cv_doc_id"]) and docs.parents_of(home[0]) == ["apps"]
+    assert [k[1] for k, v in docs.folders.items() if v == home[0]][0].endswith(
+        " Kestrel - VP Partnerships")
+    assert {tuple(docs.parents_of(f"pdf_{i}")) for i in (1, 2)} == {tuple(home)}
 
 
 def test_a_failing_answer_is_failed_and_asked_again(world):
@@ -282,9 +290,13 @@ def test_a_letter_over_one_page_is_blocked_and_left_for_review(world):
     assert world["db"].role().get(style.FIELD) is None
 
 
-def test_the_preview_folder_is_made_once_and_reused(monkeypatch):
+def test_a_folder_is_made_only_inside_an_approved_one_and_reused(monkeypatch):
+    """Until 2026-10-18 the preview folder was made at the top of his Drive,
+    because folder() defaulted to "root". Now there is no default, a parent
+    the registry did not approve is refused before any call, and the folder
+    made is read back where it was asked for (drivemap.py)."""
     import hunter.docbuild as docbuild_mod
-    made = []
+    made, calls = [], []
 
     class R:
         def __init__(self, data):
@@ -296,18 +308,56 @@ def test_the_preview_folder_is_made_once_and_reused(monkeypatch):
         def json(self):
             return self.data
     found = {"files": []}
-    monkeypatch.setattr(docbuild_mod.requests, "get", lambda *a, **kw: R(found))
+    landed = {"F1": ["prev"]}
+
+    def get(url, **kw):
+        calls.append(url)
+        if url.startswith(docbuild_mod.DRIVE + "/"):
+            return R({"parents": landed[url.rsplit("/", 1)[1]]})
+        return R(found)
+    monkeypatch.setattr(docbuild_mod.requests, "get", get)
 
     def post(url, **kw):
         made.append(kw["json"])
         return R({"id": "F1"})
     monkeypatch.setattr(docbuild_mod.requests, "post", post)
     db = docbuild_mod.DocBuild("token")
-    assert db.folder(run_mod.PREVIEW_FOLDER) == "F1"
-    assert made == [{"name": "hunter preview", "mimeType": "application/vnd.google-apps.folder",
-                     "parents": ["root"]}]
-    found["files"] = [{"id": "F1", "name": "hunter preview"}]
-    assert db.folder(run_mod.PREVIEW_FOLDER) == "F1" and len(made) == 1
+    with pytest.raises(TypeError):
+        db.folder("v9")                         # there is no default parent
+    with pytest.raises(docbuild_mod.NoHome):
+        db.folder("v9", "prev")                 # no registry loaded: nothing is made
+    assert made == [] and calls == []
+    db.allowed = {"prev"}
+    with pytest.raises(docbuild_mod.NoHome):
+        db.folder("v9", "root")                 # the top of his Drive is never a home
+    assert made == []
+    assert db.folder("v9", "prev") == "F1"
+    assert made == [{"name": "v9", "mimeType": "application/vnd.google-apps.folder",
+                     "parents": ["prev"]}]
+    assert "F1" in db.allowed, "a folder hunter made inside an approved one is approved"
+    found["files"] = [{"id": "F1", "name": "v9"}]
+    assert db.folder("v9", "prev") == "F1" and len(made) == 1
+
+
+def test_a_file_that_did_not_land_where_it_was_made_for_is_refused(monkeypatch):
+    import hunter.docbuild as docbuild_mod
+
+    class R:
+        def __init__(self, data):
+            self.data = data
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self.data
+    monkeypatch.setattr(docbuild_mod.requests, "get",
+                        lambda url, **kw: R({"parents": ["somewhere-else"]}))
+    monkeypatch.setattr(docbuild_mod.requests, "post", lambda url, **kw: R({"id": "D1"}))
+    db = docbuild_mod.DocBuild("token")
+    db.allowed = {"apps"}
+    with pytest.raises(docbuild_mod.NoHome):
+        db.copy_master("m", "t", "apps")
 
 
 def test_the_preview_builds_the_written_letter_and_touches_nothing_else(world, monkeypatch, capsys):
@@ -321,8 +371,8 @@ def test_the_preview_builds_the_written_letter_and_touches_nothing_else(world, m
                                      db=world["docs"], page_count=page_count) == 0
     assert f"{JOB}: letter asked of the writer" in capsys.readouterr().out
     routine_writes(world, answer())
-    assert run_mod.cmd_build_preview([JOB], queue=False, folder="f", apply=True,
-                                     db=world["docs"], page_count=page_count) == 0
+    assert run_mod.cmd_build_preview([JOB], queue=False, folder="", apply=True,
+                                     db=world["docs"], page_count=page_count, label="v9") == 0
     out = capsys.readouterr().out
     assert f"{JOB}: letter 1 page(s), CV 1 page(s), US header, asks 1 of 1, problems 0" in out
     assert "  CL https://docs.google.com/document/d/" in out

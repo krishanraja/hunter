@@ -23,7 +23,7 @@ def make_db(letter_fixture):
 def build(db, tr, **kw):
     kw.setdefault("letter_blocks", TEST_LETTER_BLOCKS)
     kw.setdefault("cv_blocks", TEST_CV_BLOCKS)
-    return build_package(db, tr, **kw)
+    return build_package(db, tr, folder_id="f", **kw)
 
 
 def sample_tailor(facts):
@@ -90,14 +90,14 @@ def test_verify_catches_induced_bold_loss(letter_fixture):
 
 def test_set_unstyled_paragraph_refuses_bold(letter_fixture):
     db = make_db(letter_fixture)
-    copy_id = db.copy_master(config.CV_MASTER_ID, "refusal-test")
+    copy_id = db.copy_master(config.CV_MASTER_ID, "refusal-test", "f")
     with pytest.raises(RuntimeError, match="refusing"):
         db.set_unstyled_paragraph(copy_id, "$0 to $12M ARR", "flattened")
 
 
 def test_replace_preserves_bold_and_highlight_until_cleared(letter_fixture):
     db = make_db(letter_fixture)
-    copy_id = db.copy_master(config.LETTER_MASTER_ID, "style-check")
+    copy_id = db.copy_master(config.LETTER_MASTER_ID, "style-check", "f")
     db.replace_placeholders(copy_id, {"{{COMPANY}}": "StyleCo"})
     doc = db.get(copy_id)
     styled = [r for p in db.paragraphs(doc) for r in p["runs"]
