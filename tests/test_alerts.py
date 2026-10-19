@@ -342,3 +342,24 @@ def test_a_role_whose_letters_keep_failing_is_reported_once_per_set(monkeypatch)
     assert [(p["kind"], p["fingerprint"]) for p in got] == \
         [("letters the writer cannot get right", "letter-fails:r1")]
     assert "r1" not in got[0]["detail"], "counts only"
+
+
+def test_the_waiting_reminders_go_once_a_week_whatever_the_count(monkeypatch):
+    """19 October: the key held the count, so each approval made or cancelled
+    mailed him again, six times in eight hours."""
+    def problems_for(n_old, n_opened):
+        rows = [{"token": f"a{i}", "company": "Acme", "role": "VP",
+                 "created_at": ago(5)} for i in range(n_old)]
+        rows += [{"token": f"o{i}", "company": "Acme", "role": "VP",
+                  "created_at": ago(5), "opened_at": ago(3)} for i in range(n_opened)]
+        fake = FakeDb(tables={"workflow_runs": [_runs()],
+                              "hunter_application_approvals": rows})
+        monkeypatch.setattr(alerts, "db_get", fake.get)
+        return {p["kind"]: p["fingerprint"] for p in alerts.trouble_checks(None)}
+    a, b = problems_for(2, 1), problems_for(25, 9)
+    for kind in ("applications waiting on you", "did you send these?"):
+        assert a[kind] == b[kind]
+    import datetime as dt
+    monkeypatch.setattr(alerts, "_now",
+                        lambda: dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=7))
+    assert problems_for(2, 1)["applications waiting on you"] != a["applications waiting on you"]

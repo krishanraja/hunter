@@ -483,6 +483,10 @@ def trouble_checks(cfg: Config, sheet=None, *, observed: dict | None = None,
                     "fingerprint": f"failing:{str(fails[0].get('run_at'))[:10]}",
                     "detail": f"{len(fails)} of the last 3 runs failed. {why}"})
 
+    # A reminder, not an alarm: at most once a calendar week each. The key
+    # held the count, then the set of tokens, so every approval made,
+    # cancelled or rebuilt changed it, and on 2026-10-19 he was mailed six
+    # times in eight hours. His words: "That's just so aggressive."
     awaiting = db_get(cfg, "hunter_application_approvals",
                       {"select": "token,company,role,created_at,opened_at",
                        "state": "eq.awaiting", "order": "created_at.asc",
@@ -496,7 +500,7 @@ def trouble_checks(cfg: Config, sheet=None, *, observed: dict | None = None,
     if opened:
         names = ", ".join(f"{a.get('company')} {a.get('role')}" for a in opened[:4])
         out.append({"kind": "did you send these?",
-                    "fingerprint": "opened:" + ",".join(sorted(a["token"] for a in opened))[:180],
+                    "fingerprint": "opened:" + _reminder_week(),
                     "detail": f"You opened the filled form for {names} more than a day "
                               f"ago and hunter never heard it was sent. If you sent it, "
                               f"type Applied in column A of its Pipeline row; hunter "
@@ -506,7 +510,7 @@ def trouble_checks(cfg: Config, sheet=None, *, observed: dict | None = None,
     if old:
         names = ", ".join(f"{a.get('company')} {a.get('role')}" for a in old[:4])
         out.append({"kind": "applications waiting on you",
-                    "fingerprint": f"awaiting:{len(old)}:{str(old[0].get('created_at'))[:10]}",
+                    "fingerprint": "awaiting:" + _reminder_week(),
                     "detail": f"{len(old)} filled application(s) have been waiting "
                               f"more than {APPROVAL_DAYS} days: {names}"})
 
@@ -547,6 +551,12 @@ def trouble_checks(cfg: Config, sheet=None, *, observed: dict | None = None,
                               f"changed shape."})
     return out
 
+
+
+def _reminder_week() -> str:
+    """The ISO week, as 2026-W43: the key a weekly reminder is sent once under."""
+    y, w, _ = _now().isocalendar()
+    return f"{y}-W{w:02d}"
 
 def trouble_email(problems: list[dict]) -> tuple[str, str, str]:
     subject = (f"hunter needs you: {problems[0]['kind']}" if len(problems) == 1
