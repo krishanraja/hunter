@@ -20,6 +20,7 @@ Three rules, all of them borrowed from the letter rather than invented here:
 from __future__ import annotations
 
 import json
+import re
 
 from ..config import Config
 from ..package import his_view as his_view_mod
@@ -94,6 +95,24 @@ def reader_section(reader: dict | None) -> str:
     return "\n".join(lines)
 
 
+# One proof point once per form (his ruling, 2026-10-19, on Replit's two
+# answers, which both told the same publisher story). Two answers repeat when
+# they share a run of this many words: a story retold, not a common phrase.
+REPEAT_RUN = 6
+_WORD = re.compile(r"[a-z0-9$%][a-z0-9$%'.-]*")
+
+
+def _runs(text: str, n: int = REPEAT_RUN) -> set[tuple[str, ...]]:
+    words = _WORD.findall((text or "").lower())
+    return {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
+
+
+def repeats(answer: str, told: list[str]) -> bool:
+    """Whether this answer retells something an earlier answer on the form told."""
+    mine = _runs(answer)
+    return any(mine & _runs(t) for t in told)
+
+
 def asks_what_he_built(question: str) -> bool:
     import re
     return bool(re.search(r"\b(built|build|made|created|shipped|project)\b", question or "", re.I))
@@ -104,7 +123,8 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
               banned_phrases: tuple[str, ...] = (),
               his_view=None, reader: dict | None = None,
               ruled_out: tuple[str, ...] = (),
-              ai_allowed: bool = True) -> tuple[str, str]:
+              ai_allowed: bool = True,
+              told: list[str] | None = None) -> tuple[str, str]:
     """(answer, why_not). An empty answer always carries a reason.
 
     his_view is what he said about the role (package.his_view), held to the
@@ -136,6 +156,10 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
     rule = ("" if ai_allowed else
             "\n\nThis answer must not mention his AI operating system or his hands-on AI "
             "building: another answer on this form already does, or the question does not ask.")
+    told = list(told or [])
+    if told:
+        rule += ("\n\nALREADY TOLD ON THIS FORM (never tell these stories or figures "
+                 "again; use a different proof):\n" + "\n---\n".join(told))
     prompt = (f"COMPANY: {company}\nROLE: {role}\n\n"
               + (f"{brief}\n\n" if brief else "")
               + f"QUESTION:\n{question}{rule}\n\n"
@@ -157,7 +181,7 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
     for attempt in range(TRIM_ATTEMPTS):
         problem = _problem(answer, evidence, banned_phrases, his_view=his_view,
                            public=False, posting=jd_text + "\n" + question,
-                           ruled_out=ruled_out, ai_allowed=ai_allowed)
+                           ruled_out=ruled_out, ai_allowed=ai_allowed, told=told)
         if not problem:
             return answer, ""
         if attempt == TRIM_ATTEMPTS - 1:
@@ -177,7 +201,7 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
             return "", why
     return "", (_problem(answer, evidence, banned_phrases, his_view=his_view,
                          posting=jd_text + "\n" + question, ruled_out=ruled_out,
-                         ai_allowed=ai_allowed)
+                         ai_allowed=ai_allowed, told=told)
                 or "unknown")
 
 
@@ -220,7 +244,8 @@ def _parse(raw: str, truncated: bool = False) -> tuple[str, str]:
 def _problem(answer: str, evidence: str,
              banned_phrases: tuple[str, ...], *, his_view=None,
              public: bool = True, posting: str = "",
-             ruled_out: tuple[str, ...] = (), ai_allowed: bool = True) -> str:
+             ruled_out: tuple[str, ...] = (), ai_allowed: bool = True,
+             told: list[str] | None = None) -> str:
     """What is wrong with this draft. public False is the retry message to
     the model, told exactly what failed so it can fix it; public True is the
     reason returned and printed in the approval run and plan.notes, which
@@ -243,6 +268,9 @@ def _problem(answer: str, evidence: str,
     if hits:
         return (f"it says how something is built ({', '.join(hits)}); say what it did "
                 f"for the business instead, and name no tool")
+    if told and repeats(answer, told):
+        return ("it retells a story another answer on this form already tells; "
+                "use a different proof")
     if not ai_allowed and proof.says_ai_system(answer):
         return ("it mentions his AI operating system, which this answer may not; "
                 "use another proof")
@@ -272,6 +300,10 @@ def form_problems(answers: dict[str, str], *, posting: str, family: str = "",
                 out.append(f"answer {i} speaks of his AI system to a question that does not ask")
     if budget is not None and len(says) > budget:
         out.append(f"{len(says)} answers speak of his AI system; this seat gets at most {budget}")
+    texts = list(answers.values())
+    for i in range(1, len(texts)):
+        if repeats(texts[i], texts[:i]):
+            out.append(f"answer {i + 1} retells a story an earlier answer tells")
     return out
 
 
@@ -298,7 +330,8 @@ def draft_all(cfg: Config, questions: list[str], *, company: str, role: str,
                                 jd_text=jd_text, evidence=evidence,
                                 banned_phrases=banned_phrases,
                                 his_view=his_view, reader=reader,
-                                ruled_out=ruled_out, ai_allowed=allowed)
+                                ruled_out=ruled_out, ai_allowed=allowed,
+                                told=list(out.values()))
         if answer and proof.says_ai_system(answer):
             used += 1
         if answer:

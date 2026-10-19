@@ -1,5 +1,5 @@
 {
- "about": "His rulings on packages. rejected: packages he ruled against, with his reasons as labels. his_lines: sentences he wrote into letters himself, the altitude he writes at. record: every letter used or drafted under the house style before 2026-10-19, not ruled on one by one, measured only. Company names are Acme; no score and no reaction.",
+ "about": "His rulings on packages. rejected: packages he ruled against, with his reasons as labels. his_lines: sentences he wrote into letters himself, the altitude he writes at. record: every letter used or drafted under the house style before 2026-10-19, not ruled on one by one, measured only. Company names are Acme; no score and no reaction. rejected_forms: a form whose answers he ruled against, with his reason.",
  "rejected": [
   {
    "title": "head of corporate development",
@@ -981,6 +981,23 @@
     "close": "My first step would be a read of the EMEA mid-market pipeline by stage and source, then one change to qualification and one to onboarding in the first 30 days. I can bring that read, and a first 90-day plan, to our first conversation.",
     "cv_summary": "Commercial leader who builds and coaches sales teams. Built Captify APAC from $0 to $12M ARR at 22% EBITDA with a team of 18 and a personal MD quota, took Nine revenue from $9M to $61M, and started in London at Microsoft UK. A lot of the 14-agent AI operating system I run for mind/make relies on Acme, and I would bring both to the Commercial sales team in EMEA."
    }
+  }
+ ],
+ "rejected_forms": [
+  {
+   "title": "head of corporate development",
+   "family": "corp_dev_strategy",
+   "his_ruling": "one proof point once per form: both answers told the same publisher story",
+   "answers": [
+    {
+     "question": "If you want to share something you built with Acme please share below.",
+     "answer": "The thing I would share is the operating system I built to run my own practice, mind/make, for the past 18 months. It brings me customers, produces content and prepares my sales meetings. The second time anything breaks, it writes a permanent rule so the failure does not repeat. Anything that leaves the building waits for my go or no-go. Components of it are now licensed to three businesses. Running it on my own p&l means I reprice weekly against volatile model costs and decide what stays in-house and what gets licensed out. I bring the same discipline to clients' build, buy or partner calls. A major media publisher's CRO had refereed two quarters of build-versus-partner debate. After one day of pressure-testing the decision was to partner now and revisit build in twelve months. The agreement was signed the following month, and roughly a year of engineering time was not spent on the wrong thing. A top-10 US digital publisher had 14 AI vendors on the calendar. I wrote a three-decision board memo: one vendor killed, one workflow built internally, one paused with a re-evaluation date. I am happy to walk you through the system and those decisions in one conversation."
+    },
+    {
+     "question": "What excites you about Acme?",
+     "answer": "Acme lets anyone with an idea ship software, and that shift is moving faster than any single team can build. That makes buy and partner as important as build, and I want to own those calls. My career has sat where a new technology meets a P&L. At Nexxen (Singtel) we scaled APAC platform revenue from $4m to $38m across 12 fragmented markets through two technology M&As. The hard part came after close: aligning product, engineering, sales and operations so the acquired capability became revenue. More recently I ran a day of pressure-testing for a major media publisher's CRO on a build-versus-partner split. We chose partner now and revisit build in twelve months; the agreement signed the following month and roughly a year of engineering time was not spent on the wrong thing. For a top-10 US publisher with 14 AI vendors on the calendar, I wrote a three-decision board memo: one vendor killed, one workflow built internally, one paused with a re-evaluation date. I also co-launched Meliora Fund One, with a thesis on CTO-led founders and application-layer AI ventures, which puts me in the founder and investor conversations where targets surface early. I want to be the first corporate development hire, build the pipeline and own each deal through to integration."
+    }
+   ]
   }
  ]
 }

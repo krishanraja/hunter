@@ -44,9 +44,15 @@ def fake_model(answer, monkeypatch, *, raw=None):
         def __init__(self, t): self.content = [Block(t)]
 
     class Messages:
+        calls = 0
+
         def create(self, **kw):
             Messages.seen = kw
-            return Resp(raw if raw is not None else json.dumps({"answer": answer}))
+            # A list is one answer per call, in order: a form whose answers
+            # tell different stories.
+            got = answer[min(Messages.calls, len(answer) - 1)] if isinstance(answer, list) else answer
+            Messages.calls += 1
+            return Resp(raw if raw is not None else json.dumps({"answer": got}))
 
     class Client:
         def __init__(self, **kw): self.messages = Messages()
@@ -114,12 +120,16 @@ def test_a_missing_key_is_named_rather_than_crashing(monkeypatch):
 
 def test_every_question_gets_an_answer_or_a_reason(monkeypatch):
     """A silent failure here is a blank box on a real application."""
-    fake_model("I took Nine's data and automation line from $9m to $61m, which "
-               "is the closest thing I have to the job you are describing and "
-               "the reason I am writing at all about this particular role. I ran "
-               "an AI practice at mind/make afterwards, so the operating half "
-               "of this is familiar ground rather than something I would be "
-               "learning on your time.",
+    fake_model(["I took Nine's data and automation line from $9m to $61m, which "
+                "is the closest thing I have to the job you are describing and "
+                "the reason I am writing at all about this particular role. I ran "
+                "an AI practice at mind/make afterwards, so the operating half "
+                "of this is familiar ground rather than something I would be "
+                "learning on your time.",
+                "The hardest problem I have had was at Nine, growing a line of business "
+                "from $9m to $61m while the market around it was shifting every quarter; "
+                "the answer was to price the data, not the media, and to staff for that "
+                "before the revenue arrived, which is what I would bring here."],
                monkeypatch)
     notes: list[str] = []
     out = essays.draft_all(Cfg(), ["Why us?", "A hard problem?"],
@@ -262,3 +272,14 @@ def test_a_reply_cut_off_at_the_token_limit_is_named_as_that(monkeypatch):
                                 jd_text="", evidence=EVIDENCE)
     assert got == "" and "cut off" in why
     assert Messages.seen["max_tokens"] >= 4000, "room to close the JSON"
+
+
+def test_an_answer_that_retells_an_earlier_one_is_asked_for_another_proof():
+    told = ["After one day of pressure-testing the decision was to partner now and revisit "
+            "build in twelve months."]
+    again = ("Then I ran a day of pressure-testing and the decision was to partner now and "
+             "revisit build in twelve months, which saved a year of engineering time. " * 3)
+    assert "retells a story" in essays._problem(again, again.lower(), (), told=told)
+    other = ("At Captify I took the partner channel to 30 percent of revenue and closed a "
+             "large partnership with a counterparty many times our size, quarter after quarter. " * 2)
+    assert essays._problem(other, other.lower(), (), told=told) == ""

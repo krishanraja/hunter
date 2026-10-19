@@ -65,3 +65,15 @@ def test_the_record_before_the_reader_brief_is_measured(capsys):
               f"letters before the reader brief, {tools} name a tool or internal and "
               f"{budget} speak of his AI system more than the seat allows")
     assert len(FX["record"]) >= 20
+
+
+@pytest.mark.parametrize("form", FX["rejected_forms"], ids=lambda f: f["title"])
+def test_a_form_that_tells_one_story_twice_is_refused(form):
+    """His ruling, 2026-10-19: the Replit answers, rewritten without tools,
+    both told the same publisher story. One proof point once per form."""
+    answers = {a["question"]: a["answer"] for a in form["answers"]}
+    got = essays.form_problems(answers, posting="", family=form["family"])
+    assert any("retells a story" in g for g in got), got
+    first, second = list(answers.values())
+    assert essays.repeats(second, [first])
+    assert not essays.repeats(second, [])
