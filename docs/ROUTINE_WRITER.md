@@ -45,7 +45,14 @@ job, after its own checks.
 >      evidence; `prompt` holds the role, its base (US or UK spelling), the
 >      judge's read, his view of the role and the posting. When `prompt` has a
 >      PERSONAL LINE, the letter carries it as he wrote it. `meta` is what the
->      answer is checked against; never change it.
+>      answer is checked against; never change it. Write the `reader` brief
+>      first (who reads it, what they are accountable for, the 3 things they
+>      must believe with posting quotes, their doubts, their register), then
+>      every part for one of those beliefs (`map`), then read the finished
+>      letter as that reader and fill `review`; a part whose review is not
+>      empty is rewritten before answering. Never a tool name, an agent or
+>      workflow count or an internal the posting does not name, and his AI
+>      system in at most one part outside an AI transformation seat.
 > 4. Put your answers in a file as a JSON list of
 >    `{ref, kind, prompt, context, evidence, meta, output}` and run
 >    `PYTHONPATH=src python -m hunter.drafts check FILE` from the checkout.

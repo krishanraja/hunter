@@ -246,3 +246,30 @@ def his_own_sentences(cfg: Config, bank_words: list[str], *, limit: int = 40) ->
                 if len(out) >= limit:
                     return "\n".join(out)
     return "\n".join(out)
+
+
+def his_cuts(cfg: Config, bank_words: list[str], *, limit: int = 30) -> str:
+    """The sentences he deleted from letters hunter wrote, newest first: what
+    he will not have said in his name. Only sentences that are gone from his
+    version, never a personal line of his."""
+    from .package import compose
+    try:
+        rows = db_get(cfg, TABLE, {"select": "before_paragraphs,after_paragraphs",
+                                   "doc_kind": "eq.letter", "text_changed": "eq.true",
+                                   "order": "noticed_at.desc", "limit": "50"})
+    except Exception:
+        return ""
+    out: list[str] = []
+    for r in rows:
+        after = " ".join(_norm(p.get("text")) for p in r.get("after_paragraphs") or [])
+        for p in r.get("before_paragraphs") or []:
+            for sent in _SENTENCE.split(_norm(p.get("text"))):
+                sent = sent.strip()
+                if len(sent) < 20 or sent in after or sent in out:
+                    continue
+                if not compose.strip_his_lines(sent, bank_words).strip():
+                    continue
+                out.append(sent)
+                if len(out) >= limit:
+                    return "\n".join(out)
+    return "\n".join(out)

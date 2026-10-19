@@ -36,9 +36,24 @@ def answer(**over):
          "close": "I'd rather show you the partner engines I have built than describe them.",
          "cv_summary": 'I build platform partnerships and licensing deals: at Quorra I grew a partner engine from $2M to $9M, at Velmont I licensed the stack to three businesses, and at Halcyon I closed a $1.5M partnership. I want to lead the platform partnerships of a home audio business, reporting to the COO, with a small team built around licensing deals.',
          "asks": [{"ask": "partnerships", "quote": "lead platform partnerships and licensing deals",
-                   "answered_by": "Velmont"}]}
+                   "answered_by": "Velmont"}],
+         "reader": READER,
+         "map": [{"part": p, "belief": b} for p, b in MAP],
+         "review": [{"part": p, "feeds_doubt": ""} for p, _ in MAP]}
     a.update(over)
     return a
+
+
+READER = {"who": "the COO", "accountable_for": "platform partnerships and licensing",
+          "must_believe": [
+              {"belief": "he closes platform deals", "quote": "lead platform partnerships and licensing deals"},
+              {"belief": "he works for an operator", "quote": "report to the COO"},
+              {"belief": "he builds teams", "quote": "build a small team"}],
+          "doubts": [{"doubt": "media, not audio", "answered_by": "Velmont"},
+                     {"doubt": "never built a team", "answered_by": "Quorra"}],
+          "register": "an operator"}
+MAP = [("hook", 0), ("identity", 1), ("bullet 1", 2), ("bullet 2", 0), ("bullet 3", 0),
+       ("why_now", 1), ("close", 2), ("cv_summary", 0)]
 
 
 META = {"company": COMPANY, "short_name": "Zentrox", "base": "us", "needs": [], "entries": [],
@@ -526,3 +541,59 @@ def test_a_letter_naming_his_company_any_other_way_is_refused():
     summary = answer()["cv_summary"].replace("I build", "At Mind/Make I build", 1)
     assert "A13 the cv_summary names his company 'Mind/Make'; write 'mind/make'" in \
         probs(answer(cv_summary=summary))
+
+
+# ---------- the reader first (A17) and altitude (A18), 2026-10-19 ----------
+
+def _review(**fed):
+    return [{"part": p, "feeds_doubt": fed.get(p.replace(" ", "_"), "")} for p, _ in MAP]
+
+
+@pytest.mark.parametrize("over,code", [
+    ({"reader": {}}, "A17 no reader brief"),
+    ({"reader": dict(READER, must_believe=READER["must_believe"][:2])}, "A17 the reader brief has 2 beliefs"),
+    ({"reader": dict(READER, must_believe=[dict(b, quote="run a sales team of fifty")
+                                           for b in READER["must_believe"]])},
+     "A17 3 belief(s) quote nothing"),
+    ({"reader": dict(READER, doubts=READER["doubts"][:1])}, "A17 the reader brief names fewer than 2"),
+    ({"map": [{"part": p, "belief": b} for p, b in MAP[:-1]]}, "A17 1 part(s) serve no belief"),
+    ({"map": [{"part": p, "belief": 0} for p, _ in MAP]}, "A17 no part builds belief 1, 2"),
+    ({"review": _review(close="the engines I have built")}, "A17 read as the reader, close"),
+    ({"review": _review()[:-2]}, "A17 the review did not read 2"),
+])
+def test_each_reader_rule_refuses_its_own_break(over, code):
+    got = probs(answer(**over))
+    assert any(f.startswith(code) for f in got), got
+
+
+def test_a_tool_the_posting_does_not_name_is_refused_and_named_by_label():
+    a = answer(close="I'd rather show you the partner engines I built on n8n and Supabase.")
+    got = probs(a)
+    assert any(f.startswith("A18 the close says how it is built (n8n, Supabase)") for f in got), got
+
+
+def test_a_tool_the_posting_names_may_be_said_back():
+    jd = JD + " Our stack runs on n8n."
+    a = answer(close="I'd rather show you the partner engines I built on n8n.")
+    assert not [f for f in compose.problems(a, evidence=EVIDENCE + " n8n",
+                                            meta=dict(META, jd=jd)) if f.startswith("A18")]
+
+
+def test_his_ai_system_is_said_once_outside_an_ai_seat_and_freely_inside_one():
+    a = answer(identity="I'm a commercial leader, and I run my firm on an AI operating system.",
+               close="I'd rather show you the AI operating system than describe it.")
+    got = probs(a, family="corp_dev_strategy")
+    assert any("2 parts speak of his AI system" in f for f in got), got
+    assert not [f for f in probs(a, family="ai_chief_of_staff_transformation")
+                if "speak of his AI system" in f]
+
+
+def test_the_writer_is_told_the_seat_and_reads_the_evidence_marked():
+    p = compose.role_prompt(company=COMPANY, title="Head of Corporate Development", location="",
+                            base_key="us", jd_text=JD, judge_answers=None, his_view="",
+                            entries=[], needs=[])
+    assert "ROLE TYPE" in p and "build, buy or partner" in p
+    ctx = compose.shared_context(model_letter="", evidence_text="Ran a 14-agent system on n8n.",
+                                 bank_words=[], his_rules='- "less specificity"')
+    assert "mechanics, never in prose: n8n, an agent count" in ctx
+    assert "HIS RULES FOR EVERY PACKAGE" in ctx

@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from . import drafts, facts
 from .canon import CanonError
 from .config import Config, db_get, db_patch_where
-from .package import compose, contact, personal
+from .package import compose, contact, personal, proof
 from .package import style as style_mod
 
 # A new brief asks the writer again: 15 October b, every paragraph written
@@ -36,7 +36,10 @@ from .package import style as style_mod
 # personalization?").
 # 15 October d: his CV's highlights are put in the role's order again, as
 # canon 9.12 asks and the builder before this one did.
-PROMPT_VERSION = "letter-2026-10-15d"
+# 19 October: the reader first (a brief, every part mapped to a belief, a
+# review read as that reader) and the altitude rule (no tools, his AI system
+# once), after the Replit Corporate Development letter sold a builder.
+PROMPT_VERSION = "letter-2026-10-19"
 WAITING = "waiting on the writer"
 HELD_BASE = f"held: {contact.HEADER_ASK}"
 RECORD_FIELDS = "job_id,company,title,location,jd_text,judge_answers,header_base,package_status"
@@ -143,7 +146,9 @@ def hold(cfg: Config, job_id: str, reason: str, *, base_key: str = "") -> None:
 def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_text: str,
           judge_answers, view_text: str, model_letter: str, evidence_text: str,
           evidence: str, banned: tuple[str, ...], examples: str = "",
-          his_words: str = "", highlights: list[str] | None = None) -> bool:
+          his_words: str = "", highlights: list[str] | None = None,
+          his_rules: str = "", his_cuts: str = "",
+          ruled_out: tuple[str, ...] = ()) -> bool:
     """Ask the routine for this role's letter. A request for older inputs is
     expired first, so the routine never writes for a letter nobody will use."""
     d = latest_draft(cfg, p.job_id)
@@ -157,7 +162,8 @@ def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_t
                                  entries=p.entries, needs=p.needs)
     context = compose.shared_context(model_letter=model_letter, evidence_text=evidence_text,
                                      bank_words=p.bank, examples=examples, his_words=his_words,
-                                     highlights=highlights)
+                                     highlights=highlights, his_rules=his_rules,
+                                     his_cuts=his_cuts)
     # His own sentences are his facts: the gate traces them like the rest.
     if his_words:
         evidence = evidence + "\n" + his_words.lower()
@@ -165,6 +171,8 @@ def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_t
             "base": p.base_key, "needs": p.needs, "entries": p.entries, "bank": p.bank,
             "banned": list(banned), "fingerprint": p.fingerprint, "job_id": p.job_id,
             "highlights": len(highlights or []),
+            "family": proof.family_of(judge_answers, title), "ruled_out": list(ruled_out),
+            "jd": jd_text,
             "prompt_version": PROMPT_VERSION}
     return drafts.request(cfg, compose.KIND, p.job_id, prompt, context=context,
                           schema=compose.SCHEMA, evidence=evidence, meta=meta)

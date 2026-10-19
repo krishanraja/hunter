@@ -125,9 +125,25 @@ def answer(**over):
          "cv_summary": 'I build platform partnerships and licensing deals: at Quorra I grew a partner engine from $2M to $9M, at Velmont I licensed the stack to three businesses, and at Halcyon I closed a $1.5M partnership. I want to lead the platform partnerships of a voice agents business, reporting to the COO, with a small team built around licensing deals.',
          "asks": [{"ask": "partnerships", "quote": "lead platform partnerships and licensing deals",
                    "answered_by": "Velmont"}],
-         "cv_highlight_order": [1, 0]}
+         "cv_highlight_order": [1, 0],
+         "reader": READER,
+         "map": [{"part": p, "belief": b} for p, b in MAP],
+         "review": [{"part": p, "feeds_doubt": ""} for p, _ in MAP]}
     a.update(over)
     return a
+
+
+READER = {"who": "the COO", "accountable_for": "platform partnerships and licensing",
+          "must_believe": [
+              {"belief": "he closes platform deals",
+               "quote": "lead platform partnerships and licensing deals"},
+              {"belief": "he knows the product", "quote": "voice agents and audio tools"},
+              {"belief": "he works for an operator", "quote": "report to the COO"}],
+          "doubts": [{"doubt": "media, not voice", "answered_by": "Velmont"},
+                     {"doubt": "never built a team", "answered_by": "Quorra"}],
+          "register": "an operator"}
+MAP = [("hook", 0), ("identity", 1), ("bullet 1", 2), ("bullet 2", 0), ("bullet 3", 0),
+       ("why_now", 1), ("close", 2), ("cv_summary", 0)]
 
 
 @pytest.fixture
