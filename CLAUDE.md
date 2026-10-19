@@ -462,6 +462,39 @@ docs/HANDOVER_LETTERS.md is the full record.
   builds into Previews/vN under his Hunter folder and touches no role. Read the built
   documents back from Drive before telling him they are right.
 
+## 3i. A package is written for its reader, at his altitude
+
+His words, 2026-10-19, on the Replit Head of Corporate Development package:
+"it drones on and on about Supabase and N8N ... the less specificity the
+better" and "this is a Corporate Development role, and you are goin on and on
+about me building widgets and AI agents". Then: "you're fixing symptoms, not
+causes". Every check before then asked whether a letter was true and well
+formed; none asked whether it persuades the person who reads it, and 28 of
+the 31 letters written in the house style named a tool or an internal.
+
+- **The reader comes first.** Every letter answer carries `reader` (who reads
+  it, what they are accountable for, the 3 things they must believe, each
+  quoted from the posting, and their doubts), `map` (the belief each part
+  builds) and `review` (read as that reader, the words in any part that feed a
+  doubt). `compose.reader_problems` (A17) refuses an answer without them, a
+  belief no part builds, and a part whose review is not empty. The form
+  answers get the same brief (`run.essay_reader`).
+- **Altitude, not a list of banned words** (`package/proof.py`). Facts keep
+  their truth for the gate and are marked for the writer with what they prove
+  and the mechanics that stay out of prose: tools, vendors, agent and workflow
+  counts, internals. A18 refuses mechanics the posting does not name, and his
+  AI system in more than one part outside an AI transformation seat (his
+  ruling that day), per letter and per form (`essays.form_problems`).
+- **What kind of seat** comes from the judge's family, or from the title when
+  the judge never read the role (`proof.family_of`); `compose.ROLE_TYPES`
+  says what each kind of seat buys.
+- **His rulings and his cuts are kept** (`package/hisrules.py`, system_config
+  `hunter_package_rules`, never this public repo; `docedits.his_cuts`). Every
+  brief carries every rule as a doubt. Record a ruling when he makes one.
+- **The bar is `tests/test_package_taste.py`**, against
+  `tests/fixtures/package_verdicts.json`: what he rejected must be refused,
+  the lines he writes himself must pass. Refresh it when he rules on a package.
+
 ## 3h. Every Drive file has a registered home
 
 His words, 2026-10-18: "ensure it is impossible to save files randomly in

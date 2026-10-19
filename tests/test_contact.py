@@ -212,7 +212,7 @@ def _fill_world(monkeypatch, *, essays=None):
     monkeypatch.setattr(fetch, "form_for", lambda url, key: spec)
     drafted = []
 
-    def draft(cfg, sheet, role, questions, notes, view=None):
+    def draft(cfg, sheet, role, questions, notes, view=None, job_id=""):
         drafted.append(questions)
         return dict.fromkeys(questions, essays or "A plain answer.")
     monkeypatch.setattr(run_mod, "_draft_essays", draft)

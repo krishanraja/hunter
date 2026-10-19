@@ -27,7 +27,9 @@ from __future__ import annotations
 # The style his edited Sonos letter set, 2026-10-15. A change to his house
 # style is a new value here, and every package stamped with the old one is
 # refused until it is rebuilt.
-HOUSE_STYLE = "house-2026-10-15"
+# 19 October: the reader first and the altitude rule (letters.PROMPT_VERSION);
+# every package written before it sold the same AI system to every seat.
+HOUSE_STYLE = "house-2026-10-19"
 
 # Where the record carries it (hunter_seen_roles).
 FIELD = "package_style"

@@ -20,6 +20,7 @@ Three rules, all of them borrowed from the letter rather than invented here:
 from __future__ import annotations
 
 import json
+import re
 
 from ..config import Config
 from ..package import his_view as his_view_mod
@@ -58,6 +59,15 @@ evidence does not support a claim, do not make it.
 applicant could write.
 - Between %d and %d characters.
 
+- Write for the reader of this application. When a READER BRIEF is given, the \
+answer builds one of the beliefs it names and feeds none of its doubts.
+- Altitude: say what he did and what it changed for the business, as a senior \
+operator and investor would. Never name a tool, a vendor or an internal (no \
+platform names, no counts of agents or workflows) unless the question or the \
+job description names it. His AI operating system is a credential, not the \
+story: mention it only when the question asks what he has built, and then as an \
+executive would say it, never as the person wiring the tools.
+
 Return JSON only: {"answer": "..."}""" % (MIN_CHARS, MAX_CHARS)
 
 
@@ -68,10 +78,53 @@ def _text(resp) -> str:
     return ""
 
 
+def reader_section(reader: dict | None) -> str:
+    """The letter's reader brief, for the form answers: the same reader reads
+    both (compose.reader_problems)."""
+    r = reader or {}
+    if not r:
+        return ""
+    lines = [f"READER BRIEF: {r.get('who') or ''}; accountable for "
+             f"{r.get('accountable_for') or ''}; expects {r.get('register') or ''}."]
+    for i, b in enumerate(r.get("must_believe") or []):
+        if isinstance(b, dict):
+            lines.append(f"Belief {i}: {b.get('belief') or ''}")
+    for d in r.get("doubts") or []:
+        if isinstance(d, dict):
+            lines.append(f"Doubt: {d.get('doubt') or ''}")
+    return "\n".join(lines)
+
+
+# One proof point once per form (his ruling, 2026-10-19, on Replit's two
+# answers, which both told the same publisher story). Two answers repeat when
+# they share a run of this many words: a story retold, not a common phrase.
+REPEAT_RUN = 6
+_WORD = re.compile(r"[a-z0-9$%][a-z0-9$%'.-]*")
+
+
+def _runs(text: str, n: int = REPEAT_RUN) -> set[tuple[str, ...]]:
+    words = _WORD.findall((text or "").lower())
+    return {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
+
+
+def repeats(answer: str, told: list[str]) -> bool:
+    """Whether this answer retells something an earlier answer on the form told."""
+    mine = _runs(answer)
+    return any(mine & _runs(t) for t in told)
+
+
+def asks_what_he_built(question: str) -> bool:
+    import re
+    return bool(re.search(r"\b(built|build|made|created|shipped|project)\b", question or "", re.I))
+
+
 def draft_one(cfg: Config, *, question: str, company: str, role: str,
               jd_text: str, evidence: str,
               banned_phrases: tuple[str, ...] = (),
-              his_view=None) -> tuple[str, str]:
+              his_view=None, reader: dict | None = None,
+              ruled_out: tuple[str, ...] = (),
+              ai_allowed: bool = True,
+              told: list[str] | None = None) -> tuple[str, str]:
     """(answer, why_not). An empty answer always carries a reason.
 
     his_view is what he said about the role (package.his_view), held to the
@@ -99,8 +152,17 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
     view = his_view_mod.section(his_view, company=company)
     system = (SYSTEM + (f"\n\n{view.rstrip()}" if view else "")
               + f"\n\nEVIDENCE (everything you may draw on):\n{evidence[:120000]}")
+    brief = reader_section(reader)
+    rule = ("" if ai_allowed else
+            "\n\nThis answer must not mention his AI operating system or his hands-on AI "
+            "building: another answer on this form already does, or the question does not ask.")
+    told = list(told or [])
+    if told:
+        rule += ("\n\nALREADY TOLD ON THIS FORM (never tell these stories or figures "
+                 "again; use a different proof):\n" + "\n---\n".join(told))
     prompt = (f"COMPANY: {company}\nROLE: {role}\n\n"
-              f"QUESTION:\n{question}\n\n"
+              + (f"{brief}\n\n" if brief else "")
+              + f"QUESTION:\n{question}{rule}\n\n"
               f"JOB DESCRIPTION:\n{jd_text[:6000]}"
               f"{forbidden}")
     raw, notes = llm.complete(cfg, prompt, max_tokens=MAX_TOKENS, system=system,
@@ -118,7 +180,8 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
     messages = [{"role": "user", "content": prompt}]
     for attempt in range(TRIM_ATTEMPTS):
         problem = _problem(answer, evidence, banned_phrases, his_view=his_view,
-                           public=False)
+                           public=False, posting=jd_text + "\n" + question,
+                           ruled_out=ruled_out, ai_allowed=ai_allowed, told=told)
         if not problem:
             return answer, ""
         if attempt == TRIM_ATTEMPTS - 1:
@@ -136,7 +199,9 @@ def draft_one(cfg: Config, *, question: str, company: str, role: str,
         answer, why = _parse(raw)
         if not answer:
             return "", why
-    return "", (_problem(answer, evidence, banned_phrases, his_view=his_view)
+    return "", (_problem(answer, evidence, banned_phrases, his_view=his_view,
+                         posting=jd_text + "\n" + question, ruled_out=ruled_out,
+                         ai_allowed=ai_allowed, told=told)
                 or "unknown")
 
 
@@ -178,7 +243,9 @@ def _parse(raw: str, truncated: bool = False) -> tuple[str, str]:
 
 def _problem(answer: str, evidence: str,
              banned_phrases: tuple[str, ...], *, his_view=None,
-             public: bool = True) -> str:
+             public: bool = True, posting: str = "",
+             ruled_out: tuple[str, ...] = (), ai_allowed: bool = True,
+             told: list[str] | None = None) -> str:
     """What is wrong with this draft. public False is the retry message to
     the model, told exactly what failed so it can fix it; public True is the
     reason returned and printed in the approval run and plan.notes, which
@@ -196,25 +263,77 @@ def _problem(answer: str, evidence: str,
         failures = (his_view_mod.redact(verdict.failures, his_view) if public
                     else list(verdict.failures))
         return "the voice gate rejected it: " + "; ".join(failures[:3])
+    from ..package import proof
+    hits = proof.mechanics_in(answer, posting, ruled_out)
+    if hits:
+        return (f"it says how something is built ({', '.join(hits)}); say what it did "
+                f"for the business instead, and name no tool")
+    if told and repeats(answer, told):
+        return ("it retells a story another answer on this form already tells; "
+                "use a different proof")
+    if not ai_allowed and proof.says_ai_system(answer):
+        return ("it mentions his AI operating system, which this answer may not; "
+                "use another proof")
     if his_view_mod.quotes_note(answer, his_view, evidence):
         return ("it copies his note word for word; say it in the answer's own "
                 "words")
     return ""
 
 
+def form_problems(answers: dict[str, str], *, posting: str, family: str = "",
+                  ruled_out: tuple[str, ...] = ()) -> list[str]:
+    """What is wrong with a form's answers taken together, as the reader reads
+    them: a tool or an internal in any answer, and his AI system said in more
+    answers than the seat allows, or in one that does not ask what he built.
+    Labels only, never his words."""
+    from ..package import proof
+    out = []
+    budget = proof.ai_budget(family)
+    says = []
+    for i, (q, a) in enumerate(answers.items(), 1):
+        hits = proof.mechanics_in(a, posting + "\n" + q, ruled_out)
+        if hits:
+            out.append(f"answer {i} says how something is built ({', '.join(hits)})")
+        if proof.says_ai_system(a):
+            says.append(i)
+            if budget is not None and not asks_what_he_built(q):
+                out.append(f"answer {i} speaks of his AI system to a question that does not ask")
+    if budget is not None and len(says) > budget:
+        out.append(f"{len(says)} answers speak of his AI system; this seat gets at most {budget}")
+    texts = list(answers.values())
+    for i in range(1, len(texts)):
+        if repeats(texts[i], texts[:i]):
+            out.append(f"answer {i + 1} retells a story an earlier answer tells")
+    return out
+
+
 def draft_all(cfg: Config, questions: list[str], *, company: str, role: str,
               jd_text: str, evidence: str,
               banned_phrases: tuple[str, ...] = (),
               notes: list[str] | None = None,
-              his_view=None) -> dict[str, str]:
-    """Every question that could be answered. A failure is loud, never silent."""
+              his_view=None, reader: dict | None = None,
+              family: str = "", ruled_out: tuple[str, ...] = ()) -> dict[str, str]:
+    """Every question that could be answered. A failure is loud, never silent.
+
+    His AI system is said once per form at most outside an AI transformation
+    seat (his ruling 2026-10-19), and only in an answer to a question about
+    what he has built; the Replit form said it in both of its answers."""
+    from ..package import proof
     note = notes if notes is not None else []
     out: dict[str, str] = {}
-    for q in questions:
+    budget = proof.ai_budget(family)
+    used = 0
+    order = sorted(questions, key=lambda q: not asks_what_he_built(q))
+    for q in order:
+        allowed = budget is None or (used < budget and asks_what_he_built(q))
         answer, why = draft_one(cfg, question=q, company=company, role=role,
                                 jd_text=jd_text, evidence=evidence,
                                 banned_phrases=banned_phrases,
-                                his_view=his_view)
+                                his_view=his_view, reader=reader,
+                                ruled_out=ruled_out, ai_allowed=allowed,
+                                told=list(out.values()))
+        if answer and proof.says_ai_system(answer):
+            used += 1
         if answer:
             out[q] = answer
             note.append(f"drafted an answer to {q[:60]!r}")

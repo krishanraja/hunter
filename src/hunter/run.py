@@ -2735,15 +2735,23 @@ def house_evidence(cfg: Config, sheet: Sheet, db: DocBuild, jd_text: str) -> dic
              "\n".join(e.value for e in bank.entries.values()),
              cfg.optional("hunter_ai_gtm_evidence") or ""]
     text = "\n\n".join(x for x in parts if x)
+    from .package import hisrules
+    rules, ruled_out = hisrules.load(cfg)
     return {"text": text, "haystack": build_evidence(text, jd_text, model),
             "banned": package_banned(bank.banned_phrases), "model": model,
-            "highlights": highlights}
+            "highlights": highlights, "rules": rules, "ruled_out": ruled_out}
 
 
 def examples_of(cfg: Config, bank_words: list[str]) -> str:
     """His newest letter edits for the writer (docedits.edit_examples)."""
     from . import docedits
     return docedits.edit_examples(cfg, bank_words)
+
+
+def his_cuts_of(cfg: Config, bank_words: list[str]) -> str:
+    """The sentences he deleted from letters (docedits.his_cuts)."""
+    from . import docedits
+    return docedits.his_cuts(cfg, bank_words)
 
 
 def his_words_of(cfg: Config, bank_words: list[str]) -> str:
@@ -2780,7 +2788,9 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
                           evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"],
                           examples=examples_of(cfg, plan.bank),
                           his_words=his_words_of(cfg, plan.bank),
-                          highlights=ev.get("highlights"))
+                          highlights=ev.get("highlights"), his_rules=ev.get("rules", ""),
+                          his_cuts=his_cuts_of(cfg, plan.bank),
+                          ruled_out=tuple(ev.get("ruled_out") or ()))
         letters_mod.hold(cfg, job, letters_mod.WAITING, base_key=plan.base_key)
         summary.append(f"SKIPPED {job}: {letters_mod.WAITING}; the letter is asked of the "
                        f"routine, never the API")
@@ -2968,7 +2978,8 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
                 judge_answers=plan.judge_answers, view_text=text, model_letter=ev["model"],
                 evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"],
                 examples=examples_of(cfg, plan.bank), his_words=his_words_of(cfg, plan.bank),
-                highlights=ev.get("highlights"))
+                highlights=ev.get("highlights"), his_rules=ev.get("rules", ""),
+                his_cuts=his_cuts_of(cfg, plan.bank), ruled_out=tuple(ev.get("ruled_out") or ()))
             print(f"{job}: letter {'asked of the writer' if made else 'already asked'}")
             continue
         letter, problems = letters_mod.checked(plan, letters_mod.context_of(cfg, plan.draft))
@@ -6615,7 +6626,8 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
             notes: list[str] = []
             if view is None:
                 view = his_view_for(cfg, sheet, row)
-            drafted = _draft_essays(cfg, sheet, role, questions, notes, view=view)
+            drafted = _draft_essays(cfg, sheet, role, questions, notes, view=view,
+                                    job_id=(row or {}).get("job_id") or "")
             for line in notes:
                 plan.notes.append(line)
             if drafted:
@@ -6634,8 +6646,29 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
     return plan, au, role
 
 
+def essay_reader(cfg: Config, job_id: str, title: str = "") -> tuple[dict, str]:
+    """(the reader brief his letter was written for, the judge's family) for
+    a role: the form is read by the same person as the letter. Empty when
+    either is not on record, which writes the answers without them."""
+    from . import letters as letters_mod
+    from .package import proof
+    if not job_id:
+        return {}, ""
+    try:
+        rec = db_get(cfg, "hunter_seen_roles", {"select": "judge_answers",
+                                                "job_id": f"eq.{job_id}"})
+        family = proof.family_of((rec[0] if rec else {}).get("judge_answers"), title)
+        d = letters_mod.latest_draft(cfg, job_id) or {}
+        out = d.get("output") if d.get("status") in ("drafted", "used") else None
+        data = json.loads(out) if isinstance(out, str) else (out or {})
+        reader = data.get("reader") if isinstance(data, dict) else None
+        return (reader if isinstance(reader, dict) else {}), family
+    except Exception:
+        return {}, ""
+
+
 def _draft_essays(cfg: Config, sheet: Sheet, role, questions: list[str],
-                  notes: list[str], *, view=None) -> dict[str, str]:
+                  notes: list[str], *, view=None, job_id: str = "") -> dict[str, str]:
     """Answers to the open questions, or nothing and a reason for each.
     view is his view of the role, which the answers are written from under
     the package's rules (essays.draft_one)."""
@@ -6663,10 +6696,14 @@ def _draft_essays(cfg: Config, sheet: Sheet, role, questions: list[str],
         notes.append(f"NOT drafted: evidence unreadable "
                      f"({e.__class__.__name__}: {str(e)[:120]})")
         return {}
+    from .package import hisrules
+    reader, family = essay_reader(cfg, job_id, role.title)
+    _rules, ruled_out = hisrules.load(cfg)
     return essays_mod.draft_all(cfg, questions, company=role.company,
                                 role=role.title, jd_text=role.jd_text or "",
                                 evidence=evidence, banned_phrases=banned,
-                                notes=notes, his_view=view)
+                                notes=notes, his_view=view, reader=reader,
+                                family=family, ruled_out=ruled_out)
 
 
 def hunt_url_for(cfg: Config, job_id: str) -> str:

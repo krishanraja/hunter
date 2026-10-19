@@ -56,8 +56,32 @@ SCHEMA = {
             "type": "object", "required": ["ask", "quote", "answered_by"],
             "properties": {"ask": {"type": "string"}, "quote": {"type": "string"},
                            "answered_by": {"type": "string"}}}},
+        "reader": {"type": "object",
+                   "required": ["who", "accountable_for", "must_believe", "doubts", "register"],
+                   "properties": {
+                       "who": {"type": "string"},
+                       "accountable_for": {"type": "string"},
+                       "must_believe": {"type": "array", "minItems": 3, "maxItems": 3, "items": {
+                           "type": "object", "required": ["belief", "quote"],
+                           "properties": {"belief": {"type": "string"},
+                                          "quote": {"type": "string"}}}},
+                       "doubts": {"type": "array", "minItems": 2, "items": {
+                           "type": "object", "required": ["doubt", "answered_by"],
+                           "properties": {"doubt": {"type": "string"},
+                                          "answered_by": {"type": "string"}}}},
+                       "register": {"type": "string"}}},
+        "map": {"type": "array", "items": {
+            "type": "object", "required": ["part", "belief"],
+            "properties": {"part": {"type": "string"}, "belief": {"type": "integer"}}}},
+        "review": {"type": "array", "items": {
+            "type": "object", "required": ["part", "feeds_doubt"],
+            "properties": {"part": {"type": "string"}, "feeds_doubt": {"type": "string"}}}},
     },
 }
+# The reader comes first (his words, 2026-10-19: "you're fixing symptoms, not
+# causes"). Before this, every check asked whether the letter was true and
+# well formed, and none whether it persuades the person who reads it.
+SCHEMA["required"] = SCHEMA["required"] + ["reader", "map", "review"]
 
 
 class ComposeError(RuntimeError):
@@ -75,6 +99,18 @@ class Letter:
     cv_summary: str = ""
     asks: list[dict] = field(default_factory=list)
     cv_highlight_order: list = field(default_factory=list)
+    reader: dict = field(default_factory=dict)
+    map: list = field(default_factory=list)
+    review: list = field(default_factory=list)
+
+    def parts(self) -> list[tuple[str, str]]:
+        """Every part the reader reads, by the name the map and review use."""
+        out = [("hook", self.hook), ("identity", self.identity)]
+        out += [(f"bullet {i}", f"{a} {b}") for i, (a, b) in enumerate(self.bullets, 1)]
+        out += [("why_now", self.why_now), ("close", self.close)]
+        if self.cv_summary:
+            out.append(("cv_summary", self.cv_summary))
+        return out
 
     def prose(self) -> list[str]:
         return [self.hook, self.identity, self.why_now, self.close]
@@ -105,7 +141,10 @@ def parse(output) -> Letter:
                   bullets=bullets, why_now=_one_line(data.get("why_now")),
                   close=_one_line(data.get("close")),
                   cv_summary=_one_line(data.get("cv_summary")), asks=asks,
-                  cv_highlight_order=list(data.get("cv_highlight_order") or []))
+                  cv_highlight_order=list(data.get("cv_highlight_order") or []),
+                  reader=data.get("reader") if isinstance(data.get("reader"), dict) else {},
+                  map=[m for m in (data.get("map") or []) if isinstance(m, dict)],
+                  review=[r for r in (data.get("review") or []) if isinstance(r, dict)])
 
 
 # ---------- spelling, by base ----------
@@ -383,6 +422,81 @@ def evidence_problems(letter: Letter, *, evidence: str, banned: tuple[str, ...],
     return out
 
 
+def _part_name(s) -> str:
+    t = " ".join(str(s or "").lower().replace("_", " ").split())
+    return {"cv summary": "cv_summary", "why now": "why_now"}.get(t, t)
+
+
+def reader_problems(letter: Letter, jd_text: str) -> list[str]:
+    """A17: the letter was written for a reader. Who reads it, the three things
+    they must come to believe (each quoted from the posting), the doubts that
+    would make them discount him, and, for every part, the belief it builds and
+    whether, read as that reader, it feeds a doubt instead."""
+    r = letter.reader or {}
+    if not r:
+        return ["A17 no reader brief: who reads this, what they must believe, what they doubt"]
+    out = []
+    for k in ("who", "accountable_for", "register"):
+        if not _one_line(r.get(k)):
+            out.append(f"A17 the reader brief has no {k.replace('_', ' ')}")
+    beliefs = [b for b in (r.get("must_believe") or []) if isinstance(b, dict)]
+    if len(beliefs) != 3:
+        out.append(f"A17 the reader brief has {len(beliefs)} beliefs; it needs exactly 3")
+    jd = _norm_quote(jd_text)
+    unquoted = sum(1 for b in beliefs if not _norm_quote(str(b.get("quote") or ""))
+                   or _norm_quote(str(b.get("quote") or "")) not in jd)
+    if unquoted:
+        out.append(f"A17 {unquoted} belief(s) quote nothing the posting says")
+    doubts = [d for d in (r.get("doubts") or []) if isinstance(d, dict)
+              and _one_line(d.get("doubt"))]
+    if len(doubts) < 2:
+        out.append("A17 the reader brief names fewer than 2 doubts the reader would have")
+    names = [n for n, _ in letter.parts()]
+    mapped: dict[str, int] = {}
+    for m in letter.map:
+        try:
+            mapped[_part_name(m.get("part"))] = int(m.get("belief"))
+        except (TypeError, ValueError):
+            continue
+    unmapped = [n for n in names if n not in mapped]
+    if unmapped:
+        out.append(f"A17 {len(unmapped)} part(s) serve no belief: {', '.join(unmapped)}")
+    if beliefs:
+        served = {v for v in mapped.values() if 0 <= v < len(beliefs)}
+        missing = [i for i in range(len(beliefs)) if i not in served]
+        if missing:
+            out.append(f"A17 no part builds belief {', '.join(str(i) for i in missing)}")
+    reviewed = {_part_name(v.get("part")): _one_line(v.get("feeds_doubt")) for v in letter.review}
+    unread = [n for n in names if n not in reviewed]
+    if unread:
+        out.append(f"A17 the review did not read {len(unread)} part(s): {', '.join(unread)}")
+    fed = [n for n in names if reviewed.get(n)]
+    if fed:
+        out.append(f"A17 read as the reader, {', '.join(fed)} feed(s) a doubt; rewrite them")
+    return out
+
+
+def altitude_problems(letter: Letter, jd_text: str, *, family: str = "",
+                      ruled_out: tuple[str, ...] = ()) -> list[str]:
+    """A18: what he does, at the altitude the reader buys. No tool, vendor or
+    internal the posting does not name (proof.MECHANICS), and his AI system in
+    at most one part outside an AI transformation seat (his ruling 2026-10-19).
+    Labels and part names only: a failure never quotes his words."""
+    from . import proof
+    out = []
+    for name, text in letter.parts():
+        hits = proof.mechanics_in(text, jd_text, ruled_out)
+        if hits:
+            out.append(f"A18 the {name} says how it is built ({', '.join(hits)}); say what it did")
+    budget = proof.ai_budget(family)
+    if budget is not None:
+        says = [n for n, t in letter.parts() if proof.says_ai_system(t)]
+        if len(says) > budget:
+            out.append(f"A18 {len(says)} parts speak of his AI system ({', '.join(says)}); "
+                       f"this seat gets at most {budget}, at outcome level")
+    return out
+
+
 def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None = None,
              context: str = "") -> list[str]:
     """Whether a letter answer may be used. Pure: the routine runs it too.
@@ -411,6 +525,9 @@ def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None 
                              list(meta.get("entries") or []), list(meta.get("bank") or []))
     out += evidence_problems(letter, evidence=hay, banned=tuple(meta.get("banned") or ()),
                              names=names)
+    out += reader_problems(letter, meta.get("jd") or prompt)
+    out += altitude_problems(letter, meta.get("jd") or prompt, family=meta.get("family") or "",
+                             ruled_out=tuple(meta.get("ruled_out") or ()))
     if context:
         out += role_problems(letter, jd=meta.get("jd") or prompt, model=model_of(context),
                              names=frozenset(n for n in (meta.get("company"), meta.get("short_name"))
@@ -509,31 +626,59 @@ def respelled(letter: Letter, base_key: str) -> Letter:
                   bullets=[(spell(a, base_key), spell(b, base_key)) for a, b in letter.bullets],
                   why_now=spell(letter.why_now, base_key), close=spell(letter.close, base_key),
                   cv_summary=spell(letter.cv_summary, base_key), asks=letter.asks,
-                  cv_highlight_order=letter.cv_highlight_order)
+                  cv_highlight_order=letter.cv_highlight_order, reader=letter.reader,
+                  map=letter.map, review=letter.review)
 
 
 # ---------- the request the routine answers ----------
 
 RULES = """You write one cover letter for Krish Raja, for one posting, in his own register.
 
-What he asks of every letter (his words, 2026-10-15: "not much of this is actually written
-personally for the role"): every paragraph is written for THIS company and THIS seat. A
-reader at the company should see, in each paragraph, why it is him for them. His own edits
-(HIS EDITS and HIS OWN WORDS below, when there are any) show how: he adds the line that ties
-what he is building himself to what the company sells, and the experience of his that is
-the same job as the title. So, for each posting, first find the connection: what in his own
-work is the same problem this company solves, or the same job this seat does. Lead with it,
-and carry it through.
+START FROM THE READER, NOT FROM HIS EVIDENCE (his words, 2026-10-19, on a Corporate
+Development letter that sold him as a builder of agents: "you're fixing symptoms, not
+causes"). Before a word of the letter, write the reader brief:
+- reader.who: the person who reads this package and decides (the hiring manager the
+  posting implies, and the seat they sit in).
+- reader.accountable_for: what this seat is accountable for, in the posting's terms.
+  ROLE TYPE below says what kind of seat the judge read it as.
+- reader.must_believe: exactly 3 things that reader must come to believe about him to
+  shortlist him, each with an exact quote from the posting that makes it matter.
+- reader.doubts: the doubts that would make that reader discount him (at least 2), and
+  for each, which proof answers it. A seat outside his past titles always carries one.
+  HIS RULES FOR EVERY PACKAGE below are doubts every brief carries.
+- reader.register: how that reader expects to be spoken to: a dealmaker, an operator,
+  a sales leader, a builder.
+Then write every part to build one of the three beliefs, and nothing else. "map" says,
+for every part (hook, identity, bullet 1 to bullet 4, why_now, close, cv_summary), which
+belief (0, 1 or 2) it builds; every belief is built at least once.
+
+ALTITUDE. He is a senior operator and investor. Say what he did and what it changed for
+the business, at the altitude the reader buys. Never how something is built: no tool or
+vendor names, no counts of agents or workflows, no internals, unless the posting itself
+names them. The EVIDENCE marks each fact with what it proves and which mechanics stay out
+of the prose. His AI operating system and his hands-on AI building are true and are a
+credential, not the story: outside an AI transformation seat, at most ONE part of the
+whole package mentions it, in one sentence, as an executive would say it (his own words,
+when he adds it himself: "two years of receipts", "an AI Chief of Staff inside 8
+organizations"). Never sound like the person who wires the tools; sound like the person
+who decides what the business does with them.
+
+Then, last, read the finished letter as that reader and fill "review": for every part,
+feeds_doubt is the exact words from that part that would make the reader discount him
+(a builder where they hire a dealmaker, a tool name, a claim that sounds junior or
+braggy), or "" when it builds its belief cleanly. Any part whose review is not "" must
+be rewritten before you answer: the check refuses it.
 
 The MODEL LETTER below is his: it shows his register, layout and length. It is NOT a template.
 Never copy a sentence from it; write every paragraph fresh for this role.
 - Write in the first person throughout. Never drop the subject ("Would rather", "Built the
   team"): write "I'd rather", "I built". The identity paragraph opens with "I".
-- hook: the connection between his work and what this company is doing, then why it makes
-  him the person for this seat. Name the company. No flattery, no "I am excited".
+- hook: the strongest reason this reader shortlists him: the part of his record that is the
+  same job as this seat, tied to what this company is doing. Name the company. No flattery, no "I am excited".
 - identity: who he is, written from this seat's angle: the parts of his record that matter to
   this company, in his first person. Never his generic summary.
-- bullets: three or four of his proof points, the ones that answer what this posting asks.
+- bullets: three or four of his proof points, the ones that build the reader's beliefs and
+  answer their doubts, chosen by what each proves for this seat, never by how vivid it is.
   Each has a short bold label (an employer or a period, ending with a colon), his figure in
   his own wording, and one clause saying what it means for this company or this ask.
   Every figure and every name must be in the evidence as written.
@@ -575,14 +720,25 @@ def strip_his_lines(text: str, bank_words: list[str]) -> str:
 
 def shared_context(*, model_letter: str, evidence_text: str, bank_words: list[str],
                    examples: str = "", his_words: str = "",
-                   highlights: list[str] | None = None) -> str:
+                   highlights: list[str] | None = None, his_rules: str = "",
+                   his_cuts: str = "") -> str:
+    from . import proof
     parts = [
         RULES,
         "SCHEMA\n" + json.dumps(SCHEMA),
         "MODEL LETTER (his own, with his personal lines taken out)\n"
         + strip_his_lines(model_letter, bank_words),
-        "EVIDENCE (his recorded facts; every figure and name must come from here or the posting)\n"
-        + evidence_text
+    ]
+    if his_rules:
+        parts.append("HIS RULES FOR EVERY PACKAGE (his words; each is a doubt every reader "
+                     "brief carries)\n" + his_rules)
+    if his_cuts:
+        parts.append("HIS CUTS (lines he deleted from letters hunter wrote; never write lines "
+                     "like these)\n" + his_cuts)
+    parts += [
+        "EVIDENCE (his recorded facts, each marked with what it proves and which mechanics "
+        "stay out of the prose; every figure and name must come from here or the posting)\n"
+        + proof.annotated(evidence_text)
         + ("\n\nHIS OWN WORDS (sentences he wrote into letters; his facts)\n" + his_words
            if his_words else ""),
     ]
@@ -595,6 +751,32 @@ def shared_context(*, model_letter: str, evidence_text: str, bank_words: list[st
     return "\n\n".join(parts)
 
 
+# What each kind of seat buys, by the judge's family (judge.FAMILIES). The
+# builder before 2026-10-15 knew "a corp dev role should open on build-buy-
+# partner judgement" (prompts/tailor.md); the house rewrite lost it, and no
+# measurement could see it go. These are what the reader is buying, not a
+# template: the brief still comes from the posting.
+ROLE_TYPES = {
+    "corp_dev_strategy": "Corporate development or strategy: the reader buys judgement on "
+                         "what to build, buy or partner for, and the ability to run a "
+                         "transaction and an integration. Lead on deals, theses and decisions "
+                         "made with money at stake.",
+    "partnerships_alliances": "Partnerships: the reader buys partner economics, deals with large "
+                              "counterparties, and partners that became revenue.",
+    "country_regional_gm": "A regional or country lead: the reader buys a market built and a P&L "
+                           "carried, from first hire to scale.",
+    "chief_commercial_strategy": "Commercial strategy: the reader buys the commercial model, "
+                                 "pricing and the operating rhythm of a revenue organisation.",
+    "ai_chief_of_staff_transformation": "AI transformation or chief of staff: the reader buys "
+                                        "operating change through AI inside organisations; his "
+                                        "AI practice is the core proof here.",
+}
+
+
+def role_type(family: str) -> str:
+    return ROLE_TYPES.get(family or "", "")
+
+
 def role_prompt(*, company: str, title: str, location: str, base_key: str, jd_text: str,
                 judge_answers, his_view: str, entries: list[str], needs: list[str]) -> str:
     ja = judge_answers
@@ -605,6 +787,10 @@ def role_prompt(*, company: str, title: str, location: str, base_key: str, jd_te
             ja = {}
     parts = [f"COMPANY: {company}", f"ROLE: {title}", f"LOCATION: {location}",
              f"BASE: {'UK (UK spelling)' if base_key == 'uk' else 'US (US spelling)'}"]
+    from . import proof
+    kind = role_type(proof.family_of(ja, title))
+    if kind:
+        parts.append(f"ROLE TYPE (the judge's read): {kind}")
     if needs:
         labels = ", ".join(personal.LABEL.get(c, c) for c in needs)
         parts.append(f"PERSONAL LINE (this is a {labels} business; carry one of these, "
