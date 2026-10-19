@@ -84,7 +84,7 @@ AI_BUDGET = 1
 # What a fact proves to a hiring reader. Kept broad on purpose: it orders the
 # evidence for the writer and gates nothing.
 CAPABILITIES: tuple[tuple[str, str], ...] = (
-    ("deals and M&A", r"\bm&a\b|\bacqui|\bmerger|\bdeal|\bnegotiat|\btransaction|\bfund\b"
+    ("deals and M&A", r"\bm&as?\b|\bacqui|\bmerger|\bdeal|\bnegotiat|\btransaction|\bfund\b"
                       r"|\bthesis\b|\bventure|\binvest|\bbuild, buy|\bbuy or partner"),
     ("P&L and growth", r"\bp&l\b|\barr\b|\brevenue\b|\bebitda\b|\bgrew\b|\bscaled?\b|\bgrowth\b"),
     ("market build", r"\bfirst hire\b|\bfrom zero\b|\bfrom \$0\b|\bzero-to\b|\blaunch|\bmarkets?\b"),
@@ -179,13 +179,29 @@ def family_of(judge_answers, title: str = "") -> str:
     return ""
 
 
-_SPLIT = re.compile(r"\n+|(?<=[.;])\s+(?=[A-Z0-9])")
+_SENTENCES = re.compile(r"(?<=[.;])\s+(?=[A-Z0-9])")
+
+
+def _lines(text: str) -> list[str]:
+    """Lines, with a hard-wrapped sentence joined back: a line that ends
+    without a stop and a next line that starts in lower case are one line."""
+    out: list[str] = []
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            out.append("")
+            continue
+        if out and out[-1] and not re.search(r"[.;:!?]$", out[-1]) and line[0].islower():
+            out[-1] = out[-1] + " " + line
+        else:
+            out.append(line)
+    return [l for l in out if l]
 
 
 def proofs(evidence_text: str) -> list[Proof]:
     """His evidence as proof points, one per line or sentence."""
     out = []
-    for piece in _SPLIT.split(evidence_text or ""):
+    for piece in (s for line in _lines(evidence_text) for s in _SENTENCES.split(line)):
         t = " ".join(piece.split()).strip(" -*")
         if len(t) < 12:
             continue
