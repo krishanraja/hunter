@@ -4758,6 +4758,98 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     return counts
 
 
+# A posting he found himself and sent, his words 2026-10-20: "Hunter should
+# have found these". Actively sat unresolved because its board was never
+# found, Horizon Media's seat was blocked at the title gate, Passionfroot was
+# never sourced. Sending a posting is his ruling on the seat, so no gate
+# stands between it and his sheet; everything else is the ordinary path: the
+# posting read from its own board, scored, its case written, a Pipeline row,
+# presented, and the row read back.
+SENT_SOURCE = "sent by Krish"
+
+
+def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
+               summary: list[str], *, apply: bool = False, rationale=None) -> list[dict]:
+    """One outcome per posting he sent: {job_id, outcome}. items carry url,
+    company, title, location, comp, posted_at, and either an ATS (ats, slug,
+    posting_id) or the posting's own text (jd_text) when only a copy of it
+    could be read. Nothing is written without apply."""
+    from .ats import ashby, greenhouse, lever
+    from .package.rationale import write_rationale_and_snippet
+    rationale = rationale or write_rationale_and_snippet
+    fetchers = {"greenhouse": greenhouse.fetch_posting, "ashby": ashby.fetch_posting,
+                "lever": lever.fetch_posting}
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    out = []
+    for it in items:
+        role_id = job_id(it["company"], it["title"])
+        if _rows_for({"url": it["url"], "company": it["company"], "title": it["title"]}, rows):
+            out.append({"job_id": role_id, "outcome": "already on Pipeline"})
+            continue
+        fetch = fetchers.get(it.get("ats") or "")
+        if fetch:
+            live, jd, jd_url = fetch_with_retry(fetch, it["slug"], it["posting_id"])
+            liveness = "checked"
+            if not live:
+                out.append({"job_id": role_id, "outcome": "the posting is gone from its board"})
+                continue
+        else:
+            live, jd, jd_url, liveness = False, it.get("jd_text") or "", it["url"], "unverified"
+        if len(jd) < 200:
+            out.append({"job_id": role_id, "outcome": "no posting text could be read"})
+            continue
+        band = comp_mod.best(it.get("comp") or "", jd)
+        role = ResolvedRole(company=it["company"], title=it["title"], url=jd_url,
+                            jd_url=jd_url, jd_text=jd, live=live, source=SENT_SOURCE,
+                            location=it.get("location") or "", comp=band, liveness=liveness)
+        result = score_role(role, universe=canon.universe)
+        if not apply:
+            out.append({"job_id": role.job_id, "outcome": f"would stage, score {result.score}"})
+            continue
+        why, snippet, _flags = rationale(
+            cfg, canon, company=role.company, title=role.title, jd=role.jd_text,
+            score=result.score, score_reason=result.why_it_fits,
+            location=role.location, comp=role.comp)
+        record = {"job_id": role.job_id, "title": role.title, "company": role.company,
+                  "url": role.url, "job_url": role.jd_url, "score": result.score,
+                  "status": "staging", "auto_rejected": False, "rejection_reason": None,
+                  "source": SENT_SOURCE, "location": role.location, "comp": role.comp,
+                  "sweep_date": TODAY(), "why_it_fits": why,
+                  "jd_text": jd[:6000], "last_verified_at": NOW() if live else None}
+        # merge: Actively and Horizon Media already had a row, unresolved and
+        # blocked, and a duplicate-ignoring insert would have left them so.
+        db_insert(cfg, "hunter_seen_roles", [record], on_conflict="job_id", merge=True)
+        sheet.append_rows([make_row(company=role.company, role=role.title,
+                                    jd_url=role.jd_url, score=result.score,
+                                    why_it_fits=why, location=role.location,
+                                    comp=role.comp, source=SENT_SOURCE, jd_snippet=snippet,
+                                    jd_verified=(liveness != "unverified"))])
+        shown = PresentedMarker(cfg, summary)
+        shown.mark(role.job_id, {"presented_at": NOW()}, result.score)
+        shown.report()
+        back = _rows_for(record, sheet.read_pipeline(canon.sheet_headers))
+        out.append({"job_id": role.job_id,
+                    "outcome": "on Pipeline, read back" if back else
+                               "written, but the read-back did not find the row"})
+    return out
+
+
+def cmd_stage_sent(path: str, *, apply: bool = False) -> int:
+    """`stage-sent FILE [--apply]`: the postings he sent, from a JSON list.
+    Codes and outcomes only."""
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    items = json.load(open(path, encoding="utf-8"))
+    summary: list[str] = []
+    got = stage_sent(cfg, canon, sheet, items, summary, apply=apply)
+    for g in got:
+        print(f"{g['job_id']}: {g['outcome']}")
+    for line in summary:
+        print(line)
+    return 0 if all("read back" in g["outcome"] or "already" in g["outcome"]
+                    or not apply for g in got) else 1
+
+
 class PresentedMarker:
     """presented_at and the AI Score he is shown, written in one patch.
 
@@ -10339,6 +10431,11 @@ def main(argv: list[str]) -> int:
         return 0
     if cmd in ("drive-map", "drive-file", "drive-sweep"):
         return cmd_drive(cmd, argv)
+    if cmd == "stage-sent":
+        # Postings he found himself and sent (stage_sent): staged on his
+        # sheet past the gates, with the ordinary score, case and read-back.
+        paths = [a for a in argv if a != cmd and not a.startswith("--")]
+        return cmd_stage_sent(paths[0] if paths else "", apply="--apply" in argv)
     if cmd == "build-preview":
         # The scratch preview: --job-id (repeatable), --queue to ask the
         # writer, --apply --folder <id> to build. Links and codes only.
