@@ -49,7 +49,7 @@ from .router import classify_verdict, is_warm_path, route_status, select_for_bui
 from .score import BAR, score_role
 from . import sheet as sheet_mod
 from .sheet import Sheet, SheetError, SheetRow, make_row
-from .sources import (ResolvedRole, company_key, country_of, distinctive_tokens,
+from .sources import (ResolvedRole, company_key, posted_of, country_of, distinctive_tokens,
                       identity_keys, placed_identity_keys,
                       job_id, slugify)
 from .notify import send_summary
@@ -4521,6 +4521,9 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                # throwing away half an hour of sweeping at the last step.
                "jd_text": (role.jd_text or "")[:6000],
                "last_verified_at": NOW() if live else None}
+        posted, posted_kind = posted_of(p)
+        if posted:
+            row["posted_at"], row["posted_source"] = posted, posted_kind
         inserts.append(row)
         if judge_mode != "off" and not judge_stage.hard_failure(report):
             candidates.append(judge_stage.Candidate(
@@ -4816,6 +4819,8 @@ def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
                   "source": SENT_SOURCE, "location": role.location, "comp": role.comp,
                   "sweep_date": TODAY(), "why_it_fits": why,
                   "jd_text": jd[:6000], "last_verified_at": NOW() if live else None}
+        if (it.get("posted_at") or "")[:10]:
+            record["posted_at"], record["posted_source"] = it["posted_at"][:10], "posted"
         # merge: Actively and Horizon Media already had a row, unresolved and
         # blocked, and a duplicate-ignoring insert would have left them so.
         db_insert(cfg, "hunter_seen_roles", [record], on_conflict="job_id", merge=True)

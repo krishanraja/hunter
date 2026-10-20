@@ -77,3 +77,19 @@ def test_a_dry_run_writes_nothing(monkeypatch):
     sheet = FakeSheet()
     got = run.stage_sent(None, canon, sheet, [ITEM], [], apply=False, rationale=rationale)
     assert got[0]["outcome"].startswith("would stage") and not db and not sheet.appended
+
+
+def test_freshness_is_the_posting_date_and_never_a_last_update():
+    from hunter.sources import RolePosting, fresh_label, posted_of
+    li = RolePosting(company="A", title="T", url="u", source="apify_linkedin",
+                     posted_at="2026-10-15T09:00:00Z")
+    gh = RolePosting(company="A", title="T", url="u", source="greenhouse:a", ats="greenhouse",
+                     posted_at="2026-10-15T09:00:00-04:00")
+    assert posted_of(li) == ("2026-10-15", "posted")
+    assert posted_of(gh) == ("2026-10-15", "updated")
+    assert fresh_label(*posted_of(li), today="2026-10-20") == "FRESH 2026-10-15"
+    assert fresh_label(*posted_of(li), today="2026-11-20") == "2026-10-15"
+    assert fresh_label(*posted_of(gh), today="2026-10-20") == "updated 2026-10-15"
+    assert fresh_label("", "", today="2026-10-20") == ""
+    assert posted_of(RolePosting(company="A", title="T", url="u", source="x",
+                                 posted_at="3 days ago")) == ("", "")
