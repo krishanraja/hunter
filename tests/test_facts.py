@@ -264,6 +264,23 @@ def test_his_reply_is_written_exactly_and_quoted_back_to_him(asked, capsys):
     assert words not in capsys.readouterr().out
 
 
+def test_his_line_given_in_chat_is_written_and_nothing_is_mailed(with_section):
+    # His ruling 2026-10-20: "stop asking me those by email".
+    db = with_section
+    facts.request(None, "voice_audio_speech", "kestrel:vp")
+    (open_,) = facts.open_asks(None)
+    assert open_["status"] == "queued"
+    words = "I recorded voiceovers for audio dramas through university."
+    assert facts.answer(None, open_["id"], words) == 1
+    (e,) = bank(db)
+    assert e.words == words and e.categories == ("voice_audio_speech",)
+    row = db.t["hunter_fact_requests"][0]
+    assert (row["status"], row["answer"], row["answer_source"]) == ("written", words, "chat")
+    assert facts.open_asks(None) == []
+    with pytest.raises(ValueError):
+        facts.answer(None, open_["id"], words)
+
+
 def test_terms_are_what_his_line_and_the_business_both_say():
     sentences = ["Voice AI agents and audio tools", "voice agents for call centres"]
     assert facts.terms_for("I have run call centres and built voice tools.", sentences) == \

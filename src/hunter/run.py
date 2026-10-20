@@ -7126,9 +7126,9 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
     did not draft is marked for a day, so the next batch moves on. tally, when given, counts each outcome, for
     a caller that prints counts and nothing else; failures, when given, gets
     the class of each error that stopped one (actions._prepare's note).
-    A form refused for a missing answer names its questions to him
-    (send_missing_answers): in one email at the end of this run, or, when
-    `missing` is given, appended to it for the caller's one email.
+    A form refused for a missing answer records its questions for a session
+    to ask him in chat (record_missing_answers): at the end of this run, or,
+    when `missing` is given, appended to it for the caller's one record.
     """
     def count(outcome: str) -> None:
         if tally is not None:
@@ -7557,7 +7557,7 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
             asked = missing_questions(plan)
             if asked:
                 found.append({"company": role.company, "role": role.title,
-                              "questions": asked})
+                              "job_id": row.get("job_id") or "", "questions": asked})
             note = mark_prepared(cfg, row, REFUSED_BLOCKING, bank=bank)
             if note:
                 print(note)
@@ -7627,13 +7627,14 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
         missing.extend(found)
     elif apply and found:
         try:
-            if send_missing_answers(cfg, found):
-                count(MISSING_EMAILED)
-                print(f"\nthe missing questions for {len(found)} posting(s) were emailed")
+            if record_missing_answers(cfg, found):
+                count(MISSING_RECORDED)
+                print(f"\nthe missing questions for {len(found)} posting(s) were recorded "
+                      f"for him to answer in chat")
             else:
-                print("\nthe missing questions could not be emailed (no mail channel)")
+                print("\nthe missing questions did not read back")
         except Exception as e:
-            print(f"\nthe missing questions could not be emailed ({e.__class__.__name__})")
+            print(f"\nthe missing questions were not recorded ({e.__class__.__name__})")
     # A failure that stopped an application reaching him is a failing run, but
     # only after every one that could be sent has been. A role he was sent the
     # documents for is NOT a failure: it reached him, which is the whole job,
@@ -8071,10 +8072,13 @@ PREPARED_SKIPS = {BY_HAND: "sent to apply by hand before, package unchanged",
 
 # His choice, 2026-10-17, asked whether every package was ready to apply in one
 # click: "Always tell me missing questions". A form that stops on a question his
-# answer bank cannot answer names it to him, in one email per run. Until then
-# the refusal was a count in a log, and that day 13 of his 31 rebuilt packages
-# had been refused for answers he was never asked for.
-MISSING_EMAILED = "missing questions emailed"
+# answer bank cannot answer names it to him. Until then the refusal was a count
+# in a log, and that day 13 of his 31 rebuilt packages had been refused for
+# answers he was never asked for. His ruling, 2026-10-20, on the email that
+# named them: "just give me the questions here, stop asking me those by email,
+# what a waste of life to email that to me". So they are recorded
+# (OPEN_QUESTIONS_KEY) and a Claude session asks them in chat (`questions`).
+MISSING_RECORDED = "missing questions recorded"
 _EMPTY_ROW = re.compile(r"Info Bank (.+?) is empty")
 
 
@@ -8096,51 +8100,54 @@ def missing_questions(plan) -> list[tuple[str, str]]:
     return out
 
 
-def missing_email(missing: list[dict]) -> tuple[str, str, str]:
-    """(subject, html, text) for one email: each question once, the roles that
-    ask it, and where his answer goes. Never a token, an answer or a value."""
-    from . import config as config_mod
-    asks: dict[tuple[str, str], list[str]] = {}
-    for m in missing:
-        for q in m["questions"]:
-            asks.setdefault(tuple(q), []).append(f"{m['role']} at {m['company']}")
-    # One title in two countries is two applications and one line.
-    for q, who in asks.items():
-        asks[q] = [w + (f" ({who.count(w)} postings)" if who.count(w) > 1 else "")
-                   for w in dict.fromkeys(who)]
-    roles = len(missing)
-    sheet_url = f"https://docs.google.com/spreadsheets/d/{config_mod.WORKBOOK_ID}/edit"
-    subject = (f"hunter: {len(asks)} question(s) your Info Bank can't answer yet, "
-               f"holding {roles} application(s)")
-    bits = [f"<p><b>{len(asks)} question(s) stopped {roles} application(s).</b> Hunter "
-            f"has no answer for them, so these forms were not filled and nothing was "
-            f"sent.</p>",
-            f'<p>Answer each once in the <a href="{sheet_url}">Application Info Bank</a> '
-            f"tab. Where a row is named, type your answer in its Value cell. Otherwise "
-            f"add a row with the question exactly as written below in Field, your "
-            f"answer in Value and LOCKED in Status. Every form that asks it uses your "
-            f"answer from then on.</p>",
-            "<p>Then press <b>Prepare</b> on each role in Control Center, and its filled "
-            "form comes to you.</p><ul>"]
-    lines = ["[hunter-outbound]", subject, ""]
-    for (q, row), who in sorted(asks.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        where = f' (fill the row "{html_mod.escape(row)}")' if row else ""
-        bits.append(f"<li><b>{html_mod.escape(q)}</b>{where}<br>Asked by: "
-                    f"{html_mod.escape('; '.join(who))}</li>")
-        lines.append(f"- {q}" + (f' (fill the row "{row}")' if row else "")
-                     + f": {'; '.join(who)}")
-    bits.append("</ul>")
-    return subject, "".join(bits), "\n".join(lines)
+OPEN_QUESTIONS_KEY = "hunter_open_questions"
 
 
-def send_missing_answers(cfg: Config, missing: list[dict]) -> bool:
-    """Mail him the questions. True only when a channel took the email."""
-    from . import notify
+def personal_label(category: str) -> str:
+    from .package import personal
+    return personal.LABEL.get(category, category)
+
+
+def open_questions(cfg: Config) -> list[dict]:
+    """The questions his answer bank cannot answer yet, as recorded: each
+    {question, row, company, role, job_id, since}."""
+    got = db_get(cfg, "system_config", {"key": f"eq.{OPEN_QUESTIONS_KEY}", "select": "value"})
+    if not got:
+        return []
+    raw = got[0].get("value")
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except ValueError:
+        return []
+    return [q for q in (data or []) if isinstance(q, dict) and q.get("question")]
+
+
+def record_missing_answers(cfg: Config, missing: list[dict]) -> bool:
+    """Record the questions for a session to ask him in chat; never mailed.
+    A posting's questions replace what was recorded for it before, so an
+    answer he has given stops being asked the next time its form is read.
+    True only when the record reads back."""
     if not missing:
         return False
-    subject, html, text = missing_email(missing)
-    got = notify.send_email(cfg, subject, html, to=notify.mailbox(cfg), text=text)
-    return bool((got or {}).get("sent"))
+    today = datetime.date.today().isoformat()
+    jobs = {m.get("job_id") or f"{m['company']}|{m['role']}" for m in missing}
+    keep = [q for q in open_questions(cfg)
+            if (q.get("job_id") or f"{q.get('company')}|{q.get('role')}") not in jobs]
+    for m in missing:
+        for q, row in m["questions"]:
+            item = {"question": q, "row": row, "company": m["company"], "role": m["role"],
+                    "job_id": m.get("job_id") or "", "since": today}
+            if not any(k["question"] == q and k["job_id"] == item["job_id"]
+                       and k["company"] == item["company"] for k in keep):
+                keep.append(item)
+    value = json.dumps(keep, ensure_ascii=False)
+    if db_get(cfg, "system_config", {"key": f"eq.{OPEN_QUESTIONS_KEY}", "select": "key"}):
+        db_patch(cfg, "system_config", {"key": OPEN_QUESTIONS_KEY}, {"value": value})
+    else:
+        db_insert(cfg, "system_config", [{"key": OPEN_QUESTIONS_KEY, "value": value}])
+    back = open_questions(cfg)
+    return all(any(b["question"] == k["question"] and b["job_id"] == k["job_id"] for b in back)
+               for k in keep)
 
 
 def bank_hash(bank) -> str:
@@ -8587,12 +8594,12 @@ def cmd_approvals_wanted(apply: bool = False, max_n: int = 0) -> int:
             tally["failed"] += 1
             errors[e.__class__.__name__] += 1
     if missing:
-        # One email for the batch, each question once (missing_email).
+        # One record for the batch, asked in chat (record_missing_answers).
         try:
-            if send_missing_answers(cfg, missing):
-                tally[MISSING_EMAILED] += len(missing)
+            if record_missing_answers(cfg, missing):
+                tally[MISSING_RECORDED] += len(missing)
             else:
-                errors["missing questions not emailed"] += 1
+                errors["missing questions not recorded"] += 1
         except Exception as e:
             errors[f"missing questions: {e.__class__.__name__}"] += 1
     print(_counts_line("prepare: outcome", dict(tally)))
@@ -10623,7 +10630,10 @@ def main(argv: list[str]) -> int:
             print(f"facts (dry run): {dict(sorted(by.items()))}; 9.14 in canon: "
                   f"{bool(canonwrite.section_body(cfg))}")
             return 0
-        sent = facts.ask(cfg, notify.send_email)
+        # His ruling 2026-10-20: "stop asking me those by email". An ask
+        # waits, queued, for a Claude session to put to him in chat
+        # (`questions`); replies to the asks already mailed are still read.
+        sent = {"asked": 0, "not_sent": 0}
         try:
             got = facts.read(cfg, fetch=facts.fetch_replies, send=notify.send_email).counts
         except inbox.InboxError as exc:
@@ -10631,6 +10641,22 @@ def main(argv: list[str]) -> int:
             got = {}
         print(f"facts: asked {sent['asked']}, not sent {sent['not_sent']}; "
               f"replies {dict((k, v) for k, v in got.items() if v)}")
+        return 0
+    if cmd == "questions":
+        # Every question only he can answer, for a Claude session to ask him in
+        # chat: his ruling 2026-10-20, "just give me the questions here, stop
+        # asking me those by email". It names roles, so it is run in a session,
+        # never in the public Actions log.
+        from . import facts
+        cfg, _canon = build_context()
+        for r in facts.open_asks(cfg):
+            role = r.get("role") or {}
+            print(f"fact {r['id']}: one line of yours for "
+                  f"{personal_label(r['category'])} businesses "
+                  f"({role.get('company', '')}, {role.get('title', '')})")
+        for q in open_questions(cfg):
+            where = f' (Info Bank row "{q["row"]}")' if q.get("row") else ""
+            print(f"form: {q['question']}{where}: {q['role']} at {q['company']}")
         return 0
     if cmd == "drafts":
         # Use the subscription routine's checked answers; fall back to the API
