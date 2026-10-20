@@ -29,6 +29,12 @@ APPROVED = [
     ("Head of Business and Corporate Development", "Phantom"),
     ("Chief of Staff, GTM", "Slingshot AI"),
     ("Chief of Staff, Go to Market", "UiPath"),
+    # The four he found himself and sent, 2026-10-20.
+    ("Chief of Staff to Co-Founder", "Actively"),
+    ("Head of GTM", "Passionfroot"),
+    ("VP, AI (Agentic Platforms & Transformation)", "Horizon Media"),
+    ("Head of GTM Strategy & Ops", "Clay"),
+    ("AI Strategy & Transformation, Director - RQA", "a blind-set Yes"),
 ]
 
 

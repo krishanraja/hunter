@@ -25,6 +25,43 @@ class RolePosting:
     raw: dict = field(default_factory=dict)
 
 
+# How fresh a posting is, his ask 2026-10-20: "mark a bit more clearly which
+# ones are fresh". Each source's date says something different: LinkedIn's
+# postedAt and Workday's postedOn are when it was posted, Greenhouse's
+# updated_at only when it last changed, so it is labelled as that and never
+# passed off as a posting date.
+FRESH_DAYS = 7
+
+
+def posted_of(p: "RolePosting") -> tuple[str, str]:
+    """(the date, what the date is) for a posting, or ("", "") unknown."""
+    raw = (p.posted_at or "").strip()
+    if not raw:
+        return "", ""
+    day = raw[:10]
+    if not re.match(r"\d{4}-\d{2}-\d{2}$", day):
+        return "", ""
+    kind = "updated" if (p.ats == "greenhouse" or (p.source or "").startswith("greenhouse")) \
+        else "posted"
+    return day, kind
+
+
+def fresh_label(day: str, kind: str, today: str) -> str:
+    """What his sheet shows: FRESH and the date for a posting from the last
+    FRESH_DAYS days, the date otherwise, and blank when unknown. A date that
+    is only when the posting last changed is never called fresh."""
+    import datetime as _dt
+    if not day:
+        return ""
+    try:
+        age = (_dt.date.fromisoformat(today[:10]) - _dt.date.fromisoformat(day)).days
+    except ValueError:
+        return ""
+    if kind == "posted" and 0 <= age <= FRESH_DAYS:
+        return f"FRESH {day}"
+    return day if kind == "posted" else f"updated {day}"
+
+
 @dataclass
 class ResolvedRole:
     company: str

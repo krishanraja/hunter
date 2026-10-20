@@ -495,6 +495,30 @@ the 31 letters written in the house style named a tool or an internal.
   `tests/fixtures/package_verdicts.json`: what he rejected must be refused,
   the lines he writes himself must pass. Refresh it when he rules on a package.
 
+## 3j. The order he reads is fitted to his own scores
+
+His words, 2026-10-20, sending four roles hunter had missed: "I feel at this
+stage we need to create a more sophisticated algorithmic scoring mechanism."
+The AI Score (score.py, a hand-written point table) ranked his 61 scores at
+Spearman -0.19.
+
+- **`rankscore.py`** is a ridge regression on signals he named or the record
+  carries (New York, in person, first of the role, reporting to a founder,
+  seat family, AI-native, pay, the judge's fit), fitted to his Krish Scores.
+  No signal he named may count against a role (`HIS_SIGNALS`).
+- **Measured before it moved anything**: fitted on his earlier scores, it
+  ranks the 22 later ones at 0.33 against -0.15 for the AI Score and 0.27 for
+  the judge (`tests/test_rank_eval.py`, `tests/fixtures/rank_eval.json`,
+  signals and scores only). `rerank --apply` refits on every score, switches
+  on only if it still wins, rescores Pipeline and sorts.
+- **What it moves is the AI Score he sees** (`run.shown_score`); gates and
+  merit still read score.py. The weights live in system_config
+  `hunter_rank_weights`. Refit when he has scored a new batch.
+- **Postings he sends himself** go through `stage-sent`, past the gates (his
+  ruling on the seat), and a person he names for a role becomes a Control
+  Center card (`doorin.named_card`). Freshness is recorded
+  (`posted_at`, `posted_source`); the Posted column waits for canon 9.13.
+
 ## 3h. Every Drive file has a registered home
 
 His words, 2026-10-18: "ensure it is impossible to save files randomly in

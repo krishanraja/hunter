@@ -49,7 +49,7 @@ from .router import classify_verdict, is_warm_path, route_status, select_for_bui
 from .score import BAR, score_role
 from . import sheet as sheet_mod
 from .sheet import Sheet, SheetError, SheetRow, make_row
-from .sources import (ResolvedRole, company_key, country_of, distinctive_tokens,
+from .sources import (ResolvedRole, company_key, posted_of, country_of, distinctive_tokens,
                       identity_keys, placed_identity_keys,
                       job_id, slugify)
 from .notify import send_summary
@@ -913,11 +913,13 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
         else:
             # Krish's ruling 2026-09-03: the shape gate filters, the score
             # orders. A role that passes every gate stays whatever it scores.
+            from . import rankscore
+            seen = shown_score(rankscore.load(cfg), role, result)
             why, flags = write_rationale(
                 cfg, canon, company=r.company, title=r.role, jd=role.jd_text,
-                score=result.score, score_reason=result.why_it_fits,
+                score=seen, score_reason=result.why_it_fits,
                 location=role.location, comp=role.comp)
-            keep.append((r, result.score, why, flags))
+            keep.append((r, seen, why, flags))
 
     print(f"KEEP {len(keep)}, DROP {len(drop)}, UNRESOLVED {len(unresolved)}\n")
     for r, sc, why, flags in keep:
@@ -4278,6 +4280,16 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
     return out
 
 
+def shown_score(model, role, result, *, fit=None, judge_answers=None) -> int:
+    """The AI Score he is shown (rankscore.shown): the model fitted to his own
+    scores once one is switched on, score.py's number until then. Gates and
+    merit still read score.py's; only the number he sees and orders by moves."""
+    from . import rankscore
+    return rankscore.shown(model, result.score, title=role.title, location=role.location,
+                           comp=role.comp, jd_text=role.jd_text,
+                           judge_answers=judge_answers, judge_fit=fit)
+
+
 def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                    postings: list, summary: list[str],
                    company_declines: dict | None = None) -> dict:
@@ -4300,6 +4312,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
               "boards_found": 0, "g12_blocked": [], "g14_blocked": [],
               "from_description": 0, "comp_from_text": 0}
     counts["discovered"] = len(postings)
+    from . import rankscore
+    rank_model = rankscore.load(cfg)
     # Who the employers are, read once rather than per posting.
     try:
         employer_index = employer.build_index(cfg, declines=company_declines)
@@ -4521,6 +4535,9 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                # throwing away half an hour of sweeping at the last step.
                "jd_text": (role.jd_text or "")[:6000],
                "last_verified_at": NOW() if live else None}
+        posted, posted_kind = posted_of(p)
+        if posted:
+            row["posted_at"], row["posted_source"] = posted, posted_kind
         inserts.append(row)
         if judge_mode != "off" and not judge_stage.hard_failure(report):
             candidates.append(judge_stage.Candidate(
@@ -4541,6 +4558,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             row["why_it_fits"] = why
             if rflags:
                 summary.append(f"rationale flags {role.job_id}: {', '.join(rflags)}")
+            result.score = row["score"] = shown_score(rank_model, role, result)
             staged_rows.append((role, result, snippet, why))
 
     judged = None
@@ -4620,6 +4638,9 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                 if note:
                     why = f"{why} {note}"[:900]
                 c.row["why_it_fits"] = why
+                c.result.score = c.row["score"] = shown_score(
+                    rank_model, c.role, c.result, fit=c.judgement.fit,
+                    judge_answers=c.judgement.answers)
                 staged_rows.append((c.role, c.result, snippet, why))
         else:
             for row in inserts:
@@ -4756,6 +4777,174 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         counts["staged"] = len(staged_rows)
 
     return counts
+
+
+# A posting he found himself and sent, his words 2026-10-20: "Hunter should
+# have found these". Actively sat unresolved because its board was never
+# found, Horizon Media's seat was blocked at the title gate, Passionfroot was
+# never sourced. Sending a posting is his ruling on the seat, so no gate
+# stands between it and his sheet; everything else is the ordinary path: the
+# posting read from its own board, scored, its case written, a Pipeline row,
+# presented, and the row read back.
+SENT_SOURCE = "sent by Krish"
+
+
+def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
+               summary: list[str], *, apply: bool = False, rationale=None) -> list[dict]:
+    """One outcome per posting he sent: {job_id, outcome}. items carry url,
+    company, title, location, comp, posted_at, and either an ATS (ats, slug,
+    posting_id) or the posting's own text (jd_text) when only a copy of it
+    could be read. Nothing is written without apply."""
+    from .ats import ashby, greenhouse, lever
+    from .package.rationale import write_rationale_and_snippet
+    rationale = rationale or write_rationale_and_snippet
+    fetchers = {"greenhouse": greenhouse.fetch_posting, "ashby": ashby.fetch_posting,
+                "lever": lever.fetch_posting}
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    out = []
+    for it in items:
+        role_id = job_id(it["company"], it["title"])
+        if _rows_for({"url": it["url"], "company": it["company"], "title": it["title"]}, rows):
+            out.append({"job_id": role_id, "outcome": "already on Pipeline"})
+            continue
+        fetch = fetchers.get(it.get("ats") or "")
+        if fetch:
+            live, jd, jd_url = fetch_with_retry(fetch, it["slug"], it["posting_id"])
+            liveness = "checked"
+            if not live:
+                out.append({"job_id": role_id, "outcome": "the posting is gone from its board"})
+                continue
+        else:
+            live, jd, jd_url, liveness = False, it.get("jd_text") or "", it["url"], "unverified"
+        if len(jd) < 200:
+            out.append({"job_id": role_id, "outcome": "no posting text could be read"})
+            continue
+        band = comp_mod.best(it.get("comp") or "", jd)
+        role = ResolvedRole(company=it["company"], title=it["title"], url=jd_url,
+                            jd_url=jd_url, jd_text=jd, live=live, source=SENT_SOURCE,
+                            location=it.get("location") or "", comp=band, liveness=liveness)
+        result = score_role(role, universe=canon.universe)
+        from . import rankscore
+        result.score = shown_score(rankscore.load(cfg) if cfg is not None else None, role, result)
+        if not apply:
+            out.append({"job_id": role.job_id, "outcome": f"would stage, score {result.score}"})
+            continue
+        why, snippet, _flags = rationale(
+            cfg, canon, company=role.company, title=role.title, jd=role.jd_text,
+            score=result.score, score_reason=result.why_it_fits,
+            location=role.location, comp=role.comp)
+        record = {"job_id": role.job_id, "title": role.title, "company": role.company,
+                  "url": role.url, "job_url": role.jd_url, "score": result.score,
+                  "status": "staging", "auto_rejected": False, "rejection_reason": None,
+                  "source": SENT_SOURCE, "location": role.location, "comp": role.comp,
+                  "sweep_date": TODAY(), "why_it_fits": why,
+                  "jd_text": jd[:6000], "last_verified_at": NOW() if live else None}
+        if (it.get("posted_at") or "")[:10]:
+            record["posted_at"], record["posted_source"] = it["posted_at"][:10], "posted"
+        # merge: Actively and Horizon Media already had a row, unresolved and
+        # blocked, and a duplicate-ignoring insert would have left them so.
+        db_insert(cfg, "hunter_seen_roles", [record], on_conflict="job_id", merge=True)
+        sheet.append_rows([make_row(company=role.company, role=role.title,
+                                    jd_url=role.jd_url, score=result.score,
+                                    why_it_fits=why, location=role.location,
+                                    comp=role.comp, source=SENT_SOURCE, jd_snippet=snippet,
+                                    jd_verified=(liveness != "unverified"))])
+        shown = PresentedMarker(cfg, summary)
+        shown.mark(role.job_id, {"presented_at": NOW()}, result.score)
+        shown.report()
+        back = _rows_for(record, sheet.read_pipeline(canon.sheet_headers))
+        out.append({"job_id": role.job_id,
+                    "outcome": "on Pipeline, read back" if back else
+                               "written, but the read-back did not find the row"})
+    return out
+
+
+def cmd_stage_sent(path: str, *, apply: bool = False) -> int:
+    """`stage-sent FILE [--apply]`: the postings he sent, from a JSON list.
+    Codes and outcomes only."""
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    items = json.load(open(path, encoding="utf-8"))
+    summary: list[str] = []
+    got = stage_sent(cfg, canon, sheet, items, summary, apply=apply)
+    for g in got:
+        print(f"{g['job_id']}: {g['outcome']}")
+    for line in summary:
+        print(line)
+    return 0 if all("read back" in g["outcome"] or "already" in g["outcome"]
+                    or not apply for g in got) else 1
+
+
+def cmd_rerank(apply: bool = False) -> int:
+    """`rerank [--apply]`: fit the order to every score he has given, measure
+    it on the later ones, and only if it beats the AI Score there switch it
+    on, rescore every Pipeline row hunter has a record for, read each cell
+    back and sort. His ruling 2026-10-20: measure first. Counts only."""
+    from . import rankscore
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    rated = db_get(cfg, "hunter_krish_ratings", {
+        "select": "job_id,score,ai_score_then,judge_fit_then,presented_at,title,location,comp",
+        "kind": "eq.scored", "order": "presented_at.asc", "limit": ALL_ROWS})
+    latest: dict = {}
+    for r in rated:
+        latest[r["job_id"]] = r
+    ids = sorted(latest)
+    recs: dict = {}
+    for i in range(0, len(ids), 40):
+        for d in db_get(cfg, "hunter_seen_roles", {
+                "select": "job_id,jd_text,judge_answers,judge_fit",
+                "job_id": f"in.({','.join(ids[i:i + 40])})", "limit": "100"}):
+            recs[d["job_id"]] = d
+    rows = []
+    for j in sorted(ids, key=lambda j: latest[j].get("presented_at") or ""):
+        r, d = latest[j], recs.get(j, {})
+        fit = r.get("judge_fit_then") if r.get("judge_fit_then") is not None else d.get("judge_fit")
+        rows.append({"x": rankscore.features(
+            title=r.get("title") or "", location=r.get("location") or "", comp=r.get("comp") or "",
+            jd_text=d.get("jd_text") or "", judge_answers=d.get("judge_answers"), judge_fit=fit),
+            "his": r["score"], "ai_score": r.get("ai_score_then"), "judge_fit": fit})
+    got = rankscore.holdout(rows)
+    print(f"rerank: {got['n']} later scores, Spearman against his score: new "
+          f"{got['new']:.2f}, AI Score {got['ai_score']:.2f}, judge fit {got['judge']:.2f}")
+    if got["new"] <= got["ai_score"] + 0.2 or got["new"] < 0.3:
+        print("rerank: the new order does not beat the AI Score by enough; nothing changed")
+        return 0
+    model = rankscore.fit_his([r["x"] for r in rows], [float(r["his"]) for r in rows])
+    if not apply:
+        print(f"rerank: would switch on a model fitted to {len(rows)} scores (dry run)")
+        return 0
+    rankscore.store(cfg, model)
+    pipe = sheet.read_pipeline(canon.sheet_headers)
+    changed = same = unknown = failed = 0
+    for p in pipe:
+        found = db_get(cfg, "hunter_seen_roles", {
+            "select": "job_id,title,location,comp,jd_text,judge_answers,judge_fit,score",
+            "job_url": f"eq.{p.jd_url}", "limit": "1"}) if p.jd_url else []
+        if not found:
+            unknown += 1
+            continue
+        d = found[0]
+        new = rankscore.shown(model, int(d.get("score") or 0), title=d.get("title") or p.role,
+                              location=d.get("location") or "", comp=d.get("comp") or "",
+                              jd_text=d.get("jd_text") or "",
+                              judge_answers=d.get("judge_answers"), judge_fit=d.get("judge_fit"))
+        if str(new) == p.cell(sheet_mod.AI_SCORE).strip():
+            same += 1
+            continue
+        try:
+            sheet.update_assessment(p.row_number, score=new,
+                                    why_it_fits=p.cell(sheet_mod.AI_WHY))
+        except SheetError as e:
+            failed += 1
+            print(f"rerank: row {p.row_number} not rescored ({str(e)[:80]})")
+            continue
+        db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]}, {"score": new})
+        changed += 1
+    sheet.sort_by_score()
+    print(f"rerank: switched on; {changed} row(s) rescored and read back, {same} unchanged, "
+          f"{failed} refused, {unknown} with no record left as they were; Pipeline sorted")
+    return 0
 
 
 class PresentedMarker:
@@ -10339,6 +10528,13 @@ def main(argv: list[str]) -> int:
         return 0
     if cmd in ("drive-map", "drive-file", "drive-sweep"):
         return cmd_drive(cmd, argv)
+    if cmd == "rerank":
+        return cmd_rerank(apply="--apply" in argv)
+    if cmd == "stage-sent":
+        # Postings he found himself and sent (stage_sent): staged on his
+        # sheet past the gates, with the ordinary score, case and read-back.
+        paths = [a for a in argv if a != cmd and not a.startswith("--")]
+        return cmd_stage_sent(paths[0] if paths else "", apply="--apply" in argv)
     if cmd == "build-preview":
         # The scratch preview: --job-id (repeatable), --queue to ask the
         # writer, --apply --folder <id> to build. Links and codes only.

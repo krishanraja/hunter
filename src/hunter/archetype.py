@@ -47,9 +47,16 @@ FAMILIES: list[tuple[str, str]] = [
      r"\bdirector,? (?:of )?strategy\b|\bstrategy (?:and|&) corporate\b|"
      r"\bbusiness (?:and|&) corporate development\b|"
      r"\bstrategy (?:and|&) operations\b"),
+    # "VP, AI (Agentic Platforms & Transformation)" at Horizon Media, a seat he
+    # sent himself on 2026-10-20, matched none of these exact phrases. AI with
+    # transformation, strategy, enablement, adoption or platforms anywhere
+    # after it is the shape companybar.AI_SEAT already reads. On the blind
+    # set's 28 G11 blocks it opens 1 more of his Yes roles and none of his
+    # declines.
     ("ai_chief_of_staff",
      r"\bchief of staff\b|\bhead of ai\b|\bai operations\b|\bgtm ai\b|"
-     r"\bai transformation\b|\bai enablement\b"),
+     r"\bai transformation\b|\bai enablement\b|"
+     r"\bai\b.*\b(?:transformation|strategy|enablement|adoption|platforms?)\b"),
     # Canon 5's table lists four families and names partner architecture as a
     # capability rather than a title. Krish approved a partnerships letter
     # block in P1.5, which implies he would take the seat, so the gate admits
