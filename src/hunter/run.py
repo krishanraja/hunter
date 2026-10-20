@@ -49,7 +49,7 @@ from .router import classify_verdict, is_warm_path, route_status, select_for_bui
 from .score import BAR, score_role
 from . import sheet as sheet_mod
 from .sheet import Sheet, SheetError, SheetRow, make_row
-from .sources import (ResolvedRole, company_key, posted_of, country_of, distinctive_tokens,
+from .sources import (ResolvedRole, company_key, posted_of, fresh_label, country_of, distinctive_tokens,
                       identity_keys, placed_identity_keys,
                       job_id, slugify)
 from .notify import send_summary
@@ -1046,6 +1046,8 @@ def cmd_restore(job_ids: list[str], apply: bool = False) -> int:
     cells = [list(hit.cells) for _, _, hit in wanted]
     for c in cells:
         c[0] = "New"          # append validation demands it; corrected below
+        if not str(c[sheet_mod.COLS[sheet_mod.POSTED]]).strip():
+            c[sheet_mod.COLS[sheet_mod.POSTED]] = sheet_mod.DEFAULTS_BY_NAME[sheet_mod.POSTED]
     # His score and reaction come back with his row: they are his words, not
     # hunter writing into his columns.
     rng = sheet.append_rows(cells, carry_his=True)
@@ -4314,6 +4316,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
     counts["discovered"] = len(postings)
     from . import rankscore
     rank_model = rankscore.load(cfg)
+    posted_labels: dict[str, str] = {}
     # Who the employers are, read once rather than per posting.
     try:
         employer_index = employer.build_index(cfg, declines=company_declines)
@@ -4538,6 +4541,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         posted, posted_kind = posted_of(p)
         if posted:
             row["posted_at"], row["posted_source"] = posted, posted_kind
+        posted_labels[role.job_id] = fresh_label(posted, posted_kind, TODAY())
         inserts.append(row)
         if judge_mode != "off" and not judge_stage.hard_failure(report):
             candidates.append(judge_stage.Candidate(
@@ -4682,7 +4686,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                              why_it_fits=why,
                              location=role.location, comp=role.comp,
                              source=role.source, jd_snippet=snippet,
-                             jd_verified=(role.liveness != "unverified"))
+                             jd_verified=(role.liveness != "unverified"),
+                             posted=posted_labels.get(role.job_id, ""))
                     for role, result, snippet, why in staged_rows]
         sheet.append_rows(new_rows)
         shown = PresentedMarker(cfg, summary)
@@ -4766,7 +4771,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                              why_it_fits=why,
                              location=role.location, comp=role.comp,
                              source=role.source, jd_snippet=snippet,
-                             jd_verified=(role.liveness != "unverified"))
+                             jd_verified=(role.liveness != "unverified"),
+                             posted=posted_labels.get(role.job_id, ""))
                     for role, result, snippet, why in staged_rows]
         sheet.append_rows(new_rows)
         shown = PresentedMarker(cfg, summary)
@@ -4848,7 +4854,9 @@ def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
                                     jd_url=role.jd_url, score=result.score,
                                     why_it_fits=why, location=role.location,
                                     comp=role.comp, source=SENT_SOURCE, jd_snippet=snippet,
-                                    jd_verified=(liveness != "unverified"))])
+                                    jd_verified=(liveness != "unverified"),
+                                    posted=fresh_label((it.get("posted_at") or "")[:10],
+                                                       "posted", TODAY()))])
         shown = PresentedMarker(cfg, summary)
         shown.mark(role.job_id, {"presented_at": NOW()}, result.score)
         shown.report()
@@ -5380,7 +5388,7 @@ def leave_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
             grid = sheet.read_archive_grid()
             state = sheet_mod.archive_layout(grid)
             out["applied_tab"] = state or "unrecognised"
-            archived = sheet.read_archive() if state == "current" else []
+            archived = sheet.read_archive() if sheet_mod.has_his_columns(state) else []
         except Exception as e:
             out["applied_tab"] = f"unread ({e.__class__.__name__})"
     arated = records.rate(archived) if records and archived else {}
@@ -5888,6 +5896,56 @@ def _cancel_and_read_back(cfg: Config, tokens: list[str], reason: str, out: dict
     done = sum(1 for g in gone if g.get("state") == approval.CANCELLED)
     out["approvals_cancelled"] += done
     out["unconfirmed"] += len(tokens) - done
+
+
+def refresh_posted(cfg: Config, sheet: Sheet, rows: list, *, today: str,
+                   apply: bool = True) -> dict:
+    """Posted on every Pipeline row, kept true hourly: FRESH falls away after
+    sources.FRESH_DAYS, and a date the record now holds fills a row that said
+    unknown. Only the Posted cell is written, RAW, and read back. Counts."""
+    out = {"rows": len(rows), "written": 0, "failed": 0, "same": 0, "unknown": 0}
+    links = sorted({u for r in rows for u in (r.jd_url,) if u})
+    recs = []
+    for i in range(0, len(links), 30):
+        chunk = ",".join('"' + u.replace('"', "") + '"' for u in links[i:i + 30])
+        recs += db_get(cfg, "hunter_seen_roles", {
+            "select": "job_url,url,posted_at,posted_source", "posted_at": "not.is.null",
+            "job_url": f"in.({chunk})", "limit": "100"})
+    by_link = {}
+    for d in recs:
+        for u in (d.get("job_url"), d.get("url")):
+            if u:
+                by_link[u] = d
+    for r in rows:
+        d = by_link.get(r.jd_url or "")
+        label = fresh_label((d or {}).get("posted_at") or "", (d or {}).get("posted_source") or "",
+                            today) or sheet_mod.DEFAULTS_BY_NAME[sheet_mod.POSTED]
+        if label == sheet_mod.DEFAULTS_BY_NAME[sheet_mod.POSTED]:
+            out["unknown"] += 1
+        if (r.cell(sheet_mod.POSTED) or "").strip() == label:
+            out["same"] += 1
+            continue
+        if not apply:
+            out["written"] += 1
+            continue
+        try:
+            sheet.update_posted(r.row_number, label)
+            out["written"] += 1
+        except SheetError:
+            out["failed"] += 1
+    return out
+
+
+def cmd_posted_refresh(apply: bool = False) -> int:
+    """`posted-refresh [--apply]`: Posted on every Pipeline row. Counts."""
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    got = refresh_posted(cfg, sheet, sheet.read_pipeline(canon.sheet_headers),
+                         today=TODAY(), apply=apply)
+    print(f"posted: {got['rows']} row(s), {got['written']} written, {got['same']} "
+          f"already right, {got['unknown']} unknown, {got['failed']} refused"
+          + ("" if apply else " (dry run)"))
+    return 1 if got["failed"] else 0
 
 
 def settle_step(cfg: Config, canon: Canon, sheet: Sheet,
@@ -10528,6 +10586,8 @@ def main(argv: list[str]) -> int:
         return 0
     if cmd in ("drive-map", "drive-file", "drive-sweep"):
         return cmd_drive(cmd, argv)
+    if cmd == "posted-refresh":
+        return cmd_posted_refresh(apply="--apply" in argv)
     if cmd == "rerank":
         return cmd_rerank(apply="--apply" in argv)
     if cmd == "stage-sent":

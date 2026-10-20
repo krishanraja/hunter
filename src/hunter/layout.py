@@ -33,7 +33,7 @@ to the sheet would be reset under him every hour.
 """
 from __future__ import annotations
 
-from .sheet import (AI_SCORE, AI_WHY, COLS, DATA_START_ROW, HEADERS,
+from .sheet import (AI_SCORE, AI_WHY, COLS, DATA_START_ROW, HEADERS, POSTED,
                     KRISH_REACTION, KRISH_SCORE, N_COLS, Sheet, SheetError)
 
 # name -> pixel width. Every column in HEADERS appears exactly once, so a new
@@ -72,6 +72,7 @@ WIDTHS: dict[str, int] = {
     "Form Audit Date": 96,
     "JD URL Verified": 96,
     "Materials Built": 96,
+    POSTED: 104,
 }
 
 # What a verdict actually depends on. Everything else is hidden.
@@ -85,7 +86,7 @@ WIDTHS: dict[str, int] = {
 VISIBLE: tuple[str, ...] = (
     "Verdict", "Business", "Role", "JD Snippet", "Job Link", "CV Doc",
     "Cover Letter Doc", AI_SCORE, KRISH_SCORE, AI_WHY, KRISH_REACTION,
-    "Location", "Comp", "Warm Path", "Package Status",
+    "Location", "Comp", "Warm Path", "Package Status", POSTED,
 )
 
 # Wrapped, so the whole sentence is there when the row is tall enough to show

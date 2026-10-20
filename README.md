@@ -95,7 +95,7 @@ sourcing. Companies Krish declined as business uninteresting or domain
 expertise are gate G12 from then on; `hunter_company_allow` in system_config
 reverses one.
 
-Sheet layout is `sheet.HEADERS` (32 columns), asserted against canon 9.13 at
+Sheet layout is `sheet.HEADERS` (33 columns), asserted against canon 9.13 at
 every start. K Krish Score and M Krish Reaction are his: hunter never writes
 them and gives them no default. The Applied tab is brought to the same layout
 by `Sheet.ensure_archive_columns`, which settle and process run before anything

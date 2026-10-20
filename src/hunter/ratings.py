@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 
 from .amend import norm
 from .config import ALL_ROWS, Config, db_get, db_insert
-from .sheet import (AI_SCORE, KRISH_REACTION, KRISH_SCORE, SheetRow, archive_layout,
+from .sheet import (AI_SCORE, KRISH_REACTION, KRISH_SCORE, SheetRow, archive_layout, has_his_columns,
                     says_duplicate)
 from .sources import country_of, job_id as mint, norm_title, placed_identity_keys
 
@@ -313,7 +313,7 @@ def read_tabs(sheet, canon_headers: list[str]) -> Read:
     layout = archive_layout(grid)
     archived = sheet.read_archive() if layout != "empty" else []
     rated = [("Pipeline", s) for s in pipeline]
-    if layout == "current":
+    if has_his_columns(layout):
         rated += [("Applied", s) for s in archived]
         applied = "rated"
     elif layout == "previous":

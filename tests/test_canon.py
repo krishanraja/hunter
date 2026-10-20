@@ -21,7 +21,7 @@ HEADER_SENTENCE = ("A Verdict, B Business, C Role, D JD Snippet, E Job Link, F C
                    "U Source, V Application Status, W Applied Date, X Next Action, "
                    "Y Application Format, Z Attachment Style, AA Additional Questions, "
                    "AB Form Complexity, AC Autonomy Score, AD Form Audit Date, "
-                   "AE JD URL Verified, AF Materials Built")
+                   "AE JD URL Verified, AF Materials Built, AG Posted")
 HIS_PARAGRAPH = ("K Krish Score and M Krish Reaction are Krish's. Hunter never writes "
                  "them and gives them no default.")
 # Canon v8, the 30 columns before he inserted his two.
@@ -100,7 +100,7 @@ def test_parses_both_heading_styles_and_all_guards_pass(cfg, monkeypatch):
     assert sorted(c.gates) == [f"G{i}" for i in range(1, 11)] or len(c.gates) == 10
     assert "TollBit" in c.universe and "Glean" in c.universe
     from hunter.sheet import HEADERS
-    assert len(c.sheet_headers) == 32
+    assert len(c.sheet_headers) == 33
     assert c.sheet_headers == HEADERS
     assert c.sheet_headers[0] == "Verdict"
     assert c.sheet_headers[3] == "JD Snippet"
@@ -108,6 +108,7 @@ def test_parses_both_heading_styles_and_all_guards_pass(cfg, monkeypatch):
                                      "Why AI thinks it Fits", "Krish Reaction"]
     assert c.sheet_headers[17] == "Warm Path"
     assert c.sheet_headers[31] == "Materials Built"
+    assert c.sheet_headers[32] == "Posted"
     # The numbered list item inside section 4 must not have opened a section.
     assert "1" not in c.sections or "Header row" not in c.sections.get("1", ("", ""))[0]
 
@@ -118,7 +119,7 @@ def test_the_v8_30_column_body_is_refused_in_plain_words(cfg, monkeypatch):
     must not run on either. The message used to say "run migrate-columns", a
     command that no longer existed."""
     patch_body(monkeypatch, synthetic_body().replace(HEADER_SENTENCE, V8_SENTENCE))
-    with pytest.raises(CanonError, match="lists 30 headers, expected 32") as e:
+    with pytest.raises(CanonError, match="lists 30 headers, expected 33") as e:
         load_canon(cfg)
     assert "migrate-columns" not in str(e.value)
     assert "same columns in the same order" in str(e.value)
@@ -127,12 +128,12 @@ def test_the_v8_30_column_body_is_refused_in_plain_words(cfg, monkeypatch):
 def test_his_paragraph_without_a_blank_line_is_swallowed_by_the_list(cfg, monkeypatch):
     """Why canon v9 puts a blank line between the header and the sentence
     about his columns: without it the sentence is read as the end of the last
-    header name, and the list still counts 32."""
+    header name, and the list still counts 33."""
     body = synthetic_body().replace(HEADER_SENTENCE + ".\n\n" + HIS_PARAGRAPH,
                                     HEADER_SENTENCE + ".\n" + HIS_PARAGRAPH)
     patch_body(monkeypatch, body)
     c = load_canon(cfg)
-    assert len(c.sheet_headers) == 32 and c.sheet_headers[-1] != "Materials Built"
+    assert len(c.sheet_headers) == 33 and c.sheet_headers[-1] != "Posted"
 
 
 def test_a_mislettered_header_list_is_refused(cfg, monkeypatch):

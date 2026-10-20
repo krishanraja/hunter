@@ -370,6 +370,8 @@ def check_sheet_header(cfg, *, read_header=None, read_archive_grid=None,
     applied_says = {"current": "Applied is on the same layout",
                     "previous": "Applied is on the previous layout and gains his "
                                 "two columns on the next settle",
+                    "before_posted": "Applied is on the layout before Posted and "
+                                     "gains it on the next settle",
                     "empty": "Applied is empty"}[layout]
     return Check("sheet header", OK, f"the Pipeline header, the code and canon 9.13 "
                                      f"name the same {len(HEADERS)} columns; "

@@ -309,18 +309,22 @@ def test_update_package_cells_touches_only_links_status_and_built():
 def test_column_map_matches_the_requested_layout():
     """Krish, 2026-09-07: JD Snippet right after Role, warm path after Comp.
     Krish, 2026-10-11: his score at K and his reaction at M, each beside
-    hunter's own."""
-    assert len(HEADERS) == 32 and len(sheet_mod.PREVIOUS_HEADERS) == 30
+    hunter's own. Krish, 2026-10-20: Posted at AG, to see which are fresh."""
+    assert len(HEADERS) == 33 and len(sheet_mod.PREVIOUS_HEADERS) == 30
+    assert len(sheet_mod.BEFORE_POSTED_HEADERS) == 32
     assert C["JD Snippet"] == 3 and C["Job Link"] == 4
     assert (letter(AI_SCORE), letter("Krish Score"), letter(AI_WHY),
             letter("Krish Reaction")) == ("J", "K", "L", "M")
     assert C["Comp"] == 16 and C["Warm Path"] == 17 and C["Path Evidence"] == 18
     assert letter("Package Status") == "T" and letter("Materials Built") == "AF"
-    assert LAST_COL == "AF" and sheet_mod.ARCHIVE_LAST_COL == "AG"
+    assert letter("Posted") == "AG"
+    assert LAST_COL == "AG" and sheet_mod.ARCHIVE_LAST_COL == "AH"
     for i in range(60):
         assert col_index(col_letter(i)) == i
     assert {col_letter(i) for i in sheet_mod.DATE_COLS} == {"W", "AD", "AF"}
     assert sheet_mod.his_insert_indexes() == [10, 12]
+    assert sheet_mod.insert_indexes("previous") == [10, 12, 32]
+    assert sheet_mod.insert_indexes("before_posted") == [32]
 
 
 def test_update_package_status_accepts_only_the_vocabulary():

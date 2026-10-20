@@ -517,7 +517,11 @@ Spearman -0.19.
 - **Postings he sends himself** go through `stage-sent`, past the gates (his
   ruling on the seat), and a person he names for a role becomes a Control
   Center card (`doorin.named_card`). Freshness is recorded
-  (`posted_at`, `posted_source`); the Posted column waits for canon 9.13.
+  (`posted_at`, `posted_source`) and shown at AG, Posted (canon 9.13 since
+  2026-10-20): FRESH and the date for 7 days, "updated" for a date that is
+  only a last change, unknown otherwise, kept true hourly (`posted-refresh`).
+  Applied moved to Archived On at AH (`sheet.LAYOUTS`, the "before_posted"
+  migration), and the Blind Set reads its Ref at AH, or AG on an older tab.
 
 ## 3h. Every Drive file has a registered home
 

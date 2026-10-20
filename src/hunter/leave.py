@@ -66,7 +66,7 @@ from dataclasses import dataclass, field, replace
 
 from . import ratings, router, verdicts
 from .amend import norm
-from .sheet import (AI_SCORE, COLS, DATE_COLS, HIS_IDX, KRISH_REACTION, KRISH_SCORE, SheetRow,
+from .sheet import (POSTED, DEFAULTS_BY_NAME, AI_SCORE, COLS, DATE_COLS, HIS_IDX, KRISH_REACTION, KRISH_SCORE, SheetRow,
                     as_text, PKG_DEAD)
 
 # The words canon 9.13 carries from v11, which Krish approves before any row
@@ -391,6 +391,10 @@ def pipeline_cells(row: SheetRow) -> list[str]:
     cells = list(row.cells)
     if not cells[COLS["Verdict"]].strip():
         cells[COLS["Verdict"]] = "New"
+    # A row archived before Posted existed (2026-10-20) has none: the canon
+    # fill default, as the empty-cell repair would write on Pipeline.
+    if not str(cells[COLS[POSTED]]).strip():
+        cells[COLS[POSTED]] = DEFAULTS_BY_NAME[POSTED]
     for i in DATE_COLS:
         v = str(cells[i]).strip()
         if v.isdigit() and 20000 < int(v) < 80000:

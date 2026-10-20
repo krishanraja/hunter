@@ -166,7 +166,7 @@ class Sheet:
         for r in rows:
             assert not validate_row(r, is_append=True), validate_row(r, is_append=True)
         self.appended.extend(rows)
-        return f"Pipeline!A12:AF{11 + len(rows)}"
+        return f"Pipeline!A12:AG{11 + len(rows)}"
 
     def set_verdicts(self, mapping):
         self.verdicts = mapping
@@ -203,7 +203,7 @@ def test_a_tab_that_does_not_read_back_is_an_error():
     data, raw = ok.writes[0]
     assert not raw, "HYPERLINK formulas need USER_ENTERED, as on Pipeline"
     assert data[0][0].startswith("'Blind Set'!A3:")
-    assert ok.writes[1] == ([("'Blind Set'!AG3:AG3", [["j1"]])], True)
+    assert ok.writes[1] == ([("'Blind Set'!AH3:AH3", [["j1"]])], True)
     assert ok.narrowed == 99, "the copied colours come back to AI Score alone"
 
 
@@ -269,3 +269,13 @@ def test_his_verdicts_outlive_the_tab(monkeypatch, tmp_path):
             raise AssertionError("the tab is gone and must not be read")
     got = judgedata.blind_rulings(NoTab(), {}, seen=set())
     assert [(r.job_id, r.label, r.code) for r in got] == [("j1", "no", "function_wrong")]
+
+
+def test_verdicts_on_a_tab_written_before_posted_still_pair():
+    """The Ref sat in AG until Pipeline gained Posted on 2026-10-20; a verdict
+    he gave on a tab written before then must not be lost on the refresh."""
+    old = ["Yes"] + [""] * (blindset.OLD_REF_COL - 1) + ["acme:vp"]
+    new = ["Yes"] + [""] * (blindset.OLD_REF_COL - 1) + ["2026-10-14", "acme:head"]
+    assert blindset._ref(old) == "acme:vp"
+    assert blindset._ref(new) == "acme:head"
+    assert blindset._ref(["Yes"] + [""] * (blindset.OLD_REF_COL - 1) + ["FRESH 2026-10-14"]) == ""

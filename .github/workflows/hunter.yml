@@ -165,6 +165,15 @@ jobs:
         if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
         run: python -u -m hunter.run score-builds --apply
 
+      # Posted (his ask 2026-10-20, "mark a bit more clearly which ones are
+      # fresh"): FRESH falls away after seven days and a date found since
+      # fills a row that said unknown. Only the Posted cell is written, RAW,
+      # and read back. Counts only.
+      - name: Keep Posted true
+        if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}
+        continue-on-error: true
+        run: python -u -m hunter.run posted-refresh --apply
+
       # His house style for every package he still wants that was built before
       # it (his yes, 2026-10-15). Each role's letter is asked of the writing
       # routine and built here in a later hour, once it is written and passes
