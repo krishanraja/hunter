@@ -495,6 +495,11 @@ class Card:
     why_top: str = ""
     observation: str = ""
     observation_note: str = ""
+    # A person he named himself (named_card): why in his terms, who found
+    # them, and whether he knows them. Empty for the cards run_cards makes.
+    why_face: str = ""
+    sourced_by: str = "os"
+    path: str = ""
 
 
 def _door_of(cov: Coverage, trigger: Trigger | None) -> str:
@@ -602,14 +607,40 @@ def deal_row(card: Card, now: str) -> dict:
     notes = (f"{NOTES_TAG} {card.company}. Route: {card.route.evidence}. "
              f"Door (suggested): {'Build your AI GTM' if card.door == 'gtm' else 'Build your AI brain'}."
              + (f" Observation not drafted: {card.observation_note}" if card.observation_note else ""))
-    return {"contact_id": card.leader.contact_id, "state": "listed", "listed_at": now,
-            "sourced_by": "os", "ask_kind": card.ask_kind,
-            "why_face": f"{card.leader.title} at {card.company}. Top company: {card.why_top}"[:500],
+    why = card.why_face or f"{card.leader.title} at {card.company}. Top company: {card.why_top}"
+    row = {"contact_id": card.leader.contact_id, "state": "listed", "listed_at": now,
+            "sourced_by": card.sourced_by, "ask_kind": card.ask_kind,
+            "why_face": why[:500],
             "trigger_signal": t.what if t else None,
             "trigger_source_url": (t.url or None) if t else None,
             "trigger_found_at": (t.when or None) if t else None,
             "draft_body": card.observation or None,
             "notes": notes[:1000]}
+    if card.path:
+        row["path"] = card.path
+    return row
+
+
+# A person he named for a role he wants, his ruling 2026-10-20: "put relevant
+# people or a person in control centre to reach out to directly". Not found by
+# the coverage pass (the company need not be top, the route need not be in
+# the graph): he named the person or the role names them. The card is the
+# same row run_cards writes, landed by land(), so nothing he has worked on is
+# overwritten and every write is read back. Nothing is sent.
+def named_card(*, contact_id: str, name: str, title: str, company: str,
+               role_title: str, role_url: str, why: str, knows_them: bool,
+               sourced_by: str) -> Card:
+    leader = Person(key=contact_id, name=name, title=title, company=company,
+                    contact_id=contact_id)
+    kind = "leader_direct"
+    evidence = ("he knows them directly" if knows_them else
+                f"named by the posting for {role_title}")
+    return Card(company=company, key=slugify(company), sources=["sent by Krish"],
+                leader=leader, route=Route(kind=kind, person=leader, evidence=evidence),
+                trigger=Trigger(kind="open_seat", what=f"Open role: {role_title}", url=role_url),
+                ask_kind="reconnect" if knows_them else "buyer", door="gtm",
+                why_face=f"{title} at {company}. {why}", sourced_by=sourced_by,
+                path="warm" if knows_them else "")
 
 
 def land(cfg, cards: list[Card], apply: bool = False, refresh_only: bool = False) -> dict:

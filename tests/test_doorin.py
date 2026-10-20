@@ -453,3 +453,33 @@ def test_the_seven_cards_he_kept_still_match():
                          ("Higgsfield AI", "Higgsfield Ai"), ("Pylon", "Pylon"),
                          ("Beehiiv", "Beehiiv")]:
         assert doorin.same_company(ours, theirs), (ours, theirs)
+
+
+# ---------- a person he named (named_card), 2026-10-20 ----------
+
+def _named(knows=True):
+    from hunter import doorin
+    return doorin.named_card(contact_id="c-1", name="Pat Lee", title="EVP", company="Acme",
+                             role_title="VP, AI", role_url="https://x/jobs/1",
+                             why="He knows Pat; the seat is his work.", knows_them=knows,
+                             sourced_by="krish")
+
+
+def test_a_person_he_names_becomes_a_listed_card_in_his_words():
+    from hunter import doorin
+    row = doorin.deal_row(_named(), "2026-10-20T00:00:00Z")
+    assert row["state"] == "listed" and row["sourced_by"] == "krish"
+    assert row["why_face"].startswith("EVP at Acme. He knows Pat")
+    assert row["path"] == "warm" and row["ask_kind"] == "reconnect"
+    assert row["notes"].startswith(doorin.NOTES_TAG)
+    assert row["trigger_source_url"] == "https://x/jobs/1"
+    cold = doorin.deal_row(_named(knows=False), "2026-10-20T00:00:00Z")
+    assert "path" not in cold and cold["ask_kind"] == "buyer"
+
+
+def test_a_named_person_with_a_card_he_has_worked_on_is_left_alone(monkeypatch):
+    from hunter import config, doorin
+    monkeypatch.setattr(config, "db_get", lambda cfg, t, q: [
+        {"contact_id": "c-1", "state": "drafted", "notes": "his own"}])
+    got = doorin.land(None, [_named()], apply=False)
+    assert got["theirs"] and not got["write"] and not got["update"]
