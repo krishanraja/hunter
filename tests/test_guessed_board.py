@@ -41,3 +41,14 @@ def test_the_slug_in_a_link_is_not_the_company_naming_itself(monkeypatch):
            raw={"hostedUrl": "https://jobs.lever.co/horizon-media/1", "descriptionPlain": "x"})
     _world(monkeypatch, [p])
     assert R.discover_posting(None, "Horizon Media", "VP", {})[0] == "unknown"
+
+
+def test_an_employers_em_dash_never_stops_his_apply_email():
+    # 2026-10-20: AssemblyAI's own question carried one, and the email was refused.
+    from hunter.apply import approval
+    q = "Tell us about a launch " + chr(0x2014) + " any launch"
+    em = approval.render(company="Kestrel", role="VP", jd_url="https://x.example", autonomy="",
+                         token="t", to="a@b.example",
+                         lines=[approval.FieldLine(label=q, value="Yes", required=True)],
+                         essays={q: "An answer."}, notes=[f"drafted an answer to {q!r}"])
+    assert chr(0x2014) not in em.subject + em.html + em.text
