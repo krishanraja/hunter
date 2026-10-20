@@ -839,9 +839,18 @@ class Resolver:
         if result is None:
             # Last resort: the Info Bank may hold this question verbatim.
             entry = self.bank.get(field.label)
-            result = (Answer(entry.value, f"Info Bank: {entry.field_name}",
-                             flagged=bool(entry.always_flagged))
-                      if entry and entry.usable else Unanswered(NO_MATCH))
+            if entry and entry.usable:
+                result = Answer(entry.value, f"Info Bank: {entry.field_name}",
+                                flagged=bool(entry.always_flagged))
+            else:
+                # Never ask him a question twice (his ruling 2026-10-20): his
+                # answer to the same question in other words, flagged so he
+                # reads it in the Apply email before anything is sent.
+                near = self.bank.closest(field.label)
+                result = (Answer(near.value, f"Info Bank: {near.field_name} "
+                                             f"(your answer to the same question)",
+                                 flagged=True)
+                          if near else Unanswered(NO_MATCH))
         return self._fit_to_options(field, result)
 
     def _fit_to_options(self, field: FormField, result: Resolution) -> Resolution:

@@ -52,6 +52,16 @@ KRISH_REACTION = "Krish Reaction"
 HIS_COLS = frozenset({KRISH_SCORE, KRISH_REACTION})
 
 
+# A posting he sent himself (run.stage_sent) carries this in Source. His
+# ruling 2026-10-20, retiring column A: "Just produce the actively,
+# passionfroot and horizon packages". Sending a role is asking for it.
+SENT_SOURCE = "sent by Krish"
+
+
+def is_sent(row) -> bool:
+    return (row.cell("Source") or "").strip() == SENT_SOURCE
+
+
 def says_duplicate(reaction: str) -> bool:
     """His reaction is the one word Duplicate, whatever the case, spacing,
     full stop or exclamation mark. Not "Duplicate?", which is a doubt, and not

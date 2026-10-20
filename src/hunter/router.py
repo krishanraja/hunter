@@ -56,6 +56,7 @@ def is_warm_path(role_row: dict) -> bool:
 # Hunter never writes column A or krish_verdict because of a score. Canon
 # 9.13: every taste verdict is his. The trigger is where the reason lives.
 YES_TRIGGER = "column A Yes"
+SENT_TRIGGER = "sent by Krish"
 SCORE_TRIGGER = "Krish Score"
 WITHDRAWN = "withdrawn"
 SCORE_BUILDS = 7
@@ -66,6 +67,12 @@ ONE_MORE_TRY = "one more try"
 _SCORE_BUILT = re.compile(r"^Krish Score (\d+)$")
 _ATTEMPT = re.compile(r"^Krish Score (\d+), not built \[([0-9a-f]{16})\]$")
 _RETRY = re.compile(r"^Krish Score (\d+), not built, one more try \[([0-9a-f]{16})\]$")
+
+
+def is_his_ask(trigger: str | None) -> bool:
+    """He asked for this package himself: his Yes, or a posting he sent. A
+    score build is the other kind, held to its score."""
+    return trigger in (YES_TRIGGER, SENT_TRIGGER)
 
 
 def score_trigger(score: int) -> str:
@@ -136,6 +143,11 @@ def build_trigger(row) -> str | None:
         return YES_TRIGGER
     if kind != "none":
         return None
+    from .sheet import is_sent
+    if is_sent(row) and not (row.cell(KRISH_SCORE) or "").strip():
+        # A posting he sent asks for its package as his Yes does; once he
+        # scores it, his score decides, as everywhere else.
+        return SENT_TRIGGER
     score = whole_score(row.cell(KRISH_SCORE))
     if score is None or score < SCORE_BUILDS:
         return None
@@ -151,7 +163,7 @@ def build_order(d: dict) -> tuple:
     cap it would build the roles he likes least first."""
     k = d.get("krish_score")
     shown = d.get("presented_at") or ""
-    return (d.get("build_trigger") != YES_TRIGGER, k is None, -(k or 0), not shown, shown)
+    return (not is_his_ask(d.get("build_trigger")), k is None, -(k or 0), not shown, shown)
 
 
 def select_for_build(cfg: Config, sheet=None, headers=None, *,
@@ -219,7 +231,7 @@ def select_for_build(cfg: Config, sheet=None, headers=None, *,
         trig = build_trigger(r)
         if trig is None:
             continue
-        kind = YES if trig == YES_TRIGGER else SCORE
+        kind = YES if is_his_ask(trig) else SCORE
         if kind not in want:
             continue
         if r.package_urls.get("cv") and r.package_urls.get("letter"):
@@ -316,7 +328,7 @@ def wants(row) -> str | None:
     trig = build_trigger(row)
     if trig is None:
         return None
-    if trig != YES_TRIGGER:
+    if not is_his_ask(trig):
         return trig
     if says_duplicate(row.cell(KRISH_REACTION)):
         return None

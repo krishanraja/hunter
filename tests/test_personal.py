@@ -129,10 +129,17 @@ def test_his_line_goes_to_a_business_that_says_what_it_is_about():
     assert m.needs_line and m.entries == [MUSIC] and m.missing == []
 
 
-def test_a_voice_business_without_his_terms_holds_and_asks():
+def test_a_voice_business_without_his_terms_uses_the_line_he_gave_and_never_asks_again():
+    # His ruling 2026-10-20: "dont ask me any question twice, ever". Before it,
+    # this held the letter and asked him for a second voice line.
     m = personal.match(["Kestrel builds voice agents for call centres."], [MUSIC])
     assert m.categories == {"voice_audio_speech": "voice agents"}
-    assert m.entries == [] and m.missing == ["voice_audio_speech"]
+    assert m.entries == [MUSIC] and m.missing == []
+
+
+def test_a_kind_of_business_he_never_gave_a_line_for_still_asks_once():
+    m = personal.match(["Kestrel builds voice agents for call centres."], [])
+    assert m.missing == ["voice_audio_speech"]
 
 
 def test_an_entry_with_no_terms_fits_its_whole_category():

@@ -66,7 +66,7 @@ from dataclasses import dataclass, field, replace
 
 from . import ratings, router, verdicts
 from .amend import norm
-from .sheet import (POSTED, DEFAULTS_BY_NAME, AI_SCORE, COLS, DATE_COLS, HIS_IDX, KRISH_REACTION, KRISH_SCORE, SheetRow,
+from .sheet import (is_sent, POSTED, DEFAULTS_BY_NAME, AI_SCORE, COLS, DATE_COLS, HIS_IDX, KRISH_REACTION, KRISH_SCORE, SheetRow,
                     as_text, PKG_DEAD)
 
 # The words canon 9.13 carries from v11, which Krish approves before any row
@@ -156,7 +156,9 @@ def should_leave(row: SheetRow, rating: RowRating | None) -> str | None:
         return DECLINED
     if rating is None or not rating.kind:
         return None
-    yes = kind == "go"
+    # A posting he sent stands as his Yes does (sheet.is_sent): a blank on it
+    # is a role he asked for, never one he has scored past.
+    yes = kind == "go" or (undecided(row.verdict) and is_sent(row))
     if not yes and not undecided(row.verdict):
         return None
     k = (row.cell(KRISH_SCORE) or "").strip()

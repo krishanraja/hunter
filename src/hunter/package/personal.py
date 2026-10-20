@@ -237,5 +237,12 @@ def match(sentences: list[str], bank: list[Entry]) -> Match:
             and (not e.terms or any(re.search(rf"(?<![a-z0-9]){re.escape(t)}(?![a-z0-9])", low)
                                     for t in e.terms))]
     covered = {c for e in fits for c in e.categories}
+    # Never ask him twice (his ruling 2026-10-20): a kind of business he has
+    # already given a line for uses that line, even where its terms do not
+    # appear, rather than asking him again.
+    for e in bank:
+        if (set(e.categories) & (set(cats) - covered)) and e not in fits:
+            fits.append(e)
+    covered = {c for e in fits for c in e.categories}
     return Match(categories=cats, entries=fits,
                  missing=sorted(c for c in cats if c not in covered))
