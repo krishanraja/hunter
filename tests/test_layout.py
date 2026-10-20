@@ -69,8 +69,11 @@ def test_it_fits_one_screen():
     # reaction, 123px together, sit beside hunter's score and argument, and
     # they are worth the extra width: the gap between his number and hunter's
     # is what he reads the row for. The bounds are the measured widths, so
-    # any further column has to argue for its own pixels.
-    assert layout.VISIBLE_WIDTH <= 1662, layout.VISIBLE_WIDTH
+    # any further column has to argue for its own pixels. Posted, 104px at the
+    # far right, argued for its own on 2026-10-20 in his words: "mark a bit
+    # more clearly which ones are fresh". It sits past Comp, so the first
+    # screen is unchanged.
+    assert layout.VISIBLE_WIDTH <= 1766, layout.VISIBLE_WIDTH
     through_comp = sum(layout.WIDTHS[n] for n in layout.VISIBLE
                        [:layout.VISIBLE.index("Comp") + 1])
     assert through_comp <= 1432, through_comp

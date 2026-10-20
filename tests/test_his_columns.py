@@ -181,7 +181,7 @@ def test_a_sort_refuses_a_column_after_the_last_one_hunter_knows():
     grid = pipeline(data_row("New", "A", "VP", "https://a.example/1"))
     grid[0] = list(HEADERS) + ["Notes"]
     s = FakeSheet(grid)
-    with pytest.raises(HeaderChanged, match="AG reads 'Notes'"):
+    with pytest.raises(HeaderChanged, match="AH reads 'Notes'"):
         s.sort_by_score()
     assert not s.posts
 
@@ -203,7 +203,7 @@ def test_the_header_change_of_2026_10_11_reads_in_plain_words():
 def test_a_column_after_af_stops_the_read():
     grid = pipeline(data_row("New", "A", "VP", "https://a.example/1"))
     grid[0] = list(HEADERS) + ["", "My notes"]
-    with pytest.raises(HeaderChanged, match="AH reads 'My notes', a column past the last one"):
+    with pytest.raises(HeaderChanged, match="AI reads 'My notes', a column past the last one"):
         FakeSheet(grid).read_pipeline(HEADERS)
 
 
@@ -235,11 +235,11 @@ def test_the_watchdog_and_the_doctor_read_past_the_last_column_hunter_knows():
     s = FakeSheet(pipeline())
     s.grid[0] = list(HEADERS) + ["Notes"]
     found = alerts.header_problem(s)
-    assert found and "AG reads 'Notes', a column past the last one" in found["detail"]
+    assert found and "AH reads 'Notes', a column past the last one" in found["detail"]
     check = doctor.check_sheet_header(None, read_header=s.read_header,
                                       read_archive_grid=lambda: [],
                                       canon_headers=list(HEADERS))
-    assert check.state == doctor.FAIL and "AG reads 'Notes'" in check.detail
+    assert check.state == doctor.FAIL and "AH reads 'Notes'" in check.detail
 
 
 def test_an_inserted_column_is_called_an_insertion_and_he_is_told_what_is_left():
@@ -398,7 +398,7 @@ def test_an_applied_header_hunter_cannot_read_is_reported_like_pipeline_s(monkey
     extra = previous_applied(2)
     extra[0] = list(HEADERS) + ["Archived On", "Interview?"]
     for grid, says in ((renamed, "J reads 'AI Score' where hunter expects 'Score'"),
-                       (extra, "AH reads 'Interview?', a column past the last one")):
+                       (extra, "AI reads 'Interview?', a column past the last one")):
         s = TwoTabs(pipeline(), grid)
         with pytest.raises(SheetError):
             s.read_archive()
@@ -436,7 +436,7 @@ def test_canon_that_disagrees_with_the_code_is_reported_by_the_watchdog(monkeypa
     agreed(monkeypatch, names=PREVIOUS_HEADERS)
     found = alerts.trouble_checks(None, sheet=s, check_canon=True)
     assert [p["kind"] for p in found] == ["canon and the code disagree"]
-    assert "names 30 columns where the code names 32" in found[0]["detail"]
+    assert "names 30 columns where the code names 33" in found[0]["detail"]
     agreed(monkeypatch, error=CanonError("canon is missing required sections: ['9.13']"))
     assert alerts.send_trouble(None, sheet=s, check_canon=True)["kinds"] == \
         ["canon and the code disagree"]
@@ -639,7 +639,9 @@ def test_applied_on_the_previous_layout_gains_his_two_columns_once():
     batches = [b for p, b in s.posts if p == ":batchUpdate"]
     assert len(batches) == 2, "the two inserts, read back, and only then the header"
     inserts, header = batches[0]["requests"], batches[1]["requests"]
-    assert [r["insertDimension"]["range"]["startIndex"] for r in inserts] == [K, M]
+    # His two columns and Posted (2026-10-20), in one request.
+    assert [r["insertDimension"]["range"]["startIndex"] for r in inserts] == [K, M,
+                                                                              COLS["Posted"]]
     assert all(r["insertDimension"]["inheritFromBefore"] for r in inserts)
     assert [list(r) for r in header] == [["updateCells"]]
     app = s.grids["Applied"]
@@ -648,10 +650,30 @@ def test_applied_on_the_previous_layout_gains_his_two_columns_once():
     assert first[COLS["Business"]] == "Co0" and first[COLS[AI_SCORE]] == "3"
     assert first[COLS[AI_WHY]] == "Runs the engine." and first[COLS["Sector"]] == "Software"
     assert first[K] == "" and first[M] == ""
-    assert first[ARCHIVE_WIDTH - 1] == "2026-09-02", "the stamp moved from AE to AG"
+    assert first[COLS["Posted"]] == ""
+    assert first[ARCHIVE_WIDTH - 1] == "2026-09-02", "the stamp moved from AE to AH"
     n = len(s.posts)
     again = s.ensure_archive_columns(apply=True, archive_sheet_id=ARCHIVE_ID)
     assert again["noop"] and again["state"] == "current" and len(s.posts) == n
+
+
+def test_applied_on_the_layout_before_posted_gains_posted_once():
+    """2026-10-20: Applied on the 32-column layout gains Posted at AG, its
+    rows kept and the stamp moved from AG to AH."""
+    grid = previous_applied()
+    s0 = TwoTabs(pipeline(), grid)
+    s0.ensure_archive_columns(apply=True, archive_sheet_id=ARCHIVE_ID)
+    # Back to the 32-wide layout: Posted taken out, as Applied stood before.
+    before = [r[:COLS["Posted"]] + r[COLS["Posted"] + 1:] for r in s0.grids["Applied"]]
+    before[0] = sheet_mod.BEFORE_POSTED_HEADERS + ["Archived On"]
+    s = TwoTabs(pipeline(), before)
+    report = s.ensure_archive_columns(apply=True, archive_sheet_id=ARCHIVE_ID)
+    assert report["state"] == "before_posted" and report["verified"]
+    inserts = [b for p, b in s.posts if p == ":batchUpdate"][0]["requests"]
+    assert [r["insertDimension"]["range"]["startIndex"] for r in inserts] == [COLS["Posted"]]
+    app = s.grids["Applied"]
+    assert app[0][:ARCHIVE_WIDTH] == HEADERS + ["Archived On"]
+    assert app[1][COLS["Business"]] == "Co0" and app[1][ARCHIVE_WIDTH - 1] == "2026-09-02"
 
 
 def test_a_dry_run_says_what_it_would_do_and_does_nothing():
@@ -664,12 +686,12 @@ def test_an_unrecognised_applied_header_is_refused_and_untouched():
     grid = previous_applied()
     grid[0][5] = "Letter"
     s = TwoTabs(pipeline(), grid)
-    with pytest.raises(SheetError, match="neither the previous nor the current"):
+    with pytest.raises(SheetError, match="none of the layouts hunter knows"):
         s.ensure_archive_columns(apply=True, archive_sheet_id=ARCHIVE_ID)
     assert not s.posts
     blank_header = previous_applied()
     blank_header[0] = [""] * 31
-    with pytest.raises(SheetError, match="neither"):
+    with pytest.raises(SheetError, match="none of the layouts"):
         TwoTabs(pipeline(), blank_header).ensure_archive_columns(archive_sheet_id=ARCHIVE_ID)
 
 
@@ -712,7 +734,7 @@ def _stamp_lost(grid):
 @pytest.mark.parametrize("spoil, says", [
     (_lose_last_row, "3 rows before, 2 after"),
     (_value_in_his_column, "row 3 has a value in a column just inserted"),
-    (_stamp_lost, "row 2 Archived On did not land at AG"),
+    (_stamp_lost, "row 2 Archived On did not land at AH"),
 ])
 def test_each_insert_read_back_check_fires_alone_and_the_failure_is_remembered(spoil, says):
     """A failed read-back used to leave row 1 reading the current layout,
@@ -727,9 +749,9 @@ def test_each_insert_read_back_check_fires_alone_and_the_failure_is_remembered(s
         "row 1 is neither layout, so everything that touches Applied stops"
     assert not [b for p, b in s.posts if p == ":batchUpdate"
                 and any("updateCells" in r for r in b["requests"])], "no header written"
-    with pytest.raises(SheetError, match="neither the previous nor the current"):
+    with pytest.raises(SheetError, match="none of the layouts hunter knows"):
         s.read_archive()
-    with pytest.raises(SheetError, match="neither the previous nor the current"):
+    with pytest.raises(SheetError, match="none of the layouts hunter knows"):
         s.archive_rows(s.read_pipeline(HEADERS), archive_tab="Applied",
                        archive_sheet_id=ARCHIVE_ID, headers=HEADERS)
     assert len(s.grids["Pipeline"]) == 3, "the decided row is still on Pipeline"
@@ -739,7 +761,7 @@ def test_a_column_of_his_after_archived_on_is_refused_before_any_write():
     grid = previous_applied()
     grid[0] = grid[0] + ["Notes"]
     s = TwoTabs(pipeline(), grid)
-    with pytest.raises(SheetError, match="neither the previous nor the current"):
+    with pytest.raises(SheetError, match="none of the layouts hunter knows"):
         s.ensure_archive_columns(apply=True, archive_sheet_id=ARCHIVE_ID)
     assert not s.posts, "Applied untouched"
 
@@ -867,7 +889,7 @@ def test_read_archive_reads_either_layout_by_name_and_never_writes():
 def test_read_archive_refuses_a_header_it_does_not_know():
     grid = previous_applied()
     grid[0][9] = "Rating"
-    with pytest.raises(SheetError, match="neither the previous nor the current"):
+    with pytest.raises(SheetError, match="none of the layouts hunter knows"):
         TwoTabs(pipeline(), grid).read_archive()
 
 
@@ -923,7 +945,7 @@ def test_settle_and_process_insert_the_columns_before_anything_else(monkeypatch)
 
     class Refuses(Spy):
         def ensure_archive_columns(self, **kw):
-            raise SheetError("Applied header is neither the previous nor the current layout")
+            raise SheetError("Applied header is none of the layouts hunter knows layout")
     monkeypatch.setattr(R, "Sheet", lambda token: Refuses())
     assert R.cmd_settle(apply=True) == 1, "the hourly step goes red, it does not pass"
     calls.clear()

@@ -46,6 +46,19 @@ TAB_SRC = "Pipeline"
 # pairs back exactly.
 FIRST_ROW = 3
 REF_COL = N_COLS
+# Where the Ref sat before Pipeline gained Posted on 2026-10-20: a tab
+# written before then is read from here, so his blind verdicts survive.
+OLD_REF_COL = N_COLS - 1
+
+
+def _ref(r: list) -> str:
+    """The Ref on a row, from AH, or AG for a tab written before Posted. The
+    old column now holds Posted on a new tab, which is never a job id."""
+    new = r[REF_COL] if len(r) > REF_COL else ""
+    if new:
+        return new
+    old = r[OLD_REF_COL] if len(r) > OLD_REF_COL else ""
+    return old if ":" in old else ""
 GATES = ("G4", "G7", "G11", "G14")
 STRATA = (("present", 15), ("near", 15), ("far", 10))
 RECORD = pathlib.Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "judge_blind.json"
@@ -373,8 +386,9 @@ def read(sheet) -> dict[str, str]:
     for r in sheet.read_tab_values(f"'{TAB}'!A{FIRST_ROW}:{col_letter(REF_COL)}200"):
         r = list(r) + [""] * (REF_COL + 1 - len(r))
         label, _ = judgedata.label_of(r[0])
-        if label and r[REF_COL]:
-            out[r[REF_COL]] = label
+        ref = _ref(r)
+        if label and ref:
+            out[ref] = label
     return out
 
 
@@ -421,7 +435,7 @@ def _raw_verdicts(sheet) -> dict[str, str]:
     for r in sheet.read_tab_values(f"'{TAB}'!A2:{col_letter(REF_COL)}200"):
         r = [str(x) for x in r]
         verdict = r[0].strip() if r else ""
-        ref = (r[REF_COL] if len(r) > REF_COL else "") or (r[6] if len(r) > 6 else "")
+        ref = _ref(r) or (r[6] if len(r) > 6 else "")
         if verdict and ref and not verdict.lower().startswith("your verdict"):
             out[ref] = verdict
     return out

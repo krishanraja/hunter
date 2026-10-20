@@ -64,6 +64,7 @@ def says_duplicate(reaction: str) -> bool:
 # Canon 9.13, exact, in order. run.assert_canon_alignment refuses to run
 # when canon says otherwise, so this list and the canon body cannot drift
 # apart silently.
+POSTED = "Posted"
 HEADERS = [
     "Verdict", "Business", "Role", "JD Snippet", "Job Link", "CV Doc",
     "Cover Letter Doc", "CV PDF", "CL PDF", AI_SCORE, KRISH_SCORE, AI_WHY,
@@ -71,8 +72,14 @@ HEADERS = [
     "Path Evidence", "Package Status", "Source", "Application Status",
     "Applied Date", "Next Action", "Application Format", "Attachment Style",
     "Additional Questions", "Form Complexity", "Autonomy Score",
-    "Form Audit Date", "JD URL Verified", "Materials Built",
+    "Form Audit Date", "JD URL Verified", "Materials Built", POSTED,
 ]
+# The 32-column layout Pipeline and Applied carried from 2026-10-11, when he
+# inserted his two columns, to 2026-10-20, when Posted was added after
+# Materials Built (his ask that day: "mark a bit more clearly which ones are
+# fresh"). Read only by archive_layout, read_archive and
+# ensure_archive_columns.
+BEFORE_POSTED_HEADERS = HEADERS[:-1]
 # The 30-column layout Pipeline carried until he inserted his two columns, and
 # the Applied tab still carries until ensure_archive_columns moves it. Read
 # only by that method and by read_archive, which reads either layout.
@@ -114,7 +121,7 @@ DEFAULTS_BY_NAME = {
     "Next Action": "Review and score", "Application Format": "Unknown",
     "Attachment Style": "CV+CL", "Additional Questions": "standard",
     "Form Complexity": "Unknown", "Autonomy Score": "Unknown",
-    "Form Audit Date": "n/a", "Materials Built": "n/a",
+    "Form Audit Date": "n/a", "Materials Built": "n/a", POSTED: "unknown",
 }
 DEFAULTS = {COLS[k]: v for k, v in DEFAULTS_BY_NAME.items()}
 DEFAULT_CELLS = [DEFAULTS_BY_NAME.get(h, "") for h in HEADERS]
@@ -288,27 +295,61 @@ def describe_header_change(diffs: list[tuple[str, str, str]], *, limit: int = 6,
     return lead + "; ".join(parts) + more + ". " + consequence
 
 
+# Every layout Applied has been on, newest first. A tab on an older one gains
+# the columns it lacks from ensure_archive_columns; every reader reads any of
+# them by header name.
+LAYOUTS = (("current", HEADERS), ("before_posted", BEFORE_POSTED_HEADERS),
+           ("previous", PREVIOUS_HEADERS))
+OLDER_LAYOUTS = ("before_posted", "previous")
+
+
+def layout_names(state: str) -> list[str]:
+    return list(dict(LAYOUTS)[state])
+
+
 def archive_layout(grid: list[list]) -> str:
     """Which layout the Applied tab is on, from its own rows: "empty" when it
-    holds nothing, "current" (HEADERS plus Archived On), "previous"
-    (PREVIOUS_HEADERS plus Archived On), or "" for neither, which every
-    reader and writer of Applied refuses. One judgement, so the watchdog and
-    the doctor see the header exactly as the writers do."""
+    holds nothing, "current" (HEADERS plus Archived On), one of the older
+    LAYOUTS, or "" for none of them, which every reader and writer of Applied
+    refuses. One judgement, so the watchdog and the doctor see the header
+    exactly as the writers do."""
     if not grid:
         return "empty"
     header = pad_row(grid[0], SCAN_WIDTH)
-    for state, names in (("current", HEADERS), ("previous", PREVIOUS_HEADERS)):
+    for state, names in LAYOUTS:
         want = list(names) + list(ARCHIVE_TRAILING)
         if header[:len(want)] == want and not any(x.strip() for x in header[len(want):]):
             return state
     return ""
 
 
+def has_his_columns(state: str) -> bool:
+    """Whether a layout carries Krish Score and Krish Reaction."""
+    return state in ("current", "before_posted")
+
+
 def archive_header_diffs(grid: list[list]) -> list[tuple[str, str, str]]:
     """Applied's row 1 against whichever known layout it is nearer."""
     header = pad_row(grid[0] if grid else [], SCAN_WIDTH)
     return min((header_diffs(header, list(names) + list(ARCHIVE_TRAILING))
-                for names in (HEADERS, PREVIOUS_HEADERS)), key=len)
+                for _, names in LAYOUTS), key=len)
+
+
+def insert_indexes(state: str) -> list[int]:
+    """Where the columns an older layout lacks go, ascending, so each index is
+    right at the moment it is inserted. Derived and checked rather than
+    typed: the older layout with blanks at these indexes must be HEADERS with
+    the same columns blank."""
+    old = [PREVIOUS_NAMES.get(h, h) for h in layout_names(state)] \
+        if state == "previous" else layout_names(state)
+    at = [i for i, h in enumerate(HEADERS) if h not in old]
+    grown = list(old)
+    for i in at:
+        grown.insert(i, "")
+    if grown != ["" if i in at else h for i, h in enumerate(HEADERS)]:
+        raise SheetError(f"HEADERS is not the {state} layout with columns inserted; "
+                         f"fix the map first")
+    return at
 
 
 def recheck_cells(cells: list) -> tuple:
@@ -334,17 +375,8 @@ def move_key(cells: list) -> tuple:
 
 
 def his_insert_indexes() -> list[int]:
-    """Where his two columns go into a tab still on PREVIOUS_HEADERS, in
-    ascending order, so each index is right at the moment it is inserted.
-    Derived and checked rather than typed."""
-    at = sorted(COLS[n] for n in HIS_COLS)
-    grown = [PREVIOUS_NAMES.get(h, h) for h in PREVIOUS_HEADERS]
-    for i in at:
-        grown.insert(i, "")
-    if grown != ["" if h in HIS_COLS else h for h in HEADERS]:
-        raise SheetError("HEADERS is not PREVIOUS_HEADERS with his two columns "
-                         "inserted; fix the map first")
-    return at
+    """Where his two columns went into a tab on PREVIOUS_HEADERS."""
+    return [i for i in insert_indexes("previous") if HEADERS[i] in HIS_COLS]
 
 
 @dataclass
@@ -425,8 +457,10 @@ def make_row(*, company: str, role: str, jd_url: str, score: int,
              why_it_fits: str = "", sector: str = "", stage: str = "",
              location: str = "", comp: str = "", source: str = "",
              jd_verified: bool = True, jd_snippet: str = "",
-             warm_path: str = "", path_evidence: str = "") -> list[str]:
+             warm_path: str = "", path_evidence: str = "", posted: str = "") -> list[str]:
     cells = list(DEFAULT_CELLS)
+    if posted.strip():
+        cells[COLS[POSTED]] = as_text(posted.strip())
     cells[COLS["Business"]] = as_text(plain_text(company))
     cells[COLS["Role"]] = as_text(plain_text(role))
     cells[COLS["Job Link"]] = hyperlink(jd_url, "JD")
@@ -722,16 +756,17 @@ class Sheet:
         if state in ("empty", "current"):
             report["state"], report["noop"] = state, True
             return report
-        if state != "previous":
-            raise SheetError(f"{archive_tab} header is neither the previous nor the "
-                             f"current layout; first differences "
+        if state not in OLDER_LAYOUTS:
+            raise SheetError(f"{archive_tab} header is none of the layouts hunter "
+                             f"knows; first differences "
                              f"{archive_header_diffs(raw)[:4]}. Nothing was changed.")
-        report["state"] = "previous"
+        report["state"] = state
         if not apply:
             return report
 
-        at = his_insert_indexes()
-        old_stamp = len(PREVIOUS_HEADERS)
+        at = insert_indexes(state)
+        old_names = layout_names(state)
+        old_stamp = len(old_names)
         # The two inserts first, in one request, and the header only once
         # every row has been read back. Sent together, a read-back that failed
         # left row 1 reading the current layout over rows that may not have
@@ -743,7 +778,7 @@ class Sheet:
             "range": {"sheetId": archive_sheet_id, "dimension": "COLUMNS",
                       "startIndex": i, "endIndex": i + 1},
             "inheritFromBefore": True}} for i in at]})
-        grown = list(PREVIOUS_HEADERS)
+        grown = list(old_names)
         for i in at:
             grown.insert(i, "")
         grown += list(ARCHIVE_TRAILING)
@@ -753,13 +788,13 @@ class Sheet:
         if not after or after[0][:len(grown)] != grown or any(
                 x.strip() for x in after[0][len(grown):]):
             problems.append(f"row 1 reads {after[0][:4] if after else []}... where "
-                            f"two blank columns should sit at "
+                            f"{len(at)} blank column(s) should sit at "
                             f"{' and '.join(col_letter(i) for i in at)}")
         got = [(n, r) for n, r in enumerate(after[1:], start=2)
                if any(str(c).strip() for c in r[:3])]
         if len(got) != len(data):
             problems.append(f"{len(data)} rows before, {len(got)} after")
-        his = [COLS[n] for n in sorted(HIS_COLS)]
+        his = list(at)
         for (n, was), (m, now) in zip(data, got):
             if n != m or was[1:3] != now[1:3]:
                 problems.append(f"row {n} Business and Role moved")
@@ -1186,16 +1221,14 @@ class Sheet:
         state = archive_layout(grid)
         if state == "empty":
             return []
-        if state == "current":
-            where = {h: i for i, h in enumerate(HEADERS)}
-            stamp_at = len(HEADERS)
-        elif state == "previous":
-            where = {PREVIOUS_NAMES.get(h, h): i for i, h in enumerate(PREVIOUS_HEADERS)}
-            stamp_at = len(PREVIOUS_HEADERS)
-        else:
+        if not state:
             raise SheetError(
-                f"{config.ARCHIVE_TAB} header is neither the previous nor the "
-                f"current layout: {archive_header_diffs(grid)[:4]}")
+                f"{config.ARCHIVE_TAB} header is none of the layouts hunter knows: "
+                f"{archive_header_diffs(grid)[:4]}")
+        names = layout_names(state)
+        where = {PREVIOUS_NAMES.get(h, h) if state == "previous" else h: i
+                 for i, h in enumerate(names)}
+        stamp_at = len(names)
         rows = []
         for i, raw in enumerate(grid[1:], start=2):
             line = pad_row(raw, SCAN_WIDTH)
@@ -1391,6 +1424,17 @@ class Sheet:
         got = (back[0][0] if back and back[0] else "").strip()
         if got != status:
             raise SheetError(f"row {row_number} Package Status read back as {got!r}")
+
+    def update_posted(self, row_number: int, label: str) -> None:
+        """Posted alone, RAW so the date stays the text it is, read back."""
+        if row_number < DATA_START_ROW:
+            raise SheetError(f"refusing to write into header rows: {row_number}")
+        label = label.strip() or DEFAULTS_BY_NAME[POSTED]
+        self._write([(cell_range(POSTED, row_number), [[label]])], raw=True)
+        back = self._values(cell_range(POSTED, row_number), formulas=False) or [[""]]
+        got = (back[0][0] if back and back[0] else "").strip()
+        if got != label:
+            raise SheetError(f"row {row_number} Posted read back as {got!r}")
 
     def mark_applied(self, row_number: int, *, when: str) -> None:
         """Application Status and Applied Date on one row, read back.

@@ -93,3 +93,20 @@ def test_freshness_is_the_posting_date_and_never_a_last_update():
     assert fresh_label("", "", today="2026-10-20") == ""
     assert posted_of(RolePosting(company="A", title="T", url="u", source="x",
                                  posted_at="3 days ago")) == ("", "")
+
+
+def test_posted_is_kept_true_and_only_its_cell_is_written(monkeypatch):
+    rows = [types.SimpleNamespace(row_number=3, jd_url="https://x/1", cells={},
+                                  cell=lambda n, v="FRESH 2026-10-01": v),
+            types.SimpleNamespace(row_number=4, jd_url="https://x/2", cells={},
+                                  cell=lambda n: "unknown")]
+    monkeypatch.setattr(run, "db_get", lambda cfg, t, q: [
+        {"job_url": "https://x/1", "url": "", "posted_at": "2026-10-01", "posted_source": "posted"}])
+    wrote = []
+
+    class S:
+        def update_posted(self, n, label):
+            wrote.append((n, label))
+    got = run.refresh_posted(None, S(), rows, today="2026-10-20", apply=True)
+    assert wrote == [(3, "2026-10-01")]
+    assert got["written"] == 1 and got["same"] == 1 and got["unknown"] == 1
