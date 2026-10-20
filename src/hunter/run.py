@@ -913,11 +913,13 @@ def cmd_regate(from_row: int = 41, apply: bool = False, limit: int = 0,
         else:
             # Krish's ruling 2026-09-03: the shape gate filters, the score
             # orders. A role that passes every gate stays whatever it scores.
+            from . import rankscore
+            seen = shown_score(rankscore.load(cfg), role, result)
             why, flags = write_rationale(
                 cfg, canon, company=r.company, title=r.role, jd=role.jd_text,
-                score=result.score, score_reason=result.why_it_fits,
+                score=seen, score_reason=result.why_it_fits,
                 location=role.location, comp=role.comp)
-            keep.append((r, result.score, why, flags))
+            keep.append((r, seen, why, flags))
 
     print(f"KEEP {len(keep)}, DROP {len(drop)}, UNRESOLVED {len(unresolved)}\n")
     for r, sc, why, flags in keep:
@@ -4278,6 +4280,16 @@ def company_scores(cfg: Config, names: list[str], sheet: Sheet | None = None,
     return out
 
 
+def shown_score(model, role, result, *, fit=None, judge_answers=None) -> int:
+    """The AI Score he is shown (rankscore.shown): the model fitted to his own
+    scores once one is switched on, score.py's number until then. Gates and
+    merit still read score.py's; only the number he sees and orders by moves."""
+    from . import rankscore
+    return rankscore.shown(model, result.score, title=role.title, location=role.location,
+                           comp=role.comp, jd_text=role.jd_text,
+                           judge_answers=judge_answers, judge_fit=fit)
+
+
 def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                    postings: list, summary: list[str],
                    company_declines: dict | None = None) -> dict:
@@ -4300,6 +4312,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
               "boards_found": 0, "g12_blocked": [], "g14_blocked": [],
               "from_description": 0, "comp_from_text": 0}
     counts["discovered"] = len(postings)
+    from . import rankscore
+    rank_model = rankscore.load(cfg)
     # Who the employers are, read once rather than per posting.
     try:
         employer_index = employer.build_index(cfg, declines=company_declines)
@@ -4544,6 +4558,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             row["why_it_fits"] = why
             if rflags:
                 summary.append(f"rationale flags {role.job_id}: {', '.join(rflags)}")
+            result.score = row["score"] = shown_score(rank_model, role, result)
             staged_rows.append((role, result, snippet, why))
 
     judged = None
@@ -4623,6 +4638,9 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                 if note:
                     why = f"{why} {note}"[:900]
                 c.row["why_it_fits"] = why
+                c.result.score = c.row["score"] = shown_score(
+                    rank_model, c.role, c.result, fit=c.judgement.fit,
+                    judge_answers=c.judgement.answers)
                 staged_rows.append((c.role, c.result, snippet, why))
         else:
             for row in inserts:
@@ -4806,6 +4824,8 @@ def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
                             jd_url=jd_url, jd_text=jd, live=live, source=SENT_SOURCE,
                             location=it.get("location") or "", comp=band, liveness=liveness)
         result = score_role(role, universe=canon.universe)
+        from . import rankscore
+        result.score = shown_score(rankscore.load(cfg) if cfg is not None else None, role, result)
         if not apply:
             out.append({"job_id": role.job_id, "outcome": f"would stage, score {result.score}"})
             continue
@@ -4853,6 +4873,78 @@ def cmd_stage_sent(path: str, *, apply: bool = False) -> int:
         print(line)
     return 0 if all("read back" in g["outcome"] or "already" in g["outcome"]
                     or not apply for g in got) else 1
+
+
+def cmd_rerank(apply: bool = False) -> int:
+    """`rerank [--apply]`: fit the order to every score he has given, measure
+    it on the later ones, and only if it beats the AI Score there switch it
+    on, rescore every Pipeline row hunter has a record for, read each cell
+    back and sort. His ruling 2026-10-20: measure first. Counts only."""
+    from . import rankscore
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    rated = db_get(cfg, "hunter_krish_ratings", {
+        "select": "job_id,score,ai_score_then,judge_fit_then,presented_at,title,location,comp",
+        "kind": "eq.scored", "order": "presented_at.asc", "limit": ALL_ROWS})
+    latest: dict = {}
+    for r in rated:
+        latest[r["job_id"]] = r
+    ids = sorted(latest)
+    recs: dict = {}
+    for i in range(0, len(ids), 40):
+        for d in db_get(cfg, "hunter_seen_roles", {
+                "select": "job_id,jd_text,judge_answers,judge_fit",
+                "job_id": f"in.({','.join(ids[i:i + 40])})", "limit": "100"}):
+            recs[d["job_id"]] = d
+    rows = []
+    for j in sorted(ids, key=lambda j: latest[j].get("presented_at") or ""):
+        r, d = latest[j], recs.get(j, {})
+        fit = r.get("judge_fit_then") if r.get("judge_fit_then") is not None else d.get("judge_fit")
+        rows.append({"x": rankscore.features(
+            title=r.get("title") or "", location=r.get("location") or "", comp=r.get("comp") or "",
+            jd_text=d.get("jd_text") or "", judge_answers=d.get("judge_answers"), judge_fit=fit),
+            "his": r["score"], "ai_score": r.get("ai_score_then"), "judge_fit": fit})
+    got = rankscore.holdout(rows)
+    print(f"rerank: {got['n']} later scores, Spearman against his score: new "
+          f"{got['new']:.2f}, AI Score {got['ai_score']:.2f}, judge fit {got['judge']:.2f}")
+    if got["new"] <= got["ai_score"] + 0.2 or got["new"] < 0.3:
+        print("rerank: the new order does not beat the AI Score by enough; nothing changed")
+        return 0
+    model = rankscore.fit_his([r["x"] for r in rows], [float(r["his"]) for r in rows])
+    if not apply:
+        print(f"rerank: would switch on a model fitted to {len(rows)} scores (dry run)")
+        return 0
+    rankscore.store(cfg, model)
+    pipe = sheet.read_pipeline(canon.sheet_headers)
+    changed = same = unknown = failed = 0
+    for p in pipe:
+        found = db_get(cfg, "hunter_seen_roles", {
+            "select": "job_id,title,location,comp,jd_text,judge_answers,judge_fit,score",
+            "job_url": f"eq.{p.jd_url}", "limit": "1"}) if p.jd_url else []
+        if not found:
+            unknown += 1
+            continue
+        d = found[0]
+        new = rankscore.shown(model, int(d.get("score") or 0), title=d.get("title") or p.role,
+                              location=d.get("location") or "", comp=d.get("comp") or "",
+                              jd_text=d.get("jd_text") or "",
+                              judge_answers=d.get("judge_answers"), judge_fit=d.get("judge_fit"))
+        if str(new) == p.cell(sheet_mod.AI_SCORE).strip():
+            same += 1
+            continue
+        try:
+            sheet.update_assessment(p.row_number, score=new,
+                                    why_it_fits=p.cell(sheet_mod.AI_WHY))
+        except SheetError as e:
+            failed += 1
+            print(f"rerank: row {p.row_number} not rescored ({str(e)[:80]})")
+            continue
+        db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]}, {"score": new})
+        changed += 1
+    sheet.sort_by_score()
+    print(f"rerank: switched on; {changed} row(s) rescored and read back, {same} unchanged, "
+          f"{failed} refused, {unknown} with no record left as they were; Pipeline sorted")
+    return 0
 
 
 class PresentedMarker:
@@ -10436,6 +10528,8 @@ def main(argv: list[str]) -> int:
         return 0
     if cmd in ("drive-map", "drive-file", "drive-sweep"):
         return cmd_drive(cmd, argv)
+    if cmd == "rerank":
+        return cmd_rerank(apply="--apply" in argv)
     if cmd == "stage-sent":
         # Postings he found himself and sent (stage_sent): staged on his
         # sheet past the gates, with the ordinary score, case and read-back.
