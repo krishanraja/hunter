@@ -389,6 +389,11 @@ about 0: what reached him was ordered no better than chance.
   packages"). Source "sent by Krish" (`sheet.is_sent`) builds as his Yes
   does, `router.SENT_TRIGGER`, until he scores it: then his score decides, a
   1 to 5 moves it off Pipeline, and a blank on it is never one he scored past.
+- **A batch he has applied to is cleared in one pass** (his words 2026-10-20:
+  "all jobs have been applied, clear the pipeline"): `clear-pipeline --apply`.
+  A row with a package is recorded applied on his word (`SAID_SO`), by its
+  own row number; every other row leaves with no verdict and its role is set
+  aside. One `archive_rows` move, Pipeline read back empty, no email.
 - **A role he scored whose posting is gone leaves too** (his choice
   2026-10-14, "Move the gone ones"): Package Status "Posting dead" on a row
   column A leaves undecided, whatever built its package. A Yes marked dead
