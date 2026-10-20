@@ -82,6 +82,16 @@ def norm_label(text: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+CLOSEST = 0.75
+_FILLER = frozenset("a an the you your yours are is do does did have has had of to in on for "
+                    "with at by or and any this that what which how please if will would "
+                    "can could be been being as from".split())
+
+
+def _content(text: str) -> frozenset[str]:
+    return frozenset(w for w in norm_label(text).split() if w not in _FILLER)
+
+
 @dataclass(frozen=True)
 class BankEntry:
     section: str
@@ -133,6 +143,27 @@ class AnswerBank:
 
     def get(self, field_name: str) -> BankEntry | None:
         return self.entries.get(norm_label(field_name))
+
+    def closest(self, field_name: str, at_least: float = CLOSEST) -> BankEntry | None:
+        """The answer he already gave to this question in other words. His
+        ruling, 2026-10-20: "dont ask me any question twice, ever". The words
+        that carry meaning must mostly be the same (numbers count, so 18 is
+        never 21); the caller flags what this finds, so he sees it before
+        anything is sent."""
+        want = _content(field_name)
+        if not want:
+            return None
+        best, score = None, 0.0
+        for e in self.entries.values():
+            if not e.usable:
+                continue
+            have = _content(e.field_name)
+            if not have:
+                continue
+            s = len(want & have) / len(want | have)
+            if s > score:
+                best, score = e, s
+        return best if score >= at_least else None
 
     def value(self, field_name: str) -> str:
         e = self.get(field_name)

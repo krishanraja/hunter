@@ -234,7 +234,9 @@ The layers, cheapest first, each with its own measurement:
    had made Citi, PayPal and a job-ad network "top". Keys are whole names,
    never a single token. The Company Radar tab shows the trail.
 2. **Their own boards, free, every run.** A board found by guessing must name
-   the company in its postings, or its roles do not count. Sequoia's board
+   the company in its postings, or its roles do not count, and a posting it
+   does not list is not dead (`run.board_names`): on 2026-10-20 a one-job
+   Lever board called "horizon" marked his Horizon Media posting dead. Sequoia's board
    (`sources/consider.py`, added 2026-10-05 at his request) is read through
    its own API: every open role, paged, with pay. Its apply links name each
    company's own board, which is learned and swept in full; a role at a
@@ -382,6 +384,11 @@ about 0: what reached him was ordered no better than chance.
   its dates RAW and its cells as the text they were. Nothing moves for his score until canon 9.13
   carries `leave.CANON_RULE`; `leave` lists the move as counts, with `--out`
   for the rows.
+- **A posting he sent asks for its own package** (his words 2026-10-20,
+  retiring column A: "Just produce the actively, passionfroot and horizon
+  packages"). Source "sent by Krish" (`sheet.is_sent`) builds as his Yes
+  does, `router.SENT_TRIGGER`, until he scores it: then his score decides, a
+  1 to 5 moves it off Pipeline, and a blank on it is never one he scored past.
 - **A role he scored whose posting is gone leaves too** (his choice
   2026-10-14, "Move the gone ones"): Package Status "Posting dead" on a row
   column A leaves undecided, whatever built its package. A Yes marked dead
@@ -459,6 +466,12 @@ docs/HANDOVER_LETTERS.md is the full record.
   or UK pick and never an essay. Facts about him are not questions: an over-18
   question answers itself from his age (`resolve._adult`; "I am 39, you asked
   me this last week too"). The log stays counts.
+- **No question twice, ever** (his words, 2026-10-20). Every answer he gives
+  in chat goes where hunter reads it: an Info Bank row with the form's own
+  wording, or canon 9.14. A form that words it differently gets his answer
+  from the closest Info Bank row (`AnswerBank.closest`, flagged so he sees it
+  in the Apply email), and a kind of business he has given any line for uses
+  that line rather than asking again (`personal.match`).
 - **The masters change with canon 9.9, together**, or every run aborts. Drains
   start at :13 and finish by :15; switch just after.
 - **Previews before changes he will read.** `build-preview --queue`, then the

@@ -79,6 +79,10 @@ def _esc(text) -> str:
             .replace(">", "&gt;"))
 
 
+def _their(text) -> str:
+    return str(text or "").replace("\u2014", " - ").replace("\u2013", "-")
+
+
 @dataclass
 class FieldLine:
     label: str
@@ -110,8 +114,16 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
            hunt_url: str = "",
            notes: list[str] | None = None) -> ApprovalEmail:
     """The whole application, reviewable without opening a document."""
-    essays = essays or {}
-    notes = notes or []
+    # An employer's own question is quoted, and its punctuation is theirs. On
+    # 2026-10-20 an AssemblyAI question carried an em dash, the outbound check
+    # refused the whole email, and the application never reached him. Their
+    # words get a plain hyphen here; hunter's own prose is still held to the
+    # rule by the voice gate and by notify.
+    from dataclasses import replace as _replace
+    essays = {_their(q): a for q, a in (essays or {}).items()}
+    lines = [_replace(l, label=_their(l.label)) for l in lines]
+    notes = [_their(n) for n in (notes or [])]
+    form_missed = tuple(_their(m) for m in form_missed)
     subject = subject_for(company, role, token)
 
     needs_you = [l for l in lines if l.unresolved]

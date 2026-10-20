@@ -151,7 +151,8 @@ TITLE_FAMILIES: tuple[tuple[str, str], ...] = (
                           r"|\bvp,? strategy\b|\bhead of strategy\b|\bdirector of strategy\b"
                           r"|\bm&a\b"),
     ("ai_chief_of_staff_transformation", r"\bchief of staff\b|\bhead of ai\b|\bai operations\b"
-                                         r"|\bai transformation\b|\bai enablement\b"),
+                                         r"|\bai transformation\b|\bai enablement\b"
+                                         r"|\bai\b.*\b(?:agentic|transformation)\b"),
     ("chief_commercial_strategy", r"\bchief commercial\b|\bcco\b|\bhead of commercial\b"
                                   r"|\bcommercial strategy\b|\bhead of gtm\b|\bgtm\b|\brevenue\b"
                                   r"|\bsales\b"),

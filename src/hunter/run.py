@@ -2039,8 +2039,38 @@ def discover_posting(cfg: Config, company: str, title: str, cache: dict, *,
                  if title_jaccard(title, p.title) >= FUZZY_TITLE_MIN]
         hit = close[0] if len(close) == 1 else None
     if hit is None:
+        # Absent means dead only on the company's own board. A board found by
+        # guessing its address must name the company in its postings (CLAUDE.md
+        # 3d): on 2026-10-20 a one-job Lever board called "horizon" was taken
+        # for Horizon Media's, and the posting he sent was marked dead.
+        try:
+            own = disc.from_careers_page(careers_url) if careers_url else None
+        except Exception:
+            own = None
+        if own != (ats, slug) and not board_names(company, postings):
+            return "unknown", None, (f"not on {ats}/{slug}, a board whose postings do not "
+                                     f"name {company}")
         return "absent", None, f"not on the {ats}/{slug} board ({len(postings)} jobs)"
     return "found", hit, f"{ats}/{slug}"
+
+
+def board_names(company: str, postings) -> bool:
+    """Some posting's own text names the company in full: the proof that a
+    guessed board is its board. Text only, never a link, whose path is the
+    guessed slug itself."""
+    name = " ".join(re.findall(r"[a-z0-9]+", (company or "").lower()))
+    if not name:
+        return False
+    for p in postings:
+        raw = getattr(p, "raw", None) or {}
+        text = " ".join(str(raw.get(k) or "") for k in (
+            "descriptionPlain", "description", "descriptionHtml", "content",
+            "additionalPlain", "descriptionBody")) if isinstance(raw, dict) else ""
+        text += " " + str(getattr(p, "jd_text", "") or getattr(p, "description", "") or "")
+        words = " ".join(re.findall(r"[a-z0-9]+", text.lower()))
+        if f" {name} " in f" {words} ":
+            return True
+    return False
 
 
 PLAIN_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -2412,7 +2442,7 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     # row that came here for a reason is held to it; build --job-id and an
     # amend of a package built before the trigger was recorded carry none.
     was = row.get("build_trigger") or row.get("package_trigger") or ""
-    relies = (bool(row.get("build_trigger")) or was == router.YES_TRIGGER
+    relies = (bool(row.get("build_trigger")) or router.is_his_ask(was)
               or was.startswith(router.SCORE_TRIGGER) or was.startswith(router.WITHDRAWN))
     trigger = router.build_trigger(srow) if srow else None
     if relies and trigger is None:
@@ -2434,7 +2464,7 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
     # this is the last read before paying, and a package written from his no
     # would be mailed to him the day he scores the role up again. Said
     # without the role: the line is public, and the reason is his score.
-    if (trigger == router.YES_TRIGGER and leave_mod.in_canon(canon)
+    if (router.is_his_ask(trigger) and leave_mod.in_canon(canon)
             and leave_mod.yes_overridden(srow)):
         summary.append("SKIPPED: a Yes his score has since taken back; nothing "
                        "fetched or built")
@@ -2446,7 +2476,7 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
         summary.append("SKIPPED: a rebuild for a row that no longer asks for an "
                        "application; nothing fetched or built")
         return False
-    attempt = row.get("attempt") if trigger and trigger != router.YES_TRIGGER else None
+    attempt = row.get("attempt") if trigger and not router.is_his_ask(trigger) else None
     # His house style (letters.py): what the build waits on is read off the
     # record before the posting is fetched, so a role held for his pick of
     # header, for a line of his, or for the writer costs nothing an hour and
@@ -2523,8 +2553,8 @@ def build_one(cfg: Config, canon: Canon, sheet: Sheet, row: dict,
             # "your score", never the number: this line is printed by build
             # and by the amend rebuild in approvals-drain, beside the role,
             # in a public log (CLAUDE.md 3f). The record keeps the number.
-            why = ("your score" if trigger and trigger != router.YES_TRIGGER
-                   else "your Yes")
+            why = ("your score" if trigger and not router.is_his_ask(trigger)
+                   else "your pick" if trigger == router.SENT_TRIGGER else "your Yes")
             rflags.append(f"built on {why} over {reasons}")
         else:
             db_patch(cfg, "hunter_seen_roles", {"job_id": row["job_id"]},
@@ -4792,7 +4822,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
 # stands between it and his sheet; everything else is the ordinary path: the
 # posting read from its own board, scored, its case written, a Pipeline row,
 # presented, and the row read back.
-SENT_SOURCE = "sent by Krish"
+SENT_SOURCE = sheet_mod.SENT_SOURCE
 
 
 def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
@@ -5810,7 +5840,7 @@ def score_withdrawals_step(cfg: Config, canon: Canon, sheet: Sheet,
             now = [t for t in (router.build_trigger(r) for r in rows) if t]
             if now:
                 if trig.startswith(router.WITHDRAWN):
-                    back = next((t for t in now if t != router.YES_TRIGGER), now[0])
+                    back = next((t for t in now if not router.is_his_ask(t)), now[0])
                     out["reinstated"] += 1
                     if apply:
                         db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]},
@@ -7999,7 +8029,7 @@ def rebuild_targets(cfg: Config, sheet: Sheet, canon: Canon, *, job_id: str = ""
         if why:
             skip(why, r, d)
             continue
-        if trig != router.YES_TRIGGER and not score_rule:
+        if not router.is_his_ask(trig) and not score_rule:
             skip("waiting on canon 9.13", r, d)
             continue
         picked.append(dict(d, build_trigger=trig, krish_score=k,

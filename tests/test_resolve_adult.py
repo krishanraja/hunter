@@ -48,3 +48,33 @@ def test_the_supabase_question_resolves_through_the_whole_resolver():
     sel = FormField(key="k", label="Are you over the age of 18?", kind="single_select", required=True,
                     options=(Option("Yes", "Yes"), Option("No", "No")))
     assert R.Resolver(build_bank()).resolve(sel).value == "Yes"
+
+
+# ---------- never the same question twice ----------
+
+def _bank(rows):
+    from hunter.apply.infobank import load_bank
+    tabs = {"Application Info Bank": [["Field", "Value", "Status", "Notes"]] + rows,
+            "Profile": [], "Interview Answers": []}
+    return load_bank(lambda tab: tabs[tab])
+
+
+def test_his_answer_in_other_words_is_used_and_flagged():
+    from hunter.apply.model import FormField
+    bank = _bank([["How many years of experience do you have managing a sales team?",
+                   "11", "🟢 LOCKED", "answered in chat"]])
+    f = FormField(key="k", label="Years of experience managing a sales team", kind="short_text",
+                  required=True)
+    got = R.Resolver(bank).resolve(f)
+    assert isinstance(got, Answer) and got.value == "11" and got.flagged
+
+
+def test_a_different_question_is_not_given_his_answer():
+    from hunter.apply.model import FormField
+    from hunter.apply.resolve import Unanswered
+    bank = _bank([["How many years of experience do you have managing a sales team?",
+                   "11", "🟢 LOCKED", ""]])
+    for q in ("How many years of experience do you have selling APIs?",
+              "How many people have you managed?"):
+        f = FormField(key="k", label=q, kind="short_text", required=True)
+        assert isinstance(R.Resolver(bank).resolve(f), Unanswered), q
