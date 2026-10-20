@@ -234,7 +234,9 @@ The layers, cheapest first, each with its own measurement:
    had made Citi, PayPal and a job-ad network "top". Keys are whole names,
    never a single token. The Company Radar tab shows the trail.
 2. **Their own boards, free, every run.** A board found by guessing must name
-   the company in its postings, or its roles do not count. Sequoia's board
+   the company in its postings, or its roles do not count, and a posting it
+   does not list is not dead (`run.board_names`): on 2026-10-20 a one-job
+   Lever board called "horizon" marked his Horizon Media posting dead. Sequoia's board
    (`sources/consider.py`, added 2026-10-05 at his request) is read through
    its own API: every open role, paged, with pay. Its apply links name each
    company's own board, which is learned and swept in full; a role at a

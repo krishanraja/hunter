@@ -2039,8 +2039,38 @@ def discover_posting(cfg: Config, company: str, title: str, cache: dict, *,
                  if title_jaccard(title, p.title) >= FUZZY_TITLE_MIN]
         hit = close[0] if len(close) == 1 else None
     if hit is None:
+        # Absent means dead only on the company's own board. A board found by
+        # guessing its address must name the company in its postings (CLAUDE.md
+        # 3d): on 2026-10-20 a one-job Lever board called "horizon" was taken
+        # for Horizon Media's, and the posting he sent was marked dead.
+        try:
+            own = disc.from_careers_page(careers_url) if careers_url else None
+        except Exception:
+            own = None
+        if own != (ats, slug) and not board_names(company, postings):
+            return "unknown", None, (f"not on {ats}/{slug}, a board whose postings do not "
+                                     f"name {company}")
         return "absent", None, f"not on the {ats}/{slug} board ({len(postings)} jobs)"
     return "found", hit, f"{ats}/{slug}"
+
+
+def board_names(company: str, postings) -> bool:
+    """Some posting's own text names the company in full: the proof that a
+    guessed board is its board. Text only, never a link, whose path is the
+    guessed slug itself."""
+    name = " ".join(re.findall(r"[a-z0-9]+", (company or "").lower()))
+    if not name:
+        return False
+    for p in postings:
+        raw = getattr(p, "raw", None) or {}
+        text = " ".join(str(raw.get(k) or "") for k in (
+            "descriptionPlain", "description", "descriptionHtml", "content",
+            "additionalPlain", "descriptionBody")) if isinstance(raw, dict) else ""
+        text += " " + str(getattr(p, "jd_text", "") or getattr(p, "description", "") or "")
+        words = " ".join(re.findall(r"[a-z0-9]+", text.lower()))
+        if f" {name} " in f" {words} ":
+            return True
+    return False
 
 
 PLAIN_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
