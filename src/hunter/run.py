@@ -9568,6 +9568,84 @@ def cmd_applied(token: str = "", job_ids: str = "") -> int:
     return 0
 
 
+def clear_split(rows: list[SheetRow]) -> tuple[list[SheetRow], list[SheetRow]]:
+    """(applied, cleared): a row with a package built is one he applied to,
+    by his word; every other row he never applied to."""
+    built = (sheet_mod.PKG_BUILT_DIRECT, sheet_mod.PKG_BUILT_BRIDGE,
+             sheet_mod.PKG_BUILT_UNVERIFIED)
+    applied = [r for r in rows if r.cell("Package Status").strip() in built]
+    return applied, [r for r in rows if r not in applied]
+
+
+def cmd_clear_pipeline(apply: bool = False) -> int:
+    """Clear Pipeline once he has applied to the batch. His words, 2026-10-20:
+    "ok, all jobs have been applied, clear the pipeline".
+
+    A row with a package is recorded as applied on his word (SAID_SO, never a
+    claimed acknowledgement): its open approvals submitted, Application Status
+    and Applied Date, column A Applied, the role applied. Each row is written
+    by its own number, because two rows can share a company and a title. Every
+    other row leaves with no verdict, so nothing is learned from it as a yes
+    or a no, and its role is set aside. One move for both, through
+    archive_rows, which re-reads every target and refuses a changed row; then
+    Pipeline is read back. Counts only: the log is public. No email."""
+    from .apply import approval
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    rows = sheet.read_pipeline(canon.sheet_headers)
+    applied, cleared = clear_split(rows)
+    print(f"clear-pipeline: {len(rows)} rows; {len(applied)} applied (a package was "
+          f"built), {len(cleared)} cleared without a verdict")
+    if not apply:
+        print("dry run. add --apply to clear")
+        return 0
+    known = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,location,url,job_url,status,application_state",
+        "limit": ALL_ROWS})
+    pair = router.pair_records(rows, known)
+    today = datetime.date.today().isoformat()
+    bad = 0
+    for r in applied:
+        d = pair.get(id(r)) or {}
+        try:
+            sheet.mark_applied(r.row_number, when=today)
+            sheet.set_verdicts({r.row_number: verdicts.APPLIED})
+        except Exception as e:
+            bad += 1
+            print(f"  a row could not be marked applied ({e.__class__.__name__})")
+            continue
+        jid = d.get("job_id")
+        if not jid:
+            continue
+        for a in db_get(cfg, approval.TABLE, {
+                "select": "token,state", "job_id": f"eq.{jid}",
+                "state": f"in.({approval.AWAITING},{approval.APPROVED})"}):
+            approval.set_state(cfg, a["token"], approval.SUBMITTED,
+                               submitted_at=NOW(), failure_reason=SAID_SO)
+        if d.get("application_state") not in APPLIED_STATES:
+            db_patch(cfg, "hunter_seen_roles", {"job_id": jid},
+                     {"application_state": APPLIED_STATE, "applied_at": NOW()})
+    fresh = {r.row_number: r for r in sheet.read_pipeline(canon.sheet_headers)}
+    movers = [fresh[r.row_number] for r in applied + cleared if r.row_number in fresh]
+    rep: dict = {}
+    moved = sheet.archive_rows(movers, archive_tab=config_mod.ARCHIVE_TAB,
+                               archive_sheet_id=config_mod.ARCHIVE_SHEET_ID,
+                               headers=canon.sheet_headers, report=rep)
+    gone = set(rep.get("moved") or [])
+    aside = 0
+    for r in cleared:
+        d = pair.get(id(r)) or {}
+        if r.row_number in gone and d.get("job_id") and d.get("status") != "set_aside" \
+                and d.get("application_state") not in APPLIED_STATES:
+            db_patch(cfg, "hunter_seen_roles", {"job_id": d["job_id"]},
+                     {"status": "set_aside"})
+            aside += 1
+    left = sheet.read_pipeline(canon.sheet_headers)
+    print(f"clear-pipeline: {moved} moved to {config_mod.ARCHIVE_TAB}, {aside} role(s) set "
+          f"aside, {bad} not marked; Pipeline now holds {len(left)} rows")
+    return 0 if not left and not bad else 1
+
+
 def retire_dead_posting(cfg: Config, canon, sheet: Sheet, job_id: str, *,
                         company: str, role: str, why: str) -> None:
     """Take a posting the board no longer serves off the board here too.
@@ -10339,6 +10417,8 @@ def main(argv: list[str]) -> int:
         return cmd_close_submitted(apply="--apply" in argv)
     if cmd == "confirmations":
         return cmd_confirmations(apply="--apply" in argv)
+    if cmd == "clear-pipeline":
+        return cmd_clear_pipeline(apply="--apply" in argv)
     if cmd == "applied":
         if "--list" in argv:
             return cmd_applied_list()
