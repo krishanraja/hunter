@@ -1320,10 +1320,10 @@ def test_cmd_approvals_marks_what_it_dealt_with_and_minted_no_token_for(
     db, mailed, _ = approvals_world(monkeypatch, [L("ardent", k="9")], [rec("ardent")], plan)
     tally = {}
     run_mod.cmd_approvals(apply=True, prefill=False, chosen=[rec("ardent")], tally=tally)
-    # A refusal names its question to him (his choice 2026-10-17); by hand mails the pack.
-    asked = {run_mod.MISSING_EMAILED: 1} if outcome == "refused_blocking" else {}
+    # A refusal records its question for chat (his ruling 2026-10-20), never mails it.
+    asked = {run_mod.MISSING_RECORDED: 1} if outcome == "refused_blocking" else {}
     assert tally == {outcome: 1, **asked}
-    assert mailed["approval"] == ([1] if asked else [])
+    assert mailed["approval"] == []
     marks = [m for m in db.tables.get("hunter_alerts", [])]
     assert [m["detail"]["outcome"] for m in marks] == [outcome]
     assert marks[0]["fingerprint"] == run_mod.prepared_fingerprint(

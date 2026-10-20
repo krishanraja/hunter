@@ -492,7 +492,7 @@ def test_an_answer_only_his_bank_can_give_is_still_marked(monkeypatch):
                                EssayPlan("no answer in the bank"))
     tally = {}
     run_mod.cmd_approvals(apply=True, prefill=False, chosen=[rec("ardent")], tally=tally)
-    assert tally == {run_mod.REFUSED_BLOCKING: 1, run_mod.MISSING_EMAILED: 1}
+    assert tally == {run_mod.REFUSED_BLOCKING: 1, run_mod.MISSING_RECORDED: 1}
     assert [m["detail"]["outcome"] for m in db.tables["hunter_alerts"]] == [
         run_mod.REFUSED_BLOCKING]
 

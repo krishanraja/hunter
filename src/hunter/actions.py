@@ -189,9 +189,9 @@ def prepare_note(code: int, tally: dict, failures: list[str]) -> tuple[bool, str
              "emailed for you to apply yourself"),
             (lambda: tally.get("taken"), True,
              "already has an application waiting for you; no second email"),
-            (lambda: tally.get(run.REFUSED_BLOCKING) and tally.get(run.MISSING_EMAILED),
+            (lambda: tally.get(run.REFUSED_BLOCKING) and tally.get(run.MISSING_RECORDED),
              False, "refused: the form asks a question your Info Bank has no answer "
-             "for; the question is in your email. Answer it there, then press Prepare"),
+             "for; Claude will ask it in your next session"),
             (lambda: tally.get(run.REFUSED_BLOCKING), False,
              "refused: a required question has no answer in your answer bank; nothing "
              "sent"),

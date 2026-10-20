@@ -174,6 +174,49 @@ def _patch(cfg: Config, req_id: int, expect: str, values: dict) -> bool:
     return n == 1
 
 
+def open_asks(cfg: Config) -> list[dict]:
+    """The asks still waiting on his line, oldest first, with the role each
+    was made for. His ruling 2026-10-20: "stop asking me those by email". A
+    Claude session reads these and asks him in chat (`run questions`)."""
+    rows = db_get(cfg, TABLE, {"select": "id,category,job_id,status",
+                               "status": "in.(queued,asked)", "order": "id.asc"})
+    for r in rows:
+        r["role"] = _role(cfg, r.get("job_id") or "")
+    return rows
+
+
+def answer(cfg: Config, req_id: int, words: str) -> int:
+    """His line, given in chat, written to canon 9.14 exactly as he gave it and
+    read back, as a reply by email once was. Returns the canon entry. Nothing
+    is mailed."""
+    words = (words or "").strip()
+    if not words:
+        raise ValueError("an answer needs his words")
+    if len(words) > MAX_CHARS:
+        raise ValueError(f"one line, up to {MAX_CHARS} characters")
+    rows = db_get(cfg, TABLE, {"select": "id,category,job_id,status", "id": f"eq.{req_id}"})
+    if not rows or rows[0]["status"] not in ("queued", "asked"):
+        raise ValueError("no open ask with that id")
+    req = rows[0]
+    role = _role(cfg, req.get("job_id") or "")
+    terms = terms_for(words, personal.business_sentences(role.get("judge_answers")))
+    # The record first: a record that refuses must leave canon untouched, as
+    # the first run of this did not (its source was not yet an allowed value).
+    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    if not _patch(cfg, req["id"], req["status"], {
+            "status": "answered", "answer": words, "answer_source": "chat",
+            "answered_at": now}):
+        raise RuntimeError("the ask changed before his answer was recorded")
+    w = canonwrite.add_entry(cfg, categories=[req["category"]], terms=terms, words=words)
+    _patch(cfg, req["id"], "answered", {
+        "status": "written", "written_at": now, "canon_version_before": w.version_before,
+        "canon_version_after": w.version_after, "result": f"entry {w.entry} written"})
+    back = db_get(cfg, TABLE, {"select": "status,answer", "id": f"eq.{req['id']}"})
+    if not (back and back[0]["status"] == "written" and back[0]["answer"] == words):
+        raise RuntimeError("the answer did not read back")
+    return w.entry
+
+
 def ask(cfg: Config, send) -> dict:
     """Mail every queued ask. Marked asked only when Gmail gave an id back
     and the row reads back as asked."""

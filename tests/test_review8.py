@@ -347,7 +347,7 @@ OUTCOMES = {
     "taken": dict(plan=Plan(), live=True, want=(True, "already has an application waiting")),
     "refused": dict(plan=Blocked("no answer in the bank"),
                     want=(False, "refused: the form asks a question your Info Bank has no "
-                                 "answer for; the question is in your email")),
+                                 "answer for; Claude will ask it in your next session")),
     "essay": dict(plan=Blocked(_essay()), want=(False, "an essay did not draft")),
     "by hand": dict(plan=Plan(readable=False), want=(True, "sent as by hand")),
     "off sheet": dict(plan=Plan(), lines=[L("brisk", k="9")],
@@ -681,7 +681,7 @@ def test_adding_the_missing_answer_reopens_the_posting(monkeypatch):
                                      Blocked("no answer in the bank"))
     tally = {}
     R.cmd_approvals(apply=True, prefill=False, chosen=[rec("ardent")], tally=tally)
-    assert tally == {R.REFUSED_BLOCKING: 1, R.MISSING_EMAILED: 1}
+    assert tally == {R.REFUSED_BLOCKING: 1, R.MISSING_RECORDED: 1}
     assert db.tables["hunter_alerts"][0]["fingerprint"] == R.prepared_fingerprint(
         rec("ardent"), R.REFUSED_BLOCKING, bank=R.bank_hash({}))
     s = R.Sheet("x")
@@ -733,49 +733,57 @@ def test_the_questions_he_must_answer_are_named_and_nothing_else():
                                          ("Desired salary", "Salary expectations")]
 
 
-def test_one_email_names_each_question_once_with_every_role_that_asks_it():
-    missing = [{"company": "Ardent", "role": "VP", "questions": [("Visa status?", "")]},
-               {"company": "Brisk", "role": "Head of Partnerships",
+def test_the_questions_are_recorded_for_chat_and_never_mailed(monkeypatch):
+    # His ruling 2026-10-20: "just give me the questions here, stop asking me
+    # those by email".
+    store = {}
+    monkeypatch.setattr(R, "db_get", lambda cfg, t, q: (
+        [{"key": R.OPEN_QUESTIONS_KEY, "value": store["v"]}] if "v" in store else []))
+    monkeypatch.setattr(R, "db_insert", lambda cfg, t, rows: store.update(v=rows[0]["value"]))
+    monkeypatch.setattr(R, "db_patch", lambda cfg, t, k, v: store.update(v=v["value"]))
+    from hunter import notify
+    monkeypatch.setattr(notify, "send_email", lambda *a, **k: pytest.fail("mailed"))
+    missing = [{"company": "Ardent", "role": "VP", "job_id": "ardent:vp",
+                "questions": [("Visa status?", "")]},
+               {"company": "Brisk", "role": "Head of Partnerships", "job_id": "brisk:hp",
                 "questions": [("Visa status?", ""), ("Desired salary", "Salary expectations")]}]
-    subject, html, text = R.missing_email(missing)
-    assert subject.startswith("hunter: 2 question(s) your Info Bank can't answer yet, "
-                              "holding 2 application(s)")
-    assert html.count("Visa status?") == 1 and "VP at Ardent; Head of Partnerships at Brisk" in html
-    assert 'fill the row "Salary expectations"' in html and "Application Info Bank" in html
-    assert "press <b>Prepare</b>" in html and text.startswith("[hunter-outbound]")
-    assert "\u2014" not in html + text
+    assert R.record_missing_answers(Cfg(), missing)
+    got = R.open_questions(Cfg())
+    assert [(q["job_id"], q["question"]) for q in got] == [
+        ("ardent:vp", "Visa status?"), ("brisk:hp", "Visa status?"),
+        ("brisk:hp", "Desired salary")]
+    # A posting read again replaces its own questions: an answered one goes.
+    assert R.record_missing_answers(Cfg(), [{"company": "Brisk", "role": "Head of Partnerships",
+                                            "job_id": "brisk:hp",
+                                            "questions": [("Desired salary", "Salary expectations")]}])
+    assert [(q["job_id"], q["question"]) for q in R.open_questions(Cfg())] == [
+        ("ardent:vp", "Visa status?"), ("brisk:hp", "Desired salary")]
 
 
-def test_a_batch_mails_its_missing_questions_once_and_logs_only_counts(monkeypatch, capsys):
+def test_a_batch_records_its_missing_questions_once_and_logs_only_counts(monkeypatch, capsys):
     lines = [L("ardent", k="10"), L("brisk", k="8")]
     db, mailed, reached = approvals_world(monkeypatch, lines, [rec("ardent"), rec("brisk")],
                                           Blocked("no answer in the bank"))
     _commands(monkeypatch, R.Sheet("x"))
     sent = []
-    monkeypatch.setattr(R, "send_missing_answers",
+    monkeypatch.setattr(R, "record_missing_answers",
                         lambda cfg, missing: sent.append(list(missing)) or True)
     R.cmd_approvals_wanted(apply=True)
     assert len(sent) == 1 and [m["company"] for m in sent[0]] == ["Ardent", "Brisk"]
     out = capsys.readouterr().out
-    assert "2 missing questions emailed" in out
+    assert "2 missing questions recorded" in out
     assert "Question 0" not in out and "Ardent" not in out and "Brisk" not in out
 
 
-def test_a_form_missing_only_his_header_pick_mails_no_question(monkeypatch):
+def test_a_form_missing_only_his_header_pick_records_no_question(monkeypatch):
     from hunter.apply.resolve import NEEDS_BASE
     db, mailed, reached = approvals_world(monkeypatch, [L("ardent", k="9")], [rec("ardent")],
                                           Blocked(NEEDS_BASE + ": no base"))
     sent = []
-    monkeypatch.setattr(R, "send_missing_answers",
+    monkeypatch.setattr(R, "record_missing_answers",
                         lambda cfg, missing: sent.append(missing) or True)
     tally = {}
     R.cmd_approvals(apply=True, prefill=False, chosen=[rec("ardent")], tally=tally)
-    assert sent == [] and R.MISSING_EMAILED not in tally
+    assert sent == [] and R.MISSING_RECORDED not in tally
 
 
-def test_one_title_in_two_countries_is_one_line_and_two_applications():
-    missing = [{"company": "Ardent", "role": "VP", "questions": [("Visa status?", "")]},
-               {"company": "Ardent", "role": "VP", "questions": [("Visa status?", "")]}]
-    subject, html, _ = R.missing_email(missing)
-    assert "holding 2 application(s)" in subject
-    assert "VP at Ardent (2 postings)" in html and html.count("VP at Ardent") == 1

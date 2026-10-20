@@ -298,6 +298,20 @@ class Resolver:
         return Unanswered(NEEDS_KRISH, f"no {what} recorded for the "
                                        f"{self.contact.key.upper()} base")
 
+    # His words, 2026-10-20, asked a second time whether he was over 18: "I am
+    # 39, you asked me this last week too. Do you really think i am 5 years
+    # old?" An adult is a fact about him, not a row he should have to type.
+    _AGE = re.compile(r"\b(?:18|eighteen|twenty[- ]one|21)\b.*\b(?:years?|age|older|old)\b"
+                      r"|\b(?:age|years?) of (?:18|eighteen|21)\b|\blegal (?:working )?age\b"
+                      r"|\bage of majority\b|\b(?:are|am) (?:over |at least )?(?:18|eighteen|21)\b")
+
+    def _adult(self, label: str) -> Resolution | None:
+        if not self._AGE.search(label) or _any(label, "years of experience", "experience"):
+            return None
+        under = _any(label, "under the age", "under 18", "under 21", "younger than",
+                     "less than 18", "a minor")
+        return Answer(NO if under else YES, "his age: 39 (his words, 2026-10-20)")
+
     # ---------- authorisation, the single biggest cluster ----------
 
     def _authorisation(self, label: str) -> Resolution | None:
@@ -814,6 +828,7 @@ class Resolver:
         label = _padded(field.label)
         result: Resolution | None = None
         for attempt in (self._verbatim_question(field), self._work_basis(field),
+                        self._adult(label),
                         self._authorisation(label), self._location(field),
                         self._name_parts(field), self._postal(field),
                         self._how_did_you_hear(field), self._about_him_now(field),
