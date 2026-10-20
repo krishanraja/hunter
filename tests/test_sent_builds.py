@@ -59,3 +59,9 @@ def test_a_sent_blank_never_leaves_as_one_he_scored_past():
 def test_a_sent_row_he_scores_low_leaves():
     rr = leave.RowRating(kind=ratings.SCORED, job_ids=("quillfield:vp-strategy",))
     assert leave.should_leave(sent(k="4"), rr) is not None
+
+
+def test_an_ai_agentic_transformation_title_is_an_ai_seat():
+    from hunter.package import proof
+    assert proof.family_of(None, "VP, AI (Agentic Platforms & Transformation)") == \
+        "ai_chief_of_staff_transformation"
