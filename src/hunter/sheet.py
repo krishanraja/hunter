@@ -62,6 +62,18 @@ def is_sent(row) -> bool:
     return (row.cell("Source") or "").strip() == SENT_SOURCE
 
 
+def iso_date(value) -> str:
+    """A date cell as YYYY-MM-DD. A cell written before dates went in RAW
+    holds the spreadsheet's day number (46311 is 2026-10-16), which the row
+    check refuses; it is turned back into the date it was. Anything else is
+    returned as it is."""
+    text = str(value or "").strip()
+    if text.isdigit() and 40000 <= int(text) <= 60000:
+        import datetime as _dt
+        return (_dt.date(1899, 12, 30) + _dt.timedelta(days=int(text))).isoformat()
+    return text
+
+
 def says_duplicate(reaction: str) -> bool:
     """His reaction is the one word Duplicate, whatever the case, spacing,
     full stop or exclamation mark. Not "Duplicate?", which is a doubt, and not

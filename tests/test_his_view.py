@@ -951,6 +951,15 @@ def test_rebuild_picks_only_unacted_packages_built_without_his_view(monkeypatch)
     assert feedback["quarry:vp"] == "Newer invented amend words."
     assert feedback["ardent:vp"] == ""
     assert db.full_state_reads == 0, "hunter_row_state is read by id, never whole"
+    # Not the style rebuild, so nothing is asked.
+    assert "form_opened" not in rep
+    # The style rebuild asks him about the form he opened on an older package
+    # (2026-10-21, Replit), never leaves it silent.
+    rep = {}
+    monkeypatch.setattr(run_mod.style_mod, "stamped", lambda d: False)
+    run_mod.rebuild_targets(Cfg(), s, FakeCanon(), report=rep, style=True)
+    assert [q["job_id"] for q in rep["form_opened"]] == ["grove:vp"]
+    assert rep["form_opened"][0]["questions"] == [(run_mod.FORM_OPENED_QUESTION, "")]
 
 
 def test_rebuild_job_id_names_one_target(monkeypatch):
