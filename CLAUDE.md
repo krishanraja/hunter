@@ -482,6 +482,13 @@ docs/HANDOVER_LETTERS.md is the full record.
   to?"). The style rebuild leaves it alone and records `FORM_OPENED_QUESTION`
   for chat: has he applied, or should the rewritten one go? A stored date
   number (46311) comes back from Applied as the date (`sheet.iso_date`).
+- **A form is read from the link a board can serve** (`run.form_url`; his
+  words 2026-10-21, "they were just one click away"). An embedded Greenhouse
+  posting's own address is the company's careers page, which no adapter reads;
+  Actively, iFIT and Nebius went to him as apply by hand while their record
+  held the board link. A LinkedIn posting is Easy Apply only when its page
+  says so (`linkedin.apply_mode`); an offsite one says it sends him to the
+  company's site.
 - **The masters change with canon 9.9, together**, or every run aborts. Drains
   start at :13 and finish by :15; switch just after.
 - **Previews before changes he will read.** `build-preview --queue`, then the

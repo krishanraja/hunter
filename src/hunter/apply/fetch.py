@@ -48,6 +48,19 @@ def form_for(url: str, ats_key) -> FormSpec:
         # BOI, Confidential and Strativ Group: all three are onsite, and their
         # only external hosts are LinkedIn's own CDNs. He believed they clicked
         # through to a real application page; for those three they do not.
+        from ..ats import linkedin
+        mode = linkedin.apply_mode(url)
+        if mode == linkedin.OFFSITE:
+            return unreadable(
+                "linkedin",
+                "LinkedIn sends you to the company's own site to apply, and hunter "
+                "could not find that form on a board it can fill; Apply on LinkedIn "
+                "takes you there")
+        if mode is None:
+            return unreadable(
+                "linkedin",
+                "LinkedIn: hunter could not tell whether this is Easy Apply or the "
+                "company's own site; open the posting and press Apply")
         return unreadable(
             "linkedin",
             "LinkedIn Easy Apply: the application is completed inside "
