@@ -6849,6 +6849,18 @@ def contact_for(cfg: Config, row: dict):
     return bases.get((row.get("header_base") or "").strip()), bases
 
 
+def form_url(*urls) -> str:
+    """The link the form is read from: the first one a board can serve.
+
+    A posting on an embedded Greenhouse board names the company's own careers
+    page as its address (absolute_url, "ifit.com/careers?gh_jid=..."), which
+    no adapter reads. On 2026-10-20 that sent Actively, iFIT and Nebius to
+    him as apply by hand while their record held the board link, readable at
+    12 to 16 fields. His words: "they were just one click away"."""
+    present = [u for u in urls if u]
+    return next((u for u in present if board_key(u)), present[0] if present else "")
+
+
 def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
                     bank=None, summary: str = "", hook: str = "",
                     draft_essays: bool = True, essays: dict[str, str] | None = None,
@@ -6866,9 +6878,10 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
     from .apply import audit as audit_mod
     from .apply import fetch, fill
     from .ats import discover as disc
-    role, _relink, _flags = resolve_for_build(cfg, row, disc.load_cache(cfg))
+    role, relink, _flags = resolve_for_build(cfg, row, disc.load_cache(cfg))
     bank = bank if bank is not None else _answer_bank(sheet)
-    spec = fetch.form_for(role.jd_url, board_key)
+    spec = fetch.form_for(form_url(role.jd_url, relink, row.get("url"), row.get("job_url")),
+                          board_key)
     from .apply.resolve import NEEDS_BASE
     from .package import contact as contact_mod
     contact, bases = contact_for(cfg, row)
