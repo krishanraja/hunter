@@ -96,3 +96,8 @@ def test_a_dry_run_moves_nothing(monkeypatch):
     _world(monkeypatch, tabs)
     assert R.cmd_clear_pipeline(apply=False) == 0
     assert len(tabs.rows) == 1 and not tabs.applied_marks
+
+
+def test_a_date_stored_as_a_day_number_comes_back_as_the_date():
+    assert S.iso_date("46311") == "2026-10-16"
+    assert S.iso_date("2026-10-20") == "2026-10-20" and S.iso_date("n/a") == "n/a"

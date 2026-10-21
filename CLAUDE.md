@@ -477,6 +477,11 @@ docs/HANDOVER_LETTERS.md is the full record.
   from the closest Info Bank row (`AnswerBank.closest`, flagged so he sees it
   in the Apply email), and a kind of business he has given any line for uses
   that line rather than asking again (`personal.match`).
+- **A form he opened on an older package is a question, never silence**
+  (2026-10-21, Replit: "how comes I never got the updated Replit role to apply
+  to?"). The style rebuild leaves it alone and records `FORM_OPENED_QUESTION`
+  for chat: has he applied, or should the rewritten one go? A stored date
+  number (46311) comes back from Applied as the date (`sheet.iso_date`).
 - **The masters change with canon 9.9, together**, or every run aborts. Drains
   start at :13 and finish by :15; switch just after.
 - **Previews before changes he will read.** `build-preview --queue`, then the

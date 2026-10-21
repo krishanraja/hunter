@@ -1048,6 +1048,8 @@ def cmd_restore(job_ids: list[str], apply: bool = False) -> int:
         c[0] = "New"          # append validation demands it; corrected below
         if not str(c[sheet_mod.COLS[sheet_mod.POSTED]]).strip():
             c[sheet_mod.COLS[sheet_mod.POSTED]] = sheet_mod.DEFAULTS_BY_NAME[sheet_mod.POSTED]
+        for i in sheet_mod.DATE_COLS:
+            c[i] = sheet_mod.iso_date(c[i])
     # His score and reaction come back with his row: they are his words, not
     # hunter writing into his columns.
     rng = sheet.append_rows(cells, carry_his=True)
@@ -7919,6 +7921,10 @@ def acted_on_now(cfg: Config, row: dict) -> str | None:
     return acted_on(None, d, _tokens_by_posting(cfg, others + [d], toks))
 
 
+FORM_OPENED_QUESTION = ("You opened this form while it had an older package. Have you "
+                        "applied, or should hunter send you the rewritten one?")
+
+
 def rebuild_targets(cfg: Config, sheet: Sheet, canon: Canon, *, job_id: str = "",
                     report: dict | None = None, detail: list | None = None,
                     read_doc=None, style: bool = False) -> list[dict]:
@@ -8028,6 +8034,14 @@ def rebuild_targets(cfg: Config, sheet: Sheet, canon: Canon, *, job_id: str = ""
         why = acted_on(r, d, tokens)
         if why:
             skip(why, r, d)
+            if why == "form opened" and style:
+                # Left alone, never silently (2026-10-21, Replit: "how comes I
+                # never got the updated Replit role to apply to?"). He opened
+                # the form on the old package; whether to send the new one is
+                # his question, asked in chat (record_missing_answers).
+                rep.setdefault("form_opened", []).append(
+                    {"company": r.company, "role": r.role, "job_id": d.get("job_id") or "",
+                     "questions": [(FORM_OPENED_QUESTION, "")]})
             continue
         if not router.is_his_ask(trig) and not score_rule:
             skip("waiting on canon 9.13", r, d)
@@ -8475,6 +8489,13 @@ def cmd_rebuild_packages(apply: bool = False, max_builds: int = 0, job_id: str =
         return 1
     for line in rebuild_lines(rep, apply=apply, cap=max_builds, style=(reason == "style")):
         print(line)
+    if apply and rep.get("form_opened"):
+        try:
+            if record_missing_answers(cfg, rep["form_opened"]):
+                print(f"rebuild: {len(rep['form_opened'])} opened form(s) on an older package "
+                      f"recorded as a question for him")
+        except Exception as e:
+            print(f"rebuild: opened forms not recorded ({e.__class__.__name__})")
     if not apply or not targets:
         return 0
     if style_mod.builds_paused():
