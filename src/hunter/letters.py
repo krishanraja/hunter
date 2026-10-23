@@ -156,6 +156,9 @@ def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_t
             (d.get("meta") or {}).get("fingerprint") != p.fingerprint:
         db_patch_where(cfg, drafts.TABLE, {"id": f"eq.{d['id']}", "status": f"eq.{d['status']}"},
                        {"status": "expired", "problems": ["its inputs changed"]})
+    # The company as its posting writes it, so the writer is asked for
+    # "Grafana Labs" and never for a board's slug (compose.display_company).
+    company = compose.display_company(company, jd_text)
     prompt = compose.role_prompt(company=company, title=title, location=location,
                                  base_key=p.base_key, jd_text=jd_text,
                                  judge_answers=judge_answers, his_view=view_text,

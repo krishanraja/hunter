@@ -597,3 +597,38 @@ def test_the_writer_is_told_the_seat_and_reads_the_evidence_marked():
                                  bank_words=[], his_rules='- "less specificity"')
     assert "mechanics, never in prose: n8n, an agent count" in ctx
     assert "HIS RULES FOR EVERY PACKAGE" in ctx
+
+
+# ---------- the company as its posting writes it ----------
+
+@pytest.mark.parametrize("slug, jd, shown", [
+    ("grafanalabs", "Grafana Labs is the company behind Grafana Cloud.", "Grafana Labs"),
+    ("mesh", "About Mesh At Mesh, our mission is to enable consumers.", "Mesh"),
+    ("apolloio", "Join Apollo.io, the sales platform.", "Apollo.io"),
+    ("celonis", "Celonis is the trusted platform.", "Celonis"),
+    # A name already written as a name is kept, and a slug the posting never
+    # spells stays the slug: a guess is not a name.
+    ("Fireworks AI", "fireworks ai is hiring", "Fireworks AI"),
+    ("keelinfrastructure", "We build infrastructure for keel boats.", "keelinfrastructure"),
+    ("mesh", "", "mesh"),
+    ("grafanalabs", "try grafana labs today", "grafanalabs"),
+])
+def test_a_board_slug_becomes_the_name_its_posting_uses(slug, jd, shown):
+    assert compose.display_company(slug, jd) == shown
+
+
+def test_a_letter_asked_under_a_slug_may_name_the_company_as_it_writes_itself():
+    """2026-10-23: a Grafana Labs letter was refused for not saying
+    "grafanalabs" in its hook, and would have printed it under Re:."""
+    jd = "Grafana Labs is the company behind Grafana Cloud, hiring a sales leader."
+    out = {"hiring_lead": "Hiring Team", "hook": "Grafana Labs needs a sales leader.",
+           "identity": "I lead sales teams.", "bullets": [], "why_now": "Grafana Labs grows.",
+           "close": "I will bring a plan.", "asks": []}
+
+    def naming(company):
+        meta = {"company": company, "short_name": company, "jd": jd}
+        return [p for p in compose.problems(out, meta=meta, context="MODEL LETTER\nx")
+                if "does not name the company" in p]
+    assert naming("grafanalabs") == []
+    # The check still bites: a letter naming nobody is refused.
+    assert naming("vercel")

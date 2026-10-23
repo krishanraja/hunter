@@ -256,6 +256,40 @@ _SENT = re.compile(r"(?<=[.!?])\s+")
 SUBJECT = re.compile(r"\b(I|I'm|I've|I'd|I'll|we|we're|we've)\b|\bI[’']", re.I)
 
 
+def display_company(company: str, jd: str) -> str:
+    """The company as its own posting writes it. A role read off a job board
+    carries the board's address as its company ("grafanalabs", "mesh",
+    "apolloio"), and on 2026-10-23 a letter to Grafana Labs was asked to name
+    "grafanalabs" in its hook and would have printed it under Re:. A name with
+    a capital or a space is a name already and is kept; a bare lowercase slug
+    becomes the first run of up to four words in the posting whose letters
+    spell it, as written there ("Grafana Labs", "Apollo.io"). No such run
+    leaves the slug as it was: a guess is not a name."""
+    name = (company or "").strip()
+    if not name or not jd or name != name.lower() or " " in name:
+        return name
+    want = re.sub(r"[^a-z0-9]", "", name)
+    if not want:
+        return name
+    words = list(re.finditer(r"[A-Za-z0-9]+", jd))
+    for i, w in enumerate(words):
+        if not want.startswith(w.group().lower()):
+            continue
+        got = ""
+        for j in range(i, min(i + 4, len(words))):
+            if j > i and jd[words[j - 1].end():words[j].start()] not in (" ", ".", "-", "&", " & "):
+                break
+            got += words[j].group().lower()
+            if got == want:
+                shown = jd[w.start():words[j].end()]
+                if shown != shown.lower():
+                    return shown
+                break
+            if not want.startswith(got):
+                break
+    return name
+
+
 def name_problems(letter: Letter) -> list[str]:
     """His company, written his way in every field (gtmseed.COMPANY_NAME)."""
     from ..apply.gtmseed import COMPANY_NAME, name_problems as found_in
@@ -511,8 +545,11 @@ def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None 
         return [f"the answer is not the letter schema: {e.__class__.__name__}"]
     base = meta.get("base") or "us"
     letter = respelled(letter, base)
-    names = frozenset(n for n in (meta.get("company"), meta.get("short_name"),
-                                  meta.get("role")) if n)
+    # The name the posting itself uses counts as the company's, so a letter
+    # asked for under a board's slug can say "Grafana Labs".
+    shown = display_company(meta.get("company") or "", meta.get("jd") or "")
+    companies = frozenset(n for n in (meta.get("company"), meta.get("short_name"), shown) if n)
+    names = companies | frozenset(n for n in (meta.get("role"),) if n)
     # His own words from 9.14 are evidence: they are his.
     hay = "\n".join([evidence or "", *(meta.get("entries") or [])]).lower()
     out = shape_problems(letter)
@@ -530,8 +567,7 @@ def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None 
                              ruled_out=tuple(meta.get("ruled_out") or ()))
     if context:
         out += role_problems(letter, jd=meta.get("jd") or prompt, model=model_of(context),
-                             names=frozenset(n for n in (meta.get("company"), meta.get("short_name"))
-                                             if n),
+                             names=companies,
                              entries=list(meta.get("entries") or []), context_cv=context)
     return out
 

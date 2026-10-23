@@ -83,14 +83,36 @@ def problems_for(kind: str, output, *, prompt: str, context: str = "",
         return out + [f"voice gate: {f}" for f in gate.failures]
     if kind == "letter":
         from .package import compose
-        return compose.problems(output, prompt=prompt, evidence=evidence, meta=meta,
-                                context=context)
+        from .package import his_view
+        out = compose.problems(output, prompt=prompt, evidence=evidence, meta=meta,
+                               context=context)
+        # The build refuses a letter that copies his reaction (run.py, quotes_note);
+        # the routine's check refuses it too, or a letter that passed here was
+        # refused at build and waited a day for the next run (2026-10-23).
+        if not out:
+            reaction = reaction_in(prompt)
+            if reaction and his_view.quotes_note(
+                    " ".join(compose.parse(output).spans()),
+                    his_view.HisView(reaction=reaction), evidence):
+                out = ["the letter quotes his note; say it in your own words"]
+        return out
     if kind == "door_observation":
         from . import doorin
         text = output.get("text") if isinstance(output, dict) else output
         text = " ".join(str(text or "").split()).strip().strip('"')
         return doorin.check_observation(text, evidence, frozenset(meta.get("names") or []))
     return [f"unknown kind {kind!r}"]
+
+
+REACTION_OPEN = 'His reaction, in his own words:\n"""\n'
+
+
+def reaction_in(prompt: str) -> str:
+    """His reaction as the prompt carries it (his_view writes it between
+    triple quotes after REACTION_OPEN), or "" when it carries none."""
+    if REACTION_OPEN not in (prompt or ""):
+        return ""
+    return prompt.split(REACTION_OPEN, 1)[1].split('\n"""', 1)[0]
 
 
 # ---------- hunter's side: request, then settle ----------

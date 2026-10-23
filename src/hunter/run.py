@@ -2857,19 +2857,22 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
     # else in his Drive (drivemap.py).
     from . import drivemap
     drivemap.allow(db, cfg)
-    home = drivemap.application_folder(db, role.company, role.title)
+    # The company as its posting writes it, never a board's slug, on the
+    # letter, the file names and the folder (compose.display_company).
+    shown = compose.display_company(role.company, getattr(role, "jd_text", "") or "")
+    home = drivemap.application_folder(db, shown, role.title)
     lt = compose.build_letter(
         db, letter, master_id=letter_master,
-        title=_unique_title(db, f"KrishRaja_CoverLetter_{role.company}",
+        title=_unique_title(db, f"KrishRaja_CoverLetter_{shown}",
                             home, slugify(role.title)),
         folder_id=home, base=base, bases=bases, date_text=date_text,
-        company=role.company, role=role.title, page_count=page_count, needs=plan.needs,
+        company=shown, role=role.title, page_count=page_count, needs=plan.needs,
         entries=plan.entries, bank_words=plan.bank)
     cv_paras = house.snapshot(db.get(cv_master))
     anchor, count = compose.cv_summary_span(cv_paras)
     cv = compose.build_cv(
         db, master_id=cv_master,
-        title=_unique_title(db, f"KrishRaja_CV_{role.company}", home,
+        title=_unique_title(db, f"KrishRaja_CV_{shown}", home,
                             slugify(role.title)),
         folder_id=home, base=base, bases=bases, page_count=page_count,
         heading_sizes=masters_mod._cv_heading_sizes(cv_paras), summary=letter.cv_summary,
