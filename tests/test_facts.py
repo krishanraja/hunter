@@ -281,6 +281,21 @@ def test_his_line_given_in_chat_is_written_and_nothing_is_mailed(with_section):
         facts.answer(None, open_["id"], words)
 
 
+def test_a_line_a_session_recorded_without_keys_is_written_on_the_next_drain(with_section):
+    """2026-10-23: a session with no keys can record his line on the ask but
+    cannot write canon; the hourly facts step finishes it, once."""
+    db = with_section
+    facts.request(None, "emerging_media", "kestrel:vp")
+    row = db.t["hunter_fact_requests"][0]
+    words = "I co-founded a podcast and record it at festivals."
+    row.update(status="answered", answer=words, answer_source="chat")
+    assert facts.write_recorded(None) == {"written": 1, "refused": 0}
+    (e,) = bank(db)
+    assert e.words == words and e.categories == ("emerging_media",)
+    assert db.t["hunter_fact_requests"][0]["status"] == "written"
+    assert facts.write_recorded(None) == {"written": 0, "refused": 0}
+
+
 def test_terms_are_what_his_line_and_the_business_both_say():
     sentences = ["Voice AI agents and audio tools", "voice agents for call centres"]
     assert facts.terms_for("I have run call centres and built voice tools.", sentences) == \

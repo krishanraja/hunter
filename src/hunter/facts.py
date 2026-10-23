@@ -207,6 +207,12 @@ def answer(cfg: Config, req_id: int, words: str) -> int:
             "status": "answered", "answer": words, "answer_source": "chat",
             "answered_at": now}):
         raise RuntimeError("the ask changed before his answer was recorded")
+    return _write(cfg, req, words, terms)
+
+
+def _write(cfg: Config, req: dict, words: str, terms) -> int:
+    """An answer already recorded, written to canon 9.14 and read back."""
+    now = dt.datetime.now(dt.timezone.utc).isoformat()
     w = canonwrite.add_entry(cfg, categories=[req["category"]], terms=terms, words=words)
     _patch(cfg, req["id"], "answered", {
         "status": "written", "written_at": now, "canon_version_before": w.version_before,
@@ -215,6 +221,29 @@ def answer(cfg: Config, req_id: int, words: str) -> int:
     if not (back and back[0]["status"] == "written" and back[0]["answer"] == words):
         raise RuntimeError("the answer did not read back")
     return w.entry
+
+
+def write_recorded(cfg: Config) -> dict:
+    """Answers a session recorded in chat but could not write: a session with
+    no keys sets the ask to answered, answer_source chat, with his words, and
+    this writes them to canon 9.14 on the next drain (2026-10-23, Higgsfield).
+    Counts only: his words never reach a log."""
+    counts = {"written": 0, "refused": 0}
+    for req in db_get(cfg, TABLE, {"select": "id,category,job_id,status,answer,answer_source",
+                                   "status": "eq.answered", "answer_source": "eq.chat",
+                                   "order": "id.asc"}):
+        words = (req.get("answer") or "").strip()
+        if not words or len(words) > MAX_CHARS:
+            counts["refused"] += 1
+            continue
+        role = _role(cfg, req.get("job_id") or "")
+        terms = terms_for(words, personal.business_sentences(role.get("judge_answers")))
+        try:
+            _write(cfg, req, words, terms)
+            counts["written"] += 1
+        except Exception:
+            counts["refused"] += 1
+    return counts
 
 
 def ask(cfg: Config, send) -> dict:

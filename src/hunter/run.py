@@ -10782,6 +10782,12 @@ def main(argv: list[str]) -> int:
         # (`questions`); replies to the asks already mailed are still read.
         sent = {"asked": 0, "not_sent": 0}
         try:
+            wrote = facts.write_recorded(cfg)
+            print(f"facts: answers recorded in chat, written to canon {wrote['written']}, "
+                  f"refused {wrote['refused']}")
+        except Exception as exc:
+            print(f"facts: recorded answers not written ({type(exc).__name__})")
+        try:
             got = facts.read(cfg, fetch=facts.fetch_replies, send=notify.send_email).counts
         except inbox.InboxError as exc:
             print(f"facts: replies not read ({type(exc).__name__})")
