@@ -136,3 +136,20 @@ def test_a_case_queues_from_the_role_staging_actually_carries(monkeypatch):
     assert (kind, ref) == ("case", "acme:vp-revenue")
     assert kw["meta"]["role"]["posting"] == "Acme sells software."
     assert kw["meta"]["role"]["url"] == "https://jobs.acme/1"
+
+
+def test_the_routine_check_refuses_a_letter_that_copies_his_reaction():
+    """2026-10-23: a letter passed the routine's check and was refused at build
+    for quoting his note, so it waited for the next run. The check now holds
+    it to the same gate the build does."""
+    from test_compose import EVIDENCE, META, answer
+    from hunter.package import his_view
+    reaction = "I would love a role where I get to architect the future of partner deals here."
+    prompt = his_view.section(his_view.HisView(score=8, reaction=reaction), company="Zentrox")
+    copied = answer(close="I would love a role where I get to architect the future of "
+                          "partner deals here.")
+    assert drafts.reaction_in(prompt) == reaction
+    got = drafts.problems_for("letter", copied, prompt=prompt, evidence=EVIDENCE, meta=META)
+    assert any("quotes his note" in p for p in got)
+    assert drafts.problems_for("letter", answer(), prompt=prompt, evidence=EVIDENCE,
+                               meta=META) == []
