@@ -599,13 +599,24 @@ def observe(cfg, card: Card, evidence: str) -> Card:
     return card
 
 
+def door_label(card: Card) -> str:
+    """What the card suggests he opens with. A person he named for a role is
+    a conversation about that role, never a pitch for his practice: on
+    2026-10-23 the cards for two CEOs whose roles he scored 8 and 10 read
+    "Build your AI GTM"."""
+    if card.door == ROLE_DOOR:
+        seat = (card.trigger.what if card.trigger else "").removeprefix("Open role: ")
+        return f"Ask about the {seat} role" if seat else "Ask about the role"
+    return "Build your AI GTM" if card.door == "gtm" else "Build your AI brain"
+
+
 def deal_row(card: Card, now: str) -> dict:
     """The pilot_deals row for a card. sourced_by must be 'krish' or 'os' (the
     table's check constraint), so hunter's rows say 'os' and carry NOTES_TAG,
     which is also how land() knows a row is its own."""
     t = card.trigger
     notes = (f"{NOTES_TAG} {card.company}. Route: {card.route.evidence}. "
-             f"Door (suggested): {'Build your AI GTM' if card.door == 'gtm' else 'Build your AI brain'}."
+             f"Door (suggested): {door_label(card)}."
              + (f" Observation not drafted: {card.observation_note}" if card.observation_note else ""))
     why = card.why_face or f"{card.leader.title} at {card.company}. Top company: {card.why_top}"
     row = {"contact_id": card.leader.contact_id, "state": "listed", "listed_at": now,
@@ -627,6 +638,9 @@ def deal_row(card: Card, now: str) -> dict:
 # the graph): he named the person or the role names them. The card is the
 # same row run_cards writes, landed by land(), so nothing he has worked on is
 # overwritten and every write is read back. Nothing is sent.
+ROLE_DOOR = "role"
+
+
 def named_card(*, contact_id: str, name: str, title: str, company: str,
                role_title: str, role_url: str, why: str, knows_them: bool,
                sourced_by: str) -> Card:
@@ -638,7 +652,7 @@ def named_card(*, contact_id: str, name: str, title: str, company: str,
     return Card(company=company, key=slugify(company), sources=["sent by Krish"],
                 leader=leader, route=Route(kind=kind, person=leader, evidence=evidence),
                 trigger=Trigger(kind="open_seat", what=f"Open role: {role_title}", url=role_url),
-                ask_kind="reconnect" if knows_them else "buyer", door="gtm",
+                ask_kind="reconnect" if knows_them else "buyer", door=ROLE_DOOR,
                 why_face=f"{title} at {company}. {why}", sourced_by=sourced_by,
                 path="warm" if knows_them else "")
 

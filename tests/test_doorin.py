@@ -477,6 +477,15 @@ def test_a_person_he_names_becomes_a_listed_card_in_his_words():
     assert "path" not in cold and cold["ask_kind"] == "buyer"
 
 
+def test_a_card_for_a_role_he_wants_suggests_the_role_not_his_practice():
+    """2026-10-23: two CEO cards for roles he scored 8 and 10 suggested
+    "Build your AI GTM"."""
+    from hunter import doorin
+    notes = doorin.deal_row(_named(), "2026-10-23T00:00:00Z")["notes"]
+    assert "Door (suggested): Ask about the VP, AI role." in notes
+    assert "Build your AI" not in notes
+
+
 def test_a_named_person_with_a_card_he_has_worked_on_is_left_alone(monkeypatch):
     from hunter import config, doorin
     monkeypatch.setattr(config, "db_get", lambda cfg, t, q: [
