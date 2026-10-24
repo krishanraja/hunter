@@ -204,8 +204,8 @@ jobs:
 
       # Nothing lands loose in his Drive (src/hunter/drivemap.py, his ruling
       # 2026-10-18): anything new at the top of it, from any app or session,
-      # is filed into CURRENT/00_INBOX, read back, and he is told in one
-      # line. His own top-level items and ContentLibrary are never touched,
+      # is filed into Inbox from My AI, read back, and he is told in one
+      # line. His own top-level items, FamilyContentLibrary and KeePass are never touched,
       # and nothing is deleted. This log carries counts only.
       - name: File anything loose at the top of his Drive
         if: ${{ !cancelled() && steps.cmd.outputs.args == 'drain' }}

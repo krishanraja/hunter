@@ -172,14 +172,14 @@ def _reset_model_providers():
 def _drive_map(monkeypatch):
     """A registry for the fake Drive (tests/fake_docs.py): every build files
     into its application folder under a fake Hunter folder inside a fake
-    CURRENT, as the real one does (drivemap.py). A test of the guard itself
+    registered area (Ventures), as the real one does (drivemap.py). A test of the guard itself
     replaces this."""
     from hunter import drivemap
     m = drivemap.DriveMap(
         destinations={"hunter.applications": "apps", "hunter.masters": "masters",
                       "hunter.previews": "prev"},
-        roots={"CURRENT": "cur"}, protected={"ContentLibrary": "cl"},
-        top_level={"cur": "CURRENT", "cl": "ContentLibrary"}, inbox="inbox",
+        roots={"Ventures": "cur"}, protected={"FamilyContentLibrary": "cl"},
+        top_level={"cur": "Ventures", "cl": "FamilyContentLibrary", "inbox": "Inbox from My AI"}, inbox="inbox",
         written_at="2026-10-18T00:00:00Z")
     monkeypatch.setattr(drivemap, "load", lambda cfg: m)
     return m

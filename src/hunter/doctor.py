@@ -216,7 +216,8 @@ def check_contact_bases(cfg) -> Check:
 
 def check_drive_map(cfg) -> Check:
     """Where his Drive files go (drivemap.py): the registry reads, and each of
-    Hunter's destinations sits inside CURRENT. Without it nothing is built,
+    Hunter's destinations sits inside a registered area of his Drive (Ventures,
+    --ARCHIVE or Family Admin). Without it nothing is built,
     because nothing may be created in his Drive. Key names only."""
     from . import drivemap
     from .config import GoogleOAuth
@@ -225,14 +226,14 @@ def check_drive_map(cfg) -> Check:
         m = drivemap.load(cfg)
         db = DocBuild(GoogleOAuth(cfg).access_token)
         bad = [k for k in drivemap.HUNTER_FOLDERS
-               if drivemap.ancestry(db.parents_of, m.destinations.get(k, ""), m) != "CURRENT"]
+               if drivemap.ancestry(db.parents_of, m.destinations.get(k, ""), m) is None]
     except Exception as e:
         return Check("Drive folders", FAIL, f"registry unreadable ({e.__class__.__name__})",
                      "python -m hunter.run drive-map --apply")
     if bad:
-        return Check("Drive folders", FAIL, "not inside CURRENT: " + ", ".join(bad),
+        return Check("Drive folders", FAIL, "not inside a registered area: " + ", ".join(bad),
                      "python -m hunter.run drive-map --apply")
-    return Check("Drive folders", OK, f"{len(drivemap.HUNTER_FOLDERS)} destinations inside CURRENT")
+    return Check("Drive folders", OK, f"{len(drivemap.HUNTER_FOLDERS)} destinations inside a registered area")
 
 
 def check_live_payloads(cfg) -> Check:

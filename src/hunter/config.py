@@ -37,7 +37,8 @@ PIPELINE_SHEET_ID = 708873267
 ARCHIVE_TAB = "Applied"
 ARCHIVE_SHEET_ID = 1707095501
 # Where a package is filed is not a constant here any more: one folder per
-# application under CURRENT/02_MINDMAKE-OS/Agents/Hunter, from the registry in
+# application under his Hunter folder (Family Admin/Krish/Job-Search/Hunter
+# since October 2026), from the registry in
 # system_config drive_destinations (drivemap.py, his ruling 2026-10-18).
 # What the scratch preview builds from (build-preview): the masters above.
 HOUSE_LETTER_MASTER_ID = LETTER_MASTER_ID

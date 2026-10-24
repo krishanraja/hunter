@@ -22,10 +22,24 @@ The rule now:
   parent that `allow` approved or that hunter made inside one, and the new
   file's parents are read back (docbuild.DocBuild._landed).
 - His applications live one folder each, `Applications/<YYYY-MM> <Company> -
-  <Role>`, under CURRENT/02_MINDMAKE-OS/Agents/Hunter (his choice, 2026-10-18).
+  <Role>`, under his Hunter folder (his choice, 2026-10-18), which he moved to
+  Family Admin/Krish/Job-Search/Hunter in October 2026.
 - Anything that still lands at the top of his Drive is filed into
-  CURRENT/00_INBOX by the hourly sweep, and he is told in one line. Nothing is
-  ever deleted, and ContentLibrary is never touched.
+  `Inbox from My AI` by the hourly sweep, and he is told in one line. Nothing
+  is ever deleted, and FamilyContentLibrary and KeePass are never touched.
+
+His Drive as he laid it out, 2026-10-24 (krishanraja/filearchives D-033):
+"Ventures is where everything now lives", with Active Ventures, Inspiration,
+Bugs & Issues and _Archive inside; `--ARCHIVE` and `Family Admin` beside it;
+`Inbox from My AI` at the top for anything an AI cannot place ("just
+reinstate that in the root folder then"); "KeePass and FamilyContentLibrary
+are immovable". CURRENT and its 00_INBOX are gone (filearchives D-031).
+
+Folders are found by ID, never by path, wherever the API allows it (his
+ruling, 2026-10-24): a rebuild keeps every destination and the inbox at the
+id the registry already holds while it still sits where it must, and finds a
+folder by its name only when the registry has none, so a folder he renames
+or moves inside a registered area is not lost.
 """
 from __future__ import annotations
 
@@ -37,14 +51,16 @@ from dataclasses import dataclass, field
 KEY = "drive_destinations"
 FOLDER_MIME = "application/vnd.google-apps.folder"
 
-# His top-level areas a file may sit under (00-START-HERE.md and the estate
-# policy). Ventures is his live venture tree, made the same week.
-ROOT_NAMES = ("CURRENT", "ARCHIVE", "FAMILY-ADMIN", "Ventures")
-# Never written to, moved or listed into. ContentLibrary is the estate
-# policy's protected boundary; KeePass holds his password store.
-PROTECTED_NAMES = ("ContentLibrary", "KeePass")
-HUNTER_HOME = ("CURRENT", "02_MINDMAKE-OS", "Agents", "Hunter")
-INBOX_PATH = ("CURRENT", "00_INBOX")
+# His top-level areas a file may sit under (filearchives D-033): files go in
+# their subfolders, never loose in the area itself.
+ROOT_NAMES = ("Ventures", "--ARCHIVE", "Family Admin")
+# Never written to, moved or listed into: his immovables. FamilyContentLibrary
+# was ContentLibrary until 2026-10-23; the old name is kept in case it returns.
+PROTECTED_NAMES = ("FamilyContentLibrary", "ContentLibrary", "KeePass")
+# Where Hunter's three folders are made when the registry has none.
+HUNTER_HOME = ("Family Admin", "Krish", "Job-Search", "Hunter")
+# The folder at the top of his Drive for what an AI cannot place.
+INBOX_NAME = "Inbox from My AI"
 HUNTER_FOLDERS = {"hunter.applications": "Applications",
                   "hunter.masters": "Masters",
                   "hunter.previews": "Previews"}
@@ -181,21 +197,35 @@ def _path(db, top: dict[str, str], names: tuple[str, ...]) -> str:
     return cur
 
 
-def build_map(db, *, apply: bool, now: str = "") -> DriveMap:
+def build_map(db, *, apply: bool, now: str = "", previous: DriveMap | None = None) -> DriveMap:
     """The registry read off his Drive: his top-level items as they stand, the
     roots and protected folders among them by name, his inbox, and Hunter's
-    three folders (made under Agents/Hunter with --apply, reused when there).
-    The folder names are the estate policy's; only the ids are found here."""
+    three folders (made under his Hunter folder with --apply, reused when
+    there). A destination or inbox the previous registry holds keeps its id
+    while it still sits where it must; a name is looked up only when it
+    does not (his ruling, 2026-10-24: folders are found by ID)."""
     items = db.children("root")
     top = {f["name"]: f["id"] for f in items if f.get("mimeType") == FOLDER_MIME}
+    top_ids = set(top.values())
     roots = {n: top[n] for n in ROOT_NAMES if n in top}
-    if "CURRENT" not in roots:
-        raise DriveMapError("his Drive has no CURRENT at the top")
+    if not roots:
+        raise DriveMapError("his Drive has none of " + ", ".join(ROOT_NAMES) + " at the top")
     protected = {n: top[n] for n in PROTECTED_NAMES if n in top}
-    home = _path(db, top, HUNTER_HOME)
-    inbox = _path(db, top, INBOX_PATH)
-    dest = {}
+    probe = DriveMap(destinations={}, roots=roots, protected=protected,
+                     top_level={}, inbox="")
+    if previous and previous.inbox in top_ids:
+        inbox = previous.inbox
+    elif INBOX_NAME in top:
+        inbox = top[INBOX_NAME]
+    else:
+        raise DriveMapError(f"his Drive has no {INBOX_NAME} at the top")
+    dest, home = {}, None
     for key, name in HUNTER_FOLDERS.items():
+        kept = (previous.destinations.get(key) if previous else "") or ""
+        if kept and ancestry(db.parents_of, kept, probe):
+            dest[key] = kept
+            continue
+        home = home or _path(db, top, HUNTER_HOME)
         have = [f for f in db.children(home) if f["name"] == name
                 and f.get("mimeType") == FOLDER_MIME]
         if have:
@@ -210,9 +240,9 @@ def build_map(db, *, apply: bool, now: str = "") -> DriveMap:
                  written_at=now or datetime.datetime.now(datetime.timezone.utc)
                  .isoformat(timespec="seconds"))
     if apply:
-        for key, fid in [*dest.items(), ("inbox", inbox)]:
-            if ancestry(db.parents_of, fid, m) != "CURRENT":
-                raise DriveMapError(f"{key} is not inside CURRENT")
+        for key, fid in dest.items():
+            if ancestry(db.parents_of, fid, m) is None:
+                raise DriveMapError(f"{key} is not inside a registered area of his Drive")
     return m
 
 
@@ -231,12 +261,15 @@ def write_map(cfg, m: DriveMap) -> DriveMap:
 
 def sweep(db, m: DriveMap, *, apply: bool) -> dict:
     """Every item at the top of his Drive that was not there when the registry
-    was written is filed into CURRENT/00_INBOX and read back. His own items,
-    and the protected folders, are never touched; nothing is deleted."""
-    if ancestry(db.parents_of, m.inbox, m) != "CURRENT":
-        raise DriveMapError("the inbox is not inside CURRENT")
-    keep = set(m.top_level) | set(m.protected.values()) | set(m.roots.values())
+    was written is filed into his inbox (Inbox from My AI) and read back. His
+    own items, and the protected folders, are never touched; nothing is
+    deleted. The inbox must still be a folder at the top of his Drive: one
+    that has gone or moved is refused rather than filed into."""
     items = db.children("root")
+    if not any(f["id"] == m.inbox and f.get("mimeType") == FOLDER_MIME for f in items):
+        raise DriveMapError(f"the inbox is not a folder at the top of his Drive "
+                            f"(run drive-map --apply after {INBOX_NAME} is back)")
+    keep = set(m.top_level) | set(m.protected.values()) | set(m.roots.values()) | {m.inbox}
     strays = [f for f in items if f["id"] not in keep]
     moved = []
     if apply and strays:
@@ -262,7 +295,7 @@ def tell(cfg, moved: list[dict]) -> bool:
     names = ", ".join(f.get("name", "?") for f in moved[:10])
     more = f" and {len(moved) - 10} more" if len(moved) > 10 else ""
     line = (f"{len(moved)} file(s) landed at the top of your Drive and are now in "
-            f"CURRENT/00_INBOX: {names}{more}. Nothing was deleted.")
+            f"{INBOX_NAME}: {names}{more}. Nothing was deleted.")
     out = send_email(cfg, "Hunter filed stray files into your inbox folder",
                      f"<p>{alerts._esc(line)}</p>", text=line)
     if out.get("sent"):

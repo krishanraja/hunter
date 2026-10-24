@@ -348,7 +348,7 @@ class FakeDocBuild(DocBuild):
         self.allowed = set(allowed) if allowed is not None else None
         self.parent_of: dict[str, list[str]] = {
             "f": ["home"], "apps": ["home"], "masters": ["home"], "prev": ["home"],
-            "home": ["cur"], "inbox": ["cur"], "cur": ["root"]}
+            "home": ["cur"], "inbox": ["root"], "cur": ["root"]}
         self.folders: dict[tuple[str, str], str] = {}
         self.moves: list[tuple[str, str]] = []
         # What export_pdf claims the rendered page count is. See export_pdf.
