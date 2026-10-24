@@ -10253,7 +10253,7 @@ def cmd_drive(cmd: str, argv: list[str]) -> int:
       made before the registry into one folder per application, each move
       read back. Run from a session; the folder ids never enter the repo.
     drive-sweep [--apply]: file anything new at the top of his Drive into
-      CURRENT/00_INBOX and tell him in one line. Hourly. Counts only here:
+      Inbox from My AI and tell him in one line. Hourly. Counts only here:
       the names go to him, never to this public log."""
     from . import drivemap
     cfg = load()
@@ -10261,7 +10261,11 @@ def cmd_drive(cmd: str, argv: list[str]) -> int:
     apply = "--apply" in argv
     try:
         if cmd == "drive-map":
-            m = drivemap.build_map(db, apply=apply)
+            try:
+                previous = drivemap.load(cfg)
+            except drivemap.DriveMapError:
+                previous = None
+            m = drivemap.build_map(db, apply=apply, previous=previous)
             if apply:
                 m = drivemap.write_map(cfg, m)
             print(f"drive-map: {len(m.top_level)} top-level items, {len(m.roots)} roots, "

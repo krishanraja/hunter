@@ -7,8 +7,9 @@ sprawl in my Drive - they must go in specific folders, subfolders, always".
 The Google Drive tools file a new file at the top of his Drive when no parent
 is named (create_file) or next to the original (copy_file). So a create or a
 copy must name a parent folder, and that folder may not be the top of his
-Drive, one of his top-level areas itself (CURRENT, ARCHIVE and the rest: files
-go in their subfolders), or a protected folder (ContentLibrary, KeePass). A
+Drive, one of his top-level areas itself (Ventures, --ARCHIVE, Family Admin:
+files go in their subfolders), or a protected folder (FamilyContentLibrary,
+KeePass: "KeePass and FamilyContentLibrary are immovable", 2026-10-24). A
 move (update_file with a parentId) is held to the same rule.
 
 The registry is system_config drive_destinations (src/hunter/drivemap.py),
@@ -24,7 +25,7 @@ import sys
 import urllib.request
 
 ACTIONS = ("create_file", "copy_file", "update_file")
-INBOX_HINT = "CURRENT/00_INBOX when unsure where it belongs"
+INBOX_HINT = "Inbox from My AI (at the top of his Drive) when unsure where it belongs"
 
 
 def is_drive_write(tool: str) -> str:
@@ -60,7 +61,8 @@ def decide(tool: str, tool_input: dict, load=registry) -> str:
         return ""        # a rename or a description: nothing moves
     if not parent:
         return (f"Drive {action} names no folder, so it would land loose in his Drive. "
-                f"Pass parentId: a subfolder of CURRENT, ARCHIVE or Ventures, or {INBOX_HINT}.")
+                f"Pass parentId: a subfolder of Ventures (Active Ventures, Inspiration, Bugs & Issues), "
+                f"--ARCHIVE or Family Admin, or {INBOX_HINT}.")
     if parent.lower() == "root":
         return f"the top of his Drive is never a home. Use a subfolder, or {INBOX_HINT}."
     reg = load()
@@ -68,7 +70,7 @@ def decide(tool: str, tool_input: dict, load=registry) -> str:
         return ("the Drive map (system_config drive_destinations) could not be read, so "
                 "nothing is filed into his Drive from this session.")
     if parent in set((reg.get("protected") or {}).values()):
-        return "that folder is protected (ContentLibrary or KeePass); nothing is filed there."
+        return "that folder is protected (FamilyContentLibrary or KeePass); nothing is filed there."
     if parent in set(reg.get("top_level") or {}) | set((reg.get("roots") or {}).values()):
         return (f"that is one of his top-level areas itself; files go in its subfolders, "
                 f"or {INBOX_HINT}.")

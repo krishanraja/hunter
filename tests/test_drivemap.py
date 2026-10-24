@@ -27,8 +27,8 @@ MASTER = {"body": {"content": [{"startIndex": 0, "endIndex": 2, "paragraph": {
 def fake_map(**over):
     base = dict(destinations={"hunter.applications": "apps", "hunter.masters": "masters",
                               "hunter.previews": "prev"},
-                roots={"CURRENT": "cur"}, protected={"ContentLibrary": "cl"},
-                top_level={"cur": "CURRENT", "cl": "ContentLibrary"}, inbox="inbox")
+                roots={"Ventures": "cur"}, protected={"FamilyContentLibrary": "cl"},
+                top_level={"cur": "Ventures", "cl": "FamilyContentLibrary", "inbox": "Inbox from My AI"}, inbox="inbox")
     base.update(over)
     return drivemap.DriveMap(**base)
 
@@ -107,7 +107,7 @@ def test_ancestry_reads_the_chain_up_to_a_root():
                "vault": ["cur"], "loop1": ["loop2"], "loop2": ["loop1"]}
     m = fake_map(protected={"ContentLibrary": "cl", "Vault": "vault"})
     get = lambda f: parents.get(f, [])
-    assert drivemap.ancestry(get, "a", m) == "CURRENT"
+    assert drivemap.ancestry(get, "a", m) == "Ventures"
     assert drivemap.ancestry(get, "cur", m) is None, "a root itself is not a home"
     assert drivemap.ancestry(get, "x", m) is None, "the top of his Drive is not a home"
     assert drivemap.ancestry(get, "p", m) is None, "nothing inside a protected folder"
@@ -137,13 +137,15 @@ def _drive_with_stray():
     db.parent_of.update({"cl": ["root"], "mine": ["root"], "stray": ["root"],
                          "stray_folder": ["root"]})
     db.meta = {"stray": {"name": "Untitled document", "mimeType": "x"},
-               "stray_folder": {"name": "agent output", "mimeType": docbuild_mod.FOLDER_MIME}}
+               "stray_folder": {"name": "agent output", "mimeType": docbuild_mod.FOLDER_MIME},
+               "inbox": {"name": "Inbox from My AI", "mimeType": docbuild_mod.FOLDER_MIME}}
     return db
 
 
 def test_the_sweep_files_only_new_strays_into_his_inbox():
     db = _drive_with_stray()
-    m = fake_map(top_level={"cur": "CURRENT", "cl": "ContentLibrary", "mine": "START-HERE"})
+    m = fake_map(top_level={"cur": "Ventures", "cl": "FamilyContentLibrary", "mine": "START-HERE",
+                            "inbox": "Inbox from My AI"})
     dry = drivemap.sweep(db, m, apply=False)
     assert dry["strays"] == 2 and dry["moved"] == [] and db.moves == []
     out = drivemap.sweep(db, m, apply=True)
@@ -156,17 +158,61 @@ def test_the_sweep_files_only_new_strays_into_his_inbox():
 
 def test_the_sweep_never_touches_a_protected_folder_even_if_unregistered():
     db = _drive_with_stray()
-    m = fake_map(top_level={"cur": "CURRENT", "mine": "START-HERE"})
+    m = fake_map(top_level={"cur": "Ventures", "mine": "START-HERE", "inbox": "Inbox from My AI"})
     drivemap.sweep(db, m, apply=True)
     assert db.parents_of("cl") == ["root"]
 
 
-def test_the_sweep_refuses_an_inbox_outside_current():
+def test_the_sweep_refuses_an_inbox_that_is_no_longer_at_the_top():
     db = _drive_with_stray()
-    db.parent_of["inbox"] = ["root"]
+    db.parent_of["inbox"] = ["cur"]
     with pytest.raises(drivemap.DriveMapError):
         drivemap.sweep(db, fake_map(), apply=True)
     assert db.moves == []
+
+
+def _his_drive():
+    """His Drive as he laid it out on 2026-10-24 (filearchives D-033)."""
+    db = FakeDocBuild({}, allowed=None)
+    F = docbuild_mod.FOLDER_MIME
+    db.parent_of = {"ven": ["root"], "arc": ["root"], "fam": ["root"], "fcl": ["root"],
+                    "kp": ["root"], "ai": ["root"], "krish": ["fam"], "js": ["krish"],
+                    "hunter": ["js"], "a": ["hunter"], "m": ["hunter"], "p": ["hunter"]}
+    names = {"ven": "Ventures", "arc": "--ARCHIVE", "fam": "Family Admin",
+             "fcl": "FamilyContentLibrary", "kp": "KeePass", "ai": "Inbox from My AI",
+             "krish": "Krish", "js": "Job-Search", "hunter": "Hunter",
+             "a": "Applications", "m": "Masters", "p": "Previews"}
+    db.meta = {k: {"name": v, "mimeType": F} for k, v in names.items()}
+    return db
+
+
+def test_the_map_is_read_off_his_drive_as_he_laid_it_out():
+    m = drivemap.build_map(_his_drive(), apply=True, now="2026-10-24T00:00:00Z")
+    assert m.roots == {"Ventures": "ven", "--ARCHIVE": "arc", "Family Admin": "fam"}
+    assert m.protected == {"FamilyContentLibrary": "fcl", "KeePass": "kp"}
+    assert m.inbox == "ai"
+    assert m.destinations == {"hunter.applications": "a", "hunter.masters": "m",
+                              "hunter.previews": "p"}
+
+
+def test_a_rebuild_keeps_registered_folders_by_id_after_he_moves_or_renames_them():
+    db = _his_drive()
+    first = drivemap.build_map(db, apply=True)
+    # He renames the inbox and moves Hunter's folder elsewhere inside Ventures.
+    db.meta["ai"]["name"] = "AI drops"
+    db.meta["hunter"]["name"] = "Jobs bot"
+    db.parent_of["hunter"] = ["ven"]
+    again = drivemap.build_map(db, apply=True, previous=first)
+    assert again.inbox == "ai"
+    assert again.destinations == first.destinations
+    assert db.folders == {}, "nothing was made again by name"
+
+
+def test_a_map_with_no_inbox_at_the_top_is_refused():
+    db = _his_drive()
+    db.parent_of["ai"] = ["ven"]
+    with pytest.raises(drivemap.DriveMapError):
+        drivemap.build_map(db, apply=True)
 
 
 # ---------- filing what hunter made before ----------
@@ -222,8 +268,8 @@ def _guard():
     return mod
 
 
-REG = {"top_level": {"cur": "CURRENT", "arch": "ARCHIVE"}, "roots": {"CURRENT": "cur"},
-       "protected": {"ContentLibrary": "cl", "KeePass": "kp"}}
+REG = {"top_level": {"cur": "Ventures", "arch": "--ARCHIVE"}, "roots": {"Ventures": "cur"},
+       "protected": {"FamilyContentLibrary": "cl", "KeePass": "kp"}}
 
 
 @pytest.mark.parametrize("tool", ["mcp__Google_Drive__create_file", "mcp__google-drive__copy_file"])

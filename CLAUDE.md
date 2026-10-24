@@ -567,11 +567,16 @@ filed a copy wherever Drive put it, and live applications went to a folder his
 estate clean-up had filed under ARCHIVE.
 
 - **The registry is `system_config drive_destinations`** (`drivemap.py`), never
-  this public repo: his top-level items, the roots, the protected folders
-  (ContentLibrary, KeePass), CURRENT/00_INBOX, and Hunter's three folders under
-  CURRENT/02_MINDMAKE-OS/Agents/Hunter. Folder names follow his estate policy
-  (krishanraja/filearchives, `policy/estate-policy-v1.json`).
-  `drive-map --apply` writes it from his Drive and reads it back.
+  this public repo: his top-level items, the roots (Ventures, --ARCHIVE, Family
+  Admin), the protected folders (FamilyContentLibrary, KeePass: "KeePass and
+  FamilyContentLibrary are immovable"), his inbox `Inbox from My AI` at the top
+  ("just reinstate that in the root folder then", 2026-10-24), and Hunter's
+  three folders under his Hunter folder (Family Admin/Krish/Job-Search/Hunter
+  since October 2026). The layout is krishanraja/filearchives D-033; CURRENT
+  is gone (D-031). `drive-map --apply` writes it from his Drive and reads it
+  back, keeping every folder the registry already holds at its id while it
+  still sits where it must (Ruling, Krish, 2026-10-24: folders are found by ID,
+  never by path), so a rename or move inside a registered area loses nothing.
 - **DocBuild creates nothing without it.** `copy_master`, `upload_pdf` and
   `folder` take a parent with no default, refuse one `drivemap.allow` did not
   prove inside a registered root, and read back where the new file landed.
@@ -581,9 +586,10 @@ estate clean-up had filed under ARCHIVE.
   - <Role>`, holding the CV, the letter and both PDFs; templates in `Masters/`,
   previews in `Previews/<label>`.
 - **The hourly `drive-sweep`** files anything new at the top of his Drive, from
-  any app or session, into CURRENT/00_INBOX, reads it back and tells him in one
-  line. It never deletes and never touches his own top-level items or
-  ContentLibrary. Its log carries counts only.
+  any app or session, into Inbox from My AI, reads it back and tells him in one
+  line. It never deletes and never touches his own top-level items,
+  FamilyContentLibrary or KeePass, and refuses to run while the inbox is not a
+  folder at the top. Its log carries counts only.
 - **Claude sessions** in this repo and control-center run
   `.claude/hooks/drive_guard.py` before any Google Drive create, copy or move: no
   parent, the top of his Drive, a top-level area itself or a protected folder is
