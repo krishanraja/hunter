@@ -97,8 +97,9 @@ def model_for(cfg: Config, purpose: str) -> tuple[str, str | None]:
         purpose, (cfg.optional("hunter_anthropic_model", DEFAULT_ANTHROPIC_MODEL), None))
     model = cfg.optional(f"hunter_model_{purpose}", model)
     effort = cfg.optional(f"hunter_effort_{purpose}", effort or "") or None
-    if effort == "none" or model.startswith("claude-haiku"):
-        # Haiku refuses an effort setting outright.
+    if effort == "none" or model.startswith("claude-haiku-4"):
+        # Haiku 4.5 refuses an effort setting outright. Haiku 5.5 takes one,
+        # and without it runs at medium, which costs more than low.
         effort = None
     return model, effort
 

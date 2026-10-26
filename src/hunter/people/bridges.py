@@ -879,6 +879,26 @@ If you cannot find a named person with a source, answer {{"name": null}}.
 Never invent a LinkedIn URL: leave it null unless a page showed it."""
 
 
+RESEARCH_DAYS = 30
+
+
+def searched_recently(cfg: Config, job_ids: list[str], days: int = RESEARCH_DAYS) -> set[str]:
+    """The roles a cold target search already ran for within days, read from
+    the spend ledger. A search that raised wrote no row and is tried again."""
+    since = (datetime.datetime.now(datetime.timezone.utc)
+             - datetime.timedelta(days=days)).isoformat()
+    seen: set[str] = set()
+    for i in range(0, len(job_ids), 100):
+        chunk = job_ids[i:i + 100]
+        for row in db_get(cfg, "hunter_judge_calls", {
+                "select": "job_id", "purpose": "eq.cold_targets", "at": f"gte.{since}",
+                "job_id": "in.(" + ",".join(f'"{j}"' for j in chunk) + ")",
+                "limit": ALL_ROWS}):
+            if row.get("job_id"):
+                seen.add(row["job_id"])
+    return seen
+
+
 def cold_targets(cfg: Config, roles: list[dict], cap: int | None = None) -> dict:
     """A named person at each Yes company with no in-network path.
 
@@ -913,6 +933,16 @@ def cold_targets(cfg: Config, roles: list[dict], cap: int | None = None) -> dict
     stats["eligible"] = len(todo)
     if not todo:
         return stats
+    # A role searched within RESEARCH_DAYS found nobody, or it would hold a
+    # bridge above. Nothing recorded the empty answer, so every run paid for
+    # it again: by 2026-10-26, 37 searches on 6 roles, $3.33 of $4.05 on
+    # repeats. The ledger row each search writes is the record that it ran.
+    recent = searched_recently(cfg, [r["job_id"] for r in todo])
+    if recent:
+        todo = [r for r in todo if r["job_id"] not in recent]
+        stats["searched_recently"] = len(recent)
+        if not todo:
+            return stats
     import anthropic
 
     from .. import llm, spend

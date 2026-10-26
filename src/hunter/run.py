@@ -4615,9 +4615,20 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             summary.extend(bar_lines)
         except Exception as e:
             summary.append(f"company bar did not run: {e.__class__.__name__}: {e}")
+        # The screen (screen.py): the judge's own record, refitted every run,
+        # so a seat it has rejected many times over costs no call.
+        from . import screen
+        under = []
+        try:
+            candidates, under, screen_lines = screen.apply(
+                cfg, candidates, top_keys=top_keys, mark=judge_mode == "gate")
+            summary.extend(screen_lines)
+        except Exception as e:
+            summary.append(f"screen did not run: {e.__class__.__name__}: {e}")
         try:
             judged = judge_stage.run(cfg, canon, sheet, candidates, mode=judge_mode)
             summary.extend(judged.lines)
+            summary.extend(screen.shadow_report(under))
         except Exception as e:
             # The judge failing must never become the judge deciding: in gate
             # mode nothing is staged on a judge that did not run.
@@ -6117,6 +6128,22 @@ def cmd_judge_eval(dev: bool = False, threshold: int | None = None,
     return 0
 
 
+def cmd_screen_eval() -> int:
+    """Measure the screen (screen.py) on the live record, oldest first: fit on
+    what was judged before each window, screen what came after. Free: no
+    model call. Prints counts only, for tests/fixtures/screen_eval.json."""
+    from . import screen
+    cfg = load()
+    rows = screen.record(cfg)
+    result = screen.evaluate(rows, screen.cutoffs(rows))
+    for w in result["windows"]:
+        print(f"screen-eval from {w['from']}: trained on {w['trained_on']}, cut "
+              f"{w['screened']} of {w['screened_of']} ({w['share']:.0%}); presents lost "
+              f"{w['presents_lost']}, his wants lost {w['wants_lost']}")
+    print(json.dumps(result, indent=1))
+    return 0
+
+
 def cmd_blind_set(refresh: bool = False) -> int:
     """Draw the blind set and write its tab. Spends money (capped at $10).
     --refresh rewrites the drawn set as a Pipeline tab without judging again."""
@@ -6998,7 +7025,7 @@ def _draft_essays(cfg: Config, sheet: Sheet, role, questions: list[str],
                                 role=role.title, jd_text=role.jd_text or "",
                                 evidence=evidence, banned_phrases=banned,
                                 notes=notes, his_view=view, reader=reader,
-                                family=family, ruled_out=ruled_out)
+                                family=family, ruled_out=ruled_out, ref=job_id)
 
 
 def hunt_url_for(cfg: Config, job_id: str) -> str:
@@ -7596,7 +7623,11 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
                 continue
             if any((getattr(f, "reason", "") or "").startswith(NEEDS_ESSAY)
                    for f in plan.blocking):
-                count(ESSAY_NOT_DRAFTED)
+                from .apply.essays import WAITING
+                # With the writing routine, not a failure: the answers are
+                # queued and the drafts step asks for Prepare once they pass.
+                count(ESSAY_QUEUED if any(WAITING in n for n in plan.notes)
+                      else ESSAY_NOT_DRAFTED)
                 note = mark_prepared(cfg, row, ESSAY_NOT_DRAFTED)
                 if note:
                     print(note)
@@ -8114,6 +8145,10 @@ BY_HAND, REFUSED_BLOCKING = "by_hand", "refused_blocking"
 # same refusal at the head of every batch, and tried again after it.
 ESSAY_NOT_DRAFTED = "essay not drafted, tried again after a day"
 ESSAY_WAIT_HOURS = 24
+# The form's answers are with the writing routine (apply/essays.py,
+# from_routine). Marked as ESSAY_NOT_DRAFTED is, so a --wanted batch moves on;
+# counted apart, so the note on his card says the email follows on its own.
+ESSAY_QUEUED = "form answers with the writing routine"
 # Counted by Prepare (approvals --job-id) for the note he reads on its card.
 TAKEN_BACK, NOT_BUILT = "his score took it back", "no built package"
 # A form that asks for his phone or address, for a role with no header base
@@ -10454,6 +10489,8 @@ def main(argv: list[str]) -> int:
         t, n = _flag("--threshold"), _flag("--replicas")
         return cmd_judge_eval(dev="--dev" in argv, threshold=int(t) if t else None,
                               replicas=int(n) if n else None)
+    if cmd == "screen-eval":
+        return cmd_screen_eval()
     if cmd == "close-submitted":
         return cmd_close_submitted(apply="--apply" in argv)
     if cmd == "confirmations":

@@ -195,6 +195,10 @@ def prepare_note(code: int, tally: dict, failures: list[str]) -> tuple[bool, str
             (lambda: tally.get(run.REFUSED_BLOCKING), False,
              "refused: a required question has no answer in your answer bank; nothing "
              "sent"),
+            (lambda: tally.get(run.ESSAY_QUEUED), False,
+             "the form's questions went to the writing routine, which runs daily at "
+             "12:47 London; nothing sent yet. The Apply email follows on its own once "
+             "they are written and checked"),
             (lambda: tally.get(run.ESSAY_NOT_DRAFTED), False,
              "an essay did not draft; nothing sent. Press Prepare again later"),
             (lambda: tally.get(run.TAKEN_BACK), False,

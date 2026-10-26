@@ -381,12 +381,14 @@ def canon_problem(cfg: Config) -> dict | None:
 
 
 def writer_problems(cfg: Config, now: datetime.datetime | None = None) -> list[dict]:
-    """The letter writer stopped, or stuck on one role. Counts only."""
+    """The writer stopped, or stuck on one role: letters, and since
+    2026-10-26 the form answers Prepare waits on. Counts only."""
     from collections import Counter
     now = now or _now()
     since = (now - datetime.timedelta(days=10)).isoformat()
     rows = db_get(cfg, "hunter_drafts", {"select": "ref,status,requested_at,drafted_at",
-                                         "kind": "eq.letter", "requested_at": f"gte.{since}",
+                                         "kind": "in.(letter,essay)",
+                                         "requested_at": f"gte.{since}",
                                          "limit": ALL_ROWS})
     hours = lambda stamp: (_age_days(stamp) or 0) * 24
     out = []
@@ -398,7 +400,7 @@ def writer_problems(cfg: Config, now: datetime.datetime | None = None) -> list[d
         oldest = min(str(r.get("requested_at")) for r in waiting)
         out.append({"kind": "letters waiting on the writer",
                     "fingerprint": f"writer:{oldest[:10]}",
-                    "detail": f"{len(waiting)} letter(s) have waited more than "
+                    "detail": f"{len(waiting)} letter(s) or form(s) have waited more than "
                               f"{WRITER_HOURS} hours and the writing routine has written "
                               f"none in that time. It runs daily at 12:47 London on your "
                               f"Claude subscription; check its scheduled task is still on. "
@@ -408,7 +410,7 @@ def writer_problems(cfg: Config, now: datetime.datetime | None = None) -> list[d
     if stuck:
         out.append({"kind": "letters the writer cannot get right",
                     "fingerprint": "letter-fails:" + ",".join(stuck)[:180],
-                    "detail": f"{len(stuck)} role(s) have had {LETTER_FAILS} or more letters "
+                    "detail": f"{len(stuck)} role(s) have had {LETTER_FAILS} or more letters or forms "
                               f"refused by the check. The routine is asked again each "
                               f"time; nothing is built for them until one passes."})
     return out

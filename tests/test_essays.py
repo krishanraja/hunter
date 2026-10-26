@@ -25,6 +25,14 @@ class Cfg:
         return default or "claude-opus-5"
 
 
+class ApiCfg(Cfg):
+    """Form answers on the API, as before 2026-10-26 (hunter_essay_writer = api)."""
+    def optional(self, name, default=None):
+        if name == essays.WRITER_KEY:
+            return "api"
+        return super().optional(name, default)
+
+
 from hunter.package import voicegate
 
 # Built the way the real caller builds it: one lowercased haystack. Passing raw
@@ -132,7 +140,7 @@ def test_every_question_gets_an_answer_or_a_reason(monkeypatch):
                 "before the revenue arrived, which is what I would bring here."],
                monkeypatch)
     notes: list[str] = []
-    out = essays.draft_all(Cfg(), ["Why us?", "A hard problem?"],
+    out = essays.draft_all(ApiCfg(), ["Why us?", "A hard problem?"],
                            company="c", role="r", jd_text="", evidence=EVIDENCE,
                            notes=notes)
     assert len(out) == 2

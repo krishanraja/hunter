@@ -1,0 +1,47 @@
+{
+ "version": "2026-10-26.1",
+ "measured": "2026-10-26",
+ "labelled": 703,
+ "windows": [
+  {
+   "from": "2026-10-11",
+   "trained_on": 351,
+   "screened_of": 352,
+   "screened": 7,
+   "share": 0.02,
+   "judge_rejects_cut": 7,
+   "presents_lost": 0,
+   "wants_lost": 0
+  },
+  {
+   "from": "2026-10-15",
+   "trained_on": 421,
+   "screened_of": 282,
+   "screened": 4,
+   "share": 0.014,
+   "judge_rejects_cut": 4,
+   "presents_lost": 0,
+   "wants_lost": 0
+  },
+  {
+   "from": "2026-10-18",
+   "trained_on": 492,
+   "screened_of": 211,
+   "screened": 12,
+   "share": 0.057,
+   "judge_rejects_cut": 12,
+   "presents_lost": 0,
+   "wants_lost": 0
+  },
+  {
+   "from": "2026-10-22",
+   "trained_on": 562,
+   "screened_of": 141,
+   "screened": 11,
+   "share": 0.078,
+   "judge_rejects_cut": 11,
+   "presents_lost": 0,
+   "wants_lost": 0
+  }
+ ]
+}

@@ -42,6 +42,7 @@ class Candidate:
     row: dict              # the hunter_seen_roles row about to be written
     rank: float
     judgement: judge.Judgement | None = None
+    screen_score: float | None = None   # set when screen.py puts it under the line
 
 
 @dataclass

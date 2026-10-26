@@ -53,13 +53,22 @@ job, after its own checks.
 >      empty is rewritten before answering. Never a tool name, an agent or
 >      workflow count or an internal the posting does not name, and his AI
 >      system in at most one part outside an AI transformation seat.
+>    - `kind = essay`: the answers to one application form's open questions,
+>      a JSON object `{"answers": {"<question exactly as given>": "<answer>"}}`
+>      with every question in `meta.questions` answered. `context` holds the
+>      rules and his evidence; `prompt` holds the role, his view of it, the
+>      reader brief, the questions and the posting. Each answer is first
+>      person, 220 to 1400 characters, every figure and name from the
+>      evidence, no tool or internal the posting does not name, and one proof
+>      point once per form: never the same story or figure in two answers.
+>      His AI system only where the prompt allows it. Never change `meta`.
 > 4. Put your answers in a file as a JSON list of
 >    `{ref, kind, prompt, context, evidence, meta, output}` and run
 >    `PYTHONPATH=src python -m hunter.drafts check FILE` from the checkout.
 >    Rewrite every answer it rejects
 >    and check again. Drop an answer you cannot make pass; hunter will ask
->    the API for a case or an observation. A letter is never asked of the
->    API: one you drop waits for the next run.
+>    the API for a case or an observation. A letter or a form is never asked
+>    of the API: one you drop waits for the next run.
 > 5. Write each passing answer back, one statement per row:
 >    `update hunter_drafts set output = <json>, status = 'drafted',
 >    drafted_by = 'routine', drafted_at = now() where id = <id> and status = 'queued'`.
@@ -89,10 +98,16 @@ letters). Hunter queues one per role his Yes or his score asks for, holds the
 build until it is written, checks it with `package/compose.py` and builds it
 in his house style. Nothing falls back to the API.
 
+Form answers moved on 2026-10-26 (his answer, asked whether to: "Yes, move
+them"; about $7 a month on the API). Prepare queues one request per form
+(`apply/essays.py`, `from_routine`) and holds the Apply email. Once the
+routine's answers pass the same checks, the hourly drafts step asks for
+Prepare itself, so the email goes with no second press: at most a day after
+he pressed it. `hunter_essay_writer = api` puts them back on the API.
+
 | Job | Why it stays |
 |---|---|
 | judge | a hundred roles a run, unattended, the reason the API exists here |
-| essay | drafted when an application is prepared, minutes before he presses it |
 | cold_targets | runs inside each batch with web search; moves next if its spend grows |
 | newsletter | one short call per post, hourly; too small to be worth the delay |
 | lookalike | once per company per 30 days, inside the batch that needs the score |

@@ -326,7 +326,7 @@ def test_a_writer_that_has_stopped_is_reported(monkeypatch):
     got = _writer_db(monkeypatch, [_letter("queued", ago(2)), _letter("queued", ago(3), ref="r2"),
                                    _letter("used", ago(6), drafted=ago(5), ref="r3")])
     assert [p["kind"] for p in got] == ["letters waiting on the writer"]
-    assert got[0]["detail"].startswith("2 letter(s) have waited more than 36 hours")
+    assert got[0]["detail"].startswith("2 letter(s) or form(s) have waited more than 36 hours")
 
 
 def test_a_writer_working_through_a_backlog_is_left_alone(monkeypatch):
