@@ -62,10 +62,12 @@ def model():
 
 def test_the_measured_screen_cut_nothing_he_wanted_and_nothing_the_judge_presented():
     """Measured 2026-10-26 on the live record, fitting on what was judged
-    before each window and screening what came after: it cut 2 to 8 percent
-    of the judge's calls, more as the record grew, and on no window a role
-    the judge presented or one he wanted. A change to screen.py must re-run
-    screen-eval (python -m hunter.run screen-eval) and do no worse."""
+    before each window and screening what came after, with every role he
+    wanted as a positive whether the judge read it or not (86 it never did):
+    it cut 0.8 to 2.5 percent of the judge's calls, more as the record grew,
+    and on no window a role the judge presented or one he wanted. A change
+    to screen.py must re-run screen-eval (python -m hunter.run screen-eval)
+    and do no worse."""
     rec = json.loads(FIXTURE.read_text())
     assert rec["version"] == screen.VERSION, "screen.py changed: re-run screen-eval"
     assert len(rec["windows"]) >= 3
@@ -129,6 +131,33 @@ def test_the_record_reads_his_applied_and_his_scores_above_the_judge(monkeypatch
     assert rows["C"]["label"] == 0, "a 4 is not a want; the judge's rejection stands"
 
 
+def test_a_role_he_wanted_that_the_judge_never_read_is_a_positive(monkeypatch):
+    """The line must sit under every role he wanted, not only those the judge
+    read: his Yes from before the judge, a posting he sent, one he applied to."""
+    from hunter import config
+
+    def fake(cfg, table, params):
+        if table == "hunter_seen_roles" and "judge_at" in params:
+            return [{"job_id": "j", "title": "GM", "company": "J", "judge_verdict": "reject",
+                     "judge_at": "2026-10-20"}]
+        if table == "hunter_seen_roles" and "application_state" in params:
+            assert "Interviewing" in params["application_state"]
+            return [{"job_id": "a", "title": "CRO", "company": "A",
+                     "application_state": "Interviewing", "scanned_at": "2026-09-01"}]
+        if table == "hunter_seen_roles":
+            assert params["job_id"] == 'in.("y")'
+            return [{"job_id": "y", "title": "Head of GTM", "company": "Y",
+                     "presented_at": "2026-09-10"}]
+        if table == "hunter_verdict_events":
+            return [{"job_id": "y"}]
+        return []
+    monkeypatch.setattr(config, "db_get", fake)
+    rows = {r["company"]: r for r in screen.record(Cfg())}
+    assert rows["Y"]["label"] == 1 and rows["Y"]["want"] and rows["Y"]["at"] == "2026-09-10"
+    assert rows["A"]["label"] == 1, "after applying, whatever happened next, he wanted it"
+    assert rows["J"]["label"] == 0
+
+
 # ---------- the model and the line ----------
 
 def test_a_seat_the_judge_always_rejected_falls_under_the_line(model):
@@ -169,11 +198,25 @@ def test_shadow_cuts_nothing_and_names_what_it_would_have(model):
 
 def test_gate_cuts_with_no_judge_call_and_says_why(model):
     cs = [cand("Staff Software Engineer", posting=ENGINEER), cand("Head of GTM", posting=GTM)]
-    kept, under, _ = screen.apply(Cfg(hunter_screen_mode="gate"), cs, top_keys=set(),
+    kept, under, _ = screen.apply(Cfg(hunter_screen_mode="gate",
+                                      hunter_screen_audit_per_run="0"), cs, top_keys=set(),
                                   mark=True, model=model)
     assert [c.role.title for c in kept] == ["Head of GTM"]
     assert cs[0].row["status"] == "blocked"
     assert cs[0].row["rejection_reason"].startswith("SCREEN:")
+
+
+def test_gate_still_sends_a_sample_of_what_it_cuts_to_the_judge(model):
+    """CLAUDE.md 3b: the audit sample measures what the gate hides."""
+    cs = [cand(f"Staff Software Engineer {i}", company=f"E{i}", posting=ENGINEER)
+          for i in range(3)]
+    kept, report, lines = screen.apply(Cfg(hunter_screen_mode="gate",
+                                           hunter_screen_audit_per_run="1"),
+                                       cs, top_keys=set(), mark=True, model=model)
+    assert len(kept) == 1 and kept[0].screen_audit and not kept[0].row
+    assert report == kept, "the audited role is what the run reports on"
+    assert sum(1 for c in cs if c.row.get("status") == "blocked") == 2
+    assert "1 of them sent to the judge as an audit" in lines[1]
 
 
 def test_gate_does_not_cut_while_the_judge_itself_is_not_deciding(model):

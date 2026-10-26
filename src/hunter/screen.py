@@ -32,7 +32,9 @@ import re
 
 CONFIG_KEY = "hunter_screen_weights"
 MODE_KEY = "hunter_screen_mode"
-VERSION = "2026-10-26.1"
+AUDIT_KEY = "hunter_screen_audit_per_run"
+AUDIT_PER_RUN = 2
+VERSION = "2026-10-26.2"
 
 # How much of a posting is read. The opening says what the seat is; the long
 # tail is benefits and equal opportunity text that every posting shares.
@@ -216,15 +218,26 @@ def mode_of(cfg) -> str:
 
 
 WANT_VERDICTS = ("go", "applied")
+# Every application_state that means he applied: the two the apply path
+# writes (run.APPLIED_STATES) and what happened after (actions.OUTCOMES).
+WANT_STATES = ("Applied", "submitted", "Interviewing", "Offer", "Rejected by employer",
+               "Withdrew")
+FIELDS = ("job_id,company,title,jd_text,judge_verdict,judge_at,presented_at,scanned_at,"
+          "application_state,krish_verdict")
 
 
 def record(cfg) -> list[dict]:
-    """Every role the judge ruled on, labelled, his record above the judge's."""
+    """Every role the judge ruled on, and every role he wanted whether the
+    judge read it or not, labelled, his record above the judge's. A role he
+    wanted that the judge never read is a positive too: the line must sit
+    under it as well."""
     from .config import ALL_ROWS, db_get
-    roles = db_get(cfg, "hunter_seen_roles", {
-        "select": "job_id,company,title,jd_text,judge_verdict,judge_at,application_state,"
-                  "krish_verdict",
-        "judge_at": "not.is.null", "limit": ALL_ROWS})
+    roles = {r["job_id"]: r for r in db_get(cfg, "hunter_seen_roles", {
+        "select": FIELDS, "judge_at": "not.is.null", "limit": ALL_ROWS})}
+    for r in db_get(cfg, "hunter_seen_roles", {
+            "select": FIELDS, "application_state": f"in.({','.join(WANT_STATES)})",
+            "limit": ALL_ROWS}):
+        roles.setdefault(r["job_id"], r)
     want = {e["job_id"] for e in db_get(cfg, "hunter_verdict_events", {
         "select": "job_id", "verdict": f"in.({','.join(WANT_VERDICTS)})", "limit": ALL_ROWS})}
     for r in db_get(cfg, "hunter_krish_ratings", {
@@ -232,16 +245,25 @@ def record(cfg) -> list[dict]:
             "limit": ALL_ROWS}):
         if r.get("kind") == "yes_unscored" or (r.get("score") or 0) >= 7:
             want.add(r["job_id"])
+    missing = sorted(j for j in want if j and j not in roles)
+    for i in range(0, len(missing), 100):
+        chunk = missing[i:i + 100]
+        for r in db_get(cfg, "hunter_seen_roles", {
+                "select": FIELDS, "job_id": "in.(" + ",".join(f'"{j}"' for j in chunk) + ")",
+                "limit": ALL_ROWS}):
+            roles.setdefault(r["job_id"], r)
     rows = []
-    for r in roles:
+    for r in roles.values():
         kv = (r.get("krish_verdict") or "").strip().lower()
-        his = "want" if (r["job_id"] in want or r.get("application_state") == "Applied"
+        his = "want" if (r["job_id"] in want or r.get("application_state") in WANT_STATES
                          or kv.startswith(("yes", "applied"))) else None
         y = label(judge_verdict=r.get("judge_verdict"), his=his)
         if y is not None:
             rows.append({"title": r.get("title") or "", "posting": r.get("jd_text") or "",
                          "company": r.get("company") or "", "label": y,
-                         "at": r.get("judge_at") or "", "want": his == "want",
+                         "at": (r.get("judge_at") or r.get("presented_at")
+                                or r.get("scanned_at") or ""),
+                         "want": his == "want",
                          "present": r.get("judge_verdict") == "present"})
     return rows
 
@@ -343,12 +365,13 @@ def exempt(c, top_keys: set) -> str:
 
 def apply(cfg, candidates: list, *, top_keys: set, mark: bool,
           model: dict | None = None) -> tuple[list, list, list[str]]:
-    """(kept, under the line, summary lines).
+    """(kept, the ones to report on, summary lines).
 
     In gate mode (and mark) a role under the line is blocked with no judge
-    call. In shadow mode nothing is cut: every candidate goes on to the judge
-    and the ones under the line come back so the run can say how the judge
-    ruled on them."""
+    call, except an audit sample that still goes to the judge and is what
+    comes back to report on. In shadow mode nothing is cut: every candidate
+    goes on to the judge and the ones under the line come back so the run
+    can say how the judge ruled on them."""
     mode = mode_of(cfg)
     if mode == "off" or not candidates:
         return candidates, [], []
@@ -366,18 +389,27 @@ def apply(cfg, candidates: list, *, top_keys: set, mark: bool,
         if cut:
             c.screen_score = s
             under.append(c)
-    lines = [f"screen ({mode}, {how} on {model.get('trained_on', 0)} roles judged): "
+    lines = [f"screen ({mode}, {how} on {model.get('trained_on', 0)} roles): "
              f"{len(under)} of {len(candidates)} under the line"
              + (", cut without a judge call" if mode == "gate" and mark else
                 ", all still judged")]
     if mode == "gate" and mark:
+        # A few of what it would cut still go to the judge, at random, so what
+        # the gate hides is measured, as the judge's own audit sample is.
+        n = min(len(under), int(cfg.optional(AUDIT_KEY, str(AUDIT_PER_RUN)) or 0))
+        audit = random.sample(under, n) if n else []
+        for c in audit:
+            c.screen_audit = True
+        if audit:
+            lines.append(f"screen: {len(audit)} of them sent to the judge as an audit")
+        under = [c for c in under if not c.screen_audit]
         ids = {id(c) for c in under}
         for c in under:
             c.row["status"] = "blocked"
             c.row["rejection_reason"] = (
                 "SCREEN: the judge's record says this seat is not his kind "
                 f"({c.screen_score:.3f} under {model.get('line', 0):.3f})")[:300]
-        return [c for c in candidates if id(c) not in ids], under, lines
+        return [c for c in candidates if id(c) not in ids], audit, lines
     return candidates, under, lines
 
 

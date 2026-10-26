@@ -4628,12 +4628,17 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         try:
             judged = judge_stage.run(cfg, canon, sheet, candidates, mode=judge_mode)
             summary.extend(judged.lines)
-            summary.extend(screen.shadow_report(under))
         except Exception as e:
             # The judge failing must never become the judge deciding: in gate
             # mode nothing is staged on a judge that did not run.
             summary.append(f"judge did not run: {e.__class__.__name__}: {e}")
             judged = None
+        if judged is not None:
+            # Its own try: a report must never cost the judgements already paid for.
+            try:
+                summary.extend(screen.shadow_report(under))
+            except Exception as e:
+                summary.append(f"screen report failed: {e.__class__.__name__}")
     if judge_mode == "shadow" and judged is not None:
         old_ids = {r.job_id for r, _, _, _ in staged_rows}
         new_ids = {c.role.job_id for c in judged.present}
@@ -6894,7 +6899,7 @@ def form_url(*urls) -> str:
 def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
                     bank=None, summary: str = "", hook: str = "",
                     draft_essays: bool = True, essays: dict[str, str] | None = None,
-                    view=None):
+                    view=None, write: bool = True):
     """(FillPlan, Audit) for one approved role. No network writes, no mail.
 
     Shared by approvals and, later, submit, so the plan the email shows and the
@@ -6949,7 +6954,7 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
             if view is None:
                 view = his_view_for(cfg, sheet, row)
             drafted = _draft_essays(cfg, sheet, role, questions, notes, view=view,
-                                    job_id=(row or {}).get("job_id") or "")
+                                    job_id=(row or {}).get("job_id") or "", write=write)
             for line in notes:
                 plan.notes.append(line)
             if drafted:
@@ -6990,7 +6995,8 @@ def essay_reader(cfg: Config, job_id: str, title: str = "") -> tuple[dict, str]:
 
 
 def _draft_essays(cfg: Config, sheet: Sheet, role, questions: list[str],
-                  notes: list[str], *, view=None, job_id: str = "") -> dict[str, str]:
+                  notes: list[str], *, view=None, job_id: str = "",
+                  write: bool = True) -> dict[str, str]:
     """Answers to the open questions, or nothing and a reason for each.
     view is his view of the role, which the answers are written from under
     the package's rules (essays.draft_one)."""
@@ -7025,7 +7031,8 @@ def _draft_essays(cfg: Config, sheet: Sheet, role, questions: list[str],
                                 role=role.title, jd_text=role.jd_text or "",
                                 evidence=evidence, banned_phrases=banned,
                                 notes=notes, his_view=view, reader=reader,
-                                family=family, ruled_out=ruled_out, ref=job_id)
+                                family=family, ruled_out=ruled_out, ref=job_id,
+                                write=write)
 
 
 def hunt_url_for(cfg: Config, job_id: str) -> str:
@@ -7175,7 +7182,7 @@ def posting_is_gone(row: dict) -> bool | None:
 def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *,
                   chosen: list[dict] | None = None, tally: dict | None = None,
                   failures: list[str] | None = None,
-                  missing: list[dict] | None = None) -> int:
+                  missing: list[dict] | None = None, require_wanted: bool = False) -> int:
     """Build and, with --apply, send one approval email per built package.
 
     Dry run by default: it builds the whole application as the email would show
@@ -7204,6 +7211,10 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
     A form refused for a missing answer records its questions for a session
     to ask him in chat (record_missing_answers): at the end of this run, or,
     when `missing` is given, appended to it for the caller's one record.
+
+    require_wanted holds a Prepare hunter asked for itself (drafts.essays_ready)
+    to the rule the batch keeps: sent only while his row still asks for it.
+    His own press is his asking.
     """
     def count(outcome: str) -> None:
         if tally is not None:
@@ -7269,7 +7280,7 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
     # not change behaviour with the size of the list it is given.
     srows = sheet.read_pipeline(canon.sheet_headers)
     on_sheet = {sheet_identity(r.company, r.role) for r in srows}
-    if chosen is not None:
+    if chosen is not None or require_wanted:
         # Chosen by link (wanted_for_approval pairs his row to its record by
         # link first), so found by link, never by the record's company and
         # title, which he may have corrected on the row. And asked for still,
@@ -7427,9 +7438,11 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
         try:
             # His view of the role, from his row for this posting, so the
             # open questions are answered from his reasons (essays.draft_one).
+            # A dry run queues nothing for the writing routine (essays.from_routine).
             plan, au, role = build_fill_plan(
                 cfg, sheet, row, bank=bank,
-                view=his_view_for(cfg, sheet, row, pipeline=srows))
+                view=his_view_for(cfg, sheet, row, pipeline=srows),
+                **({} if apply else {"write": False}))
         except Exception as e:
             failed_as(e)
             # The class only: a message from the fill plan can carry a
@@ -7604,6 +7617,21 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
             by_hand.append(f"{row['job_id']}: {plan.ats} form cannot be "
                            f"filled automatically, documents emailed")
             continue
+        from .apply.essays import STUCK, WAITING
+        held = [n for n in plan.notes if WAITING in n or STUCK in n]
+        if held:
+            # The form's answers are with the writing routine, or it could not
+            # write them, optional questions included: an email sent now goes
+            # with those boxes blank, and the routine's answers would arrive
+            # for an application already waiting. The drafts step asks for
+            # Prepare again once they pass (drafts.essays_ready).
+            print(f"  HOLDING: {len(held)} open question(s) not yet answered by the "
+                  f"writing routine")
+            count(ESSAY_STUCK if any(STUCK in n for n in held) else ESSAY_QUEUED)
+            note = mark_prepared(cfg, row, ESSAY_NOT_DRAFTED)
+            if note:
+                print(note)
+            continue
         if not plan.ready:
             print(f"  REFUSING to send: {len(plan.blocking)} required field(s) "
                   f"have no answer")
@@ -7623,11 +7651,7 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
                 continue
             if any((getattr(f, "reason", "") or "").startswith(NEEDS_ESSAY)
                    for f in plan.blocking):
-                from .apply.essays import WAITING
-                # With the writing routine, not a failure: the answers are
-                # queued and the drafts step asks for Prepare once they pass.
-                count(ESSAY_QUEUED if any(WAITING in n for n in plan.notes)
-                      else ESSAY_NOT_DRAFTED)
+                count(ESSAY_NOT_DRAFTED)
                 note = mark_prepared(cfg, row, ESSAY_NOT_DRAFTED)
                 if note:
                     print(note)
@@ -8149,6 +8173,8 @@ ESSAY_WAIT_HOURS = 24
 # from_routine). Marked as ESSAY_NOT_DRAFTED is, so a --wanted batch moves on;
 # counted apart, so the note on his card says the email follows on its own.
 ESSAY_QUEUED = "form answers with the writing routine"
+# The routine's answers to the form failed the check essays.FAILS times.
+ESSAY_STUCK = "form answers the writing routine could not get right"
 # Counted by Prepare (approvals --job-id) for the note he reads on its card.
 TAKEN_BACK, NOT_BUILT = "his score took it back", "no built package"
 # A form that asks for his phone or address, for a role with no header base

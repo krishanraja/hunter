@@ -28,6 +28,9 @@ from . import verdicts
 from .config import ALL_ROWS, Config, db_get, db_patch
 
 TABLE = "hunter_actions"
+# requested_by on a Prepare hunter queued itself, once a form's answers passed
+# (drafts.essays_ready). Anything else is his press.
+HUNTER = "hunter"
 OUTCOMES = {"interview": "Interviewing", "offer": "Offer", "rejected": "Rejected by employer",
             "withdrew": "Withdrew"}
 
@@ -99,6 +102,11 @@ def apply_queued(cfg: Config, sheet, canon_headers, *, apply: bool = False,
         elif a["kind"] == "prepare":
             if not apply:
                 ok, note = True, "would prepare the application"
+            elif a.get("requested_by") == HUNTER:
+                # Hunter asked, not his press: sent only while his row still
+                # asks for it (cmd_approvals require_wanted).
+                ok, note = (prepare or (lambda j, **kw: _prepare(j, **kw)))(
+                    jid, require_wanted=True)
             else:
                 ok, note = (prepare or (lambda j: _prepare(j)))(jid)
         elif a["kind"] == "header":
@@ -137,7 +145,7 @@ def apply_queued(cfg: Config, sheet, canon_headers, *, apply: bool = False,
     return lines
 
 
-def _prepare(job_id: str) -> tuple[bool, str]:
+def _prepare(job_id: str, *, require_wanted: bool = False) -> tuple[bool, str]:
     """approvals --apply for one job: the filled form, the screenshot and the
     "Apply:" email to him, and the note Control Center shows on its card.
 
@@ -156,7 +164,8 @@ def _prepare(job_id: str) -> tuple[bool, str]:
     failures: list[str] = []
     try:
         with contextlib.redirect_stdout(io.StringIO()):
-            code = cmd_approvals(apply=True, job_id=job_id, tally=tally, failures=failures)
+            code = cmd_approvals(apply=True, job_id=job_id, tally=tally, failures=failures,
+                                 require_wanted=require_wanted)
     except Exception as e:
         # The class only, never the message: the note is shown on his card
         # and printed in the drain's log.
@@ -195,6 +204,9 @@ def prepare_note(code: int, tally: dict, failures: list[str]) -> tuple[bool, str
             (lambda: tally.get(run.REFUSED_BLOCKING), False,
              "refused: a required question has no answer in your answer bank; nothing "
              "sent"),
+            (lambda: tally.get(run.ESSAY_STUCK), False,
+             "the writing routine could not write answers to this form's questions that "
+             "pass the check after 3 tries; nothing sent. The watchdog has flagged it"),
             (lambda: tally.get(run.ESSAY_QUEUED), False,
              "the form's questions went to the writing routine, which runs daily at "
              "12:47 London; nothing sent yet. The Apply email follows on its own once "

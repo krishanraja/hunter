@@ -341,6 +341,21 @@ def _boom(*a, **kw):
     raise ValueError(f"the plan quoted {FIELD_VALUE}")
 
 
+def _with_notes(plan, *notes):
+    plan.notes = list(notes)
+    return plan
+
+
+def _waiting():
+    from hunter.apply.essays import WAITING
+    return f"NOT drafted, 'Why us?': {WAITING}"
+
+
+def _stuck():
+    from hunter.apply.essays import STUCK
+    return f"NOT drafted, 'Why us?': {STUCK} 3 times"
+
+
 SCORED = [L("ardent", k="9")]
 OUTCOMES = {
     "sent": dict(plan=Plan(), want=(True, "sent: the Apply email is on its way")),
@@ -349,6 +364,14 @@ OUTCOMES = {
                     want=(False, "refused: the form asks a question your Info Bank has no "
                                  "answer for; Claude will ask it in your next session")),
     "essay": dict(plan=Blocked(_essay()), want=(False, "an essay did not draft")),
+    "essay with the routine": dict(plan=_with_notes(Blocked(_essay()), _waiting()),
+                                   want=(False, "the form's questions went to the writing")),
+    # An optional open question blocks nothing, and still holds the email:
+    # sent now, its box would go blank and the routine's answer arrive too late.
+    "optional answer pending": dict(plan=_with_notes(Plan(), _waiting()),
+                                    want=(False, "the form's questions went to the writing")),
+    "routine stuck": dict(plan=_with_notes(Blocked(_essay()), _stuck()),
+                          want=(False, "the writing routine could not write answers")),
     "by hand": dict(plan=Plan(readable=False), want=(True, "sent as by hand")),
     "off sheet": dict(plan=Plan(), lines=[L("brisk", k="9")],
                       want=(False, "not on Pipeline any more")),
@@ -371,6 +394,27 @@ def test_each_prepare_outcome_reaches_the_note(monkeypatch, capsys, name):
     printed = capsys.readouterr()
     for leak in (TOKEN, "him@example.com", FIELD_VALUE, "Ardent"):
         assert leak not in note and leak not in printed.out and leak not in printed.err
+
+
+def test_an_optional_answer_pending_sends_nothing(monkeypatch):
+    _, mailed, _ = _press(monkeypatch, SCORED, [rec("ardent")], _with_notes(Plan(), _waiting()))
+    ok, note = actions._prepare(rec("ardent")["job_id"])
+    assert mailed["approval"] == [] and not ok
+
+
+def test_a_prepare_hunter_asked_for_needs_his_row_to_still_ask(monkeypatch):
+    """The routine answered a form for a Yes he has since blanked: hunter's
+    own Prepare must not send what his row no longer asks for. His press is
+    his asking, and is not held to it."""
+    # Built on his column A Yes, which he has since blanked, with no score.
+    role = rec("ardent", package_trigger="column A Yes")
+    _, mailed, _ = _press(monkeypatch, [L("ardent", k="")], [role], Plan())
+    ok, note = actions._prepare(role["job_id"], require_wanted=True)
+    assert not ok and note.startswith("the row no longer asks for an application")
+    assert mailed["approval"] == []
+    _, mailed, _ = _press(monkeypatch, [L("ardent", verdict="Yes", k="")], [role], Plan())
+    ok, note = actions._prepare(role["job_id"], require_wanted=True)
+    assert ok and note.startswith("sent")
 
 
 def test_an_error_out_of_approvals_is_a_class_on_the_note(monkeypatch):

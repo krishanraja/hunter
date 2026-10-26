@@ -245,42 +245,63 @@ def essays_ready(cfg: Config, rows: list[dict], cache: dict, *, apply: bool) -> 
     for it (a hunter_actions row, as his press makes), so the Apply email
     goes with no second press. A form that fails is asked of the routine
     again, up to essays.FAILS times. Counts only: no company, no answer."""
-    from .apply import essays
     asked = failed = 0
+    errors: list[str] = []
     for r in rows:
         meta = r.get("meta") or {}
         if r.get("status") != "drafted" or meta.get("prepare_requested"):
             continue
-        problems = problems_for("essay", r.get("output"), prompt=r.get("prompt") or "",
-                                context=_context(cfg, r.get("context_key"), cache),
-                                evidence=r.get("evidence") or "", meta=meta)
-        if not apply:
-            asked += not problems
-            failed += bool(problems)
+        # One form must never stop the step: the cases and observations after
+        # it are settled in the same pass. The class only, never the message.
+        try:
+            outcome = _essay_ready(cfg, r, meta, cache, apply=apply)
+        except Exception as e:
+            errors.append(e.__class__.__name__)
             continue
-        if problems:
-            _close(cfg, r, "failed", problems=problems)
-            failed += 1
-            fails = db_get(cfg, TABLE, {"select": "id", "kind": "eq.essay",
-                                        "ref": f"eq.{r['ref']}", "status": "eq.failed",
-                                        "limit": ALL_ROWS})
-            if len(fails) < essays.FAILS:
-                request(cfg, "essay", r["ref"], r["prompt"],
-                        context=_context(cfg, r.get("context_key"), cache),
-                        schema=r.get("schema"), evidence=r.get("evidence") or "", meta=meta)
-            continue
-        jid = meta.get("job_id") or r["ref"]
-        if not db_get(cfg, "hunter_actions", {"select": "id", "kind": "eq.prepare",
-                                              "job_id": f"eq.{jid}", "status": "eq.queued",
-                                              "limit": "1"}):
-            db_insert(cfg, "hunter_actions", [{"kind": "prepare", "job_id": jid,
-                                               "requested_by": "hunter", "ref": PREPARE_REF}])
-        db_patch(cfg, TABLE, {"id": r["id"]}, {"meta": dict(meta, prepare_requested=_now())})
-        asked += 1
-    if not (asked or failed):
+        asked += outcome == "asked"
+        failed += outcome == "failed"
+    if not (asked or failed or errors):
         return []
     return [f"essays: {asked} form(s) answered by the routine and passed, Prepare asked for "
-            f"each; {failed} refused by the check" + ("" if apply else " (dry run)")]
+            f"each; {failed} refused by the check"
+            + (f"; {len(errors)} not handled ({', '.join(sorted(set(errors)))})" if errors else "")
+            + ("" if apply else " (dry run)")]
+
+
+def _essay_ready(cfg: Config, r: dict, meta: dict, cache: dict, *, apply: bool) -> str:
+    """"asked", "failed" or "" for one drafted form."""
+    from .actions import HUNTER
+    from .apply import essays
+    problems = problems_for("essay", r.get("output"), prompt=r.get("prompt") or "",
+                            context=_context(cfg, r.get("context_key"), cache),
+                            evidence=r.get("evidence") or "", meta=meta)
+    if not apply:
+        return "failed" if problems else "asked"
+    if problems:
+        _close(cfg, r, "failed", problems=problems)
+        same = [x for x in db_get(cfg, TABLE, {"select": "id,meta", "kind": "eq.essay",
+                                               "ref": f"eq.{r['ref']}", "status": "eq.failed",
+                                               "limit": ALL_ROWS})
+                if set((x.get("meta") or {}).get("questions") or [])
+                == set(meta.get("questions") or [])]
+        if len(same) < essays.FAILS:
+            request(cfg, "essay", r["ref"], r["prompt"],
+                    context=_context(cfg, r.get("context_key"), cache),
+                    schema=r.get("schema"), evidence=r.get("evidence") or "", meta=meta)
+        return "failed"
+    jid = meta.get("job_id") or r["ref"]
+    if not db_get(cfg, "hunter_actions", {"select": "id", "kind": "eq.prepare",
+                                          "job_id": f"eq.{jid}", "status": "eq.queued",
+                                          "limit": "1"}):
+        db_insert(cfg, "hunter_actions", [{"kind": "prepare", "job_id": jid,
+                                           "requested_by": HUNTER, "ref": PREPARE_REF}])
+        back = db_get(cfg, "hunter_actions", {"select": "id", "kind": "eq.prepare",
+                                              "job_id": f"eq.{jid}", "status": "eq.queued",
+                                              "limit": "1"})
+        if not back:
+            raise RuntimeError("the Prepare request did not read back")
+    db_patch(cfg, TABLE, {"id": r["id"]}, {"meta": dict(meta, prepare_requested=_now())})
+    return "asked"
 
 
 def _close(cfg, r, status, *, problems=(), by=None, output=None, apply=True):

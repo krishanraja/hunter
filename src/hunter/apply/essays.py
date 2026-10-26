@@ -83,9 +83,11 @@ Return JSON only: {"answer": "..."}""" % (MIN_CHARS, MAX_CHARS)
 KIND = "essay"
 WRITER_KEY = "hunter_essay_writer"
 WAITING = "waiting for the writing routine"
-# A form whose answers the check refuses this many times is not asked again;
-# the watchdog tells him (alerts.writer_problems).
+# A form whose answers the check refuses this many times, for the same
+# questions, is not asked again; the watchdog tells him (alerts.writer_problems)
+# and his card says so (run.ESSAY_STUCK).
 FAILS = 3
+STUCK = "the writing routine's answers failed the check"
 SCHEMA = {"type": "object", "required": ["answers"], "additionalProperties": False,
           "properties": {"answers": {"type": "object",
                                      "additionalProperties": {"type": "string"}}}}
@@ -163,9 +165,15 @@ def form_check(output, *, prompt: str, evidence: str, meta: dict) -> list[str]:
 def from_routine(cfg: Config, questions: list[str], *, ref: str, company: str, role: str,
                  jd_text: str, evidence: str, banned_phrases: tuple[str, ...] = (),
                  notes: list[str] | None = None, his_view=None, reader: dict | None = None,
-                 family: str = "", ruled_out: tuple[str, ...] = ()) -> dict[str, str]:
+                 family: str = "", ruled_out: tuple[str, ...] = (),
+                 write: bool = True) -> dict[str, str]:
     """The form's answers when the routine has written them and they pass;
-    otherwise nothing, a request queued, and a reason for each question."""
+    otherwise nothing, a request queued, and a reason for each question.
+
+    It never marks an answer used: reading it is not sending it, and the
+    drafts step asks for Prepare on a drafted answer only (essays_ready).
+    write False (a dry run of approvals) reads and queues nothing: a request
+    queued by a dry run would come back as an Apply email nobody asked for."""
     from .. import drafts
     from ..config import db_get, db_patch_where
     note = notes if notes is not None else []
@@ -189,25 +197,28 @@ def from_routine(cfg: Config, questions: list[str], *, ref: str, company: str, r
                               evidence=latest.get("evidence") or "", meta=latest.get("meta") or {})
         if not problems:
             answers = form_answers(latest.get("output"))
-            if latest["status"] == "drafted":
-                db_patch_where(cfg, drafts.TABLE, {"id": f"eq.{latest['id']}",
-                                                   "status": "eq.drafted"},
-                               {"status": "used", "used_at": drafts._now()})
             for q in questions:
                 note.append(f"drafted an answer to {q[:60]!r} (the writing routine)")
             return {q: answers[q] for q in questions}
-        db_patch_where(cfg, drafts.TABLE, {"id": f"eq.{latest['id']}"},
-                       {"status": "failed", "problems": problems[:6]})
+        if write:
+            db_patch_where(cfg, drafts.TABLE, {"id": f"eq.{latest['id']}"},
+                           {"status": "failed", "problems": problems[:6]})
         rows[0] = dict(latest, status="failed")
     elif latest and latest["status"] in ("queued", "drafted"):
         if set(questions) <= asked:
             return waiting(WAITING)
         # The form now asks something the request did not: ask again, whole.
-        db_patch_where(cfg, drafts.TABLE, {"id": f"eq.{latest['id']}",
-                                           "status": f"eq.{latest['status']}"},
-                       {"status": "expired", "problems": ["the form's questions changed"]})
-    if sum(1 for r in rows if r.get("status") == "failed") >= FAILS:
-        return waiting(f"the writing routine's answers failed the check {FAILS} times")
+        if write:
+            db_patch_where(cfg, drafts.TABLE, {"id": f"eq.{latest['id']}",
+                                               "status": f"eq.{latest['status']}"},
+                           {"status": "expired", "problems": ["the form's questions changed"]})
+    # Refusals of these questions only: a form that now asks something new is
+    # a new request, whatever the old one's record.
+    same = [r for r in rows if set((r.get("meta") or {}).get("questions") or []) == set(questions)]
+    if sum(1 for r in same if r.get("status") == "failed") >= FAILS:
+        return waiting(f"{STUCK} {FAILS} times")
+    if not write:
+        return waiting(WAITING + " (dry run: nothing queued)")
     view = his_view_mod.section(his_view, company=company)
     prompt = form_prompt(questions, company=company, role=role, jd_text=jd_text,
                          view_section=view, reader=reader, banned_phrases=banned_phrases,
@@ -465,7 +476,7 @@ def draft_all(cfg: Config, questions: list[str], *, company: str, role: str,
               notes: list[str] | None = None,
               his_view=None, reader: dict | None = None,
               family: str = "", ruled_out: tuple[str, ...] = (),
-              ref: str = "") -> dict[str, str]:
+              ref: str = "", write: bool = True) -> dict[str, str]:
     """Every question that could be answered. A failure is loud, never silent.
 
     Written by the routine unless hunter_essay_writer says api (from_routine).
@@ -477,7 +488,7 @@ def draft_all(cfg: Config, questions: list[str], *, company: str, role: str,
         return from_routine(cfg, questions, ref=ref, company=company, role=role,
                             jd_text=jd_text, evidence=evidence, banned_phrases=banned_phrases,
                             notes=notes, his_view=his_view, reader=reader, family=family,
-                            ruled_out=ruled_out)
+                            ruled_out=ruled_out, write=write)
     from ..package import proof
     note = notes if notes is not None else []
     out: dict[str, str] = {}

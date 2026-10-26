@@ -260,14 +260,16 @@ The layers, cheapest first, each with its own measurement:
    possible into followable, replicable steps ... so the cost should keep
    coming down"). A logistic model over title, posting and company, fitted
    on every role the judge ruled on with his Yes, Applied and 7-or-more
-   scores above it, refitted every run, weights in system_config
-   `hunter_screen_weights`. Its line sits under every positive scored out of
-   fold. Measured oldest first (`screen-eval`, `tests/fixtures/screen_eval.json`):
-   it cuts 2 to 8 percent of judge calls, more as the record grows, and on
-   no window a role the judge presented or one he wanted. Text alone cannot
-   cut more safely: several roles he applied to read like rejects on their
-   words. Shadow until he says otherwise (`hunter_screen_mode`); it cuts only
-   in gate and only while the judge itself decides.
+   scores above it (86 of them roles the judge never read), refitted every
+   run, weights in system_config `hunter_screen_weights`. Its line sits under
+   every positive scored out of fold. Measured oldest first (`screen-eval`,
+   `tests/fixtures/screen_eval.json`): it cuts 0.8 to 2.5 percent of judge
+   calls, more as the record grows, and on no window a role the judge
+   presented or one he wanted. Small, and free. Text alone cannot cut more
+   safely: several roles he applied to read like rejects on their words.
+   Shadow until he says otherwise (`hunter_screen_mode`); it cuts only in gate
+   and only while the judge itself decides, and even then sends 2 a run to the
+   judge as an audit (`hunter_screen_audit_per_run`).
 6. **The judge**, last, on what survives, top companies first, at low effort
    (measured equal to high on the dev window, 24 percent cheaper), at most 100
    roles and $5 a run, in gate mode since 2026-10-03.
@@ -460,8 +462,11 @@ docs/HANDOVER_LETTERS.md is the full record.
   Prepare queues one request per form (`essays.from_routine`, kind `essay`)
   and holds the Apply email; once the answers pass the API path's checks and
   the form's, the hourly drafts step asks for Prepare itself
-  (`drafts.essays_ready`), so it goes with no second press. A form refused
-  3 times is not asked again and the watchdog says so.
+  (`drafts.essays_ready`), so it goes with no second press, and only while
+  his row still asks for it (`require_wanted`). Any answer pending holds the
+  email, optional questions included. Reading an answer never marks it used,
+  and a dry run queues nothing. A form refused 3 times for the same
+  questions is not asked again; his card and the watchdog say so.
   `hunter_essay_writer = api` puts them back on the API.
 - **Holds cost nothing.** `letters.plan` reads the record before any fetch: a
   role with no header base, a business of his kind with no line of his, or a

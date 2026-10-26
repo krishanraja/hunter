@@ -764,7 +764,7 @@ def test_one_unreadable_form_does_not_stop_the_other_applications(monkeypatch,
 
     seen = []
 
-    def flaky(cfg, sheet, row, bank=None, view=None):
+    def flaky(cfg, sheet, row, bank=None, view=None, **kw):
         seen.append(row["job_id"])
         if row["job_id"] == "c1:role":
             raise ValueError("unmapped Ashby field type 'EducationHistory'")

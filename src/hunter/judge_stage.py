@@ -43,6 +43,7 @@ class Candidate:
     rank: float
     judgement: judge.Judgement | None = None
     screen_score: float | None = None   # set when screen.py puts it under the line
+    screen_audit: bool = False          # under the line, sent to the judge to measure the gate
 
 
 @dataclass

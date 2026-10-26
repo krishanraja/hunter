@@ -67,8 +67,11 @@ def test_published_prices():
     assert spend.usd_of("claude-opus-5", usage(m, m)) == 30.0
     assert spend.usd_of("claude-sonnet-5-5", usage(m, m)) == 12.0
     assert spend.usd_of("claude-haiku-4-5-20251001", usage(m, m)) == 6.0
-    assert spend.usd_of("claude-haiku-5-5", usage(m, m)) == 0.6
-    assert spend.usd_of("claude-haiku-5-5", usage(0, 0, cr=m)) == 0.01
+    # Haiku 5.5: $0.10 and $0.50 up to 100K prompt tokens, five times that over.
+    assert spend.usd_of("claude-haiku-5-5", usage(90_000, 90_000)) == 0.054
+    assert spend.usd_of("claude-haiku-5-5", usage(0, 0, cr=90_000)) == 0.0009
+    assert spend.usd_of("claude-haiku-5-5", usage(m, m)) == 3.0
+    assert spend.usd_of("claude-haiku-5-5", usage(150_000, 0)) == 0.075
     assert spend.usd_of("claude-opus-5-5", usage(0, 0, cr=m)) == 0.2
     assert spend.usd_of("claude-opus-5-5", usage(m, m), batch=True) == 12.0
 
