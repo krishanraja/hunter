@@ -247,6 +247,25 @@ def test_cold_targets_skip_roles_that_already_have_a_person(monkeypatch):
     assert stats == {"eligible": 0, "searched": 0, "found": 0, "skipped": []}
 
 
+def test_cold_targets_do_not_search_again_a_role_searched_this_month(monkeypatch):
+    """By 2026-10-26 the search had run 37 times on 6 roles: a role where
+    nobody was found was searched again every run, and $3.33 of the $4.05 it
+    cost was the same empty answer. The ledger row says it ran."""
+    import hunter.people.bridges as bridges_mod
+    asked = []
+
+    def fake_get(cfg, table, params):
+        asked.append(table)
+        if table == "hunter_judge_calls":
+            assert params["purpose"] == "eq.cold_targets" and params["at"].startswith("gte.")
+            return [{"job_id": "a:b"}]
+        return []
+    monkeypatch.setattr(bridges_mod, "db_get", fake_get)
+    stats = bridges_mod.cold_targets(Cfg(), [{"job_id": "a:b", "company": "A", "title": "B"}])
+    assert "hunter_judge_calls" in asked
+    assert stats["searched"] == 0 and stats["searched_recently"] == 1
+
+
 # ---------- the drain claims one command when dispatched with an id ----------
 
 def test_drain_with_an_id_claims_only_that_row(monkeypatch):

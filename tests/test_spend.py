@@ -67,6 +67,8 @@ def test_published_prices():
     assert spend.usd_of("claude-opus-5", usage(m, m)) == 30.0
     assert spend.usd_of("claude-sonnet-5-5", usage(m, m)) == 12.0
     assert spend.usd_of("claude-haiku-4-5-20251001", usage(m, m)) == 6.0
+    assert spend.usd_of("claude-haiku-5-5", usage(m, m)) == 0.6
+    assert spend.usd_of("claude-haiku-5-5", usage(0, 0, cr=m)) == 0.01
     assert spend.usd_of("claude-opus-5-5", usage(0, 0, cr=m)) == 0.2
     assert spend.usd_of("claude-opus-5-5", usage(m, m), batch=True) == 12.0
 
@@ -168,6 +170,16 @@ def test_one_job_can_be_moved_without_a_deploy(monkeypatch):
                  "p", purpose="essay")
     assert seen[0]["model"] == "claude-opus-5"
     assert seen[0]["output_config"]["effort"] == "high"
+
+
+def test_haiku_five_five_keeps_its_effort_and_haiku_four_five_sends_none(monkeypatch):
+    """Haiku 4.5 refuses an effort setting; Haiku 5.5 takes one and defaults
+    to medium without it, so stripping it there would cost more, not less."""
+    seen = fake_anthropic(monkeypatch)
+    llm.complete(Cfg(hunter_model_rationale="claude-haiku-5-5"), "p", purpose="rationale")
+    llm.complete(Cfg(hunter_model_rationale="claude-haiku-4-5"), "p", purpose="rationale")
+    assert seen[0]["output_config"]["effort"] == "low"
+    assert "effort" not in (seen[1].get("output_config") or {})
 
 
 def test_a_cached_system_text_is_marked(monkeypatch):

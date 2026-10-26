@@ -4615,9 +4615,20 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             summary.extend(bar_lines)
         except Exception as e:
             summary.append(f"company bar did not run: {e.__class__.__name__}: {e}")
+        # The screen (screen.py): the judge's own record, refitted every run,
+        # so a seat it has rejected many times over costs no call.
+        from . import screen
+        under = []
+        try:
+            candidates, under, screen_lines = screen.apply(
+                cfg, candidates, top_keys=top_keys, mark=judge_mode == "gate")
+            summary.extend(screen_lines)
+        except Exception as e:
+            summary.append(f"screen did not run: {e.__class__.__name__}: {e}")
         try:
             judged = judge_stage.run(cfg, canon, sheet, candidates, mode=judge_mode)
             summary.extend(judged.lines)
+            summary.extend(screen.shadow_report(under))
         except Exception as e:
             # The judge failing must never become the judge deciding: in gate
             # mode nothing is staged on a judge that did not run.
@@ -6114,6 +6125,22 @@ def cmd_judge_eval(dev: bool = False, threshold: int | None = None,
     result = judge_eval.run(cfg, sheet, canon, dev=dev, threshold=threshold,
                             replicas=replicas)
     print("\n".join(judge_eval.report(result)))
+    return 0
+
+
+def cmd_screen_eval() -> int:
+    """Measure the screen (screen.py) on the live record, oldest first: fit on
+    what was judged before each window, screen what came after. Free: no
+    model call. Prints counts only, for tests/fixtures/screen_eval.json."""
+    from . import screen
+    cfg = load()
+    rows = screen.record(cfg)
+    result = screen.evaluate(rows, screen.cutoffs(rows))
+    for w in result["windows"]:
+        print(f"screen-eval from {w['from']}: trained on {w['trained_on']}, cut "
+              f"{w['screened']} of {w['screened_of']} ({w['share']:.0%}); presents lost "
+              f"{w['presents_lost']}, his wants lost {w['wants_lost']}")
+    print(json.dumps(result, indent=1))
     return 0
 
 
@@ -10454,6 +10481,8 @@ def main(argv: list[str]) -> int:
         t, n = _flag("--threshold"), _flag("--replicas")
         return cmd_judge_eval(dev="--dev" in argv, threshold=int(t) if t else None,
                               replicas=int(n) if n else None)
+    if cmd == "screen-eval":
+        return cmd_screen_eval()
     if cmd == "close-submitted":
         return cmd_close_submitted(apply="--apply" in argv)
     if cmd == "confirmations":
