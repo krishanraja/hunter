@@ -344,6 +344,17 @@ def test_a_role_whose_letters_keep_failing_is_reported_once_per_set(monkeypatch)
     assert "r1" not in got[0]["detail"], "counts only"
 
 
+def test_a_letter_and_a_form_failing_for_one_role_are_counted_apart(monkeypatch):
+    """Both use the job id as their ref: two letter refusals and one form
+    refusal are not three of anything."""
+    rows = [_letter("failed", ago(1), drafted=ago(1)) for _ in range(2)] + \
+        [dict(_letter("failed", ago(1), drafted=ago(1)), kind="essay")]
+    assert _writer_db(monkeypatch, rows) == []
+    rows = [dict(_letter("failed", ago(1), drafted=ago(1)), kind="essay") for _ in range(3)]
+    assert [p["kind"] for p in _writer_db(monkeypatch, rows)] == \
+        ["letters the writer cannot get right"]
+
+
 def test_the_waiting_reminders_go_once_a_week_whatever_the_count(monkeypatch):
     """19 October: the key held the count, so each approval made or cancelled
     mailed him again, six times in eight hours."""

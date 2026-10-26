@@ -31,10 +31,13 @@ PRICES = {
     "claude-opus-5": {"in": 5.0, "out": 25.0, "cache_read": 0.50, "cache_write": 6.25},
     "claude-sonnet-5-5": {"in": 2.0, "out": 10.0, "cache_read": 0.20, "cache_write": 2.5},
     "claude-haiku-4-5": {"in": 1.0, "out": 5.0, "cache_read": 0.10, "cache_write": 1.25},
-    # Prompts up to 100K tokens; no hunter call comes near that. Without this
-    # row a Haiku 5.5 call was costed at the dearest price above, 50 times over,
-    # and tripped every cap on its first run.
-    "claude-haiku-5-5": {"in": 0.10, "out": 0.50, "cache_read": 0.01, "cache_write": 0.125},
+    # Without this row a Haiku 5.5 call was costed at the dearest price above,
+    # 50 times over, and tripped every cap on its first run. A prompt over
+    # 100K tokens costs five times as much (LONG), and is costed so.
+    "claude-haiku-5-5": {"in": 0.10, "out": 0.50, "cache_read": 0.01, "cache_write": 0.125,
+                         "long_over": 100_000,
+                         "long": {"in": 0.50, "out": 2.50, "cache_read": 0.05,
+                                  "cache_write": 0.625}},
     # OpenAI, for the jobs llm.PROVIDER_ORDER sends there first. Priced so the
     # ledger says what they cost rather than the dearest rate above.
     "gpt-4.1-mini": {"in": 0.40, "out": 1.60, "cache_read": 0.10, "cache_write": 0.40},
@@ -75,6 +78,10 @@ def price_of(model: str) -> dict:
 
 def usd_of(model: str, usage: dict, *, batch: bool = False) -> float:
     p = price_of(model)
+    prompt = (usage.get("input_tokens", 0) + usage.get("cache_read_input_tokens", 0)
+              + usage.get("cache_creation_input_tokens", 0))
+    if p.get("long_over") and prompt > p["long_over"]:
+        p = p["long"]
     usd = (usage.get("input_tokens", 0) * p["in"]
            + usage.get("output_tokens", 0) * p["out"]
            + usage.get("cache_read_input_tokens", 0) * p["cache_read"]

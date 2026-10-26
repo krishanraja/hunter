@@ -149,8 +149,22 @@ def test_the_routine_answers_go_on_the_form_once_they_pass(db, no_model):
     r = answer(db, {"Why us?": WHY_US, "A hard problem?": HARD})
     notes = []
     assert ask(notes) == {"Why us?": WHY_US, "A hard problem?": HARD}
-    assert r["status"] == "used"
+    assert r["status"] == "drafted", "reading is not sending: the drafts step still asks"
     assert all("drafted" in n for n in notes)
+
+
+def test_a_dry_run_queues_and_changes_nothing(db, no_model):
+    notes = []
+    assert essays.draft_all(Cfg(), QUESTIONS, company="Nine", role="GM",
+                            jd_text="the posting", evidence=EVIDENCE, notes=notes,
+                            ref="nine:gm", write=False) == {}
+    assert db.rows["hunter_drafts"] == []
+    assert all("dry run: nothing queued" in n for n in notes)
+    ask()
+    answer(db, {"Why us?": WHY_US.replace("$61m", "$90m"), "A hard problem?": HARD})
+    essays.draft_all(Cfg(), QUESTIONS, company="Nine", role="GM", jd_text="the posting",
+                     evidence=EVIDENCE, ref="nine:gm", write=False)
+    assert [r["status"] for r in db.rows["hunter_drafts"]] == ["drafted"]
 
 
 def test_an_invented_figure_is_refused_and_the_routine_asked_again(db, no_model):
@@ -169,7 +183,18 @@ def test_a_form_refused_three_times_is_not_asked_a_fourth(db, no_model):
     assert ask(notes) == {}
     assert all(r["status"] == "failed" for r in db.rows["hunter_drafts"])
     assert len(db.rows["hunter_drafts"]) == essays.FAILS
-    assert "failed the check 3 times" in notes[0]
+    assert essays.STUCK in notes[0] and "3 times" in notes[0]
+
+
+def test_a_new_question_is_a_new_request_whatever_the_old_record(db, no_model):
+    for _ in range(essays.FAILS):
+        ask()
+        answer(db, {"Why us?": WHY_US.replace("$61m", "$90m"), "A hard problem?": HARD})
+    ask()
+    assert [r["status"] for r in db.rows["hunter_drafts"]] == ["failed"] * essays.FAILS
+    ask(questions=QUESTIONS + ["Anything else?"])
+    assert db.rows["hunter_drafts"][-1]["status"] == "queued"
+    assert db.rows["hunter_drafts"][-1]["meta"]["questions"] == QUESTIONS + ["Anything else?"]
 
 
 def test_a_form_that_now_asks_more_is_asked_for_whole(db, no_model):
@@ -238,6 +263,40 @@ def test_a_failing_form_is_asked_of_the_routine_again_not_prepared(db):
     assert [r["status"] for r in db.rows["hunter_drafts"]] == ["failed", "queued"]
 
 
+def test_the_hourly_drafts_step_asks_for_prepare(db):
+    """settle itself, not only the helper: removing the call must fail."""
+    ask()
+    answer(db, {"Why us?": WHY_US, "A hard problem?": HARD})
+    lines = drafts.settle(Cfg(), apply=True)
+    assert any("Prepare asked for each" in l for l in lines)
+    assert [(a["kind"], a["requested_by"]) for a in db.rows["hunter_actions"]] == \
+        [("prepare", "hunter")]
+
+
+def test_one_form_that_raises_does_not_stop_the_step(db, monkeypatch):
+    ask()
+    answer(db, {"Why us?": WHY_US, "A hard problem?": HARD})
+    monkeypatch.setattr(drafts, "_essay_ready",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    lines = drafts.settle(Cfg(), apply=True)
+    assert lines[0].startswith("drafts: "), "the cases and observations still settled"
+    assert any("not handled (RuntimeError)" in l for l in lines)
+
+
+def test_a_prepare_hunter_asked_for_is_held_to_his_row(db, monkeypatch):
+    seen = []
+    db.rows["hunter_seen_roles"] = [{"job_id": "nine:gm", "company": "Nine", "title": "GM"}]
+    db.insert(None, "hunter_actions", [{"kind": "prepare", "job_id": "nine:gm",
+                                        "requested_by": actions.HUNTER, "requested_at": "1"}])
+    db.insert(None, "hunter_actions", [{"kind": "prepare", "job_id": "nine:gm",
+                                        "requested_by": "krish", "requested_at": "2"}])
+    monkeypatch.setattr(actions, "db_get", db.get)
+    monkeypatch.setattr(actions, "db_patch", db.patch)
+    actions.apply_queued(Cfg(), None, [], apply=True,
+                         prepare=lambda j, **kw: seen.append(kw) or (True, "sent"))
+    assert seen == [{"require_wanted": True}, {}]
+
+
 def test_essays_never_fall_back_to_the_api():
     assert "essay" in drafts.NO_API and "essay" in drafts.KINDS
 
@@ -246,9 +305,3 @@ def test_his_card_says_the_email_follows_on_its_own():
     ok, note = actions.prepare_note(0, {run.ESSAY_QUEUED: 1}, [])
     assert not ok, "nothing was sent yet"
     assert "writing routine" in note and "follows on its own" in note
-
-
-def test_prepare_counts_a_queued_form_apart_from_a_failed_essay():
-    import inspect
-    src = inspect.getsource(run.cmd_approvals)
-    assert "count(ESSAY_QUEUED if any(WAITING in n for n in plan.notes)" in src

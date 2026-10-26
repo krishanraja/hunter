@@ -386,7 +386,7 @@ def writer_problems(cfg: Config, now: datetime.datetime | None = None) -> list[d
     from collections import Counter
     now = now or _now()
     since = (now - datetime.timedelta(days=10)).isoformat()
-    rows = db_get(cfg, "hunter_drafts", {"select": "ref,status,requested_at,drafted_at",
+    rows = db_get(cfg, "hunter_drafts", {"select": "kind,ref,status,requested_at,drafted_at",
                                          "kind": "in.(letter,essay)",
                                          "requested_at": f"gte.{since}",
                                          "limit": ALL_ROWS})
@@ -405,14 +405,17 @@ def writer_problems(cfg: Config, now: datetime.datetime | None = None) -> list[d
                               f"none in that time. It runs daily at 12:47 London on your "
                               f"Claude subscription; check its scheduled task is still on. "
                               f"Nothing is built or sent for these until it answers."})
-    fails = Counter(r.get("ref") for r in rows if r.get("status") == "failed")
-    stuck = sorted(str(ref) for ref, n in fails.items() if n >= LETTER_FAILS)
+    # Per kind: a role's letter and its form share one ref, the job id.
+    fails = Counter((r.get("kind") or "letter", r.get("ref")) for r in rows
+                    if r.get("status") == "failed")
+    stuck = sorted({str(ref) for (_, ref), n in fails.items() if n >= LETTER_FAILS})
     if stuck:
         out.append({"kind": "letters the writer cannot get right",
                     "fingerprint": "letter-fails:" + ",".join(stuck)[:180],
                     "detail": f"{len(stuck)} role(s) have had {LETTER_FAILS} or more letters or forms "
-                              f"refused by the check. The routine is asked again each "
-                              f"time; nothing is built for them until one passes."})
+                              f"refused by the check. A letter is asked for again each "
+                              f"run and nothing is built until one passes; a form is not "
+                              f"asked a fourth time, and its Apply email waits."})
     return out
 
 
