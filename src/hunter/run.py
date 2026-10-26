@@ -7025,7 +7025,7 @@ def _draft_essays(cfg: Config, sheet: Sheet, role, questions: list[str],
                                 role=role.title, jd_text=role.jd_text or "",
                                 evidence=evidence, banned_phrases=banned,
                                 notes=notes, his_view=view, reader=reader,
-                                family=family, ruled_out=ruled_out)
+                                family=family, ruled_out=ruled_out, ref=job_id)
 
 
 def hunt_url_for(cfg: Config, job_id: str) -> str:
@@ -7623,7 +7623,11 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
                 continue
             if any((getattr(f, "reason", "") or "").startswith(NEEDS_ESSAY)
                    for f in plan.blocking):
-                count(ESSAY_NOT_DRAFTED)
+                from .apply.essays import WAITING
+                # With the writing routine, not a failure: the answers are
+                # queued and the drafts step asks for Prepare once they pass.
+                count(ESSAY_QUEUED if any(WAITING in n for n in plan.notes)
+                      else ESSAY_NOT_DRAFTED)
                 note = mark_prepared(cfg, row, ESSAY_NOT_DRAFTED)
                 if note:
                     print(note)
@@ -8141,6 +8145,10 @@ BY_HAND, REFUSED_BLOCKING = "by_hand", "refused_blocking"
 # same refusal at the head of every batch, and tried again after it.
 ESSAY_NOT_DRAFTED = "essay not drafted, tried again after a day"
 ESSAY_WAIT_HOURS = 24
+# The form's answers are with the writing routine (apply/essays.py,
+# from_routine). Marked as ESSAY_NOT_DRAFTED is, so a --wanted batch moves on;
+# counted apart, so the note on his card says the email follows on its own.
+ESSAY_QUEUED = "form answers with the writing routine"
 # Counted by Prepare (approvals --job-id) for the note he reads on its card.
 TAKEN_BACK, NOT_BUILT = "his score took it back", "no built package"
 # A form that asks for his phone or address, for a role with no header base

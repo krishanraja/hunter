@@ -30,6 +30,7 @@ Lifecycle: live. The detail is in `README.md`.
 
 ## What changed recently
 
+- 2026-10-26 **Spend comes down by encoding, not by guessing.** The month's ledger read $62.6, $34.9 of it the judge, 82 percent of whose calls were rejections. The judge's record is now a screen (`screen.py`, shadow, refitted every run): measured oldest first it cuts 2 to 8 percent of judge calls with no role lost, rising as the record grows. Form answers moved to the writing routine on his word (about $7 a month); a cold target search that found nobody is no longer repeated every run ($3.33 of $4.05 was repeats). Haiku is deferred on his word until this has been seen to work.
 - 2026-10-24 **His Drive map follows the layout he set** (`drivemap.py`, the guard, the sweep). Ruling (Krish, 2026-10-24): folders are found by ID, never by path. CURRENT is gone, so the map now names Ventures, --ARCHIVE and Family Admin as the areas, FamilyContentLibrary and KeePass as immovable, and `Inbox from My AI` at the top as the inbox (filearchives D-033). A rebuild keeps every folder it already holds by id; Hunter's folders stay where he moved them (Family Admin/Krish/Job-Search/Hunter).
 - 2026-10-23 **The North Star now has a number, a weekly ladder and an urgency rating.** Ruling (Krish, 2026-10-23): every repository chases one aggressive number on a weekly ladder, and urgency U1 to U5 sets how hard it pushes. The number is in `docs/NORTH_STAR.md`; contract: ai-harness `contract/north-star-metric.md`.
 

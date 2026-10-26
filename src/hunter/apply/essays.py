@@ -71,6 +71,158 @@ executive would say it, never as the person wiring the tools.
 Return JSON only: {"answer": "..."}""" % (MIN_CHARS, MAX_CHARS)
 
 
+# ---------- the writing routine (his ruling, 2026-10-26) ----------
+#
+# Asked whether form answers should move to the writing routine on his
+# subscription, as letters did, he answered "Yes, move them": they cost about
+# $7 a month on the API, Opus at medium with up to three tries a question. A
+# form is one request with every open question in it, so the routine writes
+# the form whole and form_problems holds it as the reader reads it. The Apply
+# email waits for the routine, which runs daily at 12:47 London: at most a
+# day. hunter_essay_writer = api puts the answers back on the API (draft_one).
+KIND = "essay"
+WRITER_KEY = "hunter_essay_writer"
+WAITING = "waiting for the writing routine"
+# A form whose answers the check refuses this many times is not asked again;
+# the watchdog tells him (alerts.writer_problems).
+FAILS = 3
+SCHEMA = {"type": "object", "required": ["answers"], "additionalProperties": False,
+          "properties": {"answers": {"type": "object",
+                                     "additionalProperties": {"type": "string"}}}}
+FORM_RULES = SYSTEM.split("Return JSON only:")[0] + (
+    "Answer every QUESTION in the prompt, each on its own terms. One proof point once "
+    "per form: never tell the same story or figure in two answers.\n\n"
+    'Return JSON only: {"answers": {"<the question exactly as given>": "<the answer>"}}')
+
+
+def writer(cfg: Config) -> str:
+    m = (cfg.optional(WRITER_KEY, "routine") or "routine").strip().lower()
+    return m if m in ("api", "routine") else "routine"
+
+
+def form_prompt(questions: list[str], *, company: str, role: str, jd_text: str,
+                view_section: str = "", reader: dict | None = None,
+                banned_phrases: tuple[str, ...] = (), family: str = "") -> str:
+    """What the routine is asked, with everything draft_one's prompt carries."""
+    from ..package import proof
+    budget = proof.ai_budget(family)
+    rule = ("" if budget is None else
+            f"\n\nHis AI operating system may appear in at most {budget} answer(s), and only "
+            "in an answer to a question that asks what he has built.")
+    forbidden = ("" if not banned_phrases else
+                 "\n\nNEVER use any of these words or phrases, in any form:\n"
+                 + "\n".join(f"- {b}" for b in sorted(set(banned_phrases))))
+    brief = reader_section(reader)
+    qs = "\n".join(f"{i}. {q}" for i, q in enumerate(questions, 1))
+    return (f"COMPANY: {company}\nROLE: {role}\n\n"
+            + (f"{view_section.rstrip()}\n\n" if view_section else "")
+            + (f"{brief}\n\n" if brief else "")
+            + f"QUESTIONS:\n{qs}{rule}\n\nJOB DESCRIPTION:\n{jd_text[:6000]}{forbidden}")
+
+
+def form_answers(output) -> dict[str, str]:
+    """The answers in a routine reply, question to answer."""
+    try:
+        data = output if isinstance(output, dict) else json.loads(output or "{}")
+    except (TypeError, ValueError):
+        return {}
+    got = data.get("answers") if isinstance(data, dict) else None
+    if not isinstance(got, dict):
+        return {}
+    return {str(q): voicegate.plain_prose(str(a or "")).strip() for q, a in got.items()}
+
+
+def form_check(output, *, prompt: str, evidence: str, meta: dict) -> list[str]:
+    """Why a routine's answers may not go on the form, or []. The same rules
+    the API path holds each answer to, then the form taken whole. Redacted as
+    the API path's public reasons are: these are stored and printed."""
+    from .. import drafts
+    answers = form_answers(output)
+    if not answers:
+        return ["the answer is not the essay schema: no answers object"]
+    reaction = drafts.reaction_in(prompt)
+    view = his_view_mod.HisView(reaction=reaction) if reaction else None
+    posting = meta.get("posting") or ""
+    banned = tuple(meta.get("banned") or ())
+    ruled_out = tuple(meta.get("ruled_out") or ())
+    out = []
+    for i, q in enumerate(meta.get("questions") or [], 1):
+        a = answers.get(q, "")
+        if not a:
+            out.append(f"question {i} has no answer")
+            continue
+        problem = _problem(a, evidence, banned, his_view=view, public=True,
+                           posting=posting + "\n" + q, ruled_out=ruled_out)
+        if problem:
+            out.append(f"answer {i}: {problem}")
+    out += form_problems({q: answers[q] for q in meta.get("questions") or [] if answers.get(q)},
+                         posting=posting, family=meta.get("family") or "", ruled_out=ruled_out)
+    return out
+
+
+def from_routine(cfg: Config, questions: list[str], *, ref: str, company: str, role: str,
+                 jd_text: str, evidence: str, banned_phrases: tuple[str, ...] = (),
+                 notes: list[str] | None = None, his_view=None, reader: dict | None = None,
+                 family: str = "", ruled_out: tuple[str, ...] = ()) -> dict[str, str]:
+    """The form's answers when the routine has written them and they pass;
+    otherwise nothing, a request queued, and a reason for each question."""
+    from .. import drafts
+    from ..config import db_get, db_patch_where
+    note = notes if notes is not None else []
+
+    def waiting(why: str) -> dict:
+        for q in questions:
+            note.append(f"NOT drafted, {q[:60]!r}: {why}")
+        return {}
+
+    if not ref:
+        return waiting("no posting to file the request under")
+    if not evidence.strip():
+        return waiting("no evidence loaded, so nothing could be traced")
+    rows = db_get(cfg, drafts.TABLE, {
+        "select": "id,status,prompt,evidence,meta,output", "kind": f"eq.{KIND}",
+        "ref": f"eq.{ref}", "order": "id.desc", "limit": "20"})
+    latest = rows[0] if rows else None
+    asked = set((latest or {}).get("meta", {}).get("questions") or [])
+    if latest and latest["status"] in ("drafted", "used") and set(questions) <= asked:
+        problems = form_check(latest.get("output"), prompt=latest.get("prompt") or "",
+                              evidence=latest.get("evidence") or "", meta=latest.get("meta") or {})
+        if not problems:
+            answers = form_answers(latest.get("output"))
+            if latest["status"] == "drafted":
+                db_patch_where(cfg, drafts.TABLE, {"id": f"eq.{latest['id']}",
+                                                   "status": "eq.drafted"},
+                               {"status": "used", "used_at": drafts._now()})
+            for q in questions:
+                note.append(f"drafted an answer to {q[:60]!r} (the writing routine)")
+            return {q: answers[q] for q in questions}
+        db_patch_where(cfg, drafts.TABLE, {"id": f"eq.{latest['id']}"},
+                       {"status": "failed", "problems": problems[:6]})
+        rows[0] = dict(latest, status="failed")
+    elif latest and latest["status"] in ("queued", "drafted"):
+        if set(questions) <= asked:
+            return waiting(WAITING)
+        # The form now asks something the request did not: ask again, whole.
+        db_patch_where(cfg, drafts.TABLE, {"id": f"eq.{latest['id']}",
+                                           "status": f"eq.{latest['status']}"},
+                       {"status": "expired", "problems": ["the form's questions changed"]})
+    if sum(1 for r in rows if r.get("status") == "failed") >= FAILS:
+        return waiting(f"the writing routine's answers failed the check {FAILS} times")
+    view = his_view_mod.section(his_view, company=company)
+    prompt = form_prompt(questions, company=company, role=role, jd_text=jd_text,
+                         view_section=view, reader=reader, banned_phrases=banned_phrases,
+                         family=family)
+    drafts.request(cfg, KIND, ref, prompt,
+                   context=FORM_RULES + f"\n\nEVIDENCE (everything you may draw on):\n"
+                                        f"{evidence[:120000]}",
+                   schema=SCHEMA, evidence=evidence,
+                   meta={"job_id": ref, "questions": list(questions), "company": company,
+                         "role": role, "posting": (jd_text or "")[:6000],
+                         "banned": sorted(set(banned_phrases)), "family": family,
+                         "ruled_out": list(ruled_out)})
+    return waiting(WAITING)
+
+
 def _text(resp) -> str:
     for block in getattr(resp, "content", []) or []:
         if getattr(block, "type", "") == "text":
@@ -312,12 +464,20 @@ def draft_all(cfg: Config, questions: list[str], *, company: str, role: str,
               banned_phrases: tuple[str, ...] = (),
               notes: list[str] | None = None,
               his_view=None, reader: dict | None = None,
-              family: str = "", ruled_out: tuple[str, ...] = ()) -> dict[str, str]:
+              family: str = "", ruled_out: tuple[str, ...] = (),
+              ref: str = "") -> dict[str, str]:
     """Every question that could be answered. A failure is loud, never silent.
+
+    Written by the routine unless hunter_essay_writer says api (from_routine).
 
     His AI system is said once per form at most outside an AI transformation
     seat (his ruling 2026-10-19), and only in an answer to a question about
     what he has built; the Replit form said it in both of its answers."""
+    if writer(cfg) == "routine":
+        return from_routine(cfg, questions, ref=ref, company=company, role=role,
+                            jd_text=jd_text, evidence=evidence, banned_phrases=banned_phrases,
+                            notes=notes, his_view=his_view, reader=reader, family=family,
+                            ruled_out=ruled_out)
     from ..package import proof
     note = notes if notes is not None else []
     out: dict[str, str] = {}

@@ -256,10 +256,22 @@ The layers, cheapest first, each with its own measurement:
    is cut with no judge call, except an AI transformation seat and a
    recruiter's posting. Measured on 242 of his rulings: it loses none of his
    Yes roles beyond his own cut. At 3 it would lose ColdIQ, which he applied to.
-5. **The judge**, last, on what survives, top companies first, at low effort
+5. **The screen** (`screen.py`, added 2026-10-26: "encode as much as
+   possible into followable, replicable steps ... so the cost should keep
+   coming down"). A logistic model over title, posting and company, fitted
+   on every role the judge ruled on with his Yes, Applied and 7-or-more
+   scores above it, refitted every run, weights in system_config
+   `hunter_screen_weights`. Its line sits under every positive scored out of
+   fold. Measured oldest first (`screen-eval`, `tests/fixtures/screen_eval.json`):
+   it cuts 2 to 8 percent of judge calls, more as the record grows, and on
+   no window a role the judge presented or one he wanted. Text alone cannot
+   cut more safely: several roles he applied to read like rejects on their
+   words. Shadow until he says otherwise (`hunter_screen_mode`); it cuts only
+   in gate and only while the judge itself decides.
+6. **The judge**, last, on what survives, top companies first, at low effort
    (measured equal to high on the dev window, 24 percent cheaper), at most 100
    roles and $5 a run, in gate mode since 2026-10-03.
-6. **The case** for each row that reaches him, at medium effort since
+7. **The case** for each row that reaches him, at medium effort since
    2026-10-07 (`hunter_case_effort`), its figures still checked.
 
 Measured and not used: Haiku as a first reader (`tests/fixtures/triage_eval.json`;
@@ -293,6 +305,18 @@ retry started again.
 - **The Batches API is not the saving it looks.** It halves the price but
   reads the cache only some of the time; the batched holdout runs cost 8 to
   15 cents a role against 4 to 6 direct. Measure before moving a call to it.
+- **Where it went, 30 days to 2026-10-26: $62.6.** The judge $34.9 (82
+  percent of its calls a rejection), the tailor $11.2 (one day, unreachable
+  since the house builder), essays $7.4, cold targets $4.1, lookalike $2.7.
+  The judge is lean already: its context is cached, the pitch it writes on a
+  rejection is 12 percent of its output, and a rejection re-read after a
+  week came back presented 5 times in 35, so the week stays. What cuts it is
+  fewer calls (the screen) or a cheaper model, which he has deferred: "move
+  stuff to Haiku later if this stuff doesn't make a difference ... you can
+  use Opus if it's genuinely a required task."
+- **An empty answer is recorded too.** A cold target search that found
+  nobody was run again every run (37 searches on 6 roles, $3.33 of $4.05);
+  the ledger row now says it ran, and it waits 30 days (`bridges.searched_recently`).
 
 ## 3f. His score is the signal, and column A is the older record
 
@@ -432,6 +456,13 @@ docs/HANDOVER_LETTERS.md is the full record.
   12:47 London plus the Sunday and Thursday runs. An unanswered letter waits.
   The watchdog mails him when letters have waited 36 hours with none written,
   or one role's letters fail their check 3 times (`alerts.writer_problems`).
+- **Form answers too, since 2026-10-26** (his answer: "Yes, move them").
+  Prepare queues one request per form (`essays.from_routine`, kind `essay`)
+  and holds the Apply email; once the answers pass the API path's checks and
+  the form's, the hourly drafts step asks for Prepare itself
+  (`drafts.essays_ready`), so it goes with no second press. A form refused
+  3 times is not asked again and the watchdog says so.
+  `hunter_essay_writer = api` puts them back on the API.
 - **Holds cost nothing.** `letters.plan` reads the record before any fetch: a
   role with no header base, a business of his kind with no line of his, or a
   letter not yet written is SKIPPED, which no cap counts.

@@ -34,11 +34,14 @@ from .config import ALL_ROWS, Config, db_get, db_insert, db_patch, db_patch_wher
 
 TABLE = "hunter_drafts"
 CONTEXTS = "hunter_draft_contexts"
-KINDS = ("case", "door_observation", "letter")
+KINDS = ("case", "door_observation", "letter", "essay")
 # Letters are never written by the API (his ruling, 2026-10-15: no API spend
 # on letters). An unanswered letter waits for the routine; the build reads a
 # drafted letter itself (package/compose.py), so settle leaves them alone.
-NO_API = ("letter",)
+# Form answers joined them on 2026-10-26 (apply/essays.py, from_routine):
+# Prepare reads them itself, and settle only asks for Prepare once a form's
+# answers have passed, so the Apply email goes without a second press.
+NO_API = ("letter", "essay")
 WAIT_HOURS = 48
 MODES = ("api", "routine")
 
@@ -96,6 +99,9 @@ def problems_for(kind: str, output, *, prompt: str, context: str = "",
                     his_view.HisView(reaction=reaction), evidence):
                 out = ["the letter quotes his note; say it in your own words"]
         return out
+    if kind == "essay":
+        from .apply import essays
+        return essays.form_check(output, prompt=prompt, evidence=evidence, meta=meta)
     if kind == "door_observation":
         from . import doorin
         text = output.get("text") if isinstance(output, dict) else output
@@ -173,6 +179,8 @@ def settle(cfg: Config, *, apply: bool = False, sheet=None, canon_headers=None,
     cache: dict = {}
     lines: list[str] = []
     counts = {"used": 0, "failed": 0, "api": 0, "waiting": 0}
+    essay_lines = essays_ready(cfg, [r for r in rows if r["kind"] == "essay"],
+                              cache, apply=apply)
     for r in rows:
         if r["kind"] in NO_API:
             continue        # the build reads it; never the API
@@ -226,7 +234,53 @@ def settle(cfg: Config, *, apply: bool = False, sheet=None, canon_headers=None,
     lines.insert(0, f"drafts: {counts['used']} used, {counts['failed']} failed, "
                     f"{counts['api']} from the API fallback, {counts['waiting']} waiting "
                     f"for the routine" + ("" if apply else " (dry run)"))
-    return lines
+    return lines + essay_lines
+
+
+PREPARE_REF = "form answers written by the writing routine"
+
+
+def essays_ready(cfg: Config, rows: list[dict], cache: dict, *, apply: bool) -> list[str]:
+    """A form the routine has answered: checked here, then Prepare is asked
+    for it (a hunter_actions row, as his press makes), so the Apply email
+    goes with no second press. A form that fails is asked of the routine
+    again, up to essays.FAILS times. Counts only: no company, no answer."""
+    from .apply import essays
+    asked = failed = 0
+    for r in rows:
+        meta = r.get("meta") or {}
+        if r.get("status") != "drafted" or meta.get("prepare_requested"):
+            continue
+        problems = problems_for("essay", r.get("output"), prompt=r.get("prompt") or "",
+                                context=_context(cfg, r.get("context_key"), cache),
+                                evidence=r.get("evidence") or "", meta=meta)
+        if not apply:
+            asked += not problems
+            failed += bool(problems)
+            continue
+        if problems:
+            _close(cfg, r, "failed", problems=problems)
+            failed += 1
+            fails = db_get(cfg, TABLE, {"select": "id", "kind": "eq.essay",
+                                        "ref": f"eq.{r['ref']}", "status": "eq.failed",
+                                        "limit": ALL_ROWS})
+            if len(fails) < essays.FAILS:
+                request(cfg, "essay", r["ref"], r["prompt"],
+                        context=_context(cfg, r.get("context_key"), cache),
+                        schema=r.get("schema"), evidence=r.get("evidence") or "", meta=meta)
+            continue
+        jid = meta.get("job_id") or r["ref"]
+        if not db_get(cfg, "hunter_actions", {"select": "id", "kind": "eq.prepare",
+                                              "job_id": f"eq.{jid}", "status": "eq.queued",
+                                              "limit": "1"}):
+            db_insert(cfg, "hunter_actions", [{"kind": "prepare", "job_id": jid,
+                                               "requested_by": "hunter", "ref": PREPARE_REF}])
+        db_patch(cfg, TABLE, {"id": r["id"]}, {"meta": dict(meta, prepare_requested=_now())})
+        asked += 1
+    if not (asked or failed):
+        return []
+    return [f"essays: {asked} form(s) answered by the routine and passed, Prepare asked for "
+            f"each; {failed} refused by the check" + ("" if apply else " (dry run)")]
 
 
 def _close(cfg, r, status, *, problems=(), by=None, output=None, apply=True):
