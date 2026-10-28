@@ -613,6 +613,10 @@ estate clean-up had filed under ARCHIVE.
   back, keeping every folder the registry already holds at its id while it
   still sits where it must (Ruling, Krish, 2026-10-24: folders are found by ID,
   never by path), so a rename or move inside a registered area loses nothing.
+  Another system's destination is kept the same way, and `AREA_FOLDERS` names
+  his areas other systems write into, found by name and never made:
+  `bugs_and_issues` is Ventures/Bugs & Issues, where a feedback video's stills
+  go (content-engine api/ux-feedback, 2026-10-28).
 - **DocBuild creates nothing without it.** `copy_master`, `upload_pdf` and
   `folder` take a parent with no default, refuse one `drivemap.allow` did not
   prove inside a registered root, and read back where the new file landed.

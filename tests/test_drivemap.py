@@ -208,6 +208,32 @@ def test_a_rebuild_keeps_registered_folders_by_id_after_he_moves_or_renames_them
     assert db.folders == {}, "nothing was made again by name"
 
 
+def test_bugs_and_issues_is_found_under_ventures_and_never_made():
+    db = _his_drive()
+    m = drivemap.build_map(db, apply=True)
+    assert "bugs_and_issues" not in m.destinations, "his folder, never made by a rebuild"
+    assert db.folders == {}
+    db.parent_of["bugs"] = ["ven"]
+    db.meta["bugs"] = {"name": "Bugs & Issues", "mimeType": docbuild_mod.FOLDER_MIME}
+    m = drivemap.build_map(db, apply=True)
+    assert m.destinations["bugs_and_issues"] == "bugs"
+    # Renamed later, it keeps its id.
+    db.meta["bugs"]["name"] = "Bugs and issues"
+    assert drivemap.build_map(db, apply=True, previous=m).destinations["bugs_and_issues"] == "bugs"
+
+
+def test_a_rebuild_keeps_another_writers_destination_while_it_sits_in_a_registered_area():
+    db = _his_drive()
+    db.parent_of["cw"] = ["ven"]
+    db.meta["cw"] = {"name": "Somewhere he chose", "mimeType": docbuild_mod.FOLDER_MIME}
+    first = drivemap.build_map(db, apply=True)
+    first.destinations["other.writer"] = "cw"
+    first.destinations["gone.writer"] = "kp"  # a protected folder is never a home
+    again = drivemap.build_map(db, apply=True, previous=first)
+    assert again.destinations["other.writer"] == "cw"
+    assert "gone.writer" not in again.destinations
+
+
 def test_a_map_with_no_inbox_at_the_top_is_refused():
     db = _his_drive()
     db.parent_of["ai"] = ["ven"]

@@ -64,6 +64,12 @@ INBOX_NAME = "Inbox from My AI"
 HUNTER_FOLDERS = {"hunter.applications": "Applications",
                   "hunter.masters": "Masters",
                   "hunter.previews": "Previews"}
+# Areas inside his roots that other systems write into, by the registry key
+# they read (filearchives D-033). Found under their root by name when the
+# registry has no id, and never made: they are his folders. Bugs & Issues is
+# where a feedback video's stills and feedback go, one folder per venture
+# (content-engine api/ux-feedback; Krish, 2026-10-28).
+AREA_FOLDERS = {"bugs_and_issues": ("Ventures", "Bugs & Issues")}
 UNMATCHED = "_unmatched"
 MAX_DEPTH = 40
 
@@ -235,6 +241,21 @@ def build_map(db, *, apply: bool, now: str = "", previous: DriveMap | None = Non
             dest[key] = db.folder(name, home)
         else:
             dest[key] = ""
+    for key, names in AREA_FOLDERS.items():
+        kept = (previous.destinations.get(key) if previous else "") or ""
+        if kept and ancestry(db.parents_of, kept, probe):
+            dest[key] = kept
+            continue
+        try:
+            dest[key] = _path(db, top, names)
+        except DriveMapError:
+            pass  # not there: his to make, never ours
+    # Another writer's destination the registry already holds keeps its id
+    # while it still sits inside a registered area, as the docstring says.
+    if previous:
+        for key, fid in previous.destinations.items():
+            if key not in dest and fid and ancestry(db.parents_of, fid, probe):
+                dest[key] = fid
     m = DriveMap(destinations=dest, roots=roots, protected=protected,
                  top_level={f["id"]: f["name"] for f in items}, inbox=inbox,
                  written_at=now or datetime.datetime.now(datetime.timezone.utc)
