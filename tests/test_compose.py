@@ -311,6 +311,18 @@ def test_the_role_prompt_carries_the_line_and_the_base():
     assert "BASE: UK (UK spelling)" in p and "- A line of his." in p and "POSTING\n" + JD in p
 
 
+def test_his_whole_reaction_and_the_rules_reach_the_letter_brief():
+    from hunter.package import his_view as hv
+    words = " ".join(f"point{i}" for i in range(500))  # about 3,900 characters
+    view = hv.HisView(score=8, reaction=words, ai_case="the case hunter made")
+    section = hv.section(view, company=COMPANY)
+    assert len(section) > 1500
+    p = compose.role_prompt(company=COMPANY, title="VP", location="London", base_key="uk",
+                            jd_text=JD, judge_answers={}, his_view=section,
+                            entries=[], needs=[])
+    assert "point499" in p and "How to use it:" in p and "the case hunter made" in p
+
+
 def test_a_word_the_fill_missed_is_caught_on_read_back(monkeypatch):
     monkeypatch.setattr(compose, "respelled", lambda lt, base_key: lt)
     a = answer(identity="I'm a commercial leader with technical roots, and I build AI native "

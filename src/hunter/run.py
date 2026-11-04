@@ -10145,6 +10145,61 @@ def cmd_confirmations(apply: bool = False) -> int:
     return 0
 
 
+def cmd_outcomes(apply: bool = False) -> int:
+    """What employers said back, from his mailbox. Dry run by default.
+
+    Reads replies to roles on record as applied (apply/outcomes.py), records a
+    rejection or a next step on hunter_seen_roles.application_state, reads each
+    write back, and prints the result by speed, contact and style. Counts only:
+    this prints in a public Actions log.
+    """
+    from .apply import confirmations, outcomes
+    cfg, _canon = build_context()
+    rows = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,applied_at,presented_at,scanned_at,"
+                  "application_state,warm_path_person,package_style",
+        "applied_at": "not.is.null", "limit": "1000"})
+    if not rows:
+        print("no applications on record")
+        return 0
+    who = confirmations.mailbox(cfg)
+    if who.get("error"):
+        print(f"mailbox: {who['error']}")
+        return 1
+    print(f"reading {'his mailbox' if who['address'] else 'an unnamed mailbox'} "
+          f"({who['total']} messages in it)")
+    try:
+        messages = confirmations.fetch(cfg, query=outcomes.QUERY, limit=200)
+    except confirmations.ConfirmError as e:
+        print(str(e))
+        return 1
+    pairs = outcomes.match(messages, rows)
+    found = outcomes.outcome_by_job(pairs)
+    by_job = {r["job_id"]: r for r in rows}
+    moves = [(j, k) for j, k in found.items()
+             if k in outcomes.STATE and outcomes.may_move(by_job[j].get("application_state"), k)]
+    print(f"{len(messages)} reply-shaped message(s), {len(pairs)} matched to "
+          f"{len(found)} application(s), {len(moves)} to record"
+          f"{'' if apply else ' (dry run, pass --apply to record)'}")
+    written = failed = 0
+    if apply:
+        for jid, kind in moves:
+            want = outcomes.STATE[kind]
+            db_patch(cfg, "hunter_seen_roles", {"job_id": jid}, {"application_state": want})
+            back = db_get(cfg, "hunter_seen_roles",
+                          {"select": "application_state", "job_id": f"eq.{jid}"})
+            if back and back[0].get("application_state") == want:
+                written += 1
+                by_job[jid]["application_state"] = want
+            else:
+                failed += 1
+        print(f"{written} recorded and read back, {failed} written but not read back")
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for line in outcomes.report(rows, found, now):
+        print(line)
+    return 1 if failed else 0
+
+
 def cmd_gtm_seed(apply: bool = False) -> int:
     """Write the AI-native GTM evidence key. Dry run by default.
 
@@ -10521,6 +10576,8 @@ def main(argv: list[str]) -> int:
         return cmd_close_submitted(apply="--apply" in argv)
     if cmd == "confirmations":
         return cmd_confirmations(apply="--apply" in argv)
+    if cmd == "outcomes":
+        return cmd_outcomes(apply="--apply" in argv)
     if cmd == "clear-pipeline":
         return cmd_clear_pipeline(apply="--apply" in argv)
     if cmd == "applied":

@@ -834,7 +834,10 @@ def role_prompt(*, company: str, title: str, location: str, base_key: str, jd_te
     if ja:
         parts.append("THE JUDGE'S READ\n" + json.dumps(ja, ensure_ascii=False)[:4000])
     if his_view:
-        parts.append("HIS VIEW OF THIS ROLE\n" + his_view[:1500])
+        # Whole, never cut. At 1,500 characters the cut kept about 950 of his
+        # reaction and dropped the rules on how to use it on every letter,
+        # while the form answers had it all (2026-11-04).
+        parts.append("HIS VIEW OF THIS ROLE\n" + his_view)
     parts.append("POSTING\n" + (jd_text or "")[:12000])
     return "\n\n".join(parts)
 
