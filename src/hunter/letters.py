@@ -39,7 +39,7 @@ from .package import style as style_mod
 # 19 October: the reader first (a brief, every part mapped to a belief, a
 # review read as that reader) and the altitude rule (no tools, his AI system
 # once), after the Replit Corporate Development letter sold a builder.
-PROMPT_VERSION = "letter-2026-10-19"
+PROMPT_VERSION = "letter-2026-11-04"
 WAITING = "waiting on the writer"
 HELD_BASE = f"held: {contact.HEADER_ASK}"
 RECORD_FIELDS = "job_id,company,title,location,jd_text,judge_answers,header_base,package_status"
@@ -57,6 +57,7 @@ class Plan:
     fingerprint: str = ""
     draft: dict | None = None
     judge_answers: object = None
+    positioning: str = ""       # his ruling on how to pitch him for this seat
     reason: str = ""            # set when the build waits
 
 
@@ -66,6 +67,35 @@ def bank_of(canon) -> list[personal.Entry]:
         return personal.parse_bank(canon.section_text("9.14"))
     except (CanonError, AttributeError):
         return []
+
+
+# His ruling per role on how to pitch him (2026-11-04, Dust and 6sense: "I'd
+# need to position myself correctly ... given who I'm going to be reporting
+# to", and his pick "Senior operator stepping in"). {job_id: words}, kept in
+# system_config because the words are his and this repository is public.
+POSITIONING_KEY = "hunter_role_positioning"
+
+
+def positioning_for(cfg: Config, job_id: str) -> str:
+    """His positioning for one role, or "" (unreadable is none, never a failed build)."""
+    import json as _json
+    try:
+        got = db_get(cfg, "system_config", {"key": f"eq.{POSITIONING_KEY}", "select": "value"})
+        raw = got[0].get("value") if got else None
+        data = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+        return " ".join(str((data or {}).get(job_id) or "").split())
+    except Exception:
+        return ""
+
+
+def wants_two(view_text: str) -> bool:
+    """A role he scored 9 or more gets notes for two people, the hiring
+    manager and the leader (his words, 2026-11-04). Read off the score line
+    his view carries (his_view.facts), so the fingerprint already covers it."""
+    import re as _re
+    from .people.bridges import LEADERS_AT
+    m = _re.search(r"His score for this role: (\d+) out of 10", view_text or "")
+    return bool(m) and int(m.group(1)) >= LEADERS_AT
 
 
 def view_hash(view_text: str) -> str:
@@ -122,7 +152,9 @@ def plan(cfg: Config, canon, job_id: str, view_text: str, *, request_fact=None) 
             request_fact(cat)
         out.reason = facts.hold_reason(m.missing[0])
         return out
-    out.fingerprint = fingerprint(job_id, key, out.personal_key, view_text)
+    out.positioning = positioning_for(cfg, job_id)
+    out.fingerprint = fingerprint(job_id, key, out.personal_key,
+                                  view_text + ("\n" + out.positioning if out.positioning else ""))
     d = latest_draft(cfg, job_id)
     same = bool(d) and ((d.get("meta") or {}).get("fingerprint") == out.fingerprint)
     if same and d["status"] in ("drafted", "used"):
@@ -148,7 +180,8 @@ def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_t
           evidence: str, banned: tuple[str, ...], examples: str = "",
           his_words: str = "", highlights: list[str] | None = None,
           his_rules: str = "", his_cuts: str = "",
-          ruled_out: tuple[str, ...] = ()) -> bool:
+          ruled_out: tuple[str, ...] = (), standing: str = "",
+          employers: tuple[str, ...] = ()) -> bool:
     """Ask the routine for this role's letter. A request for older inputs is
     expired first, so the routine never writes for a letter nobody will use."""
     d = latest_draft(cfg, p.job_id)
@@ -162,11 +195,13 @@ def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_t
     prompt = compose.role_prompt(company=company, title=title, location=location,
                                  base_key=p.base_key, jd_text=jd_text,
                                  judge_answers=judge_answers, his_view=view_text,
-                                 entries=p.entries, needs=p.needs)
+                                 entries=p.entries, needs=p.needs,
+                                 positioning=getattr(p, "positioning", ""),
+                                 two_people=wants_two(view_text))
     context = compose.shared_context(model_letter=model_letter, evidence_text=evidence_text,
                                      bank_words=p.bank, examples=examples, his_words=his_words,
                                      highlights=highlights, his_rules=his_rules,
-                                     his_cuts=his_cuts)
+                                     his_cuts=his_cuts, standing=standing)
     # His own sentences are his facts: the gate traces them like the rest.
     if his_words:
         evidence = evidence + "\n" + his_words.lower()
@@ -175,7 +210,7 @@ def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_t
             "banned": list(banned), "fingerprint": p.fingerprint, "job_id": p.job_id,
             "highlights": len(highlights or []),
             "family": proof.family_of(judge_answers, title), "ruled_out": list(ruled_out),
-            "jd": jd_text,
+            "jd": jd_text, "employers": list(employers),
             "prompt_version": PROMPT_VERSION}
     return drafts.request(cfg, compose.KIND, p.job_id, prompt, context=context,
                           schema=compose.SCHEMA, evidence=evidence, meta=meta)

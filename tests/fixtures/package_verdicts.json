@@ -1,5 +1,5 @@
 {
- "about": "His rulings on packages. rejected: packages he ruled against, with his reasons as labels. his_lines: sentences he wrote into letters himself, the altitude he writes at. record: every letter used or drafted under the house style before 2026-10-19, not ruled on one by one, measured only. Company names are Acme; no score and no reaction. rejected_forms: a form whose answers he ruled against, with his reason.",
+ "about": "His rulings on packages. rejected: packages he ruled against, with his reasons as labels. his_lines: sentences he wrote into letters himself, the altitude he writes at. record: every letter used or drafted under the house style before 2026-10-19, not ruled on one by one, measured only. Company names are Acme; no score and no reaction. rejected_forms: a form whose answers he ruled against, with his reason. undersold: the last three letters used before 2026-11-04, which he said did not make him sound impressive enough; company names are Acme. Each must be refused by A19.",
  "rejected": [
   {
    "title": "head of corporate development",
@@ -998,6 +998,92 @@
      "answer": "Acme lets anyone with an idea ship software, and that shift is moving faster than any single team can build. That makes buy and partner as important as build, and I want to own those calls. My career has sat where a new technology meets a P&L. At Nexxen (Singtel) we scaled APAC platform revenue from $4m to $38m across 12 fragmented markets through two technology M&As. The hard part came after close: aligning product, engineering, sales and operations so the acquired capability became revenue. More recently I ran a day of pressure-testing for a major media publisher's CRO on a build-versus-partner split. We chose partner now and revisit build in twelve months; the agreement signed the following month and roughly a year of engineering time was not spent on the wrong thing. For a top-10 US publisher with 14 AI vendors on the calendar, I wrote a three-decision board memo: one vendor killed, one workflow built internally, one paused with a re-evaluation date. I also co-launched Meliora Fund One, with a thesis on CTO-led founders and application-layer AI ventures, which puts me in the founder and investor conversations where targets surface early. I want to be the first corporate development hire, build the pipeline and own each deal through to integration."
     }
    ]
+  }
+ ],
+ "undersold": [
+  {
+   "title": "Operating Principal, CEO Office",
+   "letter": {
+    "hook": "Acme's Operating Principals take an undefined problem from zero to a working outcome, and I have done that on three continents. I'm a creator as well as an operator: I co-founded the Signal & Noise podcast, recorded at Cannes Lions with Hearst, and I publish to 6k subscribers of my own, so the creator economy's real problem, making high-end content fast and largely alone, is one I live every week. I'd love to help put a studio in every creator's hands.",
+    "identity": "I am an operator who has been a first hire, a division head and, over the last 18 months, an AI Chief of Staff inside 8 organizations. I moved from London to Sydney to build a region with zero brand and zero team, and I run my own firm on an AI operating system I designed. Acme's CEO office needs that range in one person.",
+    "why_now": "Acme is building at the frontier of AI video for creators and brands, and I'd relocate to San Francisco for a seat beside its CEO. I want my next decade inside the company rewriting how content gets made, not advising from outside it.",
+    "close": "In the first 30 days I would take one stalled initiative from analysis to a decision the CEO can sign, with the one-pager and the numbers behind it. I'll bring a draft for Acme to our first conversation.",
+    "cv_summary": "I take undefined problems from zero to a working outcome: I built a region from $0 to $12M ARR as first hire, scaled platform revenue from $4M to $38M through two M&As, and for the last 18 months have acted as an AI Chief of Staff inside 8 organizations. I also make content of my own as a podcaster and creator. At Acme I would be an Operating Principal in the CEO's office, owning initiatives end to end.",
+    "bullets": [
+     {
+      "label": "Captify APAC:",
+      "text": "I entered a region with zero brand and zero team as first hire and built it from $0 to $12M ARR at 22% EBITDA; the zero-to-one work Acme hands its Operating Principals."
+     },
+     {
+      "label": "Captify partners:",
+      "text": "I built a partner ecosystem to 30% of regional revenue and closed a $1.5M Microsoft partnership; new growth across markets and partners, the first ask in the posting."
+     },
+     {
+      "label": "Top-10 US digital publisher:",
+      "text": "I took 14 AI vendors and no defensible position to a three-decision board memo, and their own team shipped an AI editorial-ops pipeline in 45 days with zero new headcount."
+     },
+     {
+      "label": "Nexxen (SingTel / Amobee):",
+      "text": "I scaled APAC platform revenue from $4M to $38M across 12 fragmented markets through two technology M&As, pulling product, engineering and sales into one plan."
+     }
+    ]
+   }
+  },
+  {
+   "title": "Founding Product Manager, Agentic Commerce",
+   "letter": {
+    "hook": "Acme wants the person who can answer \"what is Acme's agent story?\" with working proof rather than a deck. Today I sit as an adviser and shareholder in a company building for agentic commerce, and for years before that my career sat where automated buying meets money: at Nine I built a $55M automated marketplace from scratch, pricing, attribution and incentives included.",
+    "identity": "I build first and write the case second. I designed and built the AI operating system my firm runs on, which wins customers and prepares every sales meeting, and its components are now licensed to three businesses. That is the hands-on proof Acme asks a founding PM to walk through, decisions included.",
+    "why_now": "Acme calls this seat unlike any other PM role, which is why I want it. I spent years building the machine-led commerce that came before agents, and I now advise inside the new one; I'd rather design what replaces the human at checkout than watch from outside.",
+    "close": "In the first 30 days I would put a working agent through a real transaction on Acme's rails with a customer recruited from the existing base, and write the first hypothesis we prove or kill. I'll show you something I built and walk through the decisions inside it.",
+    "cv_summary": "I build commercial systems where machines transact: a $55M automated marketplace built from scratch at Nine, data and automation revenue grown from $9M to $61M, and automated media campaigns at Microsoft in 2010. I now sit as an adviser and shareholder in a company building for agentic commerce. At Acme I would be the founding product lead proving how agents buy, sell and move money, and making the case for what Acme builds first.",
+    "bullets": [
+     {
+      "label": "Nine Entertainment:",
+      "text": "Built a $55M automated marketplace from scratch at 22% EBITDA and grew data and automation revenue from $9M to $61M; I know where money leaks when no human is there to click confirm."
+     },
+     {
+      "label": "Singtel:",
+      "text": "I backed the cleverest product at launch and was wrong; customers wanted what they would use unsupervised, so we reversed it. Acme asks for a conviction, what killed it, and what came next."
+     },
+     {
+      "label": "Top-10 US digital publisher:",
+      "text": "Took 14 AI vendors to a three-decision board memo: one killed, one built internally, one paused; the same discipline as sizing the bet Acme builds first."
+     },
+     {
+      "label": "Microsoft UK:",
+      "text": "Built and deployed automated media campaigns in 2010, years before programmatic had a name; I have been early to machine-led buying before, and proved it by shipping."
+     }
+    ]
+   }
+  },
+  {
+   "title": "Regional Sales Director, Commercial, Acquisition | West | Remote",
+   "letter": {
+    "hook": "Acme needs a Regional Sales Director who can lead Commercial Account Executives and win new logos across the region. I have done that job from the front. At Captify I was the first hire in APAC, held a personal MD quota, closed enterprise deals up to $600K and led the region from $0 to $12M ARR in three years as the team grew to 18.",
+    "identity": "I'm a commercial leader with technical roots, an automations specialist at Microsoft at age 20 who went on to carry full profit and loss and quotas. I have set territories, pricing and targets, built sales teams from scratch, and presented commercial strategy alongside the C-suite at upfronts. I forecast bottoms-up and top-down, and I treat the gap between them as where the risk hides.",
+    "why_now": "Acme is scaling fast on open standards, and Acme brings AI to observability. I have spent the last 18 months commercializing data and AI for enterprise and series B-D scale ups, so this is a market I already sell into, and a territory is something I would want to build.",
+    "close": "In the first weeks I would review the pipeline with each AE, set territories and quotas bottoms-up and top-down, and draft the annual sales plan. I'd rather show you that than describe it, and I'll bring a first 90-day plan for the territory to the first conversation.",
+    "cv_summary": "With 16 years commercializing data and technology inside content and media enterprises, I have led sales teams and carried quota from first hire to an 18-person team. I built Captify's APAC region from $0 to $12M ARR in three years at 22% EBITDA, grew Nine's data and automation revenue from $9M to $61M and scaled a telco martech business from $4M to $38M through two M&As. I would bring that record in new-logo growth, team building and sales planning to Acme as Regional Sales Director.",
+    "bullets": [
+     {
+      "label": "Captify, APAC, 2019 to 2024:",
+      "text": "First hire to 18 across sales, partnerships and technical account management; $0 to $12M ARR in three years at 22% EBITDA. That is the new-logo build a region needs."
+     },
+     {
+      "label": "Captify partners:",
+      "text": "Partner channel to 30% of regional revenue, a $1.5M Microsoft partnership and four partner-influenced deals over $500K each (VGW, Amazon, JB Hi-Fi). Strategic seven-figure work, closed with C-level buyers."
+     },
+     {
+      "label": "Nine Entertainment:",
+      "text": "Grew data and automation revenue from $9M to $61M in three years and launched 70+ commercial products, with the pricing and incentive architecture buyers can model against."
+     },
+     {
+      "label": "Nexxen (SingTel / Amobee):",
+      "text": "As Head of Platform Sales, scaled APAC platform revenue from $4M to $38M across 12 fragmented markets through two technology M&As."
+     }
+    ]
+   }
   }
  ]
 }

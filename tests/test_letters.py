@@ -33,7 +33,7 @@ URL = "https://job-boards.greenhouse.io/kestrel/jobs/7"
 JD = ("Kestrel builds voice agents and audio tools for call centres. You will lead platform "
       "partnerships and licensing deals and report to the COO.")
 LINE = "I have played in bands for twenty years and still record at home."
-HAY = ("quorra: grew a partner engine from $2m to $9m. velmont: licensed the stack to three "
+HAY = ("head of partnerships, quorra. quorra: grew a partner engine from $2m to $9m. velmont: licensed the stack to three "
        "businesses. halcyon: closed a $1.5m partnership. i build ai native sales engines. "
        + JD.lower())
 
@@ -111,8 +111,8 @@ class Canon914(FakeCanon):
 def answer(**over):
     a = {"hiring_lead": "Hiring Team",
          "hook": "Kestrel is turning voice agents into a partner business. " + LINE,
-         "identity": "I'm a commercial leader with technical roots, and I build AI native "
-                     "sales engines for platform partnerships.",
+         "identity": "I'm a commercial leader with technical roots, Head of Partnerships at "
+                     "Quorra, and I build AI native sales engines for platform partnerships.",
          "bullets": [{"label": "Quorra:", "text": "grew a partner engine from $2M to $9M, the "
                                                    "platform partnerships work this seat leads."},
                      {"label": "Velmont:", "text": "licensed the stack to three businesses."},

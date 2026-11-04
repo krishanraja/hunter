@@ -61,6 +61,7 @@ What this module must never do:
 from __future__ import annotations
 
 import datetime
+import re
 from collections import Counter
 from dataclasses import dataclass, field, replace
 
@@ -86,9 +87,15 @@ YES_REACTION = "yes_reaction_only"
 # postings are gone should leave Pipeline: "Move the gone ones". A row that
 # can never be applied to is not a decision still waiting on him.
 GONE = "posting_gone"
+# His ruling 2026-11-04, on a role he scored 6 and answered "No, get rid of
+# this": a 6 he has said no to leaves. Only a reaction that opens on the word
+# No; a 6 with any other words, or none, stays as before.
+SIX_SAID_NO = "six_said_no"
+SAYS_NO_AT = 6
 DECIDED_REASONS = (APPLIED, DECLINED)
 YES_REASONS = (YES_SCORED_LOW, YES_REACTION)
-SCORE_REASONS = (SCORED_LOW, REACTION, SCORED_PAST, DUPLICATE, GONE) + YES_REASONS
+SCORE_REASONS = (SCORED_LOW, REACTION, SCORED_PAST, DUPLICATE, GONE,
+                 SIX_SAID_NO) + YES_REASONS
 REASONS = DECIDED_REASONS + SCORE_REASONS
 
 # 1 to 5 leaves (his ruling). 6 stays: it is neither the no he gave 1 to 5
@@ -144,6 +151,13 @@ class RowRating:
     score_built: bool = False
 
 
+def says_no(reaction: str | None) -> bool:
+    """His reaction opens on the word No ("No, get rid of this", "no."),
+    never "Not sure" or "Nobody else would"."""
+    return bool(re.match(r"\s*no\b(?!\w)", (reaction or "").lower())) and not re.match(
+        r"\s*no\s+(doubt|brainer)\b", (reaction or "").lower())
+
+
 def should_leave(row: SheetRow, rating: RowRating | None) -> str | None:
     """Why this row leaves Pipeline, or None. The one predicate: settle,
     process and the archive command all ask it. rating None means his record
@@ -182,6 +196,8 @@ def should_leave(row: SheetRow, rating: RowRating | None) -> str | None:
         return None
     if low:
         return SCORED_LOW
+    if score == SAYS_NO_AT and says_no(row.cell(KRISH_REACTION)):
+        return SIX_SAID_NO
     if score is not None:
         # Only hunter writes "Posting dead", and only after its own check
         # found the posting gone. A column A Yes it marked dead stays, as

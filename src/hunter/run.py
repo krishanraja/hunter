@@ -2773,9 +2773,11 @@ def house_evidence(cfg: Config, sheet: Sheet, db: DocBuild, jd_text: str) -> dic
     text = "\n\n".join(x for x in parts if x)
     from .package import hisrules
     rules, ruled_out = hisrules.load(cfg)
+    from .package import stature
     return {"text": text, "haystack": build_evidence(text, jd_text, model),
             "banned": package_banned(bank.banned_phrases), "model": model,
-            "highlights": highlights, "rules": rules, "ruled_out": ruled_out}
+            "highlights": highlights, "rules": rules, "ruled_out": ruled_out,
+            "standing": stature.block(bank.entries), "employers": stature.employers(bank.entries)}
 
 
 def examples_of(cfg: Config, bank_words: list[str]) -> str:
@@ -2826,7 +2828,9 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
                           his_words=his_words_of(cfg, plan.bank),
                           highlights=ev.get("highlights"), his_rules=ev.get("rules", ""),
                           his_cuts=his_cuts_of(cfg, plan.bank),
-                          ruled_out=tuple(ev.get("ruled_out") or ()))
+                          ruled_out=tuple(ev.get("ruled_out") or ()),
+                          standing=ev.get("standing", ""),
+                          employers=tuple(ev.get("employers") or ()))
         letters_mod.hold(cfg, job, letters_mod.WAITING, base_key=plan.base_key)
         summary.append(f"SKIPPED {job}: {letters_mod.WAITING}; the letter is asked of the "
                        f"routine, never the API")
@@ -3018,7 +3022,8 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
                 evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"],
                 examples=examples_of(cfg, plan.bank), his_words=his_words_of(cfg, plan.bank),
                 highlights=ev.get("highlights"), his_rules=ev.get("rules", ""),
-                his_cuts=his_cuts_of(cfg, plan.bank), ruled_out=tuple(ev.get("ruled_out") or ()))
+                his_cuts=his_cuts_of(cfg, plan.bank), ruled_out=tuple(ev.get("ruled_out") or ()),
+                standing=ev.get("standing", ""), employers=tuple(ev.get("employers") or ()))
             print(f"{job}: letter {'asked of the writer' if made else 'already asked'}")
             continue
         letter, problems = letters_mod.checked(plan, letters_mod.context_of(cfg, plan.draft))
@@ -5676,7 +5681,8 @@ def _leave_lines(out: dict, summary: list[str], *, apply: bool) -> None:
     parts = (f"{s.get('scored_low', 0)} scored 1 to 5, {s.get('reaction_only', 0)} with "
              f"only a reaction, {s.get('blank_scored_past', 0)} blank and scored past, "
              f"{s.get('duplicate', 0)} called Duplicate, {s.get(leave_mod.GONE, 0)} scored "
-             f"whose posting is gone, {yes} Yes his score overrode")
+             f"whose posting is gone, {s.get(leave_mod.SIX_SAID_NO, 0)} scored 6 and "
+             f"answered No, {yes} Yes his score overrode")
     if not out["rule"]:
         summary.append(f"leave: {out['decided']} decided row(s) "
                        + ("moved" if apply else "would move")
@@ -6896,34 +6902,42 @@ def form_url(*urls) -> str:
     return next((u for u in present if board_key(u)), present[0] if present else "")
 
 
-def leader_note_for(cfg: Config, job_id: str, bank) -> tuple[str, dict | None, str]:
-    """(note, recipient, reply address) for the Apply email.
+def leader_note_for(cfg: Config, job_id: str, bank) -> tuple[list, str]:
+    """([(note, person)], reply address) for the Apply email.
 
-    The note is the one the writer wrote with this role's letter, and only
+    The notes are the ones the writer wrote with this role's letter, and only
     from an answer that passed its check (status used: the letter was built
-    from it). The reply address is his job search email on the Info Bank, so
-    a reply reaches the inbox hunter reads (outcomes). Any failure gives no
-    note, never a stand-in: the email still goes.
+    from it): the leader note to the first person, the exec note to the
+    leader when he scored the role 9 or more. The reply address is his job
+    search email on the Info Bank, so a reply reaches the inbox hunter reads
+    (outcomes). Any failure gives no note, never a stand-in: the email still
+    goes.
     """
     from .letters import latest_draft
     from .package import compose
     from .people import bridges
-    note = ""
+    lead = exec_ = ""
     try:
         d = latest_draft(cfg, job_id)
         if d and d.get("status") == "used" and d.get("output"):
-            note = compose.parse(d["output"]).leader_note
+            letter = compose.parse(d["output"])
+            lead, exec_ = letter.leader_note, letter.exec_note
     except Exception as e:
         print(f"  no leader note ({e.__class__.__name__})")
-    if not note:
-        return "", None, ""
+    if not lead:
+        return [], ""
     try:
-        to = bridges.note_recipient(cfg, job_id)
+        people = bridges.note_recipients(cfg, job_id)
     except Exception:
-        to = None
+        people = []
+    first = people[0] if people else None
+    out = [(lead, first)]
+    leader = next((p for p in people[1:] if p.get("tier") == bridges.EXEC_TIER), None)
+    if exec_ and leader:
+        out.append((exec_, leader))
     entry = bank.get("Email (job search)") if bank is not None else None
     reply = entry.value.strip() if entry is not None and entry.usable else ""
-    return note, to, reply
+    return out, reply
 
 
 def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
@@ -7550,9 +7564,9 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
             print(f"  no fill payload for this one ({e.__class__.__name__})")
         open_url = (f"{pay['url']}#hunter={token}.{open_key}" if pay else "")
 
-        note, note_to, reply_email = leader_note_for(cfg, row["job_id"], bank)
+        outreach, reply_email = leader_note_for(cfg, row["job_id"], bank)
         email = approval.render(
-            leader_note=note, note_to=note_to, reply_email=reply_email,
+            outreach=outreach, reply_email=reply_email,
             posted=posted_words(row.get("posted_at") or "", row.get("posted_source") or "",
                                 TODAY()),
             company=role.company, role=role.title, jd_url=role.jd_url,
@@ -10235,6 +10249,38 @@ def cmd_outcomes(apply: bool = False) -> int:
     return 1 if failed else 0
 
 
+def cmd_leaders(apply: bool = False) -> int:
+    """Name the hiring manager and the leader for every role he scored 9 or
+    more (his words, 2026-11-04: "get in touch with the hiring manager and the
+    leader as well, separately"). One web search per role, in the ledger, not
+    repeated within 30 days; nothing is sent. Dry run by default. Counts only:
+    a role here is a role he scored 9."""
+    from .people import bridges
+    from .ratings import whole_score
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    srows = [r for r in sheet.read_pipeline(canon.sheet_headers)
+             if (whole_score(r.cell(sheet_mod.KRISH_SCORE)) or 0) >= bridges.LEADERS_AT
+             and router.classify_verdict(r.verdict or "") in ("none", "go")]
+    known = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,url,job_url,location,presented_at",
+        "limit": ALL_ROWS})
+    by_row = router.pair_records(srows, known)
+    roles = [by_row[id(r)] for r in srows if by_row.get(id(r))]
+    print(f"leaders: {len(srows)} row(s) scored {bridges.LEADERS_AT} or more, "
+          f"{len(roles)} paired to a record")
+    if not apply:
+        print("dry run, pass --apply to search")
+        return 0
+    stats = bridges.leader_targets(cfg, roles)
+    from . import spend
+    spend.flush(cfg)
+    print(f"leaders: {stats['searched']} searched, {stats['found']} person(s) named, "
+          f"{stats.get('searched_recently', 0)} searched within 30 days, "
+          f"{len(stats['skipped'])} skipped")
+    return 0
+
+
 def cmd_gtm_seed(apply: bool = False) -> int:
     """Write the AI-native GTM evidence key. Dry run by default.
 
@@ -10613,6 +10659,8 @@ def main(argv: list[str]) -> int:
         return cmd_confirmations(apply="--apply" in argv)
     if cmd == "outcomes":
         return cmd_outcomes(apply="--apply" in argv)
+    if cmd == "leaders":
+        return cmd_leaders(apply="--apply" in argv)
     if cmd == "clear-pipeline":
         return cmd_clear_pipeline(apply="--apply" in argv)
     if cmd == "applied":

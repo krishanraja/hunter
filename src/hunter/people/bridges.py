@@ -31,7 +31,7 @@ from .strength import EVIDENCE_KEYS  # noqa: F401  (re-export for the guard test
 # a person named in the a16z newsletter as having just joined the company is
 # timelier than an ex-employee and colder than anyone Krish actually knows.
 TIER_BASE = {"current_employee": 40, "newsletter_move": 30, "ex_employee": 25,
-             "headhunter": 20, "mindmake_wedge": 18, "cold_target": 15,
+             "headhunter": 20, "mindmake_wedge": 18, "cold_target": 15, "exec_target": 14,
              "peer_transition": 10}
 
 # Control Center's graph (contacts + contact_intelligence) scores relationship by
@@ -749,7 +749,8 @@ def _person_lookup(cfg: Config, keys: list[str]) -> dict[str, dict]:
     for i in range(0, len(plain), 100):
         chunk = plain[i:i + 100]
         rows = db_get(cfg, "network_contacts", {
-            "select": "contact_key,full_name,current_title,current_company,linkedin_url",
+            "select": "contact_key,full_name,current_title,current_company,linkedin_url,"
+                      "email,strength_evidence",
             "contact_key": "in.(" + ",".join(f'"{k}"' for k in chunk) + ")",
             "limit": "500"})
         for r in rows:
@@ -759,10 +760,13 @@ def _person_lookup(cfg: Config, keys: list[str]) -> dict[str, dict]:
             # li_slug guard accepted it. warm_path_cells already renders a plain
             # name when there is no URL, so a missing link costs nothing and an
             # invented one costs trust.
+            ev = r.get("strength_evidence") if isinstance(r.get("strength_evidence"), dict) else {}
             out[r["contact_key"]] = {
                 "name": r.get("full_name") or "", "title": r.get("current_title") or "",
                 "company": r.get("current_company") or "",
-                "linkedin_url": r.get("linkedin_url") or ""}
+                "linkedin_url": r.get("linkedin_url") or "",
+                "email": (r.get("email") or "").strip(),
+                "email_checked": bool(ev.get("email_verified"))}
     missing = [k for k in keys if k not in out]
     ids = [k.split(":", 1)[1] for k in missing if k.startswith("contact:")]
     slugs = [k for k in missing if not k.startswith("contact:")]
@@ -800,6 +804,10 @@ def _person_lookup(cfg: Config, keys: list[str]) -> dict[str, dict]:
 # Then someone he knows inside, who can pass it on. Never a headhunter or an
 # unidentified peer: the note is about this seat, at this company.
 NOTE_TIERS = ("cold_target", "current_employee", "ex_employee", "newsletter_move")
+# The second person a role he scored 9 or more gets a note to (his words,
+# 2026-11-04: "get in touch with the hiring manager and the leader as well,
+# separately"): the most senior leader over the seat, on the business.
+EXEC_TIER = "exec_target"
 
 
 def pick_note_recipient(cands: list[dict]) -> dict | None:
@@ -811,6 +819,30 @@ def pick_note_recipient(cands: list[dict]) -> dict | None:
     usable.sort(key=lambda c: (NOTE_TIERS.index(c["path_tier"]),
                                -float(c.get("bridge_score") or 0)))
     return usable[0] if usable else None
+
+
+def note_recipients(cfg: Config, job_id: str) -> list[dict]:
+    """[hiring manager or best bridge, then the leader when one is named]:
+    each {name, title, company, linkedin_url, tier}. Never two of one person."""
+    cands = db_get(cfg, "bridge_candidates", {
+        "select": "contact_key,path_tier,bridge_score,state",
+        "job_id": f"eq.{job_id}", "limit": "50"})
+    picked = []
+    first = pick_note_recipient(cands)
+    if first:
+        picked.append(first)
+    execs = [c for c in cands if c.get("path_tier") == EXEC_TIER
+             and c.get("state") in ("proposed", "reached_out")
+             and (not first or c["contact_key"] != first["contact_key"])]
+    if execs:
+        picked.append(execs[0])
+    people = _person_lookup(cfg, [c["contact_key"] for c in picked])
+    out = []
+    for c in picked:
+        p = people.get(c["contact_key"]) or {}
+        if p.get("name"):
+            out.append({**p, "tier": c["path_tier"]})
+    return out
 
 
 def note_recipient(cfg: Config, job_id: str) -> dict | None:
@@ -912,6 +944,22 @@ Never invent a LinkedIn URL: leave it null unless a page showed it."""
 
 
 RESEARCH_DAYS = 30
+
+LEADERS_PROMPT = """Krish Raja is applying for the role "{title}" at {company}{loc}.
+Find two people at {company}, each with a page that shows them in that role:
+1. hiring_manager: the person this role reports to, or the leader of the
+   function named in the title.
+2. leader: the most senior leader over this seat: the CEO or a co-founder for a
+   company under about 500 people, otherwise the executive over the function
+   (CRO, COO, President, Chief of Staff to the CEO). Never the same person as 1.
+Use web search.
+
+Answer with ONE JSON object and nothing else:
+{{"hiring_manager": {{"name": "...", "title": "...", "linkedin_url": "...", "source_url": "...", "why": "..."}},
+  "leader": {{"name": "...", "title": "...", "linkedin_url": "...", "source_url": "...", "why": "..."}}}}
+Use null for a person you cannot find with a source. Never invent a LinkedIn URL:
+leave it null unless a page showed it."""
+LEADERS_AT = 9
 
 
 def searched_recently(cfg: Config, job_ids: list[str], days: int = RESEARCH_DAYS) -> set[str]:
@@ -1027,4 +1075,91 @@ def cold_targets(cfg: Config, roles: list[dict], cap: int | None = None) -> dict
             TIER_BASE["cold_target"],
             DRAFTS["cold_target"].format(company=r["company"], role=r["title"]), now)])
         stats["found"] += 1
+    return stats
+
+
+def parse_leaders(text: str) -> dict[str, dict]:
+    """{"hiring_manager": person, "leader": person} from the model's answer,
+    each person only when named with a source. Pure."""
+    m = re.search(r"\{.*\}", text or "", re.S)
+    try:
+        data = json.loads(m.group(0)) if m else {}
+    except ValueError:
+        return {}
+    out = {}
+    for k in ("hiring_manager", "leader"):
+        p = data.get(k) if isinstance(data, dict) else None
+        if isinstance(p, dict) and (p.get("name") or "").strip() and (p.get("source_url") or "").strip():
+            out[k] = p
+    hm, ld = out.get("hiring_manager"), out.get("leader")
+    if hm and ld and hm["name"].strip().lower() == ld["name"].strip().lower():
+        out.pop("leader")
+    return out
+
+
+def leader_targets(cfg: Config, roles: list[dict], cap: int = 6) -> dict:
+    """The hiring manager and the leader for each role he scored LEADERS_AT or
+    more. One Claude call with web search per role, in the ledger as
+    leader_targets and not repeated within RESEARCH_DAYS. Both people land as
+    contacts and bridges (cold_target, exec_target). Nothing is sent."""
+    stats = {"eligible": len(roles), "searched": 0, "found": 0, "skipped": []}
+    if not roles or cap <= 0:
+        return stats
+    since = (datetime.datetime.now(datetime.timezone.utc)
+             - datetime.timedelta(days=RESEARCH_DAYS)).isoformat()
+    done = {r.get("job_id") for r in db_get(cfg, "hunter_judge_calls", {
+        "select": "job_id", "purpose": "eq.leader_targets", "at": f"gte.{since}",
+        "limit": ALL_ROWS})}
+    todo = [r for r in roles if r["job_id"] not in done]
+    stats["searched_recently"] = len(roles) - len(todo)
+    if not todo:
+        return stats
+    import anthropic
+
+    from .. import llm, spend
+    stop = spend.over_budget(cfg)
+    if stop:
+        stats["skipped"].append(stop)
+        return stats
+    client = anthropic.Anthropic(api_key=cfg.require("hunter_anthropic_api_key"))
+    model, effort = llm.model_for(cfg, "leader_targets")
+    extra = {"output_config": {"effort": effort}} if effort else {}
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    for r in todo[:cap]:
+        stats["searched"] += 1
+        loc = f" ({r['location']})" if r.get("location") else ""
+        try:
+            resp = client.messages.create(
+                model=model, max_tokens=5000,
+                tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 6}],
+                messages=[{"role": "user", "content": LEADERS_PROMPT.format(
+                    title=r["title"], company=r["company"], loc=loc)}], **extra)
+            spend.record(cfg, "leader_targets", model, spend.usage_of(resp),
+                         served_model=getattr(resp, "model", "") or "", job_id=r["job_id"])
+            text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        except Exception as e:
+            stats["skipped"].append(f"{r['job_id']}: {e.__class__.__name__}")
+            continue
+        people = parse_leaders(text)
+        for kind, tier in (("hiring_manager", "cold_target"), ("leader", EXEC_TIER)):
+            p = people.get(kind)
+            if not p:
+                continue
+            name = p["name"].strip()
+            url = (p.get("linkedin_url") or "").strip()
+            slug = li_slug(url) if url else None
+            key = slug or f"cold:{slugify(name)}"
+            evidence = (f"{kind.replace('_', ' ').upper()}, found by web search: {name}, "
+                        f"{p.get('title') or 'title unknown'} at {r['company']}. "
+                        f"{p.get('why') or ''} Source: {p.get('source_url')}")
+            upsert_contacts(cfg, [{
+                "contact_key": key, "linkedin_url": url or None, "full_name": name,
+                "current_company": r["company"], "current_title": p.get("title") or None,
+                "strength_score": 0, "strength_evidence": {"cold_target": True},
+                "source": "hunter leader target", "updated_at": now}])
+            upsert_bridges(cfg, [_candidate(
+                r, key, tier, plain_text(evidence)[:900], "outside network, named",
+                TIER_BASE[tier], DRAFTS["cold_target"].format(company=r["company"],
+                                                              role=r["title"]), now)])
+            stats["found"] += 1
     return stats
