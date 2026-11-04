@@ -510,6 +510,8 @@ docs/HANDOVER_LETTERS.md is the full record.
   replies (`apply/outcomes.py`), records a rejection or a next step, and
   reports by speed, contact and style, counts only. His whole column M now
   reaches the letter writer: the 1,500 character cut is gone.
+  Within one score, a posting dated up 14 days or fewer builds first
+  (`router.FRESH_BUILD_DAYS`), and the Apply email says how old the posting is.
 - **A question only he can answer is asked in chat, never by email** (his
   ruling 2026-10-20: "just give me the questions here, stop asking me those
   by email, what a waste of life to email that to me"). A form that stops on

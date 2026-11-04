@@ -8,6 +8,8 @@ more in K builds too, on a row column A leaves undecided (build_trigger).
 """
 from __future__ import annotations
 
+import datetime as _dt
+
 import hashlib
 import json
 import re
@@ -156,14 +158,39 @@ def build_trigger(row) -> str | None:
     return score_trigger(score)
 
 
-def build_order(d: dict) -> tuple:
-    """His Yes first, then his score from highest, then the oldest on his
-    sheet, because the oldest postings close first. Not hunter's rule score:
+# A posting the board says went up this many days ago or fewer builds first
+# among roles he scored the same. 2026-11-04: the median gap from a role
+# reaching him to his applying was 14 days, and a senior posting a fortnight
+# old often has a shortlist already. Only a date the board gives as the
+# posting date counts; a last-changed date or none is not known to be fresh.
+FRESH_BUILD_DAYS = 14
+
+
+def posted_age(d: dict, today: _dt.date | None = None) -> int | None:
+    """Days since the posting went up, or None when the board did not say."""
+    if (d.get("posted_source") or "") != "posted":
+        return None
+    try:
+        day = _dt.date.fromisoformat(str(d.get("posted_at") or "")[:10])
+    except ValueError:
+        return None
+    age = ((today or _dt.date.today()) - day).days
+    return age if age >= 0 else None
+
+
+def build_order(d: dict, today: _dt.date | None = None) -> tuple:
+    """His Yes first, then his score from highest. Within one score, a
+    posting known to be fresh (FRESH_BUILD_DAYS), newest first, because an
+    application that arrives early is read; then the oldest on his sheet,
+    because the oldest postings close first. Not hunter's rule score:
     measured against his own scores it ranks at Spearman -0.19, so under a
     cap it would build the roles he likes least first."""
     k = d.get("krish_score")
     shown = d.get("presented_at") or ""
-    return (not is_his_ask(d.get("build_trigger")), k is None, -(k or 0), not shown, shown)
+    age = posted_age(d, today)
+    fresh = age is not None and age <= FRESH_BUILD_DAYS
+    return (not is_his_ask(d.get("build_trigger")), k is None, -(k or 0),
+            not fresh, age if fresh else 0, not shown, shown)
 
 
 def select_for_build(cfg: Config, sheet=None, headers=None, *,
@@ -253,7 +280,8 @@ def select_for_build(cfg: Config, sheet=None, headers=None, *,
     known = db_get(cfg, "hunter_seen_roles", {
         "select": "job_id,company,title,url,job_url,score,comp,location,"
                   "warm_path_person,warm_path_tier,package_status,krish_verdict,"
-                  "rejection_reason,status,presented_at,package_trigger",
+                  "rejection_reason,status,presented_at,package_trigger,"
+                  "posted_at,posted_source",
         "limit": ALL_ROWS})
     by_row = pair_records([c[0] for c in candidates], known)
     picked = []
