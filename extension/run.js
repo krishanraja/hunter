@@ -182,12 +182,125 @@
   }
   await flushPending();
 
-  const cap = capability();
-  const resumed = cap ? null : await resumable();
-  if (!cap && !resumed) return;
+  // ---- A form that comes a step at a time (Workday, iCIMS) ----------------
+  //
+  // He signs in to the employer first, which reloads the page and drops the
+  // #hunter= fragment, and iCIMS shows its form inside a frame whose address
+  // never had one. So the capability is kept as a fill SESSION for this site,
+  // in the same storage the watch uses, for a few hours: a later page, or the
+  // frame, picks it up and keeps filling. Each new step is filled once, only
+  // its empty fields, and the banner says what it filled and what it left.
+  const SESSIONS = 'hunter_sessions';
+  const SESSION_TTL = 6 * 60 * 60 * 1000;
 
+  async function allSessions() {
+    try {
+      const got = await chrome.storage.local.get([SESSIONS]);
+      const all = got && got[SESSIONS];
+      return (all && typeof all === 'object') ? all : {};
+    } catch (e) { return {}; }
+  }
+  async function saveSession(sess) {
+    const all = await allSessions();
+    const now = Date.now();
+    const kept = {};
+    for (const k of Object.keys(all)) if (all[k] && all[k].until > now) kept[k] = all[k];
+    kept[sess.origin] = sess;
+    try { await chrome.storage.local.set({ [SESSIONS]: kept }); } catch (e) { /* best effort */ }
+  }
+  async function endSession(origin) {
+    const all = await allSessions();
+    delete all[origin];
+    try { await chrome.storage.local.set({ [SESSIONS]: all }); } catch (e) { /* best effort */ }
+  }
+  async function sessionHere() {
+    // The frame may load before the page that holds the link has saved it.
+    for (let i = 0; i < 10; i++) {
+      const s = (await allSessions())[location.origin];
+      if (s && s.until > Date.now()) return s;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    return null;
+  }
+
+  async function fetchPayload(api, c) {
+    const res = await fetch(
+      api + '?token=' + encodeURIComponent(c.token) + '&key=' + encodeURIComponent(c.key),
+      { method: 'GET', credentials: 'omit' });
+    if (res.status === 410) {
+      const said = await res.json().catch(() => ({}));
+      const e = new Error(said.message || 'This application was replaced by a newer one. '
+        + 'Open the most recent email for this role.');
+      e.final = true;
+      throw e;
+    }
+    if (!res.ok) throw new Error('the server said ' + res.status);
+    return res.json();
+  }
+
+  async function fillSteps(payload, sess) {
+    const watch = {
+      token: sess.token, key: sess.key, api: sess.api, origin: location.origin,
+      path: '/', baseline: marksIn(), until: Date.now() + WATCH_TTL,
+    };
+    await saveWatch(watch);
+    const mark = markButton(watch);
+    const stale = older(MINE, payload.needs_extension);
+    if (stale) {
+      banner(STALE.replace('%NEED%', payload.needs_extension), 'bad');
+    } else {
+      banner('Hunter is ready for this ' + (payload.system === 'icims' ? 'iCIMS' : 'Workday') +
+             ' application. Sign in if it asks, and it fills each step as it appears.',
+             'work', mark);
+    }
+    let last = '';
+    let steps = 0;
+    const stop = Date.now() + POLL_PER_PAGE;
+    while (Date.now() < stop) {
+      const why = fresh(watch);
+      if (why) { await endSession(location.origin); return report(watch, why); }
+      const sig = window.__hunterStepSignature();
+      if (sig && sig !== last) {
+        await new Promise((r) => setTimeout(r, 800));   // let the step settle
+        const out = await window.__hunterFill(payload, { onlyEmpty: true });
+        last = window.__hunterStepSignature();
+        const done = out.filled.length + out.files.length;
+        if (done || out.required_missed.length) {
+          steps += 1;
+          if (stale) {
+            banner(STALE.replace('%NEED%', payload.needs_extension), 'bad');
+          } else if (out.required_missed.length) {
+            banner('Step ' + steps + ': filled ' + done + '. DO THESE YOURSELF, then press ' +
+                   'Next: ' + out.required_missed.join('; '), 'bad', mark);
+          } else {
+            banner('Step ' + steps + ': filled ' + done + ' and nothing required is left ' +
+                   'empty. Read it, then press Next.', 'good', mark);
+          }
+        }
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+
+  const cap = capability();
   const store = await chrome.storage.sync.get(['api']);
   const api = (store && store.api) || DEFAULT_API;
+
+  if (!cap) {
+    const sess = await sessionHere();
+    if (sess) {
+      let p;
+      try { p = await fetchPayload(sess.api, sess); } catch (e) {
+        if (e.final) await endSession(location.origin);
+        banner('Hunter could not fetch this application: ' + e.message, 'bad');
+        return;
+      }
+      return fillSteps(p, sess);
+    }
+  }
+
+  const resumed = cap ? null : await resumable();
+  if (!cap && !resumed) return;
 
   if (resumed) {
     // A later page on the same job. Nothing to fill and no payload fetched:
@@ -216,6 +329,13 @@
     banner('Hunter could not fetch this application: ' + e.message +
            '. Fill the form yourself, or ask Claude.', 'bad');
     return;
+  }
+
+  if (payload.multi_step) {
+    const sess = { token: cap.token, key: cap.key, api: api, origin: location.origin,
+                   until: Date.now() + SESSION_TTL };
+    await saveSession(sess);
+    return fillSteps(payload, sess);
   }
 
   // Wait for the form itself. Ashby fetches it after the page loads and shows

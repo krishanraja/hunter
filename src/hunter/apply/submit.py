@@ -724,7 +724,90 @@ class LeverDriver(Driver):
         self.page.get_by_role("button", name="Submit application").click(timeout=15000)
 
 
-DRIVERS = {d.ats: d for d in (AshbyDriver, GreenhouseDriver, LeverDriver)}
+class WorkdayDriver(Driver):
+    """Workday, filled in his own browser after he signs in to the employer.
+
+    Workday's controls carry two stable handles across tenants: the newer
+    id ("name--legalName--firstName") and the older data-automation-id
+    ("legalNameSection_firstName"). Both are listed, newest first. The
+    questions a tenant adds later are answered by their own wording from the
+    payload's answers, not from here. Hunter never drives Workday itself
+    (no sign-in is ever automated): this driver supplies selectors for the
+    extension, and press_submit refuses.
+    """
+
+    ats = "workday"
+    hosts = ("myworkdayjobs.com",)
+    multi_step = True
+
+    BY_KEY = {
+        "legalName--firstName": ('input[id="name--legalName--firstName"]',
+                                 'input[data-automation-id="legalNameSection_firstName"]'),
+        "legalName--lastName": ('input[id="name--legalName--lastName"]',
+                                'input[data-automation-id="legalNameSection_lastName"]'),
+        "emailAddress--emailAddress": ('input[id="emailAddress--emailAddress"]',
+                                       'input[data-automation-id="email"]'),
+        "phoneNumber--phoneNumber": ('input[id="phoneNumber--phoneNumber"]',
+                                     'input[data-automation-id="phone-number"]'),
+        "address--addressLine1": ('input[id="address--addressLine1"]',
+                                  'input[data-automation-id="addressSection_addressLine1"]'),
+        "address--city": ('input[id="address--city"]',
+                          'input[data-automation-id="addressSection_city"]'),
+        "address--postalCode": ('input[id="address--postalCode"]',
+                                'input[data-automation-id="addressSection_postalCode"]'),
+        "linkedin": ('input[data-automation-id="linkedinQuestion"]',
+                     'input[id*="linkedin" i]', 'input[name*="linkedin" i]'),
+    }
+
+    def apply_url(self) -> str:
+        return f"https://{self.plan.slug}/en-US/{self.plan.posting_id}/apply"
+
+    def text_selectors(self, field) -> list[str]:
+        return list(self.BY_KEY.get(field.key, ())) + [f'input[id="{field.key}"]']
+
+    def choice_selectors(self, field) -> list[str]:
+        return [f'[id="{field.key}"]', f'button[id="{field.key}"]']
+
+    def file_selectors(self, field) -> list[str]:
+        return ['input[data-automation-id="file-upload-input-ref"]',
+                'input[type="file"]']
+
+    def press_submit(self) -> None:
+        raise SubmitBlocked("Workday is filled in his own browser and submitted by him")
+
+
+class IcimsDriver(Driver):
+    """iCIMS, filled in his own browser inside the employer's frame.
+
+    iCIMS names a profile input after its field ("...FirstName"), with a
+    prefix that differs by tenant, so the selectors match the end of the name
+    or id. Everything else is answered by its wording from the payload."""
+
+    ats = "icims"
+    hosts = ("icims.com",)
+    multi_step = True
+
+    def apply_url(self) -> str:
+        from ..ats import icims
+        return icims.apply_url(self.plan.slug, self.plan.posting_id)
+
+    def text_selectors(self, field) -> list[str]:
+        k = field.key
+        return [f'input[name$="{k}"]', f'input[id$="{k}"]', f'textarea[name$="{k}"]']
+
+    def choice_selectors(self, field) -> list[str]:
+        k = field.key
+        return [f'select[name$="{k}"]', f'select[id$="{k}"]']
+
+    def file_selectors(self, field) -> list[str]:
+        return ['input[type="file"][name*="resume" i]', 'input[type="file"]']
+
+    def press_submit(self) -> None:
+        raise SubmitBlocked("iCIMS is filled in his own browser and submitted by him")
+
+
+DRIVERS = {d.ats: d for d in (AshbyDriver, GreenhouseDriver, LeverDriver,
+                              WorkdayDriver, IcimsDriver)}
 
 
 def driver_for(plan: FillPlan):

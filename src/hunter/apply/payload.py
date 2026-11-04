@@ -35,7 +35,7 @@ FILLABLE = ("text", "choice", "typeahead", "file")
 #
 # Raise this whenever the extension gains an ability a payload depends on, and
 # raise extension/manifest.json to match.
-MIN_EXTENSION = "1.6.0"
+MIN_EXTENSION = "1.7.0"
 
 # Playwright's own pseudo-classes. Real to Playwright, a syntax error to
 # document.querySelectorAll, so they are dead weight in a payload a browser has
@@ -102,6 +102,31 @@ def demographics(bank) -> list[dict]:
     return out
 
 
+# A Standing row is the writer's material about him, never a form answer.
+NOT_ANSWERS = ("standing:",)
+
+
+def answers(bank) -> list[dict]:
+    """His Info Bank as (its wording, his answer), for a form whose questions
+    appear only after he signs in (Workday, iCIMS).
+
+    The extension answers a question only when its label reads exactly as one
+    of these, once case, spacing, punctuation and a required star are put
+    aside: his rows carry the form's own wording, so an exact match is his
+    answer to that question and anything looser is a guess. Sensitive rows
+    are left out: those are shown to him in the Apply email every time, and
+    an answer filled out of his sight would not be."""
+    out: list[dict] = []
+    for e in getattr(bank, "entries", {}).values() if bank is not None else ():
+        name = (e.field_name or "").strip()
+        if not name or not e.usable or e.always_flagged:
+            continue
+        if name.lower().startswith(NOT_ANSWERS):
+            continue
+        out.append({"label": name, "answer": e.value.strip()})
+    return out
+
+
 def new_key() -> str:
     """The half of the capability that is not the token.
 
@@ -149,7 +174,8 @@ def build(plan: FillPlan, *, attachments: dict[str, bytes] | None = None,
                              else driver.text_selectors(f))
         fields.append({"label": f.label, "kind": kind, "value": f.value,
                        "selectors": selectors, "required": bool(f.required)})
-    return {
+    multi = bool(getattr(driver_cls, "multi_step", False))
+    doc = {
         "version": 1,
         "needs_extension": MIN_EXTENSION,
         "url": driver.apply_url(),
@@ -159,6 +185,14 @@ def build(plan: FillPlan, *, attachments: dict[str, bytes] | None = None,
         "files": files,
         "demographics": demographics(bank),
     }
+    if multi:
+        # The form arrives a step at a time after he signs in, so the
+        # extension keeps filling as each step appears, and answers the
+        # questions no one could see in advance from his own wording.
+        doc["multi_step"] = True
+        doc["system"] = plan.ats
+        doc["answers"] = answers(bank)
+    return doc
 
 
 def size_of(payload: dict) -> int:
