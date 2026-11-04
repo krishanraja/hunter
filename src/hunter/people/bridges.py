@@ -960,6 +960,11 @@ Answer with ONE JSON object and nothing else:
 Use null for a person you cannot find with a source. Never invent a LinkedIn URL:
 leave it null unless a page showed it."""
 LEADERS_AT = 9
+# Where his 9s sit in Control Center's Bridges list, which shows the top 25
+# proposed by score: at the cold tier's 14 and 15 they were below 121 others
+# and he never saw them (2026-11-04: "the linkedin actions need to go in my
+# control center in the right place"). His ask outranks any derived path.
+LEADER_SCORE = {"cold_target": 95.0, "exec_target": 94.0}
 
 
 def searched_recently(cfg: Config, job_ids: list[str], days: int = RESEARCH_DAYS) -> set[str]:
@@ -1159,7 +1164,7 @@ def leader_targets(cfg: Config, roles: list[dict], cap: int = 6) -> dict:
                 "source": "hunter leader target", "updated_at": now}])
             upsert_bridges(cfg, [_candidate(
                 r, key, tier, plain_text(evidence)[:900], "outside network, named",
-                TIER_BASE[tier], DRAFTS["cold_target"].format(company=r["company"],
+                LEADER_SCORE[tier], DRAFTS["cold_target"].format(company=r["company"],
                                                               role=r["title"]), now)])
             stats["found"] += 1
     return stats

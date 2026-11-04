@@ -73,3 +73,7 @@ def test_parse_leaders_keeps_only_sourced_people_and_never_one_person_twice():
     assert list(bridges.parse_leaders(text)) == ["hiring_manager"]
     assert bridges.parse_leaders('{"hiring_manager": {"name": "Sam"}, "leader": null}') == {}
     assert bridges.parse_leaders("no json here") == {}
+
+
+def test_his_nines_outrank_every_derived_path_in_control_center():
+    assert min(bridges.LEADER_SCORE.values()) > max(bridges.TIER_BASE.values())
