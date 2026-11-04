@@ -5676,7 +5676,8 @@ def _leave_lines(out: dict, summary: list[str], *, apply: bool) -> None:
     parts = (f"{s.get('scored_low', 0)} scored 1 to 5, {s.get('reaction_only', 0)} with "
              f"only a reaction, {s.get('blank_scored_past', 0)} blank and scored past, "
              f"{s.get('duplicate', 0)} called Duplicate, {s.get(leave_mod.GONE, 0)} scored "
-             f"whose posting is gone, {yes} Yes his score overrode")
+             f"whose posting is gone, {s.get(leave_mod.SIX_SAID_NO, 0)} scored 6 and "
+             f"answered No, {yes} Yes his score overrode")
     if not out["rule"]:
         summary.append(f"leave: {out['decided']} decided row(s) "
                        + ("moved" if apply else "would move")

@@ -250,6 +250,13 @@ S, U, RO, UN, YU, D = (ratings.SCORED, ratings.UNREADABLE, ratings.REACTION_ONLY
     (r_("", k="2"), rating(S), leave.SCORED_LOW),
     # 6 or more stays
     (r_(k="6"), rating(S), None),
+    # his ruling 2026-11-04: a 6 he has said no to leaves; other words stay
+    (r_(k="6", m="No, get rid of this."), rating(S), leave.SIX_SAID_NO),
+    (r_(k="6", m="no"), rating(S), leave.SIX_SAID_NO),
+    (r_(k="6", m="Not sure yet"), rating(S), None),
+    (r_(k="6", m="No doubt a good one"), rating(S), None),
+    (r_(k="7", m="No, but build it anyway"), rating(S), None),
+    (r_(k="6", m="No, get rid of this."), rating(S, score_built=True), None),
     (r_(k="9"), rating(S), None),
     # a score never guessed: "7.5" and "4.5" stay
     (r_(k="7.5"), rating(U), None),
