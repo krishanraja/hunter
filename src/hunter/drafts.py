@@ -95,7 +95,7 @@ def problems_for(kind: str, output, *, prompt: str, context: str = "",
         if not out:
             reaction = reaction_in(prompt)
             if reaction and his_view.quotes_note(
-                    " ".join(compose.parse(output).spans()),
+                    compose.parse(output).all_text(),
                     his_view.HisView(reaction=reaction), evidence):
                 out = ["the letter quotes his note; say it in your own words"]
         return out

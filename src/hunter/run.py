@@ -2832,7 +2832,7 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
                        f"routine, never the API")
         return False
     letter, problems = letters_mod.checked(plan, letters_mod.context_of(cfg, plan.draft))
-    if letter is not None and his_view_mod.quotes_note(" ".join(letter.spans()), view,
+    if letter is not None and his_view_mod.quotes_note(letter.all_text(), view,
                                                        plan.draft.get("evidence") or ""):
         problems = ["the letter quotes his note"]
     if problems:
@@ -6896,6 +6896,36 @@ def form_url(*urls) -> str:
     return next((u for u in present if board_key(u)), present[0] if present else "")
 
 
+def leader_note_for(cfg: Config, job_id: str, bank) -> tuple[str, dict | None, str]:
+    """(note, recipient, reply address) for the Apply email.
+
+    The note is the one the writer wrote with this role's letter, and only
+    from an answer that passed its check (status used: the letter was built
+    from it). The reply address is his job search email on the Info Bank, so
+    a reply reaches the inbox hunter reads (outcomes). Any failure gives no
+    note, never a stand-in: the email still goes.
+    """
+    from .letters import latest_draft
+    from .package import compose
+    from .people import bridges
+    note = ""
+    try:
+        d = latest_draft(cfg, job_id)
+        if d and d.get("status") == "used" and d.get("output"):
+            note = compose.parse(d["output"]).leader_note
+    except Exception as e:
+        print(f"  no leader note ({e.__class__.__name__})")
+    if not note:
+        return "", None, ""
+    try:
+        to = bridges.note_recipient(cfg, job_id)
+    except Exception:
+        to = None
+    entry = bank.get("Email (job search)") if bank is not None else None
+    reply = entry.value.strip() if entry is not None and entry.usable else ""
+    return note, to, reply
+
+
 def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
                     bank=None, summary: str = "", hook: str = "",
                     draft_essays: bool = True, essays: dict[str, str] | None = None,
@@ -7520,7 +7550,9 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
             print(f"  no fill payload for this one ({e.__class__.__name__})")
         open_url = (f"{pay['url']}#hunter={token}.{open_key}" if pay else "")
 
+        note, note_to, reply_email = leader_note_for(cfg, row["job_id"], bank)
         email = approval.render(
+            leader_note=note, note_to=note_to, reply_email=reply_email,
             company=role.company, role=role.title, jd_url=role.jd_url,
             autonomy=au.autonomy_score, token=token, to=to,
             form_shot=shot_name, form_filled=filled, form_missed=missed,

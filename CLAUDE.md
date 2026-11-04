@@ -498,6 +498,18 @@ docs/HANDOVER_LETTERS.md is the full record.
   cancels it, so Prepare sends his version. batchstats records letters built,
   edited and the median edit size: a falling edit size is the measure that the
   letters are getting closer to his.
+- **Every application carries a note for a person, and replies reach the
+  inbox hunter reads** (2026-11-04: 0 of 69 applications had a note to anyone
+  at the company, and the forms gave employers hello@krishraja.com while
+  hunter reads krish@mindmake.co; no employer receipt for any of the 69 was
+  found in either). The letter writer also writes `leader_note`, held to the
+  evidence gate, A18 and `compose.note_problems`; the Apply email shows it
+  addressed to `bridges.note_recipient` (the hiring leader first, then
+  someone he knows inside) and signed with his Info Bank job search email,
+  now krish@mindmake.co. Hunter never sends it. `run outcomes`, hourly, reads
+  replies (`apply/outcomes.py`), records a rejection or a next step, and
+  reports by speed, contact and style, counts only. His whole column M now
+  reaches the letter writer: the 1,500 character cut is gone.
 - **A question only he can answer is asked in chat, never by email** (his
   ruling 2026-10-20: "just give me the questions here, stop asking me those
   by email, what a waste of life to email that to me"). A form that stops on

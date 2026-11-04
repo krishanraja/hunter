@@ -102,6 +102,31 @@ class ApprovalEmail:
     attachments: list[tuple[str, bytes]] = field(default_factory=list)
 
 
+def note_heading(note_to: dict | None) -> str:
+    """Who the note goes to, in one line."""
+    p = note_to or {}
+    if not p.get("name"):
+        return ("To the person who leads this hire. Hunter found no name for them; "
+                "the posting or the company's team page usually gives one.")
+    who = p["name"] + (f", {p['title']}" if p.get("title") else "")
+    why = {"cold_target": "hunter's read of who leads this hire",
+           "current_employee": "someone you know who works there, to pass it on",
+           "ex_employee": "someone you know who worked there",
+           "newsletter_move": "someone you know who moved there"}.get(p.get("tier") or "", "")
+    return f"To {who}" + (f" ({why})" if why else "") + "."
+
+
+def note_message(leader_note: str, note_to: dict | None, reply_email: str) -> str:
+    """The note as he sends it: a greeting, the writer's note, his sign-off
+    with the address replies should reach. Empty when there is no note."""
+    body = " ".join((leader_note or "").split())
+    if not body:
+        return ""
+    first = ((note_to or {}).get("name") or "").split(" ")[0]
+    sign = "Best,\nKrish Raja" + (f"\n{reply_email}" if reply_email else "")
+    return f"Hi {first or 'there'},\n\n{body}\n\n{sign}"
+
+
 def render(*, company: str, role: str, jd_url: str, autonomy: str,
            token: str, to: str, lines: list[FieldLine],
            essays: dict[str, str] | None = None,
@@ -112,7 +137,9 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
            form_shot: str = "", form_filled: int = 0, form_missed: tuple = (),
            open_url: str = "",
            hunt_url: str = "",
-           notes: list[str] | None = None) -> ApprovalEmail:
+           notes: list[str] | None = None,
+           leader_note: str = "", note_to: dict | None = None,
+           reply_email: str = "") -> ApprovalEmail:
     """The whole application, reviewable without opening a document."""
     # An employer's own question is quoted, and its punctuation is theirs. On
     # 2026-10-20 an AssemblyAI question carried an em dash, the outbound check
@@ -252,6 +279,20 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
                   f"border-radius:4px;white-space:pre-wrap'>{_esc(body)}</div>"
                   f"</div>")
 
+    note_text = note_message(leader_note, note_to, reply_email)
+    if note_text:
+        A("<h3 style='font-size:14px;text-transform:uppercase;letter-spacing:"
+          ".04em;color:#666;margin:22px 0 8px'>After you submit: send this note</h3>")
+        A(f"<p style='margin:0 0 6px'>{_esc(note_heading(note_to))}</p>")
+        A(f"<div style='background:#f6f6f6;padding:10px 12px;border-radius:4px;"
+          f"white-space:pre-wrap'>{_esc(note_text)}</div>")
+        if (note_to or {}).get("linkedin_url"):
+            A(f"<p style='margin:6px 0 0'><a href=\"{_esc(note_to['linkedin_url'])}\">"
+              f"Open {_esc(note_to.get('name') or 'their')} on LinkedIn</a></p>")
+        A("<p style='color:#666;font-size:13px;margin:6px 0 0'>Hunter never sends it. "
+          "Copy it into a LinkedIn message, or an email from your own inbox, once "
+          "the application is in.</p>")
+
     if essays:
         A("<h3 style='font-size:14px;text-transform:uppercase;letter-spacing:"
           ".04em;color:#666;margin:22px 0 8px'>Long answers</h3>")
@@ -295,6 +336,12 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
         T += [f"  {l.label}: no answer. {l.source}" for l in needs_you]
         T += [f"  {l.label}: {l.value} ({l.source})" for l in flagged]
         T += [f"  {n}" for n in notes]
+    if note_text:
+        T += ["", "AFTER YOU SUBMIT, SEND THIS NOTE (hunter never sends it)",
+              note_heading(note_to)]
+        if (note_to or {}).get("linkedin_url"):
+            T.append(note_to["linkedin_url"])
+        T += ["", note_text]
     if open_url:
         T += ["", "OPEN THE FILLED FORM (then press Submit yourself):", open_url,
               "Needs the Hunter extension installed in Chrome. Without it this "
