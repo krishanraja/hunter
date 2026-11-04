@@ -694,3 +694,8 @@ def test_his_positioning_for_a_seat_reaches_the_brief_and_nothing_without_it():
     angle = "The senior operator stepping in, who makes the person he reports to look good."
     assert angle in compose.role_prompt(positioning=angle, **kw)
     assert "HOW TO POSITION HIM" not in compose.role_prompt(**kw)
+
+
+def test_a_company_with_a_former_name_is_named_by_either():
+    assert compose.name_forms({"Raptive (formerly AdThrive)"}) == {"Raptive", "AdThrive"}
+    assert compose.name_forms({"Zentrox"}) == frozenset()

@@ -577,6 +577,19 @@ def altitude_problems(letter: Letter, jd_text: str, *, family: str = "",
     return out
 
 
+def name_forms(names) -> frozenset[str]:
+    """The names a company goes by inside one with a parenthesis: "Raptive
+    (formerly AdThrive)" is also "Raptive" and "AdThrive". Before 2026-11-04
+    a letter had to repeat the whole parenthesis in the hook and why-now to
+    name the company, and the gate refused "AdThrive" on its own."""
+    out = set()
+    for n in names or ():
+        m = re.match(r"\s*(.+?)\s*\((?:formerly\s+|fka\s+|f/k/a\s+)?(.+?)\)\s*$", n or "", re.I)
+        if m:
+            out.update(x.strip() for x in m.groups() if x.strip())
+    return frozenset(out)
+
+
 def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None = None,
              context: str = "") -> list[str]:
     """Whether a letter answer may be used. Pure: the routine runs it too.
@@ -595,6 +608,7 @@ def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None 
     # asked for under a board's slug can say "Grafana Labs".
     shown = display_company(meta.get("company") or "", meta.get("jd") or "")
     companies = frozenset(n for n in (meta.get("company"), meta.get("short_name"), shown) if n)
+    companies = companies | name_forms(companies)
     names = companies | frozenset(n for n in (meta.get("role"),) if n)
     # His own words from 9.14 are evidence: they are his.
     hay = "\n".join([evidence or "", *(meta.get("entries") or [])]).lower()
