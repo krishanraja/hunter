@@ -6902,34 +6902,42 @@ def form_url(*urls) -> str:
     return next((u for u in present if board_key(u)), present[0] if present else "")
 
 
-def leader_note_for(cfg: Config, job_id: str, bank) -> tuple[str, dict | None, str]:
-    """(note, recipient, reply address) for the Apply email.
+def leader_note_for(cfg: Config, job_id: str, bank) -> tuple[list, str]:
+    """([(note, person)], reply address) for the Apply email.
 
-    The note is the one the writer wrote with this role's letter, and only
+    The notes are the ones the writer wrote with this role's letter, and only
     from an answer that passed its check (status used: the letter was built
-    from it). The reply address is his job search email on the Info Bank, so
-    a reply reaches the inbox hunter reads (outcomes). Any failure gives no
-    note, never a stand-in: the email still goes.
+    from it): the leader note to the first person, the exec note to the
+    leader when he scored the role 9 or more. The reply address is his job
+    search email on the Info Bank, so a reply reaches the inbox hunter reads
+    (outcomes). Any failure gives no note, never a stand-in: the email still
+    goes.
     """
     from .letters import latest_draft
     from .package import compose
     from .people import bridges
-    note = ""
+    lead = exec_ = ""
     try:
         d = latest_draft(cfg, job_id)
         if d and d.get("status") == "used" and d.get("output"):
-            note = compose.parse(d["output"]).leader_note
+            letter = compose.parse(d["output"])
+            lead, exec_ = letter.leader_note, letter.exec_note
     except Exception as e:
         print(f"  no leader note ({e.__class__.__name__})")
-    if not note:
-        return "", None, ""
+    if not lead:
+        return [], ""
     try:
-        to = bridges.note_recipient(cfg, job_id)
+        people = bridges.note_recipients(cfg, job_id)
     except Exception:
-        to = None
+        people = []
+    first = people[0] if people else None
+    out = [(lead, first)]
+    leader = next((p for p in people[1:] if p.get("tier") == bridges.EXEC_TIER), None)
+    if exec_ and leader:
+        out.append((exec_, leader))
     entry = bank.get("Email (job search)") if bank is not None else None
     reply = entry.value.strip() if entry is not None and entry.usable else ""
-    return note, to, reply
+    return out, reply
 
 
 def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
@@ -7556,9 +7564,9 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
             print(f"  no fill payload for this one ({e.__class__.__name__})")
         open_url = (f"{pay['url']}#hunter={token}.{open_key}" if pay else "")
 
-        note, note_to, reply_email = leader_note_for(cfg, row["job_id"], bank)
+        outreach, reply_email = leader_note_for(cfg, row["job_id"], bank)
         email = approval.render(
-            leader_note=note, note_to=note_to, reply_email=reply_email,
+            outreach=outreach, reply_email=reply_email,
             posted=posted_words(row.get("posted_at") or "", row.get("posted_source") or "",
                                 TODAY()),
             company=role.company, role=role.title, jd_url=role.jd_url,
@@ -10241,6 +10249,38 @@ def cmd_outcomes(apply: bool = False) -> int:
     return 1 if failed else 0
 
 
+def cmd_leaders(apply: bool = False) -> int:
+    """Name the hiring manager and the leader for every role he scored 9 or
+    more (his words, 2026-11-04: "get in touch with the hiring manager and the
+    leader as well, separately"). One web search per role, in the ledger, not
+    repeated within 30 days; nothing is sent. Dry run by default. Counts only:
+    a role here is a role he scored 9."""
+    from .people import bridges
+    from .ratings import whole_score
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    srows = [r for r in sheet.read_pipeline(canon.sheet_headers)
+             if (whole_score(r.cell(sheet_mod.KRISH_SCORE)) or 0) >= bridges.LEADERS_AT
+             and router.classify_verdict(r.verdict or "") in ("none", "go")]
+    known = db_get(cfg, "hunter_seen_roles", {
+        "select": "job_id,company,title,url,job_url,location,presented_at",
+        "limit": ALL_ROWS})
+    by_row = router.pair_records(srows, known)
+    roles = [by_row[id(r)] for r in srows if by_row.get(id(r))]
+    print(f"leaders: {len(srows)} row(s) scored {bridges.LEADERS_AT} or more, "
+          f"{len(roles)} paired to a record")
+    if not apply:
+        print("dry run, pass --apply to search")
+        return 0
+    stats = bridges.leader_targets(cfg, roles)
+    from . import spend
+    spend.flush(cfg)
+    print(f"leaders: {stats['searched']} searched, {stats['found']} person(s) named, "
+          f"{stats.get('searched_recently', 0)} searched within 30 days, "
+          f"{len(stats['skipped'])} skipped")
+    return 0
+
+
 def cmd_gtm_seed(apply: bool = False) -> int:
     """Write the AI-native GTM evidence key. Dry run by default.
 
@@ -10619,6 +10659,8 @@ def main(argv: list[str]) -> int:
         return cmd_confirmations(apply="--apply" in argv)
     if cmd == "outcomes":
         return cmd_outcomes(apply="--apply" in argv)
+    if cmd == "leaders":
+        return cmd_leaders(apply="--apply" in argv)
     if cmd == "clear-pipeline":
         return cmd_clear_pipeline(apply="--apply" in argv)
     if cmd == "applied":

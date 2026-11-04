@@ -88,6 +88,16 @@ def positioning_for(cfg: Config, job_id: str) -> str:
         return ""
 
 
+def wants_two(view_text: str) -> bool:
+    """A role he scored 9 or more gets notes for two people, the hiring
+    manager and the leader (his words, 2026-11-04). Read off the score line
+    his view carries (his_view.facts), so the fingerprint already covers it."""
+    import re as _re
+    from .people.bridges import LEADERS_AT
+    m = _re.search(r"His score for this role: (\d+) out of 10", view_text or "")
+    return bool(m) and int(m.group(1)) >= LEADERS_AT
+
+
 def view_hash(view_text: str) -> str:
     return hashlib.sha256((view_text or "").encode()).hexdigest()[:12]
 
@@ -186,7 +196,8 @@ def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_t
                                  base_key=p.base_key, jd_text=jd_text,
                                  judge_answers=judge_answers, his_view=view_text,
                                  entries=p.entries, needs=p.needs,
-                                 positioning=getattr(p, "positioning", ""))
+                                 positioning=getattr(p, "positioning", ""),
+                                 two_people=wants_two(view_text))
     context = compose.shared_context(model_letter=model_letter, evidence_text=evidence_text,
                                      bank_words=p.bank, examples=examples, his_words=his_words,
                                      highlights=highlights, his_rules=his_rules,

@@ -53,6 +53,7 @@ SCHEMA = {
         "close": {"type": "string"},
         "cv_summary": {"type": "string"},
         "leader_note": {"type": "string"},
+        "exec_note": {"type": "string"},
         "cv_highlight_order": {"type": "array", "items": {"type": "integer"}},
         "asks": {"type": "array", "items": {
             "type": "object", "required": ["ask", "quote", "answered_by"],
@@ -105,6 +106,12 @@ class Letter:
     map: list = field(default_factory=list)
     review: list = field(default_factory=list)
     leader_note: str = ""
+    exec_note: str = ""
+
+    def notes(self) -> list[tuple[str, str]]:
+        """The notes he sends people after he applies, by part name."""
+        return [(n, t) for n, t in (("leader note", self.leader_note),
+                                    ("exec note", self.exec_note)) if t]
 
     def parts(self) -> list[tuple[str, str]]:
         """Every part the reader reads, by the name the map and review use."""
@@ -124,7 +131,7 @@ class Letter:
     def all_text(self) -> str:
         """Everything the writer wrote that anyone reads, the note included:
         what the check against copying his reaction reads."""
-        return " ".join(self.spans() + [self.cv_summary, self.leader_note])
+        return " ".join(self.spans() + [self.cv_summary, self.leader_note, self.exec_note])
 
     def body_chars(self) -> int:
         return sum(len(s) for s in self.spans())
@@ -153,7 +160,8 @@ def parse(output) -> Letter:
                   reader=data.get("reader") if isinstance(data.get("reader"), dict) else {},
                   map=[m for m in (data.get("map") or []) if isinstance(m, dict)],
                   review=[r for r in (data.get("review") or []) if isinstance(r, dict)],
-                  leader_note=_one_line(data.get("leader_note")))
+                  leader_note=_one_line(data.get("leader_note")),
+                  exec_note=_one_line(data.get("exec_note")))
 
 
 # ---------- spelling, by base ----------
@@ -303,8 +311,7 @@ def name_problems(letter: Letter) -> list[str]:
     """His company, written his way in every field (gtmseed.COMPANY_NAME)."""
     from ..apply.gtmseed import COMPANY_NAME, name_problems as found_in
     spans = [("hook", letter.hook), ("identity", letter.identity), ("why_now", letter.why_now),
-             ("close", letter.close), ("cv_summary", letter.cv_summary),
-             ("leader note", letter.leader_note)] + \
+             ("close", letter.close), ("cv_summary", letter.cv_summary)] + letter.notes() + \
         [(f"bullet {i}", f"{a} {b}") for i, (a, b) in enumerate(letter.bullets, 1)]
     out = []
     for name, text in spans:
@@ -412,27 +419,30 @@ def shape_problems(letter: Letter) -> list[str]:
 
 
 def note_problems(letter: Letter, companies: frozenset[str]) -> list[str]:
-    """The note he sends the hiring leader after he applies (2026-11-04: 0 of
-    69 applications had one, and no person at any company heard from him).
-    Optional, so a letter written before it existed still builds; when it is
-    there it is short, names the company, asks for nothing it cannot back,
-    and carries no greeting or sign-off, which the Apply email adds."""
-    note = letter.leader_note
-    if not note:
-        return []
+    """The notes he sends people after he applies (2026-11-04: 0 of 69
+    applications had one, and no person at any company heard from him): the
+    leader note to the hiring manager, and for a role he scored 9 the exec
+    note to the leader over the seat. Optional, so a letter written before
+    they existed still builds; when there, each is short, names the company,
+    and carries no greeting, sign-off or contact details, which the Apply
+    email adds."""
     out = []
-    if len(note) < LEADER_NOTE_MIN:
-        out.append("note: the leader note is too short to say why him")
-    elif len(note) > LIMITS["leader_note"]:
-        out.append(f"note: the leader note is over {LIMITS['leader_note']} characters")
-    low = note.lower()
-    if companies and not any(c.lower() in low for c in companies if c):
-        out.append("note: the leader note does not name the company")
-    if re.match(r"\s*(hi|hello|dear|hey)\b", low) or re.search(
-            r"\b(best|regards|cheers|thanks),?\s*krish\W*$", low):
-        out.append("note: the leader note carries a greeting or a sign-off; the email adds them")
-    if "@" in note or re.search(r"\+?\d[\d ()-]{8,}\d", note):
-        out.append("note: the leader note carries contact details; the email adds them")
+    for name, note in letter.notes():
+        if len(note) < LEADER_NOTE_MIN:
+            out.append(f"note: the {name} is too short to say why him")
+        elif len(note) > LIMITS["leader_note"]:
+            out.append(f"note: the {name} is over {LIMITS['leader_note']} characters")
+        low = note.lower()
+        if companies and not any(c.lower() in low for c in companies if c):
+            out.append(f"note: the {name} does not name the company")
+        if re.match(r"\s*(hi|hello|dear|hey)\b", low) or re.search(
+                r"\b(best|regards|cheers|thanks),?\s*krish\W*$", low):
+            out.append(f"note: the {name} carries a greeting or a sign-off; the email adds them")
+        if "@" in note or re.search(r"\+?\d[\d ()-]{8,}\d", note):
+            out.append(f"note: the {name} carries contact details; the email adds them")
+    if letter.leader_note and letter.exec_note and \
+            letter.leader_note.strip().lower() == letter.exec_note.strip().lower():
+        out.append("note: the exec note repeats the leader note; write each for its reader")
     return out
 
 
@@ -479,8 +489,7 @@ def evidence_problems(letter: Letter, *, evidence: str, banned: tuple[str, ...],
                                           for i, (a, b) in enumerate(letter.bullets, 1)]
     if letter.cv_summary:
         spans.append(("cv_summary", letter.cv_summary))
-    if letter.leader_note:
-        spans.append(("leader note", letter.leader_note))
+    spans += letter.notes()
     for name, text in spans:
         v = voicegate.check(voicegate.plain_prose(text), evidence=evidence,
                             banned_phrases=banned, allow_names=names)
@@ -555,8 +564,7 @@ def altitude_problems(letter: Letter, jd_text: str, *, family: str = "",
     Labels and part names only: a failure never quotes his words."""
     from . import proof
     out = []
-    for name, text in letter.parts() + ([("leader note", letter.leader_note)]
-                                         if letter.leader_note else []):
+    for name, text in letter.parts() + letter.notes():
         hits = proof.mechanics_in(text, jd_text, ruled_out)
         if hits:
             out.append(f"A18 the {name} says how it is built ({', '.join(hits)}); say what it did")
@@ -705,7 +713,8 @@ def respelled(letter: Letter, base_key: str) -> Letter:
                   cv_summary=spell(letter.cv_summary, base_key), asks=letter.asks,
                   cv_highlight_order=letter.cv_highlight_order, reader=letter.reader,
                   map=letter.map, review=letter.review,
-                  leader_note=spell(letter.leader_note, base_key))
+                  leader_note=spell(letter.leader_note, base_key),
+                  exec_note=spell(letter.exec_note, base_key))
 
 
 # ---------- the request the routine answers ----------
@@ -801,6 +810,10 @@ Never copy a sentence from it; write every paragraph fresh for this role.
   its angle, in your words. No greeting, no sign-off, no contact details: the email adds
   them. Never say he has applied as a plea, never flatter, never repeat the letter's hook
   word for word. The same evidence and altitude rules as the letter.
+- exec_note: only when the role prompt says TWO PEOPLE: a second note, to the most
+  senior leader over this seat, on the business rather than the seat: his read of
+  where the company is going and the one result of his that proves he can help it
+  get there. Same length and rules as leader_note, never a copy of it.
 - When PERSONAL LINE is given, the letter must carry it, his words as written, in the hook
   or the close. When none is given, never write anything personal about his life.
 - His company is "mind/make", lowercase with the slash, as his CV writes it; never
@@ -888,7 +901,7 @@ def role_type(family: str) -> str:
 
 def role_prompt(*, company: str, title: str, location: str, base_key: str, jd_text: str,
                 judge_answers, his_view: str, entries: list[str], needs: list[str],
-                positioning: str = "") -> str:
+                positioning: str = "", two_people: bool = False) -> str:
     ja = judge_answers
     if isinstance(ja, str):
         try:
@@ -907,6 +920,10 @@ def role_prompt(*, company: str, title: str, location: str, base_key: str, jd_te
                      f"his words as written):\n" + "\n".join(f"- {w}" for w in entries))
     if ja:
         parts.append("THE JUDGE'S READ\n" + json.dumps(ja, ensure_ascii=False)[:4000])
+    if two_people:
+        parts.append("TWO PEOPLE: he scored this role 9 or more and asked to reach both the "
+                     "hiring manager and the leader. Write leader_note for the hiring manager "
+                     "and exec_note for the leader.")
     if positioning:
         parts.append("HOW TO POSITION HIM FOR THIS SEAT (his ruling; the angle of the hook, "
                      "identity and why_now)\n" + positioning)

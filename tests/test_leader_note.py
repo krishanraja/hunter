@@ -40,7 +40,7 @@ def test_the_email_carries_the_note_addressed_and_signed_with_the_reply_address(
         assert "Hi Sam," in part and NOTE in part
         assert "krish@mindmake.example" in part
         assert "https://www.linkedin.com/in/sam" in part
-        assert "never sends it" in part
+        assert "never sends" in part
     assert chr(0x2014) not in em.html + em.text
 
 
@@ -52,3 +52,24 @@ def test_with_no_name_the_note_still_shows_and_says_who_to_find():
 def test_no_note_no_section():
     em = render()
     assert "SEND THIS NOTE" not in em.text and "send this note" not in em.html
+
+
+def test_two_people_get_two_notes_each_with_their_own_links():
+    hm = {"name": "Sam Rivera", "title": "COO", "linkedin_url": "https://www.linkedin.com/in/sam",
+          "tier": "cold_target", "email": "sam@zentrox.example", "email_checked": True}
+    ld = {"name": "Ada Okafor", "title": "CEO", "linkedin_url": "https://www.linkedin.com/in/ada",
+          "tier": "exec_target"}
+    em = render(outreach=[(NOTE, hm), ("Zentrox is about to sell to agents, and I built that once.", ld)],
+                reply_email="krish@mindmake.example")
+    assert "SEND THESE 2 NOTES" in em.text
+    assert "Hi Sam," in em.text and "Hi Ada," in em.text
+    assert "sam@zentrox.example" in em.text and "checked as deliverable" in em.text
+    assert em.text.count("Email:") == 1
+
+
+def test_parse_leaders_keeps_only_sourced_people_and_never_one_person_twice():
+    text = ('{"hiring_manager": {"name": "Sam Rivera", "source_url": "https://z.example/team"},'
+            ' "leader": {"name": "sam rivera", "source_url": "https://z.example/about"}}')
+    assert list(bridges.parse_leaders(text)) == ["hiring_manager"]
+    assert bridges.parse_leaders('{"hiring_manager": {"name": "Sam"}, "leader": null}') == {}
+    assert bridges.parse_leaders("no json here") == {}

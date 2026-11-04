@@ -139,7 +139,8 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
            hunt_url: str = "",
            notes: list[str] | None = None,
            leader_note: str = "", note_to: dict | None = None,
-           reply_email: str = "", posted: str = "") -> ApprovalEmail:
+           reply_email: str = "", posted: str = "",
+           outreach: list[tuple[str, dict | None]] | None = None) -> ApprovalEmail:
     """The whole application, reviewable without opening a document."""
     # An employer's own question is quoted, and its punctuation is theirs. On
     # 2026-10-20 an AssemblyAI question carried an em dash, the outbound check
@@ -281,18 +282,29 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
                   f"border-radius:4px;white-space:pre-wrap'>{_esc(body)}</div>"
                   f"</div>")
 
-    note_text = note_message(leader_note, note_to, reply_email)
-    if note_text:
+    # One note per person: the hiring manager's, and for a role he scored 9
+    # the leader's (his words, 2026-11-04). leader_note/note_to is the one.
+    sends = list(outreach or []) or ([(leader_note, note_to)] if leader_note else [])
+    sends = [(n, p) for n, p in sends if " ".join((n or "").split())]
+    if sends:
         A("<h3 style='font-size:14px;text-transform:uppercase;letter-spacing:"
-          ".04em;color:#666;margin:22px 0 8px'>After you submit: send this note</h3>")
-        A(f"<p style='margin:0 0 6px'>{_esc(note_heading(note_to))}</p>")
-        A(f"<div style='background:#f6f6f6;padding:10px 12px;border-radius:4px;"
-          f"white-space:pre-wrap'>{_esc(note_text)}</div>")
-        if (note_to or {}).get("linkedin_url"):
-            A(f"<p style='margin:6px 0 0'><a href=\"{_esc(note_to['linkedin_url'])}\">"
-              f"Open {_esc(note_to.get('name') or 'their')} on LinkedIn</a></p>")
-        A("<p style='color:#666;font-size:13px;margin:6px 0 0'>Hunter never sends it. "
-          "Copy it into a LinkedIn message, or an email from your own inbox, once "
+          ".04em;color:#666;margin:22px 0 8px'>After you submit: send "
+          + ("this note" if len(sends) == 1 else f"these {len(sends)} notes") + "</h3>")
+        for n, p in sends:
+            A(f"<p style='margin:10px 0 6px'>{_esc(note_heading(p))}</p>")
+            A(f"<div style='background:#f6f6f6;padding:10px 12px;border-radius:4px;"
+              f"white-space:pre-wrap'>{_esc(note_message(n, p, reply_email))}</div>")
+            links = []
+            if (p or {}).get("linkedin_url"):
+                links.append(f"<a href=\"{_esc(p['linkedin_url'])}\">"
+                             f"Open {_esc(p.get('name') or 'their')} on LinkedIn</a>")
+            if (p or {}).get("email"):
+                links.append(f"Email: <strong>{_esc(p['email'])}</strong>"
+                             + (" (checked as deliverable)" if p.get("email_checked") else ""))
+            if links:
+                A("<p style='margin:6px 0 0'>" + " &middot; ".join(links) + "</p>")
+        A("<p style='color:#666;font-size:13px;margin:6px 0 0'>Hunter never sends these. "
+          "Copy each into a LinkedIn message, or an email from your own inbox, once "
           "the application is in.</p>")
 
     if essays:
@@ -341,12 +353,18 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
         T += [f"  {l.label}: no answer. {l.source}" for l in needs_you]
         T += [f"  {l.label}: {l.value} ({l.source})" for l in flagged]
         T += [f"  {n}" for n in notes]
-    if note_text:
-        T += ["", "AFTER YOU SUBMIT, SEND THIS NOTE (hunter never sends it)",
-              note_heading(note_to)]
-        if (note_to or {}).get("linkedin_url"):
-            T.append(note_to["linkedin_url"])
-        T += ["", note_text]
+    if sends:
+        T += ["", "AFTER YOU SUBMIT, SEND " + ("THIS NOTE" if len(sends) == 1 else
+                                               f"THESE {len(sends)} NOTES")
+              + " (hunter never sends them)"]
+        for n, p in sends:
+            T += ["", note_heading(p)]
+            if (p or {}).get("linkedin_url"):
+                T.append(p["linkedin_url"])
+            if (p or {}).get("email"):
+                T.append(f"Email: {p['email']}"
+                         + (" (checked as deliverable)" if p.get("email_checked") else ""))
+            T += ["", note_message(n, p, reply_email)]
     if open_url:
         T += ["", "OPEN THE FILLED FORM (then press Submit yourself):", open_url,
               "Needs the Hunter extension installed in Chrome. Without it this "

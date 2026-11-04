@@ -99,7 +99,7 @@ def problems(letter, companies: frozenset[str], his_employers: tuple[str, ...] =
                            f"open on him")
                 break
     asked = tuple(f"{n} asks" for n in names) + tuple(f"{n} wants" for n in names)
-    for name, text in letter.parts() + [("leader note", getattr(letter, "leader_note", ""))]:
+    for name, text in letter.parts() + letter.notes():
         low = _low(text)
         if any(e in low for e in ECHO + asked):
             out.append(f"A19 the {name} maps itself back to the posting; state the result "
