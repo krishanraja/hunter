@@ -304,12 +304,140 @@
     (hits[0].r.checked ? out.filled : out.missed).push(entry.label);
   }
 
-  async function run(payload) {
+  // ---------- answering by wording (Workday, iCIMS) ----------
+  //
+  // On a form that appears a step at a time after he signs in, nobody could
+  // list the questions in advance. His Info Bank rows carry the forms' own
+  // wording, so a question whose label reads EXACTLY as one of his rows, once
+  // case, spacing, punctuation and a required star are set aside, is answered
+  // with his answer to it. Anything looser would be a guess, and a guessed
+  // answer under his name is the thing this project exists to prevent.
+  const plain = (s) => norm(s).replace(/\(required\)/g, '').replace(/[*:?.!,;'"()]/g, '')
+    .replace(/\s+/g, ' ').trim();
+
+  function questionOf(el) {
+    const own = el.getAttribute('aria-label');
+    if (own) return own;
+    const lab = el.labels && el.labels[0];
+    if (lab) return lab.textContent;
+    const id = el.getAttribute('aria-labelledby');
+    if (id) {
+      const t = id.split(/\s+/).map((x) => document.getElementById(x))
+        .filter(Boolean).map((n) => n.textContent).join(' ');
+      if (t) return t;
+    }
+    const box = el.closest('[data-automation-id^="formField"], fieldset, .form-group, .iCIMS_InfoField, .field');
+    if (box) {
+      const l = box.querySelector('label, legend');
+      if (l) return l.textContent;
+    }
+    return '';
+  }
+
+  const visible = (el) => !!(el.offsetParent || el.getClientRects().length);
+  const SKIP_TYPES = ['hidden', 'password', 'file', 'submit', 'button', 'checkbox', 'search'];
+
+  async function pickFromList(button, want) {
+    // Workday's dropdowns are buttons that open a listbox.
+    button.click();
+    let opts = [];
+    for (let i = 0; i < 12; i++) {
+      await sleep(200);
+      opts = Array.from(document.querySelectorAll('[role="option"]')).filter(visible);
+      if (opts.length) break;
+    }
+    const hit = opts.find((o) => norm(o.textContent) === want);
+    if (hit) { hit.click(); return true; }
+    if (opts.length) document.body.click();   // close it, nothing chosen
+    return false;
+  }
+
+  async function actAnswers(list, out) {
+    const bank = new Map();
+    for (const a of list || []) bank.set(plain(a.label), a.answer);
+    if (!bank.size) return;
+    const done = new Set();
+    const controls = Array.from(document.querySelectorAll(
+      'input, textarea, select, button[aria-haspopup="listbox"]')).filter(visible);
+    for (const el of controls) {
+      const type = (el.getAttribute('type') || '').toLowerCase();
+      if (el.tagName === 'INPUT' && SKIP_TYPES.indexOf(type) >= 0) continue;
+      const q = plain(questionOf(el));
+      if (!q || !bank.has(q)) continue;
+      const answer = bank.get(q);
+      const want = norm(answer);
+      if (type === 'radio') {
+        if (done.has(q)) continue;
+        const group = el.name
+          ? Array.from(document.querySelectorAll('input[type="radio"]'))
+            .filter((r) => r.name === el.name) : [el];
+        if (group.some((r) => r.checked)) { done.add(q); continue; }
+        const r = group.find((x) => labelOf(x) === want);
+        if (r) { r.click(); if (r.checked) { out.filled.push(q); done.add(q); } }
+        continue;
+      }
+      if (el.tagName === 'SELECT') {
+        if (el.value) continue;
+        const o = Array.from(el.options).find((x) => norm(x.textContent) === want);
+        if (o) {
+          el.value = o.value;
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          if (el.value === o.value) out.filled.push(q);
+        }
+        continue;
+      }
+      if (el.tagName === 'BUTTON') {
+        const shown = norm(el.textContent);
+        if (shown && shown !== 'select one' && shown !== 'select') continue;
+        if (await pickFromList(el, want)) {
+          await sleep(300);
+          if (norm(el.textContent) === want) out.filled.push(q);
+        }
+        continue;
+      }
+      if (norm(el.value)) continue;
+      setNative(el, answer);
+      if (norm(el.value) === want) out.filled.push(q);
+    }
+  }
+
+  function emptyRequired() {
+    // What is left for him on this step: required, visible, still empty.
+    const left = [];
+    for (const el of document.querySelectorAll('input, textarea, select')) {
+      if (!visible(el)) continue;
+      const type = (el.getAttribute('type') || '').toLowerCase();
+      if (['hidden', 'submit', 'button', 'password', 'search'].indexOf(type) >= 0) continue;
+      const req = el.required || el.getAttribute('aria-required') === 'true';
+      if (!req) continue;
+      const empty = type === 'file' ? !(el.files && el.files.length)
+        : (type === 'radio' || type === 'checkbox')
+          ? !Array.from(document.getElementsByName(el.name)).some((x) => x.checked)
+          : !norm(el.value);
+      if (!empty) continue;
+      const q = norm(questionOf(el)).replace(/\s*\*$/, '') || (el.name || 'a field');
+      if (left.indexOf(q) < 0) left.push(q);
+    }
+    return left;
+  }
+
+  async function run(payload, opts) {
+    // onlyEmpty: a later step of a multi-step form, where anything already
+    // holding a value is his, or Workday's own autofill, and is never typed
+    // over.
+    const onlyEmpty = !!(opts && opts.onlyEmpty);
+    const files = (payload.files || []).filter((f) => !(onlyEmpty && holdsFile(f)));
+    const fields = (payload.fields || []).filter((f) => {
+      if (!onlyEmpty) return true;
+      const el = candidates(f.selectors, f)[0];
+      if (!el) return false;
+      return f.kind === 'text' ? !norm(el.value) : !(f.kind === 'choice' ? holdsChoice(f) : holdsCombo(f));
+    });
     // Documents first: a vendor that autofills from the CV writes over the
     // fields afterwards, so anything typed before the upload is lost.
-    for (const f of payload.files || []) actFile(f);
+    for (const f of files) actFile(f);
     await sleep(1200);
-    for (const f of payload.fields || []) {
+    for (const f of fields) {
       if (f.kind === 'text') actText(f);
       else if (f.kind === 'choice') actChoice(f);
       else if (f.kind === 'typeahead') await actTypeahead(f);
@@ -317,11 +445,12 @@
     await sleep(600);
 
     const out = { filled: [], missed: [], files: [], required_missed: [] };
+    if (payload.answers) await actAnswers(payload.answers, out);
     for (const d of payload.demographics || []) actDemographic(d, out);
-    for (const f of payload.files || []) {
+    for (const f of files) {
       (holdsFile(f) ? out.files : out.missed).push(f.label);
     }
-    for (const f of payload.fields || []) {
+    for (const f of fields) {
       const ok = f.kind === 'text' ? holdsText(f)
         : f.kind === 'choice' ? holdsChoice(f)
         : holdsCombo(f);
@@ -331,8 +460,22 @@
         if (f.required) out.required_missed.push(f.label);
       }
     }
+    if (payload.multi_step) {
+      // On a step, what matters is what the page still asks of him, read
+      // off the page, not off a list declared before he signed in.
+      out.required_missed = emptyRequired();
+    }
     return out;
   }
+
+  window.__hunterStepSignature = function () {
+    // What the current step asks: its visible questions, in order. A new
+    // signature is a new step to fill.
+    return Array.from(document.querySelectorAll('input, textarea, select'))
+      .filter((el) => visible(el) && (el.getAttribute('type') || '') !== 'hidden')
+      .map((el) => plain(questionOf(el)) || el.name || el.id || el.tagName)
+      .join('|');
+  };
 
   window.__hunterFill = run;
 })();

@@ -147,8 +147,64 @@ ATS_URL_PATTERNS = [
     # Criteo and other Workday tenants: host carries the tenant, the path
     # carries the site and the posting.
     ("workday", re.compile(
-        r"([a-z0-9-]+)\.wd\d+\.myworkdayjobs\.com/[^/]*/?([A-Za-z0-9_-]+/job/\S+)")),
+        r"([a-z0-9-]+)\.wd\d+\.myworkdayjobs\.com/[^/]*/?([A-Za-z0-9_-]+/job/[^\s?#]+)")),
+    # iCIMS: the employer's own subdomain and the posting number.
+    ("icims", re.compile(r"([a-z0-9-]+)\.icims\.com/jobs/(\d+)")),
 ]
+
+# Every application system hunter can NAME from a link, readable or not, for
+# the census and for saying plainly where a by-hand application goes. Order
+# matters only where hosts overlap.
+SYSTEM_HOSTS = (
+    ("greenhouse", ("greenhouse.io", "gh_jid=")),
+    ("ashby", ("ashbyhq.com",)),
+    ("lever", ("lever.co",)),
+    ("workday", ("myworkdayjobs.com", "myworkdaysite.com", "workday.com/")),
+    ("icims", ("icims.com",)),
+    ("smartrecruiters", ("smartrecruiters.com",)),
+    ("workable", ("workable.com",)),
+    ("teamtailor", ("teamtailor.com",)),
+    ("successfactors", ("successfactors.", "sapsf.", "jobs.sap.com")),
+    ("oracle", ("oraclecloud.com", "taleo.net")),
+    ("avature", ("avature.net",)),
+    ("jobvite", ("jobvite.com",)),
+    ("bamboohr", ("bamboohr.com",)),
+    ("rippling", ("rippling.com", "rippling-ats.com")),
+    ("pinpoint", ("pinpointhq.com",)),
+    ("recruitee", ("recruitee.com",)),
+    ("personio", ("personio.de", "personio.com")),
+    ("eightfold", ("eightfold.ai",)),
+    ("phenom", ("phenompeople.com",)),
+    ("dover", ("dover.com", "dover.io")),
+    ("wellfound", ("wellfound.com",)),
+    ("linkedin", ("linkedin.com",)),
+)
+# The systems hunter can read a form on and fill in his browser. Workday and
+# iCIMS since 2026-11-04: their questions sit behind the employer's own
+# sign-in, so the extension fills them on his screen, step by step.
+FILLABLE_SYSTEMS = ("greenhouse", "ashby", "lever", "workday", "icims")
+SYSTEM_NAMES = {"smartrecruiters": "SmartRecruiters", "successfactors": "SAP SuccessFactors",
+                "oracle": "Oracle", "icims": "iCIMS", "bamboohr": "BambooHR",
+                "linkedin": "LinkedIn"}
+
+
+def system_of(url: str | None) -> str:
+    """The application system a link belongs to; "own site" for an
+    employer's own careers pages, "" for no link."""
+    if not url:
+        return ""
+    low = url.lower()
+    for name, marks in SYSTEM_HOSTS:
+        if any(m in low for m in marks):
+            return name
+    return "own site"
+
+
+def system_label(url: str | None) -> str:
+    sys_ = system_of(url)
+    if sys_ in ("", "own site"):
+        return "the company's own careers site"
+    return SYSTEM_NAMES.get(sys_, sys_.capitalize())
 
 
 # Memoised because match_rows asks the same question thousands of times.
@@ -1167,7 +1223,7 @@ def cmd_verify(apply: bool = False) -> int:
     URL so the row is checkable from then on without discovery.
     """
     from .ats import discover as disc
-    from .ats import ashby, greenhouse, lever, workday
+    from .ats import ashby, greenhouse, icims, lever, workday
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
     rows = sheet.read_pipeline(canon.sheet_headers)
@@ -1181,7 +1237,7 @@ def cmd_verify(apply: bool = False) -> int:
               "lever": lever.board}
     fetchers = {"greenhouse": greenhouse.fetch_posting,
                 "lever": lever.fetch_posting, "ashby": ashby.fetch_posting,
-                "workday": workday.fetch_posting}
+                "workday": workday.fetch_posting, "icims": icims.fetch_posting}
 
     live, dead, unknown, relinked = [], [], [], {}
     for r in rows:
@@ -2119,6 +2175,20 @@ def resolve_for_build(cfg: Config, row: dict, cache: dict, *,
     flags: list[str] = []
     if board_key(url):
         return _resolve_for_build(row), None, flags
+    # The employer's own link, kept off LinkedIn's applyUrl: the posting on
+    # the board it really lives on, read directly. A live answer relinks the
+    # row to it; anything else falls through to discovery as before, so an
+    # unread link never decides that a posting is dead.
+    emp = row.get("employer_url") or ""
+    if board_key(emp):
+        try:
+            role = _resolve_for_build(dict(row, url=emp, job_url=emp))
+        except Exception as e:
+            flags.append(f"employer link unread ({e.__class__.__name__})")
+        else:
+            if role.live:
+                flags.append("the employer's own link, read directly")
+                return role, emp, flags
     # A gh_jid link has an ATS key and no board in it. It goes the way of a
     # link with no key at all, its posting id and its own careers page in
     # hand: found by its id, dead only when the board its own page names no
@@ -2239,11 +2309,15 @@ def _resolve_for_build(row: dict) -> ResolvedRole:
     live, jd, jd_url = False, "", url
     if key:
         ats, slug, pid = key
-        from .ats import workday
+        from functools import partial
+
+        from .ats import icims, workday
         fetch = {"greenhouse": greenhouse.fetch_posting,
                  "lever": lever.fetch_posting,
                  "ashby": ashby.fetch_posting,
-                 "workday": workday.fetch_posting}[ats]
+                 # The link's own data centre, never a guessed one.
+                 "workday": partial(workday.fetch_posting, host=workday.host_of(url)),
+                 "icims": icims.fetch_posting}[ats]
         live, jd, jd_url = fetch_with_retry(fetch, slug, pid)
     return ResolvedRole(company=row.get("company") or "", title=row["title"],
                         url=url, jd_url=jd_url, jd_text=jd, live=live,
@@ -4438,7 +4512,14 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         return -((result.score or 0) + company_part + (100 if is_top(role.company) else 0))
     fetchers = {"greenhouse": greenhouse.fetch_posting,
                 "ashby": ashby.fetch_posting, "lever": lever.fetch_posting}
+    from .ats import icims as icims_ats
+    from .ats import workday as workday_ats
+    # Read only for a posting whose employer link named one: a Workday sweep
+    # result carries no posting id, and its description already came with it.
+    link_fetchers = dict(fetchers, workday=workday_ats.fetch_posting,
+                         icims=icims_ats.fetch_posting)
     for p in fresh:
+        from_link = False
         # G12 before any fetch or paid probe: a company Krish declined is
         # recorded as blocked with the dated reason and never staged.
         # No employer named, nothing to judge, and a row he cannot act on is
@@ -4454,7 +4535,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                             "status": "blocked", "rejection_reason": reason,
                             "source": p.source, "sweep_date": TODAY(),
                             "why_it_fits": "", "location": p.location or "",
-                            "comp": p.comp_text or ""})
+                            "comp": p.comp_text or "",
+                            "employer_url": p.employer_url})
             counts["g12_blocked"].append(f"{p.company} / {p.title}: {reason}")
             continue
         # A LinkedIn posting carries no ATS link, so hunter could never read
@@ -4463,6 +4545,16 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
         # company's own board and the posting on it. Only for roles that
         # match an archetype, and only within a probe budget, because
         # probing every company found on LinkedIn is neither cheap nor useful.
+        # The employer's own link first. LinkedIn returns it on every item
+        # (applyUrl) and until 2026-11-04 hunter threw it away, then guessed
+        # at the board by the company's name, so a posting on a board it
+        # could not guess reached him as a LinkedIn link.
+        ek = board_key(p.employer_url) if (p.employer_url and not p.ats) else None
+        if ek and ek[0] in link_fetchers:
+            p.ats, p.ats_slug, p.ats_posting_id = ek
+            p.url = p.employer_url
+            from_link = True
+            counts["boards_from_apply_link"] = counts.get("boards_from_apply_link", 0) + 1
         if not p.ats and probe_budget > 0 and archetype(p.title):
             found = disc.discover(cfg, p.company, cache)
             if found is None:
@@ -4487,7 +4579,10 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                     p.ats, p.ats_slug = hit.ats, hit.ats_slug
                     p.ats_posting_id, p.url = hit.ats_posting_id, hit.url or p.url
 
-        fetch = fetchers.get(p.ats or "")
+        fetch = (link_fetchers if from_link else fetchers).get(p.ats or "")
+        if from_link and p.ats == "workday":
+            from functools import partial
+            fetch = partial(workday_ats.fetch_posting, host=workday_ats.host_of(p.url))
         liveness = "checked"
         if fetch:
             try:
@@ -4513,7 +4608,8 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                             "company": p.company, "url": p.url, "job_url": p.url,
                             "status": "unresolved", "source": p.source,
                             "sweep_date": TODAY(), "why_it_fits": "",
-                            "location": p.location or "", "comp": p.comp_text or ""})
+                            "location": p.location or "", "comp": p.comp_text or "",
+                            "employer_url": p.employer_url})
             continue
         counts["resolved"] += 1
         # Pay, read from the body when the source left the field empty. Only
@@ -4563,6 +4659,7 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             status = "staging"
         row = {"job_id": role.job_id, "title": role.title, "company": role.company,
                "url": role.url, "job_url": role.jd_url, "score": result.score,
+               "employer_url": p.employer_url,
                "status": status, "auto_rejected": result.auto_rejected,
                "rejection_reason": reason, "source": role.source,
                "location": role.location, "comp": role.comp,
@@ -6959,7 +7056,10 @@ def build_fill_plan(cfg: Config, sheet: Sheet, row: dict, *,
     from .ats import discover as disc
     role, relink, _flags = resolve_for_build(cfg, row, disc.load_cache(cfg))
     bank = bank if bank is not None else _answer_bank(sheet)
-    spec = fetch.form_for(form_url(role.jd_url, relink, row.get("url"), row.get("job_url")),
+    # The employer's own link first: LinkedIn's applyUrl, kept since
+    # 2026-11-04, names the board the form is really on.
+    spec = fetch.form_for(form_url(row.get("employer_url"), role.jd_url, relink,
+                                   row.get("url"), row.get("job_url")),
                           board_key)
     from .apply.resolve import NEEDS_BASE
     from .package import contact as contact_mod
@@ -7203,7 +7303,7 @@ def posting_is_gone(row: dict) -> bool | None:
     So liveness is ASKED of the board here rather than inferred from whether
     a form could be parsed. No answer is not an answer.
     """
-    from .ats import ashby, greenhouse, lever, workday
+    from .ats import ashby, greenhouse, icims, lever, workday
     # board_key: a gh_jid link names no board to ask, so it has no answer.
     key = board_key(row.get("url") or row.get("job_url") or "")
     if not key:
@@ -7211,7 +7311,7 @@ def posting_is_gone(row: dict) -> bool | None:
     ats, slug, pid = key
     fetchers = {"greenhouse": greenhouse.fetch_posting,
                 "lever": lever.fetch_posting, "ashby": ashby.fetch_posting,
-                "workday": workday.fetch_posting}
+                "workday": workday.fetch_posting, "icims": icims.fetch_posting}
     fn = fetchers.get(ats)
     if fn is None:
         return None
@@ -7537,7 +7637,14 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
         # confirm=True, which this call does not pass.
         shot_name, filled, missed = "", 0, ()
         form_notes: list[str] = []
-        if prefill:
+        # Workday and iCIMS show their form only after he signs in to the
+        # employer, so a picture taken now would be a sign-in page passed off
+        # as his form. No picture, and the email says how it fills instead.
+        stepwise = bool(getattr(submit_mod.DRIVERS.get(plan.ats), "multi_step", False))
+        if stepwise:
+            from .apply import icims_form, workday_form
+            form_notes.append(workday_form.NOTE if plan.ats == "workday" else icims_form.NOTE)
+        if prefill and not stepwise:
             pv = submit_mod.preview(plan, attachments=attachments_by_kind,
                                     names=attachment_names)
             filled, missed = len(pv["filled"]), tuple(pv["missed"])
@@ -7627,7 +7734,9 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
                                     company=role.company, role=role.title,
                                     why=why)
                 continue
-            where = plan.jd_url or row.get("url") or "the posting"
+            # The employer's own page, never LinkedIn's page about it,
+            # whenever hunter has it: "Apply on LinkedIn" only sent him there.
+            where = row.get("employer_url") or plan.jd_url or row.get("url") or "the posting"
             print(f"    the row stays: hunter could not read the form, and the "
                   f"posting is {'still live' if gone is False else 'not known to be gone'}. "
                   f"Apply by hand from the email")
@@ -9230,7 +9339,8 @@ def send_apply_by_hand(cfg: Config, *, company: str, role: str, jd_url: str,
             "<p>The documents are written and attached. Apply in your own "
             "browser and paste the answers below.</p>"]
     if jd_url:
-        bits.append(f'<p><a href="{html_mod.escape(jd_url)}">The posting</a></p>')
+        bits.append(f'<p><a href="{html_mod.escape(jd_url)}">Apply on '
+                    f'{html_mod.escape(system_label(jd_url))}</a></p>')
     links = [(n, u) for n, u in (("CV", cv_url), ("Letter", letter_url)) if u]
     if links:
         bits.append("<p>" + " &middot; ".join(
@@ -10194,6 +10304,50 @@ def cmd_confirmations(apply: bool = False) -> int:
     return 0
 
 
+def census(rows: list[dict]) -> dict[str, dict[str, int]]:
+    """Counts by application system: every role, and the ones he was shown.
+
+    The employer's own link wins over the record's url, which for a LinkedIn
+    role is LinkedIn's page about the job and says nothing about where the
+    application lives. A LinkedIn link with no employer link is counted as
+    "linkedin, employer unknown", never guessed."""
+    out: dict[str, dict[str, int]] = {}
+    for r in rows:
+        link = r.get("employer_url") or r.get("url") or r.get("job_url") or ""
+        sys_ = system_of(link) or "no link"
+        if sys_ == "linkedin":
+            sys_ = "linkedin, employer unknown"
+        c = out.setdefault(sys_, {"all": 0, "shown": 0, "fillable": 0})
+        c["all"] += 1
+        if r.get("presented_at") or r.get("status") in ("staging", "presented", "approved",
+                                                        "submitted"):
+            c["shown"] += 1
+        if sys_ in FILLABLE_SYSTEMS:
+            c["fillable"] += 1
+    return out
+
+
+def cmd_ats_census(days: int = 90) -> int:
+    """Which application systems the roles hunter finds live on. Counts only.
+
+    His question, 2026-11-04: "What system do you not have a reader for and
+    is it impossible to build one?" This is the measured order for the next
+    reader."""
+    cfg, _canon = build_context()
+    since = (datetime.datetime.now(datetime.timezone.utc)
+             - datetime.timedelta(days=days)).date().isoformat()
+    rows = db_get(cfg, "hunter_seen_roles", {
+        "select": "url,job_url,employer_url,status,presented_at",
+        "sweep_date": f"gte.{since}", "limit": ALL_ROWS})
+    counts = census(rows or [])
+    total = sum(c["all"] for c in counts.values()) or 1
+    print(f"application systems, roles swept in the last {days} days: {total}")
+    for name, c in sorted(counts.items(), key=lambda kv: -kv[1]["all"]):
+        mark = "fillable" if name in FILLABLE_SYSTEMS else "no reader"
+        print(f"  {name}: {c['all']} ({100 * c['all'] // total}%), shown {c['shown']}, {mark}")
+    return 0
+
+
 def cmd_outcomes(apply: bool = False) -> int:
     """What employers said back, from his mailbox. Dry run by default.
 
@@ -10659,6 +10813,9 @@ def main(argv: list[str]) -> int:
         return cmd_confirmations(apply="--apply" in argv)
     if cmd == "outcomes":
         return cmd_outcomes(apply="--apply" in argv)
+    if cmd == "ats-census":
+        i = argv.index("--days") if "--days" in argv else -1
+        return cmd_ats_census(days=int(argv[i + 1]) if 0 <= i < len(argv) - 1 else 90)
     if cmd == "leaders":
         return cmd_leaders(apply="--apply" in argv)
     if cmd == "clear-pipeline":

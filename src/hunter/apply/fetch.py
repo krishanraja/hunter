@@ -29,6 +29,12 @@ def form_for(url: str, ats_key) -> FormSpec:
             return greenhouse_form.fetch_form(slug, posting_id)
         if ats == "lever":
             return lever_form.fetch_form(slug, posting_id)
+        if ats == "workday":
+            from . import workday_form
+            return workday_form.fetch_form(url)
+        if ats == "icims":
+            from . import icims_form
+            return icims_form.fetch_form(slug, posting_id)
         return unreadable(
             ats, f"no form adapter for {ats} yet; the posting is readable but "
                  f"its form is not", slug=slug, posting_id=posting_id)
@@ -65,7 +71,13 @@ def form_for(url: str, ats_key) -> FormSpec:
             "linkedin",
             "LinkedIn Easy Apply: the application is completed inside "
             "LinkedIn on your own session, so there is no form to read")
-    return unreadable("unknown", "no adapter matches this URL")
+    from urllib.parse import urlsplit
+    host = urlsplit(url or "").netloc.lower().removeprefix("www.")
+    if not host:
+        return unreadable("unknown", "hunter has no link to the application")
+    return unreadable(
+        "unknown", f"the application is on {host}, a system hunter has no reader "
+                   f"for yet; the link goes straight to it")
 
 
 def account_required(spec: FormSpec) -> bool:

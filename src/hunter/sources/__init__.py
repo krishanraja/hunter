@@ -23,6 +23,9 @@ class RolePosting:
     ats_slug: str | None = None
     ats_posting_id: str | None = None
     raw: dict = field(default_factory=dict)
+    # The employer's own apply link, for a posting found somewhere else
+    # (LinkedIn's applyUrl). Kept apart from url, which a relink rewrites.
+    employer_url: str | None = None
 
 
 # How fresh a posting is, his ask 2026-10-20: "mark a bit more clearly which

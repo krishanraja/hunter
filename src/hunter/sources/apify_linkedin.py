@@ -396,5 +396,25 @@ def sweep_linkedin(cfg, search_urls: list[str], *, spend: SpendTracker,
             # never matched, so every LinkedIn role reached G2 with no band
             comp_text=next((j[k] for k in ("salary", "salaryInfo")
                             if isinstance(j.get(k), str) and j[k].strip()), None),
-            posted_at=j.get("postedAt"), raw=j))
+            posted_at=j.get("postedAt"), raw=j,
+            employer_url=employer_link(j)))
     return out
+
+
+def employer_link(item: dict) -> str | None:
+    """The employer's own apply link on a LinkedIn item, or None.
+
+    The actor returns applyUrl on every item: the employer's page for an
+    offsite posting, LinkedIn itself for Easy Apply. Until 2026-11-04 hunter
+    kept only jobUrl and threw this away, then guessed at the company's
+    board by its name, so a posting on any board it could not guess reached
+    him as a LinkedIn link that opened the employer's site."""
+    for key in ("applyUrl", "applyLink", "externalApplyUrl"):
+        link = (item.get(key) or "").strip() if isinstance(item.get(key), str) else ""
+        if not link.startswith("http"):
+            continue
+        host = urlsplit(link).netloc.lower()
+        if host.endswith("linkedin.com") or host.endswith("lnkd.in"):
+            continue
+        return link
+    return None

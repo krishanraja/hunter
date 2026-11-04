@@ -63,6 +63,13 @@ def driver_hosts() -> set[str]:
     from hunter.apply.submit import DRIVERS
     hosts = set()
     for ats, cls in DRIVERS.items():
+        # A system that gives every employer its own subdomain (Workday,
+        # iCIMS) names its parent domain; the extension matches every
+        # subdomain of it, and nothing wider.
+        wild = getattr(cls, "hosts", ())
+        if wild:
+            hosts.update(f"*.{h}" for h in wild)
+            continue
         plan = FillPlan(ats=ats, slug="s", posting_id="p", company="C", role="R")
         hosts.add(urlparse(cls(None, plan).apply_url()).netloc)
     return hosts
@@ -343,4 +350,4 @@ def test_what_the_extension_decides_when_it_actually_runs():
          str(EXT / "run.js")],
         capture_output=True, text=True, timeout=180, cwd=root)
     assert out.returncode == 0, out.stdout + out.stderr
-    assert "all ten hold" in out.stdout, out.stdout
+    assert "all twelve hold" in out.stdout, out.stdout

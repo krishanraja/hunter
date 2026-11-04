@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hunter form filler",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Opens a job application with every field filled and your CV attached, for you to read and submit yourself.",
   "permissions": [
     "storage"
@@ -10,6 +10,8 @@
     "https://jobs.ashbyhq.com/*",
     "https://job-boards.greenhouse.io/*",
     "https://jobs.lever.co/*",
+    "https://*.myworkdayjobs.com/*",
+    "https://*.icims.com/*",
     "https://controlcenter.krishraja.com/*"
   ],
   "content_scripts": [
@@ -17,13 +19,16 @@
       "matches": [
         "https://jobs.ashbyhq.com/*",
         "https://job-boards.greenhouse.io/*",
-        "https://jobs.lever.co/*"
+        "https://jobs.lever.co/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://*.icims.com/*"
       ],
       "js": [
         "fill.js",
         "run.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
   "options_page": "options.html"

@@ -621,6 +621,40 @@ Spearman -0.19.
   Applied moved to Archived On at AH (`sheet.LAYOUTS`, the "before_posted"
   migration), and the Blind Set reads its Ref at AH, or AG on an older tab.
 
+## 3k. The real posting, every time, and the systems he can fill
+
+His words, 2026-11-04: "You should be checking for the real job posting all
+the time. What system do you not have a reader for and is it impossible to
+build one?" The LinkedIn actor returns the employer's own apply link
+(`applyUrl`) on every item and hunter kept only LinkedIn's: of 10,082 roles
+swept in 60 days, 53 percent were LinkedIn links whose system was unknown.
+
+- **The employer link is kept** (`apify_linkedin.employer_link`, column
+  `hunter_seen_roles.employer_url`), never overwritten by a relink. Staging
+  reads a Greenhouse, Ashby, Lever, Workday or iCIMS posting off it directly
+  before guessing at a board; the build relinks to it only when it reads
+  live; the form, the Apply email and the apply-by-hand email use it first,
+  and the by-hand email names the system (`run.system_label`), never "LinkedIn"
+  for an employer's site. LinkedIn's signed-out page hides this link, so older
+  rows cannot be backfilled for free.
+- **`run ats-census`** counts roles by system (`run.system_of`), counts only.
+  Measure before choosing the next reader.
+- **Workday and iCIMS fill in his browser, a step at a time.** Their forms
+  sit behind the employer's own sign-in, so `workday_form` and `icims_form`
+  declare the first step after reading the posting (a gone posting is never a
+  form), the payload carries `multi_step` and his Info Bank as `answers`, and
+  the extension keeps a fill session for the site (the sign-in reload drops
+  the link; the iCIMS frame never had it), fills only empty fields on each new
+  step, and answers a later question only when its label reads EXACTLY as one
+  of his rows. Sensitive rows are never in `answers`. No picture is taken in
+  advance (it would be a sign-in page). Hunter never signs in for him and the
+  drivers refuse to press Submit.
+- **Workday is read on the data centre its link names** (`workday.host_of`);
+  with only a tenant each one is asked. It was hard-coded to wd3, so Sonos
+  (wd1) read as dead. A Workday that never answers raises: unknown, not dead.
+- **The last mile is his machine.** A live Workday or iCIMS fill can only be
+  verified in his browser, signed in, on extension 1.7.0.
+
 ## 3h. Every Drive file has a registered home
 
 His words, 2026-10-18: "ensure it is impossible to save files randomly in

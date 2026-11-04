@@ -96,7 +96,7 @@ def test_an_unanswered_required_field_stops_it(monkeypatch):
 
 def test_an_unknown_ats_has_no_driver():
     with pytest.raises(SubmitBlocked, match="no driver"):
-        driver_for(plan(ats="workday"))
+        driver_for(plan(ats="smartrecruiters"))
 
 
 # ---------- the browser path, faked ----------

@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 
 const SRC = readFileSync(process.argv[2] || 'extension/run.js', 'utf8');
 
-function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/acme/jobs/42/application', postResults = [] }) {
+function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/acme/jobs/42/application', postResults = [], payload, sessions }) {
   const u = new URL(url);
   // Two virtual seconds per Date.now() call, so run.js's 30 minute deadline is
   // reached after ~900 ticks, which is under a second of real time.
@@ -22,6 +22,8 @@ function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/
   const seed = {};
   for (const v of [].concat(watch || [])) seed[(v.origin || '') + (v.path || '')] = v;
   const store = { local: watch ? { hunter_watches: seed } : {}, sync: {} };
+  if (sessions) store.local.hunter_sessions = sessions;
+  const gets = [];
   // Every watch ever saved, not just the one left at the end. The loop clears the
   // watch when it reports and when it expires, so the end state cannot show
   // whether it was ever written, and a version that never persisted it would look
@@ -73,15 +75,23 @@ function world({ hash, bodyText, watch, url = 'https://job-boards.greenhouse.io/
         if (r === 'network') throw new Error('Failed to fetch');
         return { ok: r >= 200 && r < 300, status: r, json: async () => ({}) };
       }
-      return { ok: true, status: 200, json: async () => ({ version: 1, fields: [], files: [], demographics: [] }) };
+      gets.push(String(u2));
+      return { ok: true, status: 200, json: async () => (payload || { version: 1, fields: [], files: [], demographics: [] }) };
     },
     setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 1)),
     Date: { now: () => base + (tick++ * 2000) },
     window: {},
   };
   g.window = g;
-  g.window.__hunterFill = async () => ({ filled: [], files: [], missed: [], required_missed: [] });
-  return { g, store, saved, writes, posts, banners, created };
+  const fills = [];
+  g.window.__hunterFill = async (p, opts) => {
+    fills.push(opts || {});
+    return { filled: ['First Name'], files: [], missed: [], required_missed: [] };
+  };
+  // The step the page shows; a test changes it to simulate pressing Next.
+  g.step = 'sign-in';
+  g.window.__hunterStepSignature = () => g.step;
+  return { g, store, saved, writes, posts, banners, created, gets, fills };
 }
 
 async function run(w) {
@@ -282,4 +292,43 @@ const CAP = '#hunter=acme:role-abc123.' + 'a'.repeat(32);
   console.log('ok  "I applied, mark it" reports his word');
 }
 
-console.log('\nall ten hold');
+// 11. Workday. The form comes a step at a time after he signs in, and the
+//     sign-in reloads the page without the #hunter= link. So the capability is
+//     kept as a session for the site, each new step is filled once, and only
+//     its empty fields.
+const WD = 'https://sonos.wd1.myworkdayjobs.com/en-US/Sonos/job/Boston/Head_R1/apply';
+const MULTI = { version: 1, multi_step: true, system: 'workday', fields: [], files: [],
+                demographics: [], answers: [], needs_extension: '1.0.0' };
+{
+  const w = world({ hash: CAP, bodyText: 'Sign In', url: WD, payload: MULTI });
+  const started = run(w);
+  setTimeout(() => { w.g.step = 'my-information'; }, 20);
+  await started;
+  const sess = (w.store.local.hunter_sessions || {})['https://sonos.wd1.myworkdayjobs.com'];
+  assert.ok(sess && sess.token === 'acme:role-abc123', 'the session is kept for the site');
+  assert.ok(w.fills.length >= 2, 'each new step is filled');
+  assert.ok(w.fills.every((o) => o.onlyEmpty === true), 'and only its empty fields');
+  console.log('ok  a Workday application keeps filling step by step');
+}
+
+// 12. After the sign-in reload (no link in the address), the same site picks
+//     the session up; a site with no session is left alone.
+{
+  const sessions = { 'https://sonos.wd1.myworkdayjobs.com': {
+    token: 'acme:role-abc123', key: 'a'.repeat(32),
+    api: 'https://controlcenter.krishraja.com/api/hunter/payload',
+    origin: 'https://sonos.wd1.myworkdayjobs.com', until: Date.now() + 600000 } };
+  const w = world({ hash: '', bodyText: 'My Information', url: WD.replace('/apply', '/apply/applyManually'),
+                    payload: MULTI, sessions });
+  await run(w);
+  assert.equal(w.gets.length, 1, 'the payload is fetched with the stored capability');
+  assert.match(w.gets[0], /token=acme%3Arole-abc123/);
+  assert.ok(w.fills.length >= 1, 'and the step is filled');
+  const other = world({ hash: '', bodyText: 'Careers', payload: MULTI, sessions,
+                        url: 'https://acme.wd5.myworkdayjobs.com/en-US/Acme/job/X' });
+  await run(other);
+  assert.equal(other.gets.length, 0, 'another site never uses the session');
+  console.log('ok  the session survives the sign-in reload, on its own site only');
+}
+
+console.log('\nall twelve hold');
