@@ -139,7 +139,7 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
            hunt_url: str = "",
            notes: list[str] | None = None,
            leader_note: str = "", note_to: dict | None = None,
-           reply_email: str = "") -> ApprovalEmail:
+           reply_email: str = "", posted: str = "") -> ApprovalEmail:
     """The whole application, reviewable without opening a document."""
     # An employer's own question is quoted, and its punctuation is theirs. On
     # 2026-10-20 an AssemblyAI question carried an em dash, the outbound check
@@ -171,6 +171,8 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
     A(f"<h2 style='margin:0 0 2px;font-size:19px'>{_esc(role)}</h2>")
     A(f"<div style='color:#555;margin-bottom:18px'>{_esc(company)}"
       f"{' &middot; ' + _esc(autonomy) if autonomy else ''}</div>")
+    if posted:
+        A(f"<div style='color:#555;margin:-12px 0 18px;font-size:14px'>{_esc(posted)}</div>")
 
     if needs_you or flagged or notes:
         A("<div style='border-left:3px solid #c47f00;background:#fffbf0;"
@@ -326,7 +328,10 @@ def render(*, company: str, role: str, jd_url: str, autonomy: str,
 
     # First line of the text part on purpose: inbox.is_our_own_email looks for it
     # in the lines Krish would have written, and hunter mails its own mailbox.
-    T = ["[hunter-outbound]", f"{role} at {company}", f"autonomy: {autonomy}", ""]
+    T = ["[hunter-outbound]", f"{role} at {company}", f"autonomy: {autonomy}"]
+    if posted:
+        T.append(posted)
+    T.append("")
     # Same condition as the HTML block above. The text part printed the heading
     # only when a field had no answer, and dropped `notes` altogether, so the
     # reason a field could not be filled reached the HTML and not the plain text

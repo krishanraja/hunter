@@ -46,6 +46,24 @@ def posted_of(p: "RolePosting") -> tuple[str, str]:
     return day, kind
 
 
+def posted_words(day: str, kind: str, today: str) -> str:
+    """How old the posting is, in words for the Apply email, or "" when the
+    board did not say. A last-changed date is called that, never posted."""
+    import datetime as _dt
+    try:
+        age = (_dt.date.fromisoformat(today[:10]) - _dt.date.fromisoformat((day or "")[:10])).days
+    except ValueError:
+        return ""
+    if age < 0:
+        return ""
+    if kind != "posted":
+        return f"Posting last updated {day[:10]}; when it first went up is not known."
+    when = "today" if age == 0 else ("yesterday" if age == 1 else f"{age} days ago")
+    late = (" A posting this old often has a shortlist already; the note to a person "
+            "matters more here." if age > 14 else "")
+    return f"Posted {when} ({day[:10]}).{late}"
+
+
 def fresh_label(day: str, kind: str, today: str) -> str:
     """What his sheet shows: FRESH and the date for a posting from the last
     FRESH_DAYS days, the date otherwise, and blank when unknown. A date that

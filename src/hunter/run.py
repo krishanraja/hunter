@@ -49,7 +49,7 @@ from .router import classify_verdict, is_warm_path, route_status, select_for_bui
 from .score import BAR, score_role
 from . import sheet as sheet_mod
 from .sheet import Sheet, SheetError, SheetRow, make_row
-from .sources import (ResolvedRole, company_key, posted_of, fresh_label, country_of, distinctive_tokens,
+from .sources import (ResolvedRole, company_key, posted_of, fresh_label, posted_words, country_of, distinctive_tokens,
                       identity_keys, placed_identity_keys,
                       job_id, slugify)
 from .notify import send_summary
@@ -7553,6 +7553,8 @@ def cmd_approvals(apply: bool = False, job_id: str = "", prefill: bool = True, *
         note, note_to, reply_email = leader_note_for(cfg, row["job_id"], bank)
         email = approval.render(
             leader_note=note, note_to=note_to, reply_email=reply_email,
+            posted=posted_words(row.get("posted_at") or "", row.get("posted_source") or "",
+                                TODAY()),
             company=role.company, role=role.title, jd_url=role.jd_url,
             autonomy=au.autonomy_score, token=token, to=to,
             form_shot=shot_name, form_filled=filled, form_missed=missed,
@@ -7807,7 +7809,8 @@ ACTED_ON = ("column A Applied", "application status", "applied on record",
 LIGHT_SELECT = ("job_id,company,title,url,job_url,score,comp,location,warm_path_person,"
                 "warm_path_tier,package_status,krish_verdict,rejection_reason,status,"
                 "presented_at,package_trigger,package_built_at,package_cv_url,"
-                "package_letter_url,application_state,why_it_fits,package_style")
+                "package_letter_url,application_state,why_it_fits,package_style,"
+                "posted_at,posted_source")
 
 
 def _known_with_view(cfg: Config) -> tuple[list[dict], bool]:
