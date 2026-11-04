@@ -887,7 +887,8 @@ def role_type(family: str) -> str:
 
 
 def role_prompt(*, company: str, title: str, location: str, base_key: str, jd_text: str,
-                judge_answers, his_view: str, entries: list[str], needs: list[str]) -> str:
+                judge_answers, his_view: str, entries: list[str], needs: list[str],
+                positioning: str = "") -> str:
     ja = judge_answers
     if isinstance(ja, str):
         try:
@@ -906,6 +907,9 @@ def role_prompt(*, company: str, title: str, location: str, base_key: str, jd_te
                      f"his words as written):\n" + "\n".join(f"- {w}" for w in entries))
     if ja:
         parts.append("THE JUDGE'S READ\n" + json.dumps(ja, ensure_ascii=False)[:4000])
+    if positioning:
+        parts.append("HOW TO POSITION HIM FOR THIS SEAT (his ruling; the angle of the hook, "
+                     "identity and why_now)\n" + positioning)
     if his_view:
         # Whole, never cut. At 1,500 characters the cut kept about 950 of his
         # reaction and dropped the rules on how to use it on every letter,

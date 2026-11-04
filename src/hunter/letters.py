@@ -57,6 +57,7 @@ class Plan:
     fingerprint: str = ""
     draft: dict | None = None
     judge_answers: object = None
+    positioning: str = ""       # his ruling on how to pitch him for this seat
     reason: str = ""            # set when the build waits
 
 
@@ -66,6 +67,25 @@ def bank_of(canon) -> list[personal.Entry]:
         return personal.parse_bank(canon.section_text("9.14"))
     except (CanonError, AttributeError):
         return []
+
+
+# His ruling per role on how to pitch him (2026-11-04, Dust and 6sense: "I'd
+# need to position myself correctly ... given who I'm going to be reporting
+# to", and his pick "Senior operator stepping in"). {job_id: words}, kept in
+# system_config because the words are his and this repository is public.
+POSITIONING_KEY = "hunter_role_positioning"
+
+
+def positioning_for(cfg: Config, job_id: str) -> str:
+    """His positioning for one role, or "" (unreadable is none, never a failed build)."""
+    import json as _json
+    try:
+        got = db_get(cfg, "system_config", {"key": f"eq.{POSITIONING_KEY}", "select": "value"})
+        raw = got[0].get("value") if got else None
+        data = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+        return " ".join(str((data or {}).get(job_id) or "").split())
+    except Exception:
+        return ""
 
 
 def view_hash(view_text: str) -> str:
@@ -122,7 +142,9 @@ def plan(cfg: Config, canon, job_id: str, view_text: str, *, request_fact=None) 
             request_fact(cat)
         out.reason = facts.hold_reason(m.missing[0])
         return out
-    out.fingerprint = fingerprint(job_id, key, out.personal_key, view_text)
+    out.positioning = positioning_for(cfg, job_id)
+    out.fingerprint = fingerprint(job_id, key, out.personal_key,
+                                  view_text + ("\n" + out.positioning if out.positioning else ""))
     d = latest_draft(cfg, job_id)
     same = bool(d) and ((d.get("meta") or {}).get("fingerprint") == out.fingerprint)
     if same and d["status"] in ("drafted", "used"):
@@ -163,7 +185,8 @@ def queue(cfg: Config, p: Plan, *, company: str, title: str, location: str, jd_t
     prompt = compose.role_prompt(company=company, title=title, location=location,
                                  base_key=p.base_key, jd_text=jd_text,
                                  judge_answers=judge_answers, his_view=view_text,
-                                 entries=p.entries, needs=p.needs)
+                                 entries=p.entries, needs=p.needs,
+                                 positioning=getattr(p, "positioning", ""))
     context = compose.shared_context(model_letter=model_letter, evidence_text=evidence_text,
                                      bank_words=p.bank, examples=examples, his_words=his_words,
                                      highlights=highlights, his_rules=his_rules,

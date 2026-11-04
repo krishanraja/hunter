@@ -686,3 +686,11 @@ def test_a_note_that_copies_his_reaction_is_refused():
     out = drafts.problems_for("letter", answer(leader_note=note), prompt=prompt,
                               evidence=EVIDENCE, meta=META)
     assert any("quotes his note" in p for p in out)
+
+
+def test_his_positioning_for_a_seat_reaches_the_brief_and_nothing_without_it():
+    kw = dict(company=COMPANY, title="VP", location="London", base_key="uk", jd_text=JD,
+              judge_answers={}, his_view="", entries=[], needs=[])
+    angle = "The senior operator stepping in, who makes the person he reports to look good."
+    assert angle in compose.role_prompt(positioning=angle, **kw)
+    assert "HOW TO POSITION HIM" not in compose.role_prompt(**kw)
