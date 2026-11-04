@@ -41,7 +41,8 @@ job, after its own checks.
 >      `evidence`.
 >    - `kind = letter`: one cover letter, a JSON object matching `schema`
 >      (hiring_lead, hook, identity, bullets, why_now, close, cv_summary,
->      asks). `context` holds the rules, his own model letter and his
+>      asks, and leader_note: the 200 to 650 character note he sends the
+>      hiring leader himself after he applies, no greeting or sign-off). `context` holds the rules, his own model letter and his
 >      evidence; `prompt` holds the role, its base (US or UK spelling), the
 >      judge's read, his view of the role and the posting. When `prompt` has a
 >      PERSONAL LINE, the letter carries it as he wrote it. `meta` is what the

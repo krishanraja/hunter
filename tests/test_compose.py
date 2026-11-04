@@ -311,6 +311,18 @@ def test_the_role_prompt_carries_the_line_and_the_base():
     assert "BASE: UK (UK spelling)" in p and "- A line of his." in p and "POSTING\n" + JD in p
 
 
+def test_his_whole_reaction_and_the_rules_reach_the_letter_brief():
+    from hunter.package import his_view as hv
+    words = " ".join(f"point{i}" for i in range(500))  # about 3,900 characters
+    view = hv.HisView(score=8, reaction=words, ai_case="the case hunter made")
+    section = hv.section(view, company=COMPANY)
+    assert len(section) > 1500
+    p = compose.role_prompt(company=COMPANY, title="VP", location="London", base_key="uk",
+                            jd_text=JD, judge_answers={}, his_view=section,
+                            entries=[], needs=[])
+    assert "point499" in p and "How to use it:" in p and "the case hunter made" in p
+
+
 def test_a_word_the_fill_missed_is_caught_on_read_back(monkeypatch):
     monkeypatch.setattr(compose, "respelled", lambda lt, base_key: lt)
     a = answer(identity="I'm a commercial leader with technical roots, and I build AI native "
@@ -632,3 +644,44 @@ def test_a_letter_asked_under_a_slug_may_name_the_company_as_it_writes_itself():
     assert naming("grafanalabs") == []
     # The check still bites: a letter naming nobody is refused.
     assert naming("vercel")
+
+
+# ---------- the note to the hiring leader (2026-11-04) ----------
+
+NOTE = ("Zentrox is turning a home audio platform into a partner business. At Quorra I grew "
+        "a partner engine from $2M to $9M, and at Velmont I licensed the stack to three "
+        "businesses, which is the same job as this seat. I would welcome a short call about where "
+        "platform partnerships go next.")
+
+
+def test_a_letter_with_a_good_note_passes_and_one_without_still_builds():
+    assert probs(answer(leader_note=NOTE)) == []
+    assert probs(answer()) == []
+    assert compose.parse(answer(leader_note=NOTE)).leader_note == NOTE
+
+
+def test_a_note_that_is_short_unnamed_or_signed_is_refused():
+    assert any("too short" in p for p in probs(answer(leader_note="Keen to chat about Zentrox.")))
+    unnamed = NOTE.replace("Zentrox is", "You are")
+    assert any("does not name the company" in p for p in probs(answer(leader_note=unnamed)))
+    assert any("greeting" in p for p in probs(answer(leader_note="Hi Sam, " + NOTE)))
+    assert any("contact details" in p
+               for p in probs(answer(leader_note=NOTE + " Write to krish@example.com.")))
+
+
+def test_a_note_is_held_to_the_evidence_gate():
+    made_up = NOTE.replace("$2M to $9M", "$2M to $90M")
+    assert any(p.startswith("A15 the leader note") for p in probs(answer(leader_note=made_up)))
+
+
+def test_a_note_that_copies_his_reaction_is_refused():
+    from hunter import drafts
+    reaction = "this is exactly the platform partnerships job i have wanted for years now"
+    prompt = JD + "\n" + drafts.REACTION_OPEN + reaction + '\n"""'
+    note = NOTE + " This is exactly the platform partnerships job I have wanted for years now."
+    note = note.replace("I would welcome a short call about where platform partnerships go "
+                        "next.", "")
+    assert "short call" not in note
+    out = drafts.problems_for("letter", answer(leader_note=note), prompt=prompt,
+                              evidence=EVIDENCE, meta=META)
+    assert any("quotes his note" in p for p in out)

@@ -795,6 +795,38 @@ def _person_lookup(cfg: Config, keys: list[str]) -> dict[str, dict]:
     return out
 
 
+# Who the note after an application goes to (2026-11-04). The person who
+# decides comes first: a cold target is hunter's read of the hiring leader.
+# Then someone he knows inside, who can pass it on. Never a headhunter or an
+# unidentified peer: the note is about this seat, at this company.
+NOTE_TIERS = ("cold_target", "current_employee", "ex_employee", "newsletter_move")
+
+
+def pick_note_recipient(cands: list[dict]) -> dict | None:
+    """The bridge the note goes to, from a role's candidates. Pure."""
+    usable = [c for c in cands
+              if c.get("path_tier") in NOTE_TIERS
+              and not (c.get("contact_key") or "").startswith(("peer:", "headhunter:"))
+              and c.get("state") in ("proposed", "reached_out")]
+    usable.sort(key=lambda c: (NOTE_TIERS.index(c["path_tier"]),
+                               -float(c.get("bridge_score") or 0)))
+    return usable[0] if usable else None
+
+
+def note_recipient(cfg: Config, job_id: str) -> dict | None:
+    """{name, title, company, linkedin_url, tier} for the role, or None."""
+    cands = db_get(cfg, "bridge_candidates", {
+        "select": "contact_key,path_tier,bridge_score,state",
+        "job_id": f"eq.{job_id}", "limit": "50"})
+    best = pick_note_recipient(cands)
+    if not best:
+        return None
+    p = _person_lookup(cfg, [best["contact_key"]]).get(best["contact_key"]) or {}
+    if not p.get("name"):
+        return None
+    return {**p, "tier": best["path_tier"]}
+
+
 def warm_path_cells(cfg: Config, job_ids: list[str]) -> dict[str, tuple[str, str]]:
     """job_id -> (Warm Path cell, Path Evidence cell) for the sheet.
 

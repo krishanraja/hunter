@@ -33,7 +33,8 @@ KIND = "letter"
 # Lengths, from his Sonos letter, which fits one page at the v5 margins. The
 # routine is told these; the page-fit ladder is the backstop.
 LIMITS = {"hook": 600, "identity": 520, "why_now": 340, "close": 380,
-          "label": 48, "bullet": 260, "cv_summary": 900}
+          "label": 48, "bullet": 260, "cv_summary": 900, "leader_note": 650}
+LEADER_NOTE_MIN = 200
 BODY_BUDGET = 2400
 CV_SUMMARY_MIN = 250
 
@@ -51,6 +52,7 @@ SCHEMA = {
         "why_now": {"type": "string"},
         "close": {"type": "string"},
         "cv_summary": {"type": "string"},
+        "leader_note": {"type": "string"},
         "cv_highlight_order": {"type": "array", "items": {"type": "integer"}},
         "asks": {"type": "array", "items": {
             "type": "object", "required": ["ask", "quote", "answered_by"],
@@ -102,6 +104,7 @@ class Letter:
     reader: dict = field(default_factory=dict)
     map: list = field(default_factory=list)
     review: list = field(default_factory=list)
+    leader_note: str = ""
 
     def parts(self) -> list[tuple[str, str]]:
         """Every part the reader reads, by the name the map and review use."""
@@ -117,6 +120,11 @@ class Letter:
 
     def spans(self) -> list[str]:
         return self.prose() + [f"{a} {b}" for a, b in self.bullets]
+
+    def all_text(self) -> str:
+        """Everything the writer wrote that anyone reads, the note included:
+        what the check against copying his reaction reads."""
+        return " ".join(self.spans() + [self.cv_summary, self.leader_note])
 
     def body_chars(self) -> int:
         return sum(len(s) for s in self.spans())
@@ -144,7 +152,8 @@ def parse(output) -> Letter:
                   cv_highlight_order=list(data.get("cv_highlight_order") or []),
                   reader=data.get("reader") if isinstance(data.get("reader"), dict) else {},
                   map=[m for m in (data.get("map") or []) if isinstance(m, dict)],
-                  review=[r for r in (data.get("review") or []) if isinstance(r, dict)])
+                  review=[r for r in (data.get("review") or []) if isinstance(r, dict)],
+                  leader_note=_one_line(data.get("leader_note")))
 
 
 # ---------- spelling, by base ----------
@@ -294,7 +303,8 @@ def name_problems(letter: Letter) -> list[str]:
     """His company, written his way in every field (gtmseed.COMPANY_NAME)."""
     from ..apply.gtmseed import COMPANY_NAME, name_problems as found_in
     spans = [("hook", letter.hook), ("identity", letter.identity), ("why_now", letter.why_now),
-             ("close", letter.close), ("cv_summary", letter.cv_summary)] + \
+             ("close", letter.close), ("cv_summary", letter.cv_summary),
+             ("leader note", letter.leader_note)] + \
         [(f"bullet {i}", f"{a} {b}") for i, (a, b) in enumerate(letter.bullets, 1)]
     out = []
     for name, text in spans:
@@ -401,6 +411,31 @@ def shape_problems(letter: Letter) -> list[str]:
     return out
 
 
+def note_problems(letter: Letter, companies: frozenset[str]) -> list[str]:
+    """The note he sends the hiring leader after he applies (2026-11-04: 0 of
+    69 applications had one, and no person at any company heard from him).
+    Optional, so a letter written before it existed still builds; when it is
+    there it is short, names the company, asks for nothing it cannot back,
+    and carries no greeting or sign-off, which the Apply email adds."""
+    note = letter.leader_note
+    if not note:
+        return []
+    out = []
+    if len(note) < LEADER_NOTE_MIN:
+        out.append("note: the leader note is too short to say why him")
+    elif len(note) > LIMITS["leader_note"]:
+        out.append(f"note: the leader note is over {LIMITS['leader_note']} characters")
+    low = note.lower()
+    if companies and not any(c.lower() in low for c in companies if c):
+        out.append("note: the leader note does not name the company")
+    if re.match(r"\s*(hi|hello|dear|hey)\b", low) or re.search(
+            r"\b(best|regards|cheers|thanks),?\s*krish\W*$", low):
+        out.append("note: the leader note carries a greeting or a sign-off; the email adds them")
+    if "@" in note or re.search(r"\+?\d[\d ()-]{8,}\d", note):
+        out.append("note: the leader note carries contact details; the email adds them")
+    return out
+
+
 def highlight_problems(letter: Letter, count: int) -> list[str]:
     """The order of his CV's highlights for this role: every one, once."""
     if not count:
@@ -444,6 +479,8 @@ def evidence_problems(letter: Letter, *, evidence: str, banned: tuple[str, ...],
                                           for i, (a, b) in enumerate(letter.bullets, 1)]
     if letter.cv_summary:
         spans.append(("cv_summary", letter.cv_summary))
+    if letter.leader_note:
+        spans.append(("leader note", letter.leader_note))
     for name, text in spans:
         v = voicegate.check(voicegate.plain_prose(text), evidence=evidence,
                             banned_phrases=banned, allow_names=names)
@@ -518,7 +555,8 @@ def altitude_problems(letter: Letter, jd_text: str, *, family: str = "",
     Labels and part names only: a failure never quotes his words."""
     from . import proof
     out = []
-    for name, text in letter.parts():
+    for name, text in letter.parts() + ([("leader note", letter.leader_note)]
+                                         if letter.leader_note else []):
         hits = proof.mechanics_in(text, jd_text, ruled_out)
         if hits:
             out.append(f"A18 the {name} says how it is built ({', '.join(hits)}); say what it did")
@@ -565,6 +603,7 @@ def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None 
     out += reader_problems(letter, meta.get("jd") or prompt)
     out += altitude_problems(letter, meta.get("jd") or prompt, family=meta.get("family") or "",
                              ruled_out=tuple(meta.get("ruled_out") or ()))
+    out += note_problems(letter, companies)
     if context:
         out += role_problems(letter, jd=meta.get("jd") or prompt, model=model_of(context),
                              names=companies,
@@ -663,7 +702,8 @@ def respelled(letter: Letter, base_key: str) -> Letter:
                   why_now=spell(letter.why_now, base_key), close=spell(letter.close, base_key),
                   cv_summary=spell(letter.cv_summary, base_key), asks=letter.asks,
                   cv_highlight_order=letter.cv_highlight_order, reader=letter.reader,
-                  map=letter.map, review=letter.review)
+                  map=letter.map, review=letter.review,
+                  leader_note=spell(letter.leader_note, base_key))
 
 
 # ---------- the request the routine answers ----------
@@ -731,6 +771,13 @@ Never copy a sentence from it; write every paragraph fresh for this role.
 - cv_highlight_order: his CV's career highlights (CV HIGHLIGHTS below, numbered from 0) in
   the order this role should read them, strongest for this seat first. Every number once;
   his words are never changed, only their order (canon 9.12).
+- leader_note: the note he sends the hiring leader himself, by LinkedIn or email, after he
+  submits: 200 to 650 characters, 3 or 4 sentences, first person. Open on the one thing in
+  his record that is the same job as this seat at this company (name the company), say in
+  one sentence why now, and close with a light ask for a short call (no figure: a number must be in the evidence). HIS VIEW OF THIS ROLE is
+  its angle, in your words. No greeting, no sign-off, no contact details: the email adds
+  them. Never say he has applied as a plea, never flatter, never repeat the letter's hook
+  word for word. The same evidence and altitude rules as the letter.
 - When PERSONAL LINE is given, the letter must carry it, his words as written, in the hook
   or the close. When none is given, never write anything personal about his life.
 - His company is "mind/make", lowercase with the slash, as his CV writes it; never
@@ -834,7 +881,10 @@ def role_prompt(*, company: str, title: str, location: str, base_key: str, jd_te
     if ja:
         parts.append("THE JUDGE'S READ\n" + json.dumps(ja, ensure_ascii=False)[:4000])
     if his_view:
-        parts.append("HIS VIEW OF THIS ROLE\n" + his_view[:1500])
+        # Whole, never cut. At 1,500 characters the cut kept about 950 of his
+        # reaction and dropped the rules on how to use it on every letter,
+        # while the form answers had it all (2026-11-04).
+        parts.append("HIS VIEW OF THIS ROLE\n" + his_view)
     parts.append("POSTING\n" + (jd_text or "")[:12000])
     return "\n\n".join(parts)
 
