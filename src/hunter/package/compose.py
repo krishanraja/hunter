@@ -604,6 +604,8 @@ def problems(output, *, prompt: str = "", evidence: str = "", meta: dict | None 
     out += altitude_problems(letter, meta.get("jd") or prompt, family=meta.get("family") or "",
                              ruled_out=tuple(meta.get("ruled_out") or ()))
     out += note_problems(letter, companies)
+    from . import stature
+    out += stature.problems(letter, companies, tuple(meta.get("employers") or ()))
     if context:
         out += role_problems(letter, jd=meta.get("jd") or prompt, model=model_of(context),
                              names=companies,
@@ -739,27 +741,48 @@ when he adds it himself: "two years of receipts", "an AI Chief of Staff inside 8
 organizations"). Never sound like the person who wires the tools; sound like the person
 who decides what the business does with them.
 
+HIS RANK (his words, 2026-11-04: "I honestly don't think you make me sound impressive
+enough on any application"). He is the senior hire the reader is lucky to get, writing
+as a peer, never an applicant answering a checklist. Concretely:
+- Open on him and on his read of where this company is going next, never by restating
+  what the posting says the company needs ("<Company> needs a ..." is refused).
+- Say his rank: the titles he held and the scale he carried, from HIS STANDING and
+  the evidence. The identity names a title in its first sentence and the employer.
+- Give the headline of his record (its scale in one figure) in the hook, identity or
+  CV summary.
+- A bullet states the outcome he owned and stops. Never end a part by mapping it back
+  to the posting ("the first ask in the posting", "<Company> asks for", "that is what
+  this seat needs"): the reader connects it, and saying it reads as a checklist.
+- Never volunteer a weakness, a gap, or that he was wrong. The asks list records gaps;
+  the letter never mentions them.
+- His point of view is his edge: one specific, informed read of the company's market,
+  the thing he sees coming before it is obvious, carried in the hook or why_now.
+
 Then, last, read the finished letter as that reader and fill "review": for every part,
 feeds_doubt is the exact words from that part that would make the reader discount him
-(a builder where they hire a dealmaker, a tool name, a claim that sounds junior or
-braggy), or "" when it builds its belief cleanly. Any part whose review is not "" must
+(a builder where they hire a dealmaker, a tool name, a claim that sounds junior, braggy,
+hedged, apologetic, or like an applicant ticking requirements), or "" when it builds
+its belief cleanly. Any part whose review is not "" must
 be rewritten before you answer: the check refuses it.
 
 The MODEL LETTER below is his: it shows his register, layout and length. It is NOT a template.
 Never copy a sentence from it; write every paragraph fresh for this role.
 - Write in the first person throughout. Never drop the subject ("Would rather", "Built the
   team"): write "I'd rather", "I built". The identity paragraph opens with "I".
-- hook: the strongest reason this reader shortlists him: the part of his record that is the
-  same job as this seat, tied to what this company is doing. Name the company. No flattery, no "I am excited".
+- hook: the strongest reason this reader shortlists him: his rank and the part of his
+  record that is the same job as this seat, tied to his read of where this company is
+  going. Open on him, not on the company's needs. Name the company. No flattery, no "I am excited".
 - identity: who he is, written from this seat's angle: the parts of his record that matter to
   this company, in his first person. Never his generic summary.
 - bullets: three or four of his proof points, the ones that build the reader's beliefs and
   answer their doubts, chosen by what each proves for this seat, never by how vivid it is.
-  Each has a short bold label (an employer or a period, ending with a colon), his figure in
-  his own wording, and one clause saying what it means for this company or this ask.
+  Each has a short bold label (the employer and, where the evidence gives it, his title,
+  ending with a colon) and the outcome he owned, his figure in his own wording, stated
+  as a result and left there: no clause mapping it back to the posting.
   Every figure and every name must be in the evidence as written.
 - why_now: why this company and this seat, now, in one or two sentences specific to them.
-- close: the first thing he would do for this company, concrete, and an offer to show it.
+- close: the first thing he would do for this company, concrete, offered as a peer
+  would offer it, never as a request to be considered.
 - asks: what the posting asks for, each with an exact quote from the posting and which
   proof answers it (or "gap" when none does).
 - cv_summary: the professional summary at the top of his CV, rewritten for this role, never
@@ -804,7 +827,7 @@ def strip_his_lines(text: str, bank_words: list[str]) -> str:
 def shared_context(*, model_letter: str, evidence_text: str, bank_words: list[str],
                    examples: str = "", his_words: str = "",
                    highlights: list[str] | None = None, his_rules: str = "",
-                   his_cuts: str = "") -> str:
+                   his_cuts: str = "", standing: str = "") -> str:
     from . import proof
     parts = [
         RULES,
@@ -812,6 +835,9 @@ def shared_context(*, model_letter: str, evidence_text: str, bank_words: list[st
         "MODEL LETTER (his own, with his personal lines taken out)\n"
         + strip_his_lines(model_letter, bank_words),
     ]
+    if standing:
+        parts.append("HIS STANDING (his words; lead with this: it is why he is "
+                     "shortlisted, and every word of it is evidence)\n" + standing)
     if his_rules:
         parts.append("HIS RULES FOR EVERY PACKAGE (his words; each is a doubt every reader "
                      "brief carries)\n" + his_rules)

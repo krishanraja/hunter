@@ -576,6 +576,19 @@ the 31 letters written in the house style named a tool or an internal.
 - **His rulings and his cuts are kept** (`package/hisrules.py`, system_config
   `hunter_package_rules`, never this public repo; `docedits.his_cuts`). Every
   brief carries every rule as a doubt. Record a ruling when he makes one.
+- **At his rank** (his words, 2026-11-04: "I honestly don't think you make me
+  sound impressive enough on any application"). The three letters before it
+  opened by restating what the posting said the company needed, ended
+  bullets by mapping them back to the asks, never said his title, and one
+  volunteered that he had been wrong. RULES now has him open on himself and
+  his read of the company, say his rank and the scale of his record, state
+  outcomes and stop, and never volunteer a weakness. A19
+  (`package/stature.py`) refuses the opening echo, a part that maps itself
+  to the posting, a hedge (form answers too), an identity with no title, and
+  no headline figure; the employer half runs only when his Info Bank row
+  "Standing: employers" exists. His "Standing: ..." rows are the HIS STANDING
+  block the writer leads with, his words only. The three letters are in the
+  fixture as `undersold`, and each must be refused.
 - **The bar is `tests/test_package_taste.py`**, against
   `tests/fixtures/package_verdicts.json`: what he rejected must be refused,
   the lines he writes himself must pass. Refresh it when he rules on a package.

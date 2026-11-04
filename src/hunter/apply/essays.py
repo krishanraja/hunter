@@ -66,7 +66,11 @@ operator and investor would. Never name a tool, a vendor or an internal (no \
 platform names, no counts of agents or workflows) unless the question or the \
 job description names it. His AI operating system is a credential, not the \
 story: mention it only when the question asks what he has built, and then as an \
-executive would say it, never as the person wiring the tools.
+executive would say it, never as the person wiring the tools. \
+- His rank: write as the senior hire the reader is lucky to get, a peer, never \
+an applicant ticking requirements. Name the title he held and the scale he \
+carried. Never volunteer a weakness, a gap, or that he was wrong; answer on \
+what he has done.
 
 Return JSON only: {"answer": "..."}""" % (MIN_CHARS, MAX_CHARS)
 
@@ -457,6 +461,13 @@ def form_problems(answers: dict[str, str], *, posting: str, family: str = "",
         hits = proof.mechanics_in(a, posting + "\n" + q, ruled_out)
         if hits:
             out.append(f"answer {i} says how something is built ({', '.join(hits)})")
+        from ..package import stature
+        low = " ".join((a or "").lower().replace("\u2019", "'").split())
+        if any(h in low for h in stature.HEDGES):
+            # His words 2026-11-04: make him sound as senior as he is. A gap is
+            # never volunteered; a question that asks for one is answered on
+            # what he has done.
+            out.append(f"answer {i} hedges or apologises; answer on what he has done")
         if proof.says_ai_system(a):
             says.append(i)
             if budget is not None and not asks_what_he_built(q):

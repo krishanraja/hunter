@@ -18,7 +18,8 @@ from test_masters import cv_doc
 COMPANY = "Zentrox, Inc."
 JD = ("Zentrox builds wireless speakers and a home audio platform. You will lead platform "
       "partnerships and licensing deals, report to the COO, and build a small team.")
-EVIDENCE = ("Quorra: grew a partner engine from $2M to $9M. Velmont: licensed the stack to "
+EVIDENCE = ("Head of Partnerships, Quorra. "
+            "Quorra: grew a partner engine from $2M to $9M. Velmont: licensed the stack to "
             "three businesses. Halcyon: closed a $1.5M partnership. I build AI native sales "
             "engines. " + JD).lower()
 
@@ -27,8 +28,8 @@ def answer(**over):
     a = {"hiring_lead": "Hiring Team",
          "hook": "Zentrox is turning a home audio platform into a partner business, and the "
                  "deals that unlock it are the ones I have spent a decade closing.",
-         "identity": "I'm a commercial leader with technical roots, and I build AI native "
-                     "sales engines.",
+         "identity": "I'm a commercial leader with technical roots, Head of Partnerships at "
+                     "Quorra, and I build AI native sales engines.",
          "bullets": [{"label": "Quorra:", "text": "grew a partner engine from $2M to $9M."},
                      {"label": "Velmont:", "text": "licensed the stack to three businesses."},
                      {"label": "Halcyon:", "text": "closed a $1.5M partnership."}],

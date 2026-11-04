@@ -2773,9 +2773,11 @@ def house_evidence(cfg: Config, sheet: Sheet, db: DocBuild, jd_text: str) -> dic
     text = "\n\n".join(x for x in parts if x)
     from .package import hisrules
     rules, ruled_out = hisrules.load(cfg)
+    from .package import stature
     return {"text": text, "haystack": build_evidence(text, jd_text, model),
             "banned": package_banned(bank.banned_phrases), "model": model,
-            "highlights": highlights, "rules": rules, "ruled_out": ruled_out}
+            "highlights": highlights, "rules": rules, "ruled_out": ruled_out,
+            "standing": stature.block(bank.entries), "employers": stature.employers(bank.entries)}
 
 
 def examples_of(cfg: Config, bank_words: list[str]) -> str:
@@ -2826,7 +2828,9 @@ def house_build(cfg: Config, canon: Canon, sheet: Sheet, row: dict, role, srow,
                           his_words=his_words_of(cfg, plan.bank),
                           highlights=ev.get("highlights"), his_rules=ev.get("rules", ""),
                           his_cuts=his_cuts_of(cfg, plan.bank),
-                          ruled_out=tuple(ev.get("ruled_out") or ()))
+                          ruled_out=tuple(ev.get("ruled_out") or ()),
+                          standing=ev.get("standing", ""),
+                          employers=tuple(ev.get("employers") or ()))
         letters_mod.hold(cfg, job, letters_mod.WAITING, base_key=plan.base_key)
         summary.append(f"SKIPPED {job}: {letters_mod.WAITING}; the letter is asked of the "
                        f"routine, never the API")
@@ -3018,7 +3022,8 @@ def cmd_build_preview(job_ids: list[str], *, queue: bool, folder: str, apply: bo
                 evidence_text=ev["text"], evidence=ev["haystack"], banned=ev["banned"],
                 examples=examples_of(cfg, plan.bank), his_words=his_words_of(cfg, plan.bank),
                 highlights=ev.get("highlights"), his_rules=ev.get("rules", ""),
-                his_cuts=his_cuts_of(cfg, plan.bank), ruled_out=tuple(ev.get("ruled_out") or ()))
+                his_cuts=his_cuts_of(cfg, plan.bank), ruled_out=tuple(ev.get("ruled_out") or ()),
+                standing=ev.get("standing", ""), employers=tuple(ev.get("employers") or ()))
             print(f"{job}: letter {'asked of the writer' if made else 'already asked'}")
             continue
         letter, problems = letters_mod.checked(plan, letters_mod.context_of(cfg, plan.draft))
