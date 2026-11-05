@@ -8,18 +8,28 @@ four weeks without being read by anything. Read back that day, 213 of the 395
 postings had closed.
 
 Each sourcing run now takes up to `hunter_judge_carry_per_run` of them
-(default 40, 0 is off), the ones read longest ago first and then the highest
-score, reads each posting where it lives, records a closed one as dead, and
-hands the open ones to the judge beside the run's own roles, ranked with them.
-A posting it could not read stays pending: unknown is not closed.
+(default 40, 0 is off), reads each posting where it lives, records a closed one
+as dead, and hands the open ones to the judge beside the run's own roles,
+ranked with them. A posting it could not read stays pending: unknown is not
+closed.
+
+Which 40: those with posting text to judge, not read in the last
+RECHECK_DAYS, in an order shuffled by the day. The first version took the
+least recently read first, and on its first run 27 of the 40 were rows it
+could not use (no posting text, or LinkedIn refusing the read); nothing marks
+those read, so they would have headed every run and kept the rest waiting.
 """
 from __future__ import annotations
 
+import datetime
+import hashlib
 import re
 
-from .config import Config, db_get, db_patch
+from .config import ALL_ROWS, Config, db_get, db_patch
 
 OPEN, CLOSED, UNKNOWN = "open", "closed", "unknown"
+RECHECK_DAYS = 3
+MIN_TEXT = 200
 
 # Every column the staging insert writes, so the merge that writes a carried
 # row back never nulls one it left out (db_insert fills gaps with NULL).
@@ -67,18 +77,26 @@ def posting_state(row: dict, *, board_key, fetchers: dict, get) -> str:
     return UNKNOWN
 
 
-def pending_rows(cfg: Config, *, limit: int, exclude: set) -> list[dict]:
-    """Pending roles he has never been shown, read longest ago first, then the
-    highest score. Reading the oldest first is what keeps one block of high
-    scores from taking every run's share while the rest wait again."""
+def pending_rows(cfg: Config, *, limit: int, exclude: set, today: str = "") -> list[dict]:
+    """Pending roles he has never been shown, with posting text, not read in
+    the last RECHECK_DAYS, shuffled by the day so every one is reached in turn
+    and one that cannot be read never blocks the rest."""
     if limit <= 0:
         return []
     rows = db_get(cfg, "hunter_seen_roles", {
         "select": COLUMNS, "status": "eq.judge_pending",
-        "presented_at": "is.null",
-        "order": "last_verified_at.asc.nullsfirst,score.desc.nullslast,scanned_at.desc",
-        "limit": str(limit + len(exclude))})
-    return [r for r in rows if r["job_id"] not in exclude][:limit]
+        "presented_at": "is.null", "jd_text": "not.is.null", "limit": ALL_ROWS})
+    day = today or datetime.date.today().isoformat()
+    try:
+        cutoff = (datetime.date.fromisoformat(day[:10])
+                  - datetime.timedelta(days=RECHECK_DAYS)).isoformat()
+    except ValueError:
+        cutoff = ""
+    fit = [r for r in rows if r["job_id"] not in exclude
+           and len((r.get("jd_text") or "").strip()) >= MIN_TEXT
+           and (r.get("last_verified_at") or "")[:10] <= cutoff]
+    fit.sort(key=lambda r: hashlib.sha1(f"{day}:{r['job_id']}".encode()).hexdigest())
+    return fit[:limit]
 
 
 def carry(cfg: Config, *, limit: int, exclude: set, board_key, fetchers: dict, get,
@@ -87,12 +105,7 @@ def carry(cfg: Config, *, limit: int, exclude: set, board_key, fetchers: dict, g
     recorded dead with the date it was read, never left to wait again."""
     counts = {OPEN: 0, CLOSED: 0, UNKNOWN: 0}
     out = []
-    for row in pending_rows(cfg, limit=limit, exclude=exclude):
-        if len((row.get("jd_text") or "").strip()) < 200:
-            # Nothing for the judge to read; its posting is fetched again only
-            # when a sweep finds it, as before.
-            counts[UNKNOWN] += 1
-            continue
+    for row in pending_rows(cfg, limit=limit, exclude=exclude, today=today):
         state = posting_state(row, board_key=board_key, fetchers=fetchers, get=get)
         counts[state] += 1
         if state == OPEN:

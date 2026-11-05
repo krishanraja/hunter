@@ -3742,6 +3742,20 @@ def propose_canon_universe(cfg: Config, named: list[str], only_tab: list[str],
         print(f"  canon drift proposal not filed: {e.__class__.__name__}: {str(e)[:160]}")
 
 
+# Columns that are NOT NULL with a default. A batch where one row sets one
+# writes NULL into it on every other row (db_insert fills gaps), and the
+# database refuses the whole write: on 2026-11-05 one audited row did that.
+NOT_NULL_DEFAULTS = {"audit_sample": False}
+
+
+def insert_defaults(rows: list[dict]) -> list[dict]:
+    for r in rows:
+        for k, v in NOT_NULL_DEFAULTS.items():
+            if r.get(k) is None:
+                r[k] = v
+    return rows
+
+
 def _get_text(url: str, timeout: int = 25) -> tuple[int, str]:
     from .ats.linkedin import UA as LI_UA
     r = requests.get(url, headers=LI_UA, timeout=timeout)
@@ -4864,6 +4878,10 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
                 if row.get("status") == "staging":
                     row["status"] = "judge_pending"
     if inserts:
+        # One batch, so every row carries every key (db_insert fills a gap
+        # with NULL). audit_sample is NOT NULL: on 2026-11-05 one audited row
+        # left the other 1058 without it and the whole write was refused.
+        insert_defaults(inserts)
         # A role the judge left pending last run is judged again now; its row
         # exists, so it is updated rather than silently skipped.
         pending_ids = {r["job_id"] for r in db_get(cfg, "hunter_seen_roles", {

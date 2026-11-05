@@ -55,8 +55,7 @@ def test_an_unreadable_board_is_unknown_not_closed():
 def test_carry_marks_closed_dead_and_returns_open(monkeypatch):
     rows = [_row(),
             _row(job_id="acme:vp", company="Acme", title="VP",
-                 url="https://www.linkedin.com/jobs/view/vp-at-acme-4400000001"),
-            _row(job_id="thin:vp", company="Thin", title="VP", jd_text="short")]
+                 url="https://www.linkedin.com/jobs/view/vp-at-acme-4400000001")]
     asked, patched = {}, []
 
     def fake_get(cfg, table, params):
@@ -70,13 +69,27 @@ def test_carry_marks_closed_dead_and_returns_open(monkeypatch):
     out, counts = carry.carry(None, limit=10, exclude=set(), board_key=run.board_key,
                               fetchers={}, get=page, today="2026-11-05")
     assert [r["job_id"] for r in out] == ["loop:director-m-a"]
-    assert counts == {carry.OPEN: 1, carry.CLOSED: 1, carry.UNKNOWN: 1}
+    assert counts == {carry.OPEN: 1, carry.CLOSED: 1, carry.UNKNOWN: 0}
     assert patched == [({"job_id": "acme:vp"},
                         {"status": "dead",
                          "rejection_reason": "posting closed, read 2026-11-05, never judged"})]
-    # Never shown, pending only, the least recently read first.
     assert asked["status"] == "eq.judge_pending" and asked["presented_at"] == "is.null"
-    assert asked["order"].startswith("last_verified_at.asc.nullsfirst")
+
+
+def test_pending_rows_skip_the_unusable_and_the_recently_read(monkeypatch):
+    """The first run took the least recently read first: 27 of its 40 were
+    rows it could not use, and they would have headed every run."""
+    rows = [_row(job_id=f"co{i}:vp", company=f"Co{i}", title="VP") for i in range(30)]
+    rows += [_row(job_id="thin:vp", company="Thin", title="VP", jd_text="short"),
+             _row(job_id="read:vp", company="Read", title="VP",
+                  last_verified_at="2026-11-04T10:00:00Z")]
+    monkeypatch.setattr(carry, "db_get", lambda cfg, t, p: rows)
+    got = carry.pending_rows(None, limit=10, exclude={"co0:vp"}, today="2026-11-05")
+    ids = [r["job_id"] for r in got]
+    assert len(ids) == 10 and not {"thin:vp", "read:vp", "co0:vp"} & set(ids)
+    # Another day, another turn: the order moves, so every row is reached.
+    other = carry.pending_rows(None, limit=10, exclude=set(), today="2026-11-08")
+    assert [r["job_id"] for r in other] != ids
 
 
 def test_carry_skips_this_runs_own_roles_and_can_be_off(monkeypatch):
@@ -138,3 +151,11 @@ def test_pick_items_keep_their_own_source_and_refuse_a_closed_posting():
     assert items[1]["ats"] == "ashby" and items[1]["slug"] == "higgsfieldai"
     # Never labelled as a posting he sent, which would build without his score.
     assert all(i["source"] != run.SENT_SOURCE for i in items)
+
+
+def test_one_audited_row_does_not_null_the_others():
+    """2026-11-05: one row with audit_sample left 1058 without it, and the
+    batch was refused (NOT NULL)."""
+    rows = run.insert_defaults([{"job_id": "a", "audit_sample": True}, {"job_id": "b"},
+                                {"job_id": "c", "audit_sample": None}])
+    assert [r["audit_sample"] for r in rows] == [True, False, False]
