@@ -3742,6 +3742,55 @@ def propose_canon_universe(cfg: Config, named: list[str], only_tab: list[str],
         print(f"  canon drift proposal not filed: {e.__class__.__name__}: {str(e)[:160]}")
 
 
+def _get_text(url: str, timeout: int = 25) -> tuple[int, str]:
+    from .ats.linkedin import UA as LI_UA
+    r = requests.get(url, headers=LI_UA, timeout=timeout)
+    return r.status_code, r.text
+
+
+def carry_into(cfg: Config, canon: Canon, inserts: list, candidates: list,
+               posted_labels: dict, *, fetchers: dict, employer_index, rank_of,
+               get=None) -> list[str]:
+    """Add the open pending roles (carry.py) to this run: their stored row,
+    rescored, goes on `inserts` (the merge path for a pending row) and into
+    the judge's candidates. Returns the summary line."""
+    from . import carry, judge_stage
+    limit = int(cfg.optional("hunter_judge_carry_per_run", "40"))
+    if limit <= 0:
+        return []
+    exclude = {r["job_id"] for r in inserts}
+    rows, counts = carry.carry(cfg, limit=limit, exclude=exclude, board_key=board_key,
+                               fetchers=fetchers, get=get or _get_text, today=TODAY())
+    for rec in rows:
+        # Everything downstream keys on role.job_id, so it must name this row:
+        # its suffix (a second country) is kept, and a row whose id was made
+        # some other way is left pending rather than judged under another id.
+        base = job_id(rec["company"] or "", rec["title"] or "")
+        if not rec["job_id"].startswith(base):
+            counts[carry.OPEN] -= 1
+            counts[carry.UNKNOWN] += 1
+            continue
+        role = ResolvedRole(company=rec["company"], title=rec["title"],
+                            id_suffix=rec["job_id"][len(base):],
+                            url=rec.get("url") or "", jd_url=rec.get("job_url") or rec.get("url") or "",
+                            jd_text=rec.get("jd_text") or "", live=True,
+                            source=rec.get("source") or "", location=rec.get("location") or "",
+                            comp=rec.get("comp") or "", liveness="checked")
+        result = score_role(role, universe=canon.universe, employer_index=employer_index)
+        row = {k: rec.get(k) for k in carry.COLUMNS.split(",")
+               if k not in ("scanned_at", "presented_at")}
+        # The judge decides it now; staging is the status a swept role carries
+        # into the judge, and judge_stage overwrites it with its disposition.
+        row.update({"job_id": rec["job_id"], "score": result.score, "status": "staging",
+                    "last_verified_at": NOW()})
+        inserts.append(row)
+        posted_labels[rec["job_id"]] = fresh_label(
+            (rec.get("posted_at") or "")[:10], rec.get("posted_source") or "", TODAY())
+        candidates.append(judge_stage.Candidate(
+            role=role, result=result, row=row, rank=rank_of(role, result)))
+    return [carry.carry_line(counts, limit)]
+
+
 def source_and_stage(cfg: Config, canon: Canon, sheet: Sheet,
                      summary: list[str], company_declines: dict | None = None) -> dict:
     from .ats import ashby, greenhouse, lever
@@ -4702,6 +4751,17 @@ def stage_postings(cfg: Config, canon: Canon, sheet: Sheet,
             result.score = row["score"] = shown_score(rank_model, role, result)
             staged_rows.append((role, result, snippet, why))
 
+    if judge_mode != "off":
+        # Roles an earlier run left pending, read again on their own boards
+        # and judged with this run's roles (carry.py). Until 2026-11-05 a
+        # pending role came back only if a sweep found it again.
+        try:
+            summary.extend(carry_into(cfg, canon, inserts, candidates, posted_labels,
+                                      fetchers=fetchers, employer_index=employer_index,
+                                      rank_of=rank_of))
+        except Exception as e:
+            summary.append(f"judge carry-over did not run: {e.__class__.__name__}: {e}")
+
     judged = None
     if judge_mode != "off" and candidates:
         # The company bar (companybar.py): a business scored once against his
@@ -4949,11 +5009,18 @@ SENT_SOURCE = sheet_mod.SENT_SOURCE
 
 
 def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
-               summary: list[str], *, apply: bool = False, rationale=None) -> list[dict]:
+               summary: list[str], *, apply: bool = False, rationale=None,
+               source: str | None = None) -> list[dict]:
     """One outcome per posting he sent: {job_id, outcome}. items carry url,
     company, title, location, comp, posted_at, and either an ATS (ats, slug,
     posting_id) or the posting's own text (jd_text) when only a copy of it
-    could be read. Nothing is written without apply."""
+    could be read. Nothing is written without apply.
+
+    An item with `open_read` carries a liveness its caller has just read off
+    the posting's own page (stage-picks), so it is recorded checked. `source`
+    keeps a role's own source when it was not sent by him: a role he did not
+    send must not build as one he did (router.SENT_TRIGGER)."""
+    src = SENT_SOURCE if source is None else source
     from .ats import ashby, greenhouse, lever
     from .package.rationale import write_rationale_and_snippet
     rationale = rationale or write_rationale_and_snippet
@@ -4973,6 +5040,8 @@ def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
             if not live:
                 out.append({"job_id": role_id, "outcome": "the posting is gone from its board"})
                 continue
+        elif it.get("open_read"):
+            live, jd, jd_url, liveness = True, it.get("jd_text") or "", it["url"], "checked"
         else:
             live, jd, jd_url, liveness = False, it.get("jd_text") or "", it["url"], "unverified"
         if len(jd) < 200:
@@ -4980,7 +5049,7 @@ def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
             continue
         band = comp_mod.best(it.get("comp") or "", jd)
         role = ResolvedRole(company=it["company"], title=it["title"], url=jd_url,
-                            jd_url=jd_url, jd_text=jd, live=live, source=SENT_SOURCE,
+                            jd_url=jd_url, jd_text=jd, live=live, source=it.get("source", src),
                             location=it.get("location") or "", comp=band, liveness=liveness)
         result = score_role(role, universe=canon.universe)
         from . import rankscore
@@ -4995,7 +5064,7 @@ def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
         record = {"job_id": role.job_id, "title": role.title, "company": role.company,
                   "url": role.url, "job_url": role.jd_url, "score": result.score,
                   "status": "staging", "auto_rejected": False, "rejection_reason": None,
-                  "source": SENT_SOURCE, "location": role.location, "comp": role.comp,
+                  "source": it.get("source", src), "location": role.location, "comp": role.comp,
                   "sweep_date": TODAY(), "why_it_fits": why,
                   "jd_text": jd[:6000], "last_verified_at": NOW() if live else None}
         if (it.get("posted_at") or "")[:10]:
@@ -5006,7 +5075,7 @@ def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
         sheet.append_rows([make_row(company=role.company, role=role.title,
                                     jd_url=role.jd_url, score=result.score,
                                     why_it_fits=why, location=role.location,
-                                    comp=role.comp, source=SENT_SOURCE, jd_snippet=snippet,
+                                    comp=role.comp, source=it.get("source", src), jd_snippet=snippet,
                                     jd_verified=(liveness != "unverified"),
                                     posted=fresh_label((it.get("posted_at") or "")[:10],
                                                        "posted", TODAY()))])
@@ -5034,6 +5103,64 @@ def cmd_stage_sent(path: str, *, apply: bool = False) -> int:
         print(line)
     return 0 if all("read back" in g["outcome"] or "already" in g["outcome"]
                     or not apply for g in got) else 1
+
+
+def pick_items(recs: list[dict], state_of) -> tuple[list[dict], list[dict]]:
+    """Stage-sent items for stored roles a session picked for him, each read
+    open on its own page just now, and an outcome for each one that was not."""
+    items, refused = [], []
+    for rec in recs:
+        state = state_of(rec)
+        if state != "open":
+            refused.append({"job_id": rec["job_id"], "outcome": f"not staged: posting {state}"})
+            continue
+        items.append({"url": rec.get("employer_url") or rec.get("job_url") or rec.get("url"),
+                      "company": rec["company"], "title": rec["title"],
+                      "location": rec.get("location") or "", "comp": rec.get("comp") or "",
+                      "posted_at": rec.get("posted_at") or "", "jd_text": rec.get("jd_text") or "",
+                      "source": rec.get("source") or "", "open_read": True})
+        for link in (rec.get("employer_url"), rec.get("job_url"), rec.get("url")):
+            key = board_key(link)
+            if key and key[0] in ("greenhouse", "ashby", "lever"):
+                # Its own board answers again for the text, which the stored
+                # row may not hold (a board posting first read for its title).
+                items[-1].update({"ats": key[0], "slug": key[1], "posting_id": key[2],
+                                  "url": link})
+                break
+    return items, refused
+
+
+def cmd_stage_picks(job_ids: str, *, apply: bool = False) -> int:
+    """`stage-picks JOB_ID,JOB_ID [--apply]`: put roles hunter already holds
+    on Pipeline, as a session chose them with him (2026-11-05: eight of the
+    roles the judge had left pending, read against his scores). Each posting is
+    read open on its own board first, and the row keeps its own source, so its
+    package builds on his score of 7 or more, never as one he sent. The posting
+    text is the stored one. Codes and outcomes only: the log is public."""
+    from . import carry
+    from .ats import ashby, greenhouse, lever
+    cfg, canon = build_context()
+    sheet = Sheet(GoogleServiceAccount(cfg).access_token)
+    ids = [j.strip() for j in (job_ids or "").split(",") if j.strip()]
+    recs = db_get(cfg, "hunter_seen_roles", {
+        "select": carry.COLUMNS, "job_id": f"in.({','.join(ids)})", "limit": ALL_ROWS})
+    missing = [{"job_id": j, "outcome": "no such role on record"}
+               for j in ids if j not in {r["job_id"] for r in recs}]
+    fetchers = {"greenhouse": greenhouse.fetch_posting, "ashby": ashby.fetch_posting,
+                "lever": lever.fetch_posting}
+    items, refused = pick_items(recs, lambda r: carry.posting_state(
+        r, board_key=board_key, fetchers=fetchers, get=_get_text))
+    summary: list[str] = []
+    got = stage_sent(cfg, canon, sheet, items, summary, apply=apply, source="")
+    for g in missing + refused + got:
+        print(f"{g['job_id']}: {g['outcome']}")
+    for line in summary:
+        print(line)
+    if not apply:
+        print("dry run. add --apply to stage")
+    return 0 if not (missing or refused) and all(
+        "read back" in g["outcome"] or "already" in g["outcome"] or not apply
+        for g in got) else 1
 
 
 def cmd_rerank(apply: bool = False) -> int:
@@ -11108,6 +11235,9 @@ def main(argv: list[str]) -> int:
         return cmd_posted_refresh(apply="--apply" in argv)
     if cmd == "rerank":
         return cmd_rerank(apply="--apply" in argv)
+    if cmd == "stage-picks":
+        ids = [a for a in argv if a != cmd and not a.startswith("--")]
+        return cmd_stage_picks(ids[0] if ids else "", apply="--apply" in argv)
     if cmd == "stage-sent":
         # Postings he found himself and sent (stage_sent): staged on his
         # sheet past the gates, with the ordinary score, case and read-back.

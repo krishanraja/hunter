@@ -110,3 +110,19 @@ def test_posted_is_kept_true_and_only_its_cell_is_written(monkeypatch):
     got = run.refresh_posted(None, S(), rows, today="2026-10-20", apply=True)
     assert wrote == [(3, "2026-10-01")]
     assert got["written"] == 1 and got["same"] == 1 and got["unknown"] == 1
+
+
+def test_a_picked_role_keeps_its_own_source_and_its_read_liveness(monkeypatch):
+    """stage-picks, 2026-11-05: a role hunter picked, not one he sent, must not
+    build as his own (router.SENT_TRIGGER) and must say it was read open."""
+    db, canon = world(monkeypatch)
+    sheet = FakeSheet()
+    item = {"url": "https://www.linkedin.com/jobs/view/vp-at-acme-4400000001",
+            "company": "Acme", "title": "VP Partnerships", "location": "New York",
+            "comp": "", "jd_text": JD, "source": "apify_linkedin", "open_read": True}
+    got = run.stage_sent(None, canon, sheet, [item], [], apply=True, rationale=rationale,
+                         source="")
+    assert got[0]["outcome"] == "on Pipeline, read back"
+    assert db[0]["source"] == "apify_linkedin" and db[0]["last_verified_at"]
+    row = sheet.appended[0]
+    assert "apify_linkedin" in row and run.SENT_SOURCE not in row
