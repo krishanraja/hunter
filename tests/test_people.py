@@ -588,3 +588,39 @@ def test_an_application_keeps_its_people_for_thirty_days(monkeypatch):
     assert out["decided"] == 2 and out["deleted"] == 2
     assert "b0" not in deleted[0]["bridge_id"]
     assert [r["job_id"] for r in bridges.recently_applied(None)] == ["acme:cos"]
+
+
+def test_the_note_after_applying_goes_to_someone_inside_first():
+    from hunter.people import bridges
+    cands = [{"bridge_id": 1, "path_tier": "headhunter", "bridge_score": 60},
+             {"bridge_id": 2, "path_tier": "cold_target", "bridge_score": 15},
+             {"bridge_id": 3, "path_tier": "current_employee", "bridge_score": 40},
+             {"bridge_id": 4, "path_tier": "peer_transition", "bridge_score": 70}]
+    assert bridges.pick_after_applying(cands)["bridge_id"] == 3
+    assert bridges.pick_after_applying(cands[:2] + cands[3:])["bridge_id"] == 2
+    assert bridges.pick_after_applying([cands[0], cands[3]]) is None
+
+
+def test_one_person_per_applied_role_is_lifted_and_read_back(monkeypatch):
+    from hunter.people import bridges
+    store = {1: {"bridge_id": 1, "job_id": "a:x", "path_tier": "current_employee",
+                 "bridge_score": 40},
+             2: {"bridge_id": 2, "job_id": "a:x", "path_tier": "headhunter", "bridge_score": 60}}
+
+    def get(cfg, table, p):
+        return list(store.values())
+    monkeypatch.setattr(bridges, "db_get", get)
+    monkeypatch.setattr(bridges, "db_patch", lambda cfg, t, m, p: store[m["bridge_id"]].update(p))
+    n = bridges.lift_applied(None, [{"job_id": "a:x"}])
+    assert store[1]["bridge_score"] == bridges.APPLIED_SCORE and store[2]["bridge_score"] == 60
+    assert n == 1
+
+
+def test_the_newest_application_ranks_first_and_above_every_derived_path():
+    import datetime as _dt
+    from hunter.people import bridges
+    day = _dt.date(2026, 11, 6)
+    assert bridges.applied_score("2026-11-06", day) == bridges.APPLIED_SCORE
+    assert bridges.applied_score("2026-11-05", day) > bridges.applied_score("2026-10-20", day)
+    assert bridges.applied_score("2026-01-01", day) == bridges.APPLIED_SCORE - 7.5
+    assert bridges.applied_score("2026-01-01", day) > max(bridges.TIER_BASE.values()) + 40

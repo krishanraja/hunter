@@ -738,6 +738,75 @@ def _candidate(role, contact_key, tier, evidence, proximity, score, draft, now):
             "draft_ask": draft, "state": "proposed", "surfaced_at": now}
 
 
+# Where the note after an application sits in Control Center's Bridges list,
+# which shows the top 25 proposed by score: below his 9s' leaders (94, 95),
+# above every derived path. On 2026-11-06, 11 of the 15 roles he had applied
+# to the day before had their best person ranked 47th to 311th of 326.
+APPLIED_SCORE = 90.0
+# Who the note goes to, best first: someone he knows inside, then a named
+# leader. A headhunter or a peer elsewhere is not who he writes to after
+# applying.
+APPLIED_TIERS = ("current_employee", "newsletter_move", "ex_employee",
+                 "exec_target", "cold_target", "mindmake_wedge")
+
+
+def pick_after_applying(cands: list[dict]) -> dict | None:
+    """The one bridge per applied role to lift, or None. Pure."""
+    ok = [c for c in cands if c.get("path_tier") in APPLIED_TIERS]
+    if not ok:
+        return None
+    return min(ok, key=lambda c: (APPLIED_TIERS.index(c["path_tier"]),
+                                  -(c.get("bridge_score") or 0)))
+
+
+def applied_score(applied_at: str, today: datetime.date | None = None) -> float:
+    """APPLIED_SCORE for an application made today, a quarter point less a day
+    after it, so the newest lead the 25 he sees: 62 roles were applied to in
+    the 30 days to 2026-11-06. Never below 82.5, above every derived path."""
+    today = today or datetime.date.today()
+    try:
+        days = (today - datetime.date.fromisoformat((applied_at or "")[:10])).days
+    except ValueError:
+        days = 0
+    return APPLIED_SCORE - 0.25 * max(0, min(days, APPLIED_DAYS))
+
+
+def lift_applied(cfg: Config, applied: list[dict] | None = None) -> int:
+    """Put one person per role he applied to in the last APPLIED_DAYS where
+    Control Center shows it, and read the score back. Returns how many read
+    back at APPLIED_SCORE or above."""
+    applied = recently_applied(cfg) if applied is None else applied
+    ids = [r["job_id"] for r in applied]
+    if not ids:
+        return 0
+    want = {r["job_id"]: applied_score(r.get("applied_at") or "") for r in applied}
+    cands: dict[str, list[dict]] = {}
+    for i in range(0, len(ids), 100):
+        for c in db_get(cfg, "bridge_candidates", {
+                "select": "bridge_id,job_id,path_tier,bridge_score",
+                "state": "eq.proposed",
+                "job_id": "in.(" + ",".join(f'"{j}"' for j in ids[i:i + 100]) + ")",
+                "limit": ALL_ROWS}):
+            cands.setdefault(c["job_id"], []).append(c)
+    lifted: dict[str, float] = {}
+    for job_id, cs in cands.items():
+        best = pick_after_applying(cs)
+        if not best:
+            continue
+        target = want.get(job_id, APPLIED_SCORE)
+        if (best.get("bridge_score") or 0) < target:
+            db_patch(cfg, "bridge_candidates", {"bridge_id": best["bridge_id"]},
+                     {"bridge_score": target})
+        lifted[str(best["bridge_id"])] = target
+    if not lifted:
+        return 0
+    back = db_get(cfg, "bridge_candidates", {
+        "select": "bridge_id,bridge_score",
+        "bridge_id": "in.(" + ",".join(lifted) + ")", "limit": ALL_ROWS})
+    return sum(1 for b in back
+               if (b.get("bridge_score") or 0) >= lifted.get(str(b.get("bridge_id")), APPLIED_SCORE))
+
+
 def top_bridges(cfg: Config, n: int = 5) -> list[dict]:
     return db_get(cfg, "bridge_candidates", {
         "select": "job_id,contact_key,path_tier,path_evidence,proximity,"
