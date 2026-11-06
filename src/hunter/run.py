@@ -1556,6 +1556,9 @@ def cmd_bridges(ingest_dir: str | None = None, cold: bool = False,
         cold = bridges_mod.cold_targets(cfg, bridges_mod.recently_applied(cfg))
         print(f"cold targets: found {cold.get('found', 0)} of {cold.get('searched', 0)} "
               f"searched, {cold.get('eligible', 0)} with nobody")
+    applied = bridges_mod.recently_applied(cfg)
+    print(f"after applying: {bridges_mod.lift_applied(cfg, applied)} of {len(applied)} "
+          f"role(s) applied to have a person in Control Center's top list")
     for i, b in enumerate(bridges_mod.top_bridges(cfg), start=1):
         print(f"#{i} [{b['path_tier']}] score {b['bridge_score']} "
               f"{b['job_id']}\n    {b['path_evidence']}\n    draft: {b['draft_ask']}")
@@ -6673,6 +6676,11 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
             summary.append(f"cold targets: {cold}")
         except Exception as e:
             summary.append(f"cold targets skipped: {e.__class__.__name__}: {e}")
+        try:
+            summary.append(f"after applying: {bridges_mod.lift_applied(cfg)} role(s) with "
+                           f"a person in Control Center's top list")
+        except Exception as e:
+            summary.append(f"after applying skipped: {e.__class__.__name__}: {e}")
         counts["warm_paths"] = write_warm_paths(cfg, sheet, canon, yes_rows)
         summary.append(f"warm path cells written: {counts['warm_paths']}")
     except Exception as e:
