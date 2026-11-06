@@ -240,6 +240,25 @@ ROLE_FIELDS = ("job_id,company,title,score,status,krish_verdict,"
                "warm_path_person,application_state")
 
 
+# A role he applied to keeps its people for this long. Until 2026-11-06 an
+# application deleted them ("the reason to reach out has gone"), which is
+# backwards since every application carries a note for a person, sent after
+# he applies (2026-11-04): 14 of the 15 roles he applied to on 5 November had
+# nobody left in Control Center, at companies where he knew up to 13 people.
+APPLIED_DAYS = 30
+
+
+def recently_applied(cfg: Config, days: int = APPLIED_DAYS) -> list[dict]:
+    """Roles he applied to in the last `days`, the people to write to after."""
+    since = (datetime.datetime.now(datetime.timezone.utc)
+             - datetime.timedelta(days=days)).isoformat()
+    rows = db_get(cfg, "hunter_seen_roles", {
+        "select": ROLE_FIELDS + ",location,applied_at", "application_state": "eq.Applied",
+        "applied_at": f"gte.{since}", "limit": ALL_ROWS})
+    return [r for r in rows if r.get("application_state") == "Applied"
+            and (r.get("applied_at") or "") >= since[:10]]
+
+
 def target_roles(cfg: Config, limit: int = 60) -> list[dict]:
     """Roles worth a warm path: ones he said go to, then the best of what is
     still on his sheet awaiting a verdict.
@@ -278,7 +297,7 @@ def target_roles(cfg: Config, limit: int = 60) -> list[dict]:
     waiting = [r for r in rows
                if verdicts.parse(r.get("krish_verdict") or "")[0] == "none"]
     seen, out = set(), []
-    for r in approved + waiting:
+    for r in approved + waiting + recently_applied(cfg):
         if r["job_id"] not in seen:
             seen.add(r["job_id"])
             out.append(r)
@@ -294,8 +313,8 @@ def purge_orphan_bridges(cfg: Config) -> dict:
       a job_id that is not in hunter_seen_roles at all, left behind when the
       role row was deleted rather than archived;
 
-      a role he has since declined or applied to, or that his score set
-      aside, where the reason to reach out has gone;
+      a role he has since declined, or applied to more than APPLIED_DAYS
+      ago, or that his score set aside, where the reason to reach out has gone;
 
       a posting recorded dead.
 
@@ -311,11 +330,15 @@ def purge_orphan_bridges(cfg: Config) -> dict:
         "select": "job_id,krish_verdict,status", "limit": ALL_ROWS})
     by_id = {r["job_id"]: r for r in known}
 
+    # An application keeps its people for APPLIED_DAYS: the note goes after.
+    keep = {r["job_id"] for r in recently_applied(cfg)}
     orphan, decided, dead = set(), set(), set()
     for job_id in ids:
         role = by_id.get(job_id)
         if role is None:
             orphan.add(job_id)
+            continue
+        if job_id in keep:
             continue
         kind = verdicts.parse(role.get("krish_verdict") or "")[0]
         # A role his score set aside is decided the same way: he scored it
