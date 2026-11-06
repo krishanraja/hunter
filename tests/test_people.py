@@ -563,3 +563,28 @@ def test_a_cold_lookup_never_resets_a_real_connection(monkeypatch):
     assert "strength_score" not in ann and "source" not in ann
     assert ann["current_company"] == "Acme"
     assert bo["strength_score"] == 0 and bo["source"] == "hunter cold target"
+
+
+def test_an_application_keeps_its_people_for_thirty_days(monkeypatch):
+    """2026-11-06: applying deleted every proposed bridge, so 14 of the 15
+    roles he applied to had nobody in Control Center when the note to a
+    person is sent after he applies."""
+    import datetime as _dt
+    from hunter.people import bridges
+    fresh = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=2)).isoformat()
+    old = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=45)).isoformat()
+    roles = [{"job_id": "acme:cos", "krish_verdict": "Applied", "status": "staging",
+              "application_state": "Applied", "applied_at": fresh},
+             {"job_id": "old:cos", "krish_verdict": "Applied", "status": "staging",
+              "application_state": "Applied", "applied_at": old},
+             {"job_id": "no:cos", "krish_verdict": "Declined - not my domain",
+              "status": "staging"}]
+    deleted = []
+    monkeypatch.setattr(bridges, "db_get", lambda cfg, table, p: (
+        [{"bridge_id": f"b{i}", "job_id": r["job_id"]} for i, r in enumerate(roles)]
+        if table == "bridge_candidates" else roles))
+    monkeypatch.setattr(bridges, "db_delete", lambda cfg, table, p: deleted.append(p))
+    out = bridges.purge_orphan_bridges(None)
+    assert out["decided"] == 2 and out["deleted"] == 2
+    assert "b0" not in deleted[0]["bridge_id"]
+    assert [r["job_id"] for r in bridges.recently_applied(None)] == ["acme:cos"]

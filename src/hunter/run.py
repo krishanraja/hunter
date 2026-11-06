@@ -1523,7 +1523,8 @@ def cmd_prune_sheet(apply: bool = False, include_ungated: bool = False,
     return 0
 
 
-def cmd_bridges(ingest_dir: str | None = None) -> int:
+def cmd_bridges(ingest_dir: str | None = None, cold: bool = False,
+                enrich: bool = True) -> int:
     """The bridge layer: optional export ingest, lazy enrichment, bridge
     build, top-five report. Drafts only; nothing is ever sent to anyone."""
     from .people import bridges as bridges_mod
@@ -1537,7 +1538,9 @@ def cmd_bridges(ingest_dir: str | None = None) -> int:
     targets = {slugify(c) for c in canon.universe}
     for r in bridges_mod.target_roles(cfg):
         targets.add(slugify(r["company"]))
-    if cfg.optional("hunter_apify_enrichment_token"):
+    if not enrich:
+        print("enrich skipped: --no-enrich")
+    elif cfg.optional("hunter_apify_enrichment_token"):
         try:
             print(f"enrich: {enrich_mod.enrich(cfg, targets)}")
         except Exception as e:
@@ -1547,6 +1550,12 @@ def cmd_bridges(ingest_dir: str | None = None) -> int:
     else:
         print("enrich skipped: hunter_apify_enrichment_token absent")
     print(f"bridges: {bridges_mod.build_bridges(cfg, sheet)}")
+    if cold:
+        # A named person at each role he applied to with nobody else to write
+        # to: one web search call a role, capped and costed in the ledger.
+        cold = bridges_mod.cold_targets(cfg, bridges_mod.recently_applied(cfg))
+        print(f"cold targets: found {cold.get('found', 0)} of {cold.get('searched', 0)} "
+              f"searched, {cold.get('eligible', 0)} with nobody")
     for i, b in enumerate(bridges_mod.top_bridges(cfg), start=1):
         print(f"#{i} [{b['path_tier']}] score {b['bridge_score']} "
               f"{b['job_id']}\n    {b['path_evidence']}\n    draft: {b['draft_ask']}")
@@ -5373,6 +5382,15 @@ def sync_applied_state(cfg: Config, sheet: Sheet, canon: Canon) -> dict:
     return out
 
 
+def applied_and_yes(cfg: Config, yes_rows: list[dict]) -> list[dict]:
+    """The roles a named leader is searched for: every Yes, then every role he
+    applied to in the last bridges.APPLIED_DAYS, each once."""
+    from .people import bridges as bridges_mod
+    seen = {r.get("job_id") for r in yes_rows}
+    return list(yes_rows) + [r for r in bridges_mod.recently_applied(cfg)
+                             if r.get("job_id") not in seen]
+
+
 def yes_db_rows(cfg: Config, sheet: Sheet, canon: Canon) -> list[dict]:
     """The DB rows behind every Yes on Pipeline, whatever their package
     state. The warm path pass covers all of them, built or not."""
@@ -6650,7 +6668,7 @@ def process_step(cfg: Config, canon: Canon, sheet: Sheet, summary: list[str], *,
         if cleared:
             summary.append(f"cleared {cleared} placeholder warm path(s)")
         try:
-            cold = bridges_mod.cold_targets(cfg, yes_rows)
+            cold = bridges_mod.cold_targets(cfg, applied_and_yes(cfg, yes_rows))
             counts["cold_targets"] = cold.get("found", 0)
             summary.append(f"cold targets: {cold}")
         except Exception as e:
@@ -11226,7 +11244,8 @@ def main(argv: list[str]) -> int:
         ingest_dir = None
         if len(argv) >= 3 and argv[1] == "--ingest":
             ingest_dir = argv[2]
-        return cmd_bridges(ingest_dir)
+        return cmd_bridges(ingest_dir, cold="--cold" in argv,
+                           enrich="--no-enrich" not in argv)
     if cmd == "actions":
         # Buttons he pressed in Control Center (actions.py). Dry run unless --apply.
         from . import actions
