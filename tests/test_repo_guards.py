@@ -128,3 +128,58 @@ def test_the_phone_guard_leaves_ids_dates_and_invented_numbers_alone():
                  "+1 (212) 555-0142", "(212) 555-0199", "07700 900123",
                  "+44 7700 900456", "0.3529412", "v1.2.3"):
         assert not phones_in(fine), fine
+
+
+# ---------- no bot-detection evasion ----------
+#
+# Section 9 of CLAUDE.md. Only the code that ships or runs is scanned; docs and
+# tests name these tools to record why they are absent.
+def test_nothing_in_hunter_works_around_bot_detection():
+    """CLAUDE.md section 9, made mechanical. Masking navigator.webdriver and a
+    spoofed user agent were built once and reverted; Camoufox was measured on
+    2026-11-15 (tests/test_browser_eval.py) and its only edge over Hunter's own
+    Chromium was getting past Cloudflare challenges that had refused it. A site
+    that refuses an automated reader is an answer, not an obstacle."""
+    offenders = []
+    for path in evasion_scope():
+        for found in evasion_in(path.read_text(errors="replace")):
+            offenders.append(f"{path.relative_to(ROOT)}: {found}")
+    assert not offenders, f"bot-detection evasion found: {offenders}"
+
+
+def test_the_evasion_guard_catches_each_shape_and_leaves_ordinary_words_alone():
+    # Built at run time, so this file is not itself an offender.
+    for shape in ("from " + "camoufox.sync_api import Camoufox",
+                  '"@askjo/' + 'camofox-browser": "1.19.0"',
+                  "import playwright" + "_stealth", "undetected" + "_chromedriver",
+                  "cloud" + "scraper.create_scraper()", "from curl" + "_cffi import requests",
+                  "--disable-blink-features=" + "AutomationControlled",
+                  "Object.define" + "Property(navigator, 'webdriver', {get: () => false})"):
+        assert evasion_in(shape), shape
+    for fine in ("Stealth Vertical AI Startup", "stealth mode", "attempt_fingerprint",
+                 "the fingerprint of a score build", "navigator.webdriver true, which "
+                 "is what an invisible bot check scores"):
+        assert not evasion_in(fine), fine
+
+
+EVASION = re.compile(
+    r"\b(?:camou?fox|playwright[_-]stealth|puppeteer-extra-plugin-stealth|"
+    r"undetected[_-]chromedriver|selenium[_-]stealth|cloudscraper|curl_cffi|tls_client|"
+    r"nodriver|botasaurus)\b|AutomationControlled|"
+    r"defineProperty\(\s*navigator\s*,\s*['\"]webdriver", re.I)
+
+
+def evasion_in(text: str) -> list[str]:
+    return sorted({m.group(0) for m in EVASION.finditer(text)})
+
+
+def evasion_scope():
+    """Code and dependency files that ship or run: never docs or tests, which
+    name these tools to say why they are absent."""
+    roots = [ROOT / "src", ROOT / "extension", ROOT / ".github"]
+    files = [ROOT / "pyproject.toml"]
+    for root in roots:
+        files += [p for p in sorted(root.rglob("*")) if p.is_file()
+                  and p.suffix in {".py", ".js", ".ts", ".json", ".toml", ".yml", ".yaml", ".txt"}
+                  and not any(part in SKIP_DIRS for part in p.parts)]
+    return [p for p in files if p.exists()]

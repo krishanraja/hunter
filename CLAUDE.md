@@ -820,6 +820,15 @@ fingerprints, and a flagged fingerprint would follow him across every employer
 using Ashby. The extension filling his own browser is the answer, and it is also
 what he asked for.
 
+The same holds for reading. Camoufox, a browser built to hide that it is
+automated, was measured on 2026-11-15 (`docs/evals/BROWSER_EVAL.md`): on 43 of
+his named companies it read nothing Hunter's Chromium or plain HTTP could not
+where reading was allowed, cost more, and its one edge was passing Cloudflare
+challenges that had refused them. A site that refuses an automated reader is an
+answer. `tests/test_repo_guards.py` fails if an evasion library reaches `src/`,
+`extension/`, `.github/` or `pyproject.toml`; re-run the harness before
+proposing any browser for the reading path.
+
 ---
 
 ## 10. House rules

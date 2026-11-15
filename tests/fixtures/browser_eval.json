@@ -1,0 +1,1120 @@
+{
+ "meta": {
+  "run_at": "2026-11-15T21:35:17+00:00",
+  "extraction": "hunter.companyintel.site_facts, unchanged; each adapter supplies only the page HTML through companyintel._fetch",
+  "plain": "requests, companyintel._fetch (polite UA, then the browser UA string)",
+  "chromium": "playwright 1.63.0, chromium build 1243, launched headless as apply/submit.py launches it; domcontentloaded then up to 5s network idle",
+  "camoufox": "@askjo/camofox-browser 1.19.0 (camoufox-js 0.11.5, engine 152.0.4-beta.30), local REST, telemetry off, 127.0.0.1, access key; domcontentloaded then up to 5s network idle",
+  "passes": 2,
+  "pause_s": 1.0,
+  "robots": "robots.txt read first; a disallowed target is skipped",
+  "targets": "his named companies (ai_universe.csv, a16z_consumer_top50.csv): gap is a company whose description Hunter did not take from its own homepage, control is one it did",
+  "machine": "4 vCPU, 16 GB, sandbox egress through an inspecting proxy"
+ },
+ "summary": {
+  "plain": {
+   "gap_described": 25,
+   "gap_described_unrestricted": 25,
+   "control_described": 12,
+   "flaky": 0,
+   "restricted": 5,
+   "errors": 0,
+   "median_ms": 534,
+   "p90_ms": 843,
+   "wall_s": 167.9,
+   "cpu_s": 0,
+   "peak_rss_mb": 0,
+   "mean_rss_mb": 0,
+   "cold_start_ms": 0,
+   "page_loads": 96
+  },
+  "chromium": {
+   "gap_described": 26,
+   "gap_described_unrestricted": 25,
+   "control_described": 12,
+   "flaky": 0,
+   "restricted": 4,
+   "errors": 0,
+   "median_ms": 5156,
+   "p90_ms": 6884,
+   "wall_s": 551.8,
+   "cpu_s": 715.1,
+   "peak_rss_mb": 2278,
+   "mean_rss_mb": 1434,
+   "cold_start_ms": 517,
+   "page_loads": 96,
+   "desc_vs_plain": {
+    "same": 62,
+    "shorter": 10,
+    "different": 2
+   }
+  },
+  "camoufox": {
+   "gap_described": 25,
+   "gap_described_unrestricted": 25,
+   "control_described": 11,
+   "flaky": 1,
+   "restricted": 5,
+   "errors": 2,
+   "median_ms": 5259,
+   "p90_ms": 9608,
+   "wall_s": 597.4,
+   "cpu_s": 881.1,
+   "peak_rss_mb": 3776,
+   "mean_rss_mb": 1617,
+   "cold_start_ms": 872,
+   "page_loads": 96,
+   "desc_vs_plain": {
+    "same": 63,
+    "shorter": 10,
+    "different": 0
+   }
+  }
+ },
+ "verdict": {
+  "bar": "adopt only if, on the gap set excluding targets that refused automated access, Camoufox describes at least 3 more targets AND 10 points more than Chromium, or equal success at 30 percent less median time and 30 percent less peak memory",
+  "allowed_gap_targets": 26,
+  "camoufox_only_where_automation_was_refused": [],
+  "camoufox_only_where_nothing_was_refused": [],
+  "chromium_only_where_nothing_was_refused": [],
+  "margin_targets": 0,
+  "margin_points": 0.0,
+  "passes": false
+ },
+ "smoke": {
+  "plain": {
+   "OpenAI": "access restricted",
+   "Anthropic": "described",
+   "Canva": "access restricted"
+  },
+  "chromium": {
+   "OpenAI": "access restricted",
+   "Anthropic": "described",
+   "Canva": "access restricted"
+  },
+  "camoufox": {
+   "OpenAI": "described",
+   "Anthropic": "described",
+   "Canva": "described"
+  }
+ },
+ "rows": [
+  {
+   "company": "OpenAI",
+   "group": "gap",
+   "url": "https://openai.com/",
+   "plain": [
+    "access restricted",
+    "access restricted"
+   ],
+   "plain_restricted": [
+    "http 403"
+   ],
+   "plain_ms": 523,
+   "chromium": [
+    "access restricted",
+    "access restricted"
+   ],
+   "chromium_restricted": [
+    "http 403"
+   ],
+   "chromium_ms": 5665,
+   "camoufox": [
+    "access restricted",
+    "access restricted"
+   ],
+   "camoufox_restricted": [
+    "http 403"
+   ],
+   "camoufox_ms": 6049
+  },
+  {
+   "company": "Anthropic",
+   "group": "gap",
+   "url": "https://www.anthropic.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 326,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 2873,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 3413
+  },
+  {
+   "company": "Canva",
+   "group": "gap",
+   "url": "https://www.canva.com/",
+   "plain": [
+    "access restricted",
+    "access restricted"
+   ],
+   "plain_restricted": [
+    "http 403"
+   ],
+   "plain_ms": 740,
+   "chromium": [
+    "access restricted",
+    "access restricted"
+   ],
+   "chromium_restricted": [
+    "http 403"
+   ],
+   "chromium_ms": 5730,
+   "camoufox": [
+    "access restricted",
+    "access restricted"
+   ],
+   "camoufox_restricted": [
+    "http 403"
+   ],
+   "camoufox_ms": 2689
+  },
+  {
+   "company": "Cognition",
+   "group": "gap",
+   "url": "https://cognition.ai/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 842,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 3083,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 3399
+  },
+  {
+   "company": "Databricks",
+   "group": "gap",
+   "url": "https://www.databricks.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 456,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 7094,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 10176
+  },
+  {
+   "company": "Decagon",
+   "group": "gap",
+   "url": "https://decagon.ai/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 601,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 7875,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 6333
+  },
+  {
+   "company": "Figma",
+   "group": "gap",
+   "url": "https://www.figma.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 654,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 6099,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 6075
+  },
+  {
+   "company": "Gamma",
+   "group": "gap",
+   "url": "https://gamma.app/",
+   "plain": [
+    "access restricted",
+    "access restricted"
+   ],
+   "plain_restricted": [
+    "http 403"
+   ],
+   "plain_ms": 492,
+   "chromium": [
+    "access restricted",
+    "access restricted"
+   ],
+   "chromium_restricted": [
+    "http 403"
+   ],
+   "chromium_ms": 5447,
+   "camoufox": [
+    "access restricted",
+    "access restricted"
+   ],
+   "camoufox_restricted": [
+    "http 403"
+   ],
+   "camoufox_ms": 2865
+  },
+  {
+   "company": "Glean",
+   "group": "gap",
+   "url": "https://www.glean.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 335,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 6862,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 9219
+  },
+  {
+   "company": "HeyGen",
+   "group": "gap",
+   "url": "https://www.heygen.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 367,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 4753,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 6029
+  },
+  {
+   "company": "Isomorphic Labs",
+   "group": "gap",
+   "url": "https://www.isomorphiclabs.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 355,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 2205,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 2860
+  },
+  {
+   "company": "Luma AI",
+   "group": "gap",
+   "url": "https://lumalabs.ai/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 775,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 5917,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 4401
+  },
+  {
+   "company": "Mistral AI",
+   "group": "gap",
+   "url": "https://mistral.ai/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 583,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 3354,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 3163
+  },
+  {
+   "company": "Modal",
+   "group": "gap",
+   "url": "https://modal.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 534,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 4251,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 4120
+  },
+  {
+   "company": "n8n",
+   "group": "gap",
+   "url": "https://n8n.io/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 482,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 5790,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 7159
+  },
+  {
+   "company": "Perplexity",
+   "group": "gap",
+   "url": "https://www.perplexity.ai/",
+   "plain": [
+    "access restricted",
+    "access restricted"
+   ],
+   "plain_restricted": [
+    "http 403"
+   ],
+   "plain_ms": 486,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 5807,
+   "camoufox": [
+    "access restricted",
+    "error"
+   ],
+   "camoufox_restricted": [
+    "http 403"
+   ],
+   "camoufox_ms": 1657
+  },
+  {
+   "company": "Scale AI",
+   "group": "gap",
+   "url": "https://scale.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 423,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 6328,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 7655
+  },
+  {
+   "company": "Sierra",
+   "group": "gap",
+   "url": "https://sierra.ai/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 850,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 5286,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 6042
+  },
+  {
+   "company": "Sourcegraph",
+   "group": "gap",
+   "url": "https://sourcegraph.com/",
+   "plain": [
+    "no description",
+    "no description"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 3288,
+   "chromium": [
+    "no description",
+    "no description"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 17184,
+   "camoufox": [
+    "no description",
+    "no description"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 19589
+  },
+  {
+   "company": "Supabase",
+   "group": "gap",
+   "url": "https://supabase.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 664,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 3997,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 5021
+  },
+  {
+   "company": "Synthesia",
+   "group": "gap",
+   "url": "https://www.synthesia.io/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 599,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 4946,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 5876
+  },
+  {
+   "company": "Thinking Machines Lab",
+   "group": "gap",
+   "url": "https://thinkingmachines.ai/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 450,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 1323,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 2038
+  },
+  {
+   "company": "Together AI",
+   "group": "gap",
+   "url": "https://www.together.ai/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 669,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 5843,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 6019
+  },
+  {
+   "company": "Unify",
+   "group": "gap",
+   "url": "https://www.unifygtm.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 382,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 3747,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 5837
+  },
+  {
+   "company": "Vercel",
+   "group": "gap",
+   "url": "https://vercel.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 588,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 3140,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 3879
+  },
+  {
+   "company": "Hebbia",
+   "group": "gap",
+   "url": "https://www.hebbia.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 590,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 4670,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 9415
+  },
+  {
+   "company": "Midjourney",
+   "group": "gap",
+   "url": "https://www.midjourney.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 515,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 4308,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 3155
+  },
+  {
+   "company": "Reflection AI",
+   "group": "gap",
+   "url": "https://reflection.ai/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 697,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 6341,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 3284
+  },
+  {
+   "company": "Tempus AI",
+   "group": "gap",
+   "url": "https://www.tempus.com/",
+   "plain": [
+    "access restricted",
+    "access restricted"
+   ],
+   "plain_restricted": [
+    "http 429"
+   ],
+   "plain_ms": 894,
+   "chromium": [
+    "access restricted",
+    "access restricted"
+   ],
+   "chromium_restricted": [
+    "http 429"
+   ],
+   "chromium_ms": 1661,
+   "camoufox": [
+    "access restricted",
+    "access restricted"
+   ],
+   "camoufox_restricted": [
+    "http 429"
+   ],
+   "camoufox_ms": 2644
+  },
+  {
+   "company": "Magic",
+   "group": "gap",
+   "url": "https://magic.dev/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 500,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 1482,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 2296
+  },
+  {
+   "company": "Artisan",
+   "group": "gap",
+   "url": "https://www.artisan.co/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 333,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 5419,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 6742
+  },
+  {
+   "company": "Abridge",
+   "group": "control",
+   "url": "https://www.abridge.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 491,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 5365,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 4095
+  },
+  {
+   "company": "Baseten",
+   "group": "control",
+   "url": "https://www.baseten.co/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 1233,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 11851,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 12288
+  },
+  {
+   "company": "Braintrust",
+   "group": "control",
+   "url": "https://www.braintrust.dev/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 448,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 5944,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 6079
+  },
+  {
+   "company": "Clay",
+   "group": "control",
+   "url": "https://www.clay.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 429,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 4702,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 5363
+  },
+  {
+   "company": "Cohere",
+   "group": "control",
+   "url": "https://cohere.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 551,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 3702,
+   "camoufox": [
+    "error",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 4541
+  },
+  {
+   "company": "Crusoe",
+   "group": "control",
+   "url": "https://www.crusoe.ai/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 532,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 6668,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 9089
+  },
+  {
+   "company": "Descript",
+   "group": "control",
+   "url": "https://www.descript.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 754,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 4977,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 7184
+  },
+  {
+   "company": "ElevenLabs",
+   "group": "control",
+   "url": "https://elevenlabs.io/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 484,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 5841,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 6335
+  },
+  {
+   "company": "Fireworks AI",
+   "group": "control",
+   "url": "https://fireworks.ai/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 756,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 4939,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 6638
+  },
+  {
+   "company": "Groq",
+   "group": "control",
+   "url": "https://groq.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 523,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 2254,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 2771
+  },
+  {
+   "company": "Harvey",
+   "group": "control",
+   "url": "https://www.harvey.ai/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 475,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 1951,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 4464
+  },
+  {
+   "company": "Writer",
+   "group": "control",
+   "url": "https://writer.com/",
+   "plain": [
+    "described",
+    "described"
+   ],
+   "plain_restricted": [],
+   "plain_ms": 288,
+   "chromium": [
+    "described",
+    "described"
+   ],
+   "chromium_restricted": [],
+   "chromium_ms": 3842,
+   "camoufox": [
+    "described",
+    "described"
+   ],
+   "camoufox_restricted": [],
+   "camoufox_ms": 7924
+  }
+ ]
+}
