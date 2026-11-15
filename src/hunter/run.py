@@ -5119,20 +5119,29 @@ def stage_sent(cfg: Config, canon: Canon, sheet: Sheet, items: list[dict],
     return out
 
 
-def cmd_stage_sent(path: str, *, apply: bool = False) -> int:
-    """`stage-sent FILE [--apply]`: the postings he sent, from a JSON list.
-    Codes and outcomes only."""
+def cmd_stage_sent(path: str, *, apply: bool = False, company: str = "") -> int:
+    """`stage-sent FILE|LINK [--company NAME] [--apply]`: the postings he
+    sent, from a JSON list or from one posting link (sentlink.py), so the
+    scheduled job can stage a link he sends. Codes and outcomes only."""
     cfg, canon = build_context()
     sheet = Sheet(GoogleServiceAccount(cfg).access_token)
-    items = json.load(open(path, encoding="utf-8"))
+    refused: list[dict] = []
+    if path.startswith("http"):
+        from . import sentlink
+        item, why = sentlink.item_for(path, company=company, **sentlink.live_readers(cfg))
+        items = [item] if item else []
+        if why:
+            refused.append({"job_id": "link", "outcome": f"not staged: {why}"})
+    else:
+        items = json.load(open(path, encoding="utf-8"))
     summary: list[str] = []
-    got = stage_sent(cfg, canon, sheet, items, summary, apply=apply)
+    got = refused + stage_sent(cfg, canon, sheet, items, summary, apply=apply)
     for g in got:
         print(f"{g['job_id']}: {g['outcome']}")
     for line in summary:
         print(line)
-    return 0 if all("read back" in g["outcome"] or "already" in g["outcome"]
-                    or not apply for g in got) else 1
+    return 0 if not refused and all("read back" in g["outcome"] or "already" in g["outcome"]
+                                    or not apply for g in got) else 1
 
 
 def pick_items(recs: list[dict], state_of) -> tuple[list[dict], list[dict]]:
@@ -11286,8 +11295,11 @@ def main(argv: list[str]) -> int:
     if cmd == "stage-sent":
         # Postings he found himself and sent (stage_sent): staged on his
         # sheet past the gates, with the ordinary score, case and read-back.
-        paths = [a for a in argv if a != cmd and not a.startswith("--")]
-        return cmd_stage_sent(paths[0] if paths else "", apply="--apply" in argv)
+        # A link works too, so the scheduled job can stage what he sends.
+        company = argv[argv.index("--company") + 1] if "--company" in argv[:-1] else ""
+        paths = [a for a in argv if a != cmd and not a.startswith("--") and a != company]
+        return cmd_stage_sent(paths[0] if paths else "", apply="--apply" in argv,
+                              company=company)
     if cmd == "build-preview":
         # The scratch preview: --job-id (repeatable), --queue to ask the
         # writer, --apply --folder <id> to build. Links and codes only.

@@ -613,7 +613,11 @@ Spearman -0.19.
   merit still read score.py. The weights live in system_config
   `hunter_rank_weights`. Refit when he has scored a new batch.
 - **Postings he sends himself** go through `stage-sent`, past the gates (his
-  ruling on the seat), and a person he names for a role becomes a Control
+  ruling on the seat). A link is enough (`sentlink.py`, 2026-11-15): dispatch
+  the workflow with command `stage-sent` and extra `LINK --apply`; a LinkedIn
+  link is staged from the employer's own board when it holds the same title.
+  Drop a link's query string first, since `&` breaks the workflow's shell.
+  A person he names for a role becomes a Control
   Center card (`doorin.named_card`). Freshness is recorded
   (`posted_at`, `posted_source`) and shown at AG, Posted (canon 9.13 since
   2026-10-20): FRESH and the date for 7 days, "updated" for a date that is
